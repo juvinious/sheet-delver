@@ -1,6 +1,6 @@
-# SheetSmith
+# SheetDelver
 
-**SheetSmith** is a modern, extensible character sheet manager for Foundry VTT. It is designed to provide best-in-class character sheet experiences with a focus on usability, aesthetics, and future multi-system support.
+**SheetDelver** is a modern, extensible character sheet manager designed to interface with **Foundry Virtual Tabletop**©. It focuses on usability, aesthetics, and future multi-system support.
 
 ## Current Features
 - **Shadowdark RPG Support**: Full support for Shadowdark character sheets with a clean, modern UI.
