@@ -46,18 +46,20 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 next: s.level?.xp_max || 10
             },
             details: {
-                alignment: s.alignment ? (s.alignment.charAt(0).toUpperCase() + s.alignment.slice(1)) : 'Neutral',
+                alignment: (s.alignment || s.details?.alignment) ? ((s.alignment || s.details?.alignment).charAt(0).toUpperCase() + (s.alignment || s.details?.alignment).slice(1)) : 'Neutral',
                 background: backgroundName,
                 ancestry: ancestryName,
                 class: className,
                 deity: s.deity,
                 languages: s.languages || [],
                 classLanguages: classItem?.system?.languages || [],
-                biography: s.details?.biography?.value || s.biography || ''
+                biography: s.details?.biography?.value || s.biography || '',
+                notes: s.notes || s.details?.notes?.value || ''
             },
             luck: s.luck,
             coins: s.coins,
             effects: actor.effects || [],
+            computed: actor.computed,
             choices: {
                 alignments: actor.systemConfig?.ALIGNMENTS ? Object.values(actor.systemConfig.ALIGNMENTS) : ['Lawful', 'Neutral', 'Chaotic'],
                 ancestries: [], // Placeholder, populate if cached or passed

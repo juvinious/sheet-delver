@@ -15,9 +15,9 @@ async function loadConfig() {
         if (doc && doc.foundry) {
             return {
                 url: `${doc.foundry.protocol}://${doc.foundry.host}:${doc.foundry.port}`,
-                username: doc.foundry.username,
-                password: doc.foundry.password,
-                headless: doc.foundry.headless
+                username: doc.debug?.foundryUser?.name,
+                password: doc.debug?.foundryUser?.password,
+                headless: !doc.debug?.enabled
             };
         }
     } catch (e) {

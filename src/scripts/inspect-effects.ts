@@ -44,19 +44,15 @@ async function run() {
             return;
         }
         console.log('Actor Name:', actor.name);
-        console.log('System Data Keys:', Object.keys(actor.system));
-        // Check languages and deity specially for Shadowdark
-        console.log('Languages:', JSON.stringify(actor.system.languages, null, 2));
-        console.log('Deity:', actor.system.deity);
 
-        // Also check if any other fields look like Compendium links
-        console.log('Full System Dump (first level):');
-        for (const key in actor.system) {
-            const val = actor.system[key];
-            if (typeof val === 'string' && val.startsWith('Compendium')) {
-                console.log(`${key}: ${val}`);
-            }
-        }
+        console.log('--- Effects Dump ---');
+        console.log(JSON.stringify(actor.effects, null, 2));
+
+        console.log('--- System Conditions Dump ---');
+        // Check wherever conditions might be
+        console.log('system.conditions:', JSON.stringify(actor.system.conditions, null, 2));
+        console.log('system.effects:', JSON.stringify(actor.system.effects, null, 2));
+
     } else {
         console.log('No actors found');
     }

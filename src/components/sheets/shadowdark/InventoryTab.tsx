@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SHADOWDARK_EQUIPMENT } from '@/lib/systems/shadowdark-data';
 import {
     resolveImage,
@@ -9,6 +9,7 @@ import {
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
+import { ConfirmationModal } from '../../ui/ConfirmationModal';
 
 interface InventoryTabProps {
     actor: any;
@@ -17,9 +18,10 @@ interface InventoryTabProps {
     onChatSend: (msg: string) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     foundryUrl?: string;
+    onDeleteItem?: (itemId: string) => void;
 }
 
-export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, triggerRollDialog, foundryUrl }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, triggerRollDialog, foundryUrl, onDeleteItem }: InventoryTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -30,6 +32,87 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
             newSet.add(id);
         }
         setExpandedItems(newSet);
+    };
+
+    // Confirm Delete State
+    const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+    // Optimistic Overrides State
+    // Map of itemId -> object of overrides
+    const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
+
+    // Derived Items List with Overrides applied
+    const displayedItems = (actor.items?.map((item: any) => {
+        const override = optimisticOverrides[item.id];
+        if (!override) return item;
+
+        // Deep merge logic for 'system'
+        return {
+            ...item,
+            system: {
+                ...item.system,
+                ...override.system, // Merge first level system properties (equipped, stashed, quantity)
+                light: {
+                    ...item.system?.light,
+                    ...(override.system?.light || {})
+                }
+            }
+        };
+    }) || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    const handleOptimisticUpdate = (path: string, value: any) => {
+        // Parse path: "items.<id>.system.<prop>"
+        // expected format: items.ItemId.system.equipped
+
+        const parts = path.split('.');
+        if (parts[0] === 'items' && parts[2] === 'system') {
+            const itemId = parts[1];
+            const prop = parts[3]; // equipped, stashed, quantity, light
+
+            setOptimisticOverrides(prev => {
+                const itemOverrides = prev[itemId] || { system: {} };
+
+                if (prop === 'light' && parts[4] === 'active') {
+                    // Handle light.active
+                    return {
+                        ...prev,
+                        [itemId]: {
+                            system: {
+                                ...itemOverrides.system,
+                                light: { ...(itemOverrides.system?.light || {}), active: value }
+                            }
+                        }
+                    };
+                }
+
+                // Handle top-level system props
+                return {
+                    ...prev,
+                    [itemId]: {
+                        system: {
+                            ...itemOverrides.system,
+                            [prop]: value
+                        }
+                    }
+                };
+            });
+        }
+
+        // Call actual update
+        onUpdate(path, value);
+    };
+
+    const confirmDelete = (itemId: string) => {
+        setItemToDelete(itemId);
+    };
+
+    const handleDelete = () => {
+        if (!itemToDelete) return;
+
+        // Call parent handler
+        if (onDeleteItem) onDeleteItem(itemToDelete);
+
+        setItemToDelete(null);
     };
 
     const handleDescriptionClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -50,210 +133,6 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
         }
     };
 
-    const renderItemRow = (item: any) => {
-        const isExpanded = expandedItems.has(item.id);
-
-        // Attribute logic
-        const light = item.system?.light;
-        const isLightSource = light?.isSource || light?.hasLight;
-        const isLightActive = light?.active;
-        const remaining = light?.remaining;
-        const remainingTime = light?.remainingSecs ? `${Math.ceil(light.remainingSecs / 60)}m` : (remaining ? `${remaining}` : null);
-
-        // Also check properties for 'light' keyword if system differs
-        const props = item.system?.properties;
-        const hasLightProp = Array.isArray(props) ? props.some((p: any) => p.includes('light')) : (props?.light);
-
-        const showLightIndicator = isLightActive || (isLightSource && isLightActive) || (hasLightProp && remaining > 0);
-
-        // Weapon Details
-        const isWeapon = item.type === 'Weapon';
-        const isArmor = item.type === 'Armor';
-        const weaponType = item.system?.type === 'melee' ? 'Melee' : item.system?.type === 'ranged' ? 'Ranged' : '';
-        const range = item.system?.range ? item.system?.range.charAt(0).toUpperCase() + item.system?.range.slice(1) : '-';
-        const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
-
-        // Description - handling potential missing fields or rich text
-        const title = item.name in SHADOWDARK_EQUIPMENT ? SHADOWDARK_EQUIPMENT[item.name] : '';
-        const rawDesc = getSafeDescription(item.system);
-        const description = rawDesc || title;
-
-        // Properties Logic
-        const rawProps = item.system?.properties;
-        let propertiesDisplay: string[] = [];
-        if (Array.isArray(rawProps)) {
-            propertiesDisplay = rawProps.map(String);
-        } else if (typeof rawProps === 'object' && rawProps !== null) {
-            propertiesDisplay = Object.keys(rawProps).filter(k => rawProps[k]);
-        }
-
-        // Item Toggles
-        const toggleEquip = (e: React.MouseEvent) => {
-            e.stopPropagation();
-            onUpdate(`items.${item.id}.system.equipped`, !item.system?.equipped);
-        };
-
-        const toggleStash = (e: React.MouseEvent) => {
-            e.stopPropagation();
-            onUpdate(`items.${item.id}.system.stashed`, !item.system?.stashed);
-        };
-
-        const toggleLight = (e: React.MouseEvent) => {
-            e.stopPropagation();
-            onUpdate(`items.${item.id}.system.light.active`, !item.system?.light?.active);
-        };
-
-
-        return (
-            <div
-                key={item.id}
-                className="group cursor-pointer hover:bg-neutral-100 transition-colors"
-                onClick={(e) => {
-                    // Check for button clicks first
-                    const target = e.target as HTMLElement;
-                    const rollBtn = target.closest('button[data-action]');
-
-                    if (rollBtn) {
-                        e.stopPropagation();
-                        // Handled by handleDescriptionClick bubble up or manual call?
-                        // Actually handleDescriptionClick is for the dangerouslySetInnerHTML
-                        // This click handler is on the row itself.
-                        // We should probably delegate to handleDescriptionClick or reuse logic.
-                        // But wait, the row click collapses/expands.
-                        // Buttons inside the row (like Equip) have stopPropagation.
-                        // Inline rolls are inside the description, which is in the expanded part.
-                        // So this block is redundant if we only care about inline rolls in description.
-                        // BUT if we had buttons in the summary row...
-                        return; // Let the row expand trigger for now unless it was a button
-                    }
-
-                    toggleItem(item.id);
-                }}
-            >
-                <div className="grid grid-cols-12 p-2 gap-2 items-center font-serif text-sm">
-                    <div className="col-span-6 font-bold flex items-center">
-                        {/* Thumbnail */}
-                        <img
-                            src={resolveImage(item.img, foundryUrl)}
-                            alt={item.name}
-                            className="w-6 h-6 object-cover border border-black mr-2 bg-neutral-200"
-                        />
-                        <div className="flex items-center">
-                            <span>{item.name}</span>
-                            {showLightIndicator && (
-                                <span
-                                    title={`Active Light Source: ${remainingTime ? `${remainingTime} remaining` : 'Active'}`}
-                                    className="text-amber-500 font-black tracking-tighter text-xs ml-2 cursor-help"
-                                >
-                                    {isLightActive ? '🔥' : ''}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                    <div className="col-span-2 text-center font-bold text-neutral-500">{item.system?.quantity || 1}</div>
-                    <div className="col-span-2 text-center">{calculateItemSlots(item) === 0 ? '-' : calculateItemSlots(item)}</div>
-                    <div className="col-span-2 flex justify-center items-center gap-1">
-                        {/* Light Toggle */}
-                        {(isLightSource || hasLightProp) && (
-                            <button
-                                onClick={toggleLight}
-                                title={isLightActive ? "Extinguish" : "Light"}
-                                className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${isLightActive ? 'text-amber-600' : 'text-neutral-300'}`}
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill={isLightActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3a1 1 0 0 1 .9 2.5z"></path>
-                                </svg>
-                            </button>
-                        )}
-
-                        {/* Equip Toggle (For Weapons/Armor/Shields) */}
-                        {['Weapon', 'Armor', 'Shield'].includes(item.type) && (
-                            <button
-                                onClick={toggleEquip}
-                                title={item.system?.equipped ? "Unequip" : "Equip"}
-                                className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${item.system?.equipped ? 'text-green-700 fill-green-700' : 'text-neutral-300'}`}
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                                </svg>
-                            </button>
-                        )}
-
-                        {/* Stash Toggle (Hide if Equipped) */}
-                        {!item.system?.equipped && (
-                            <button
-                                onClick={toggleStash}
-                                title={item.system?.stashed ? "Retrieve" : "Stash"}
-                                className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${item.system?.stashed ? 'text-blue-600' : 'text-neutral-300'}`}
-                            >
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill={item.system?.stashed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
-                                    <path d="m3.3 7 8.7 5 8.7-5"></path>
-                                    <path d="M12 22V12"></path>
-                                </svg>
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* Expanded Details */}
-                {isExpanded && (
-                    <div className="px-4 pb-3 pt-1 text-xs text-neutral-600 border-t border-neutral-200 bg-neutral-50">
-
-                        {/* Weapon Stats */}
-                        {isWeapon && (
-                            <div className="grid grid-cols-3 gap-4 mb-2 font-bold font-sans uppercase tracking-widest text-[10px] text-black border-b border-neutral-300 pb-1">
-                                <div>Type <span className="text-neutral-500 ml-1">{weaponType}</span></div>
-                                <div>Range <span className="text-neutral-500 ml-1">{range}</span></div>
-                                <div>Damage <span className="text-neutral-500 ml-1">{damage}</span></div>
-                            </div>
-                        )}
-
-                        {/* Armor Stats */}
-                        {isArmor && (
-                            <div className="grid grid-cols-4 gap-4 mb-2 font-bold font-sans uppercase tracking-widest text-[10px] text-black border-b border-neutral-300 pb-1">
-                                <div>AC <span className="text-neutral-500 ml-1">{item.system?.ac?.base || item.system?.ac?.value || 10}</span></div>
-                                <div>Tier <span className="text-neutral-500 ml-1">{item.system?.tier || '-'}</span></div>
-                                <div>Attr <span className="text-neutral-500 ml-1">{item.system?.ac?.attribute ? item.system.ac.attribute.toUpperCase() : '-'}</span></div>
-                                <div>Bonus <span className="text-neutral-500 ml-1">{item.system?.ac?.modifier ? (item.system.ac.modifier >= 0 ? `+${item.system.ac.modifier}` : item.system.ac.modifier) : '-'}</span></div>
-                            </div>
-                        )}
-
-                        {description ? (
-                            <div
-                                dangerouslySetInnerHTML={{ __html: formatDescription(description) }}
-                                className="font-serif leading-relaxed"
-                                onClick={handleDescriptionClick}
-                            />
-                        ) : (
-                            <div className="italic text-neutral-400">
-                                No description available.
-                            </div>
-                        )}
-
-                        {/* Properties & Penalties */}
-                        {(propertiesDisplay.length > 0 || (isArmor && !item.system?.ac?.attribute)) && (
-                            <div className="mt-2 pt-2 border-t border-neutral-200">
-                                {isArmor && !item.system?.ac?.attribute && (
-                                    <div className="text-red-800 font-bold mb-1 uppercase tracking-wider text-[10px] flex items-center">
-                                        <span className="mr-1">⚠️</span> Penalty: No Dex Bonus
-                                    </div>
-                                )}
-                                <div className="flex flex-wrap gap-1">
-                                    {propertiesDisplay.map(prop => (
-                                        <span key={prop} className="px-1.5 py-0.5 bg-neutral-200 border border-neutral-300 rounded text-[10px] font-bold uppercase tracking-wide text-neutral-600">
-                                            {prop}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Inventory: Equipped, Carried, Stashed (Col 1 & 2) */}
@@ -271,8 +150,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {actor.items?.filter((i: any) => i.system?.equipped).map(renderItemRow)}
-                        {(!actor.items?.some((i: any) => i.system?.equipped)) && (
+                        {displayedItems.filter((i: any) => i.system?.equipped).map((item: any) => (
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        ))}
+                        {(!displayedItems.some((i: any) => i.system?.equipped)) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
                         )}
                     </div>
@@ -290,8 +171,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {actor.items?.filter((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map(renderItemRow)}
-                        {(!actor.items?.some((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
+                        {displayedItems.filter((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map((item: any) => (
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        ))}
+                        {(!displayedItems.some((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
                         )}
                     </div>
@@ -309,8 +192,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {actor.items?.filter((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map(renderItemRow)}
-                        {(!actor.items?.some((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
+                        {displayedItems.filter((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map((item: any) => (
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        ))}
+                        {(!displayedItems.some((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>
                         )}
                     </div>
@@ -325,23 +210,23 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
                     <h3 className="font-serif font-bold text-lg border-b-2 border-black pb-1 mb-3 uppercase tracking-wide">Slots</h3>
                     <div className="flex justify-between items-baseline mb-3">
                         <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Total</span>
-                        <span className={`text-3xl font-serif font-black ${(actor.items?.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => acc + calculateItemSlots(i), 0) > calculateMaxSlots(actor)) ? 'text-red-600' : ''}`}>
-                            {actor.items?.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => {
+                        <span className={`text-3xl font-serif font-black ${(displayedItems.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => acc + calculateItemSlots(i), 0) > (actor.computed?.gearSlots ?? calculateMaxSlots(actor))) ? 'text-red-600' : ''}`}>
+                            {displayedItems.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => {
                                 return acc + calculateItemSlots(i);
-                            }, 0)} / {calculateMaxSlots(actor)}
+                            }, 0)} / {actor.computed?.gearSlots ?? calculateMaxSlots(actor)}
                         </span>
                     </div>
                     <hr className="border-neutral-300 mb-3" />
                     <div className="space-y-1 font-serif text-sm">
                         <div className="flex justify-between">
                             <span>Gear</span>
-                            <span className="font-bold">{actor.items?.filter((i: any) => i.type !== 'Gem' && i.type !== 'Treasure' && !i.system?.stashed).reduce((acc: number, i: any) => {
+                            <span className="font-bold">{displayedItems.filter((i: any) => i.type !== 'Gem' && i.type !== 'Treasure' && !i.system?.stashed).reduce((acc: number, i: any) => {
                                 return acc + calculateItemSlots(i);
                             }, 0)}</span>
                         </div>
                         <div className="flex justify-between text-neutral-500">
                             <span>Treasure (Free)</span>
-                            <span className="font-bold">{actor.items?.filter((i: any) => (i.type === 'Gem' || i.type === 'Treasure') && !i.system?.stashed).reduce((acc: number, i: any) => {
+                            <span className="font-bold">{displayedItems.filter((i: any) => (i.type === 'Gem' || i.type === 'Treasure') && !i.system?.stashed).reduce((acc: number, i: any) => {
                                 return acc + calculateItemSlots(i);
                             }, 0)}</span>
                         </div>
@@ -385,6 +270,284 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
                     </div>
                 </div>
             </div>
+
+            {/* Confirmation Modal */}
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                title="Delete Item"
+                message="Are you sure you want to delete this item? This action cannot be undone."
+                confirmLabel="Delete"
+                onConfirm={handleDelete}
+                onCancel={() => setItemToDelete(null)}
+            />
+        </div>
+    );
+}
+
+interface QuantityControlProps {
+    value: number;
+    max: number;
+    onChange: (newValue: number) => void;
+}
+
+function QuantityControl({ value, max, onChange }: QuantityControlProps) {
+    const [displayValue, setDisplayValue] = useState(value);
+
+    // Sync state with props (handles external updates and reversions)
+    useEffect(() => {
+        setDisplayValue(value);
+    }, [value]);
+
+    const handleUpdate = (e: React.MouseEvent, change: number) => {
+        e.stopPropagation(); // Stop row expansion
+
+        let newValue = displayValue + change;
+
+        // Clamp
+        newValue = Math.max(0, newValue);
+        if (max > 1) {
+            newValue = Math.min(newValue, max);
+        }
+
+        if (newValue === displayValue) return;
+
+        // Optimistic update
+        setDisplayValue(newValue);
+
+        // Trigger generic change
+        onChange(newValue);
+    };
+
+    return (
+        <div className="flex items-center gap-1 text-xs bg-neutral-100 rounded px-1">
+            <button
+                onClick={(e) => handleUpdate(e, -1)}
+                className="hover:bg-neutral-300 rounded w-4 h-4 flex items-center justify-center transition-colors"
+                disabled={displayValue <= 0}
+            >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M5 12h14" /></svg>
+            </button>
+            <span className="mx-1">
+                {displayValue} <span className="text-neutral-300">/</span> {max}
+            </span>
+            <button
+                onClick={(e) => handleUpdate(e, 1)}
+                className="hover:bg-neutral-300 rounded w-4 h-4 flex items-center justify-center transition-colors"
+                disabled={max > 1 && displayValue >= max}
+            >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+        </div>
+    );
+}
+
+interface ItemRowProps {
+    item: any;
+    expandedItems: Set<string>;
+    toggleItem: (id: string) => void;
+    onUpdate: (path: string, value: any) => void;
+    foundryUrl?: string;
+    onDelete?: (itemId: string) => void;
+}
+
+function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl, onDelete }: ItemRowProps) {
+    // Optimistic States
+    const [equipped, setEquipped] = useState(item.system?.equipped || false);
+    const [stashed, setStashed] = useState(item.system?.stashed || false);
+    const [lightActive, setLightActive] = useState(item.system?.light?.active || false);
+
+    // Sync from props
+    useEffect(() => { setEquipped(item.system?.equipped || false); }, [item.system?.equipped]);
+    useEffect(() => { setStashed(item.system?.stashed || false); }, [item.system?.stashed]);
+    useEffect(() => { setLightActive(item.system?.light?.active || false); }, [item.system?.light?.active]);
+
+    const handleToggleEquip = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newValue = !equipped;
+        setEquipped(newValue);
+        onUpdate(`items.${item.id}.system.equipped`, newValue);
+    };
+
+    const handleToggleStash = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newValue = !stashed;
+        setStashed(newValue);
+        onUpdate(`items.${item.id}.system.stashed`, newValue);
+    };
+
+    const handleToggleLight = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        const newValue = !lightActive;
+        setLightActive(newValue);
+        onUpdate(`items.${item.id}.system.light.active`, newValue);
+    };
+
+    const isExpanded = expandedItems.has(item.id);
+
+    // Attribute logic
+    const light = item.system?.light;
+    const isLightSource = light?.isSource || light?.hasLight;
+    const remaining = light?.remaining;
+
+    // Also check properties for 'light' keyword
+    const props = item.system?.properties;
+    const hasLightProp = Array.isArray(props) ? props.some((p: any) => p.includes('light')) : (props?.light);
+
+    // Weapon Details
+    const isWeapon = item.type === 'Weapon';
+    const isArmor = item.type === 'Armor';
+    const weaponType = item.system?.type === 'melee' ? 'Melee' : item.system?.type === 'ranged' ? 'Ranged' : '';
+    const range = item.system?.range ? item.system?.range.charAt(0).toUpperCase() + item.system?.range.slice(1) : '-';
+    // const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
+    const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
+
+    // Description
+    const title = item.name in SHADOWDARK_EQUIPMENT ? SHADOWDARK_EQUIPMENT[item.name] : '';
+    const rawDesc = getSafeDescription(item.system);
+    const description = rawDesc || title;
+
+    // Properties Logic
+    const rawProps = item.system?.properties;
+    let propertiesDisplay: string[] = [];
+    if (Array.isArray(rawProps)) {
+        propertiesDisplay = rawProps.map(String);
+    } else if (typeof rawProps === 'object' && rawProps !== null) {
+        propertiesDisplay = Object.keys(rawProps).filter(k => rawProps[k]);
+    }
+
+    return (
+        <div
+            className="group cursor-pointer hover:bg-neutral-100 transition-colors"
+            onClick={(e) => {
+                // Check for button clicks first
+                const target = e.target as HTMLElement;
+                const rollBtn = target.closest('button[data-action]');
+                if (rollBtn) {
+                    e.stopPropagation();
+                    return;
+                }
+                toggleItem(item.id);
+            }}
+        >
+            <div className="grid grid-cols-12 p-2 gap-2 items-center font-serif text-sm">
+                <div className="col-span-6 font-bold flex items-center">
+                    {/* Thumbnail */}
+                    <img
+                        src={resolveImage(item.img, foundryUrl)}
+                        alt={item.name}
+                        className="w-6 h-6 object-cover border border-black mr-2 bg-neutral-200"
+                    />
+                    <div className="flex items-center">
+                        <span>{item.name}</span>
+                        {/* Light Source Indicator */}
+                        {item.isLightSource && (
+                            <div className="ml-2 flex items-center gap-1 group/light relative">
+                                <span
+                                    className={`text-xs tracking-tighter ${lightActive
+                                        ? 'text-amber-500 font-bold animate-pulse'
+                                        : 'text-neutral-300'
+                                        }`}
+                                >
+                                    {item.lightSourceProgress || (lightActive ? 'Active' : 'Inactive')}
+                                    <span className="ml-1 text-[10px] text-neutral-500">
+                                        ({item.lightSourceTimeRemaining || (remaining ? `${remaining}m` : '')})
+                                    </span>
+                                </span>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="col-span-2 text-center font-bold text-neutral-500 flex justify-center items-center gap-1">
+                    {(item.system?.slots?.per_slot || 1) > 1 ? (
+                        <QuantityControl
+                            value={item.system?.quantity ?? 1}
+                            max={item.system?.slots?.per_slot || 0}
+                            onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
+                        />
+                    ) : (
+                        item.showQuantity ? (item.system?.quantity || 1) : ''
+                    )}
+                </div>
+                <div className="col-span-2 text-center">{calculateItemSlots(item) === 0 ? '-' : calculateItemSlots(item)}</div>
+                <div className="col-span-2 flex justify-center items-center gap-1">
+                    {/* Light Toggle (Only if NOT stashed) */}
+                    {(!stashed) && (isLightSource || hasLightProp) && (
+                        <button
+                            onClick={handleToggleLight}
+                            title={lightActive ? "Extinguish" : "Light"}
+                            className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${lightActive ? 'text-amber-600' : 'text-neutral-300'}`}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill={lightActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.1.2-2.2.6-3a1 1 0 0 1 .9 2.5z"></path>
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Equip Toggle (Only if NOT stashed) */}
+                    {(!stashed) && ['Weapon', 'Armor', 'Shield'].includes(item.type) && (
+                        <button
+                            onClick={handleToggleEquip}
+                            title={equipped ? "Unequip" : "Equip"}
+                            className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${equipped ? 'text-green-700 fill-green-700' : 'text-neutral-300'}`}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Stash Toggle (Hide if Equipped because equipped items are conceptually 'on person') */}
+                    {!equipped && (
+                        <button
+                            onClick={handleToggleStash}
+                            title={stashed ? "Retrieve" : "Stash"}
+                            className={`w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-200 transition-colors ${stashed ? 'text-blue-600' : 'text-neutral-300'}`}
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill={stashed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
+                                <path d="m3.3 7 8.7 5 8.7-5"></path>
+                                <path d="M12 22V12"></path>
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Trash / Delete Item (Carried or Stashed only) */}
+                    {onDelete && !equipped && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(item.id);
+                            }}
+                            title="Delete Item"
+                            className="w-8 h-8 flex items-center justify-center rounded hover:bg-red-100 text-neutral-300 hover:text-red-600 transition-colors group/trash"
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Expanded Description */}
+            {isExpanded && (
+                <div className="px-4 py-2 bg-neutral-50 text-sm border-t border-b border-neutral-200 col-span-12 font-serif">
+                    <div className="flex gap-2 mb-2 text-xs font-bold uppercase text-neutral-500">
+                        <span className="bg-neutral-200 px-1 rounded">{item.type}</span>
+                        {isWeapon && <span>{weaponType} • {range} • {damage}</span>}
+                        {isArmor && <span>AC +{item.system?.ac?.base || 0}</span>}
+                        {propertiesDisplay.map(p => (
+                            <span key={p} className="bg-neutral-200 px-1 rounded">{p}</span>
+                        ))}
+                    </div>
+
+                    <div
+                        dangerouslySetInnerHTML={{ __html: formatDescription(description) }}
+                        className="prose prose-sm max-w-none"
+                    />
+                </div>
+            )}
         </div>
     );
 }

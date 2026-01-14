@@ -20,10 +20,12 @@ export interface ActorSheetData {
         languages?: string[] | { name: string; description?: string; isClass?: boolean }[];
         classLanguages?: string[]; // Raw list from class item for matching
         biography?: string;
+        notes?: string;
     };
     luck?: { available: boolean; remaining: number };
     coins?: Record<string, number>;
     effects?: any[];
+    computed?: any;
 
     // UI Choices (Populated for dropdowns)
     choices?: {

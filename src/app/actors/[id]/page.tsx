@@ -224,6 +224,91 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
     };
 
+    const handleToggleEffect = async (effectId: string, enabled: boolean) => {
+        if (!actor) return;
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/effects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ effectId, updateData: { disabled: !enabled } })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Update local state optimistically
+                fetchActor(actor.id, true);
+                addNotification(enabled ? 'Effect Enabled' : 'Effect Disabled', 'success');
+            } else {
+                addNotification('Failed to toggle effect: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleDeleteEffect = async (effectId: string) => {
+        if (!actor) return;
+        // Confirmation is handled by UI component now
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/effects?effectId=${effectId}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (data.success) {
+                const newEffects = actor.effects.filter((e: any) => e.id !== effectId);
+                setActor({ ...actor, effects: newEffects });
+                fetchActor(actor.id, true);
+                addNotification('Effect Deleted', 'success');
+            } else {
+                addNotification('Failed to delete effect: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleDeleteItem = async (itemId: string) => {
+        if (!actor) return;
+        // Confirmation is handled by UI component now
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/items?itemId=${itemId}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Optimistic update locally if possible, or just re-fetch
+                // const newItems = actor.items?.filter((i: any) => i.id !== itemId);
+                // setActor({...actor, items: newItems}); // Shallow might not work with complex struct
+                fetchActor(actor.id, true);
+                addNotification('Item Deleted', 'success');
+            } else {
+                addNotification('Failed to delete item: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleCreatePredefinedEffect = async (effectKey: string) => {
+        if (!actor) return;
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/predefined-effects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ effectKey })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Refresh actor data to show new effect
+                fetchActor(actor.id, true);
+                addNotification('Effect Added', 'success');
+            } else {
+                addNotification('Failed to add effect: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
     // ... (Keep existing loading/error checks)
     if (loading) return <div className="p-8 text-neutral-400">Loading...</div>;
     // If not loading and no actor, we are likely redirecting, so render specific fallback or null
@@ -260,6 +345,10 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                         onRoll={handleRoll}
                         onChatSend={handleChatSend}
                         onUpdate={handleUpdate}
+                        onToggleEffect={handleToggleEffect}
+                        onDeleteEffect={handleDeleteEffect}
+                        onDeleteItem={handleDeleteItem}
+                        onCreatePredefinedEffect={handleCreatePredefinedEffect}
                     />
                 ) : (
                     <div className="text-center p-10 mt-20 text-neutral-500 italic">

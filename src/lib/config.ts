@@ -3,23 +3,26 @@ import path from 'path';
 import yaml from 'js-yaml';
 
 export interface AppConfig {
-    foundry: {
-        protocol: string;
+    app: {
         host: string;
         port: number;
+        protocol: string;
+        chatHistory: number;
+        version: string;
+    };
+    foundry: {
+        host: string;
+        port: number;
+        protocol: string;
         url: string;
     };
-    config: {
-        debug: {
-            enabled: boolean;
-            level: number;
-            foundryUser?: {
-                name: string;
-                password?: string;
-            };
+    debug: {
+        enabled: boolean;
+        level: number;
+        foundryUser?: {
+            name: string;
+            password?: string;
         };
-        version: string;
-        'chat-history'?: number;
     };
 }
 
@@ -33,21 +36,36 @@ export async function loadConfig(): Promise<AppConfig | null> {
         const fileContents = await fs.readFile(configPath, 'utf8');
         const doc = yaml.load(fileContents) as any;
 
-        if (doc && doc.foundry) {
-            const { protocol, host, port } = doc.foundry;
-            const url = `${protocol}://${host}:${port}`;
+        // Read version from package.json
+        const packagePath = path.resolve(process.cwd(), 'package.json');
+        const packageJson = JSON.parse(await fs.readFile(packagePath, 'utf8'));
+        const version = packageJson.version || '0.0.0';
+
+        if (doc) {
+            const foundry = doc.foundry || {};
+            const app = doc.app || {};
+            const debug = doc.debug || {};
+
+            const foundryUrl = `${foundry.protocol || 'http'}://${foundry.host || 'localhost'}:${foundry.port || 30000}`;
 
             _cachedConfig = {
-                foundry: { ...doc.foundry, url },
-                config: {
-                    ...doc.config,
-                    // Ensure defaults if missing
-                    debug: {
-                        enabled: doc.config?.debug?.enabled ?? false,
-                        level: doc.config?.debug?.level ?? 1,
-                        foundryUser: doc.config?.debug?.foundryUser
-                    },
-                    version: doc.config?.version || '0.0.0'
+                app: {
+                    host: app.host || 'localhost',
+                    port: app.port || 3000,
+                    protocol: app.protocol || 'http',
+                    chatHistory: app['chat-history'] || 100,
+                    version: version
+                },
+                foundry: {
+                    host: foundry.host || 'localhost',
+                    port: foundry.port || 30000,
+                    protocol: foundry.protocol || 'http',
+                    url: foundryUrl
+                },
+                debug: {
+                    enabled: debug.enabled ?? false,
+                    level: debug.level ?? 1,
+                    foundryUser: debug.foundryUser
                 }
             };
             return _cachedConfig;

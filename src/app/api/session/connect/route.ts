@@ -11,7 +11,7 @@ export async function GET() {
     }
 
     const { url } = config.foundry;
-    const appVersion = config.config.version;
+    const appVersion = config.app.version;
     const existingClient = getClient();
 
     // Check existing connection
@@ -73,9 +73,8 @@ export async function POST(request: Request) {
         const users = await client.getUsers();
         const system = await client.getSystem().catch(() => null);
 
-        // Fetch config to get version (could also just read file again but loadConfig is handy)
         const config = await loadConfig();
-        const appVersion = config?.config.version || '0.0.0';
+        const appVersion = config?.app.version || '0.0.0';
 
         return NextResponse.json({ success: true, users, system, appVersion });
     } catch (error: any) {

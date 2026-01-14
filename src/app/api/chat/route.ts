@@ -14,7 +14,7 @@ export async function GET() {
 
     try {
         const config = await loadConfig();
-        const limit = config?.config['chat-history'] || 25;
+        const limit = config?.app.chatHistory || 25;
 
         const messages = await client.getChatLog(limit);
         if (messages.length > 0) {

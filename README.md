@@ -25,25 +25,26 @@
 Create a `settings.yaml` file in the root directory to configure the connection to your Foundry instance.
 
 ```yaml
-# Application settings
-host: localhost       # The hostname this application will bind to
-port: 3000            # The port this application will run on
-protocol: http        # The protocol (http/https)
+# Application Server Settings
+app:
+    host: localhost       # Hostname to bind to
+    port: 3000            # Port to run on
+    protocol: http        # Protocol (http/https)
+    chat-history: 100     # Number of chat messages to load
 
 # Foundry VTT Connection
 foundry:
-    host: http://your-foundry-server.local # The hostname of your Foundry instance
-    port: 30000                            # The port of your Foundry instance
-    protocol: http                         # The protocol of your Foundry instance
+    host: foundry.example.com
+    port: 30000
+    protocol: https
 
-# Application Configuration
-config:
-    debug:
-        level: 0 # Debug level: 0=None, 1=Error, 2=Warn, 3=Info, 4=Debug
-        foundryUser:
-            name: Gamemaster   # Foundry username (GM/Assistant GM required)
-            password: password # Foundry password
-        chat-history: 100      # How much of the chat history to show in the application
+# Debug Configuration
+debug:
+    enabled: true        # Enable debug logging
+    level: 4             # 0=None, 1=Error, 2=Warn, 3=Info, 4=Debug
+    foundryUser:
+        name: Gamemaster
+        password: password
 ```
 
 ### Running Locally

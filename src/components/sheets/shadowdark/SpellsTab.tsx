@@ -47,17 +47,49 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
         }
     };
 
+    const [optimisticLostState, setOptimisticLostState] = useState<Record<string, boolean>>({});
+
+    const handleLostToggle = (spellId: string, currentLost: boolean) => {
+        // Optimistic update
+        setOptimisticLostState(prev => ({
+            ...prev,
+            [spellId]: !currentLost
+        }));
+
+        // Actual update
+        onUpdate(`items.${spellId}.system.lost`, !currentLost);
+    };
+
+    // Effect to sync optimistic state with prop updates (clearing overrides when server syncs)
+    // We can use a simple timeout or just let props take over if we want strict sync,
+    // but for simple toggles, we usually just prefer the prop value *unless* we just clicked.
+    // However, a simpler pattern for this sheet has been just one-way fire-and-forget with loading override,
+    // or just relying on the fact that the prop will update eventually.
+    // For true "snappy" feeling:
+    const isLost = (spell: any) => {
+        if (optimisticLostState[spell.id] !== undefined) {
+            return optimisticLostState[spell.id];
+        }
+        return spell.system?.lost;
+    };
+
     return (
         <div className="space-y-8 pb-20">
             {/* Spells Known */}
             <div className="space-y-6">
+                {/* Header matching Talents Tab */}
                 <div className="bg-black text-white p-2 font-serif font-bold text-xl uppercase tracking-wider flex justify-between items-center shadow-md">
-                    <span>Spells Known</span>
-                    <i className="fas fa-book-open text-white/50"></i>
+                    <span>Spells & Magic</span>
+                    {actor.computed?.spellcastingAbility && (
+                        <span className="text-xs bg-neutral-800 px-2 py-1 rounded text-neutral-300 font-sans tracking-normal normal-case">
+                            Casting Attribute: <strong className="text-amber-500">{actor.computed.spellcastingAbility}</strong>
+                        </span>
+                    )}
                 </div>
 
                 {[1, 2, 3, 4, 5].map(tier => {
-                    const spells = actor.items?.filter((i: any) => i.type === 'Spell' && i.system?.tier === tier) || [];
+                    const spells = (actor.items?.filter((i: any) => i.type === 'Spell' && i.system?.tier === tier) || [])
+                        .sort((a: any, b: any) => a.name.localeCompare(b.name));
                     if (spells.length === 0) return null;
                     return (
                         <div key={tier} className="">
@@ -73,6 +105,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
                             <div className="space-y-2">
                                 {spells.map((spell: any) => {
                                     const isExpanded = expandedItems.has(spell.id);
+                                    const lost = isLost(spell);
+
                                     return (
                                         <div key={spell.id} className="bg-white border-black border-2 p-1 shadow-sm group">
                                             {/* Header */}
@@ -91,7 +125,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
 
                                                 {/* Name & Info */}
                                                 <div className="flex-1 flex flex-col justify-center overflow-hidden">
-                                                    <div className={`font-serif font-bold text-lg uppercase leading-none truncate ${spell.system?.lost ? 'line-through text-neutral-400' : 'text-black'}`}>
+                                                    <div className={`font-serif font-bold text-lg uppercase leading-none truncate ${lost ? 'line-through text-neutral-400' : 'text-black'}`}>
                                                         {spell.name}
                                                     </div>
                                                     <div className="flex gap-2 text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
@@ -127,16 +161,17 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
                                                             onClick={(e) => {
                                                                 e.preventDefault();
                                                                 e.stopPropagation();
-                                                                if (!spell.system?.lost) {
+                                                                if (!lost) {
                                                                     triggerRollDialog('item', spell.id, spell.name);
                                                                 }
                                                             }}
-                                                            disabled={spell.system?.lost}
-                                                            className={`w-7 h-7 flex items-center justify-center rounded-full transition-all shadow-sm ${spell.system?.lost ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed opacity-50' : 'bg-black text-white hover:bg-neutral-800 hover:scale-110'}`}
-                                                            title={spell.system?.lost ? "Spell Lost" : "Cast Spell"}
+                                                            disabled={lost}
+                                                            className={`w-7 h-7 flex items-center justify-center rounded-full transition-all shadow-sm ${lost ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed opacity-50' : 'bg-black text-white hover:bg-neutral-800 hover:scale-110'}`}
+                                                            title={lost ? "Spell Lost" : "Cast Spell"}
                                                         >
+                                                            {/* Magical Sparkles Icon */}
                                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                                                                <path fillRule="evenodd" d="M12.9 2.2c-.4-.5-1.4-.5-1.8 0L2.8 12.8c-.4.5-.2 1.2.5 1.2h17.4c.7 0 .9-.7.5-1.2L12.9 2.2zM3.4 15c-.6 0-.9.7-.5 1.2l7.3 8c.4.4 1 .4 1.4 0l7.3-8c.4-.5.1-1.2-.5-1.2H3.4z" clipRule="evenodd" />
+                                                                <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5zM6.375 18a.75.75 0 01.721.544l.279.91a1.5 1.5 0 00.957.957l.91.279a.75.75 0 010 1.425l-.91.279a1.5 1.5 0 00-.957.957l-.279.91a.75.75 0 01-1.425 0l-.279-.91a1.5 1.5 0 00-.957-.957l-.91-.279a.75.75 0 010-1.425l.91-.279a1.5 1.5 0 00.957-.957l.279-.91A.75.75 0 016.375 18zm13.5-4.5a.75.75 0 01.721.544l.279.91a1.5 1.5 0 00.957.957l.91.279a.75.75 0 010 1.425l-.91.279a1.5 1.5 0 00-.957.957l-.279.91a.75.75 0 01-1.425 0l-.279-.91a1.5 1.5 0 00-.957-.957l-.91-.279a.75.75 0 010-1.425l.91-.279a1.5 1.5 0 00.957-.957l.279-.91a.75.75 0 01.721-.544z" clipRule="evenodd" />
                                                             </svg>
                                                         </button>
 
@@ -145,12 +180,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
                                                             onClick={(e) => {
                                                                 e.preventDefault();
                                                                 e.stopPropagation();
-                                                                onUpdate(`items.${spell.id}.system.lost`, !spell.system?.lost);
+                                                                handleLostToggle(spell.id, !!lost);
                                                             }}
-                                                            className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all hover:scale-110 shadow-sm ${spell.system?.lost ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black'}`}
-                                                            title={spell.system?.lost ? "Restore Spell" : "Mark as Lost"}
+                                                            className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all hover:scale-110 shadow-sm ${lost ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black'}`}
+                                                            title={lost ? "Restore Spell" : "Mark as Lost"}
                                                         >
-                                                            {spell.system?.lost ? (
+                                                            {lost ? (
                                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                                                                 </svg>
@@ -267,6 +302,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
                     <div className="text-center text-neutral-400 italic py-8 border-2 border-dashed border-neutral-200 rounded-lg">No magical items (Scrolls/Wands) found.</div>
                 )}
             </div>
-        </div>
+        </div >
     );
 }

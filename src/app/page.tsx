@@ -175,13 +175,17 @@ export default function Home() {
     >
 
       {/* Footer Info Box */}
-      <div className="fixed bottom-4 right-4 bg-black/70 backdrop-blur-md p-4 rounded-lg border border-white/10 text-right shadow-xl">
+      {/* Footer Info Box */}
+      <div className="fixed bottom-4 right-4 bg-black/80 backdrop-blur-md p-6 rounded-xl border border-white/10 text-right shadow-2xl">
+        <div className="text-4xl font-black tracking-tighter text-white mb-1" style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+          SheetDelver
+        </div>
         {system && (
-          <div className={`text-2xl font-bold mb-1 ${theme.headerFont} ${theme.accent}`}>
+          <div className={`text-sm font-bold tracking-widest opacity-80 mb-2 ${theme.accent}`}>
             {system.title.toUpperCase()}
           </div>
         )}
-        <div className="text-xs opacity-40 font-mono">
+        <div className="text-[10px] opacity-30 font-mono tracking-wide">
           v{appVersion}
         </div>
       </div>

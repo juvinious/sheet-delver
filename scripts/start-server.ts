@@ -20,10 +20,12 @@ let port = 3000;
 try {
     if (fs.existsSync(SETTINGS_PATH)) {
         const fileContents = fs.readFileSync(SETTINGS_PATH, 'utf8');
-        const settings = yaml.load(fileContents) as Settings;
+        const settings = yaml.load(fileContents) as any;
 
-        if (settings.host) host = settings.host;
-        if (settings.port) port = settings.port;
+        if (settings.app) {
+            if (settings.app.host) host = settings.app.host;
+            if (settings.app.port) port = settings.app.port;
+        }
 
         console.log(`Loading configuration from settings.yaml: ${host}:${port}`);
     } else {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import ChatTab from '../ChatTab';
 import RollDialog from '../RollDialog';
+import DiceTrayDialog from '../DiceTrayDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveImage } from './shadowdark/sheet-utils';
 
@@ -11,7 +12,7 @@ import InventoryTab from './shadowdark/InventoryTab';
 import SpellsTab from './shadowdark/SpellsTab';
 import TalentsTab from './shadowdark/TalentsTab';
 import AbilitiesTab from './shadowdark/AbilitiesTab';
-import BackgroundTab from './shadowdark/BackgroundTab';
+import DetailsTab from './shadowdark/DetailsTab';
 import EffectsTab from './shadowdark/EffectsTab';
 import NotesTab from './shadowdark/NotesTab';
 
@@ -27,11 +28,16 @@ interface ShadowdarkSheetProps {
     onRoll: (type: string, key: string, options?: any) => void;
     onChatSend: (msg: string) => void;
     onUpdate: (path: string, value: any) => void;
+    onToggleEffect: (effectId: string, enabled: boolean) => void;
+    onDeleteEffect: (effectId: string) => void;
+    onDeleteItem?: (itemId: string) => void;
+    onCreatePredefinedEffect?: (effectKey: string) => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, onChatSend, onUpdate }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, onChatSend, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
+    const [diceTrayOpen, setDiceTrayOpen] = useState(false);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -75,10 +81,10 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                     title = `Roll Attack with ${item.name}`;
                     // Attempt to pre-calculate bonuses
                     const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isRanged = item.system?.type === 'ranged' || item.system?.range === 'near' || item.system?.range === 'far';
+                    const isRanged = item.system?.type === 'ranged'; // Only force DEX if explicitly a ranged weapon
 
-                    const str = actor.stats?.STR?.mod || 0;
-                    const dex = actor.stats?.DEX?.mod || 0;
+                    const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
+                    const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
 
                     let statBonus = str;
                     if (isRanged) statBonus = dex;
@@ -130,6 +136,11 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                 </div>
                 {/* Stats Summary */}
                 <div className="flex gap-6 items-center pr-6">
+                    {actor.computed?.levelUp && (
+                        <span className="bg-amber-500 text-black px-3 py-1 text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50">
+                            LEVEL UP!
+                        </span>
+                    )}
                     {actor.hp && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
@@ -155,107 +166,144 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                                     className="w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors"
                                 />
                                 <span className="opacity-50">/</span>
-                                <span>{actor.hp.max}</span>
+                                <span>{actor.computed?.maxHp ?? actor.hp.max}</span>
                             </div>
                         </div>
                     )}
-                    {actor.ac !== undefined && (
+                    {(actor.computed?.ac !== undefined || actor.ac !== undefined) && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
-                            <span className="font-serif font-bold text-2xl">{actor.ac}</span>
+                            <span className="font-serif font-bold text-2xl">{actor.computed?.ac ?? actor.ac}</span>
                         </div>
                     )}
+
+                    {/* Dice Tray Button */}
+                    <button
+                        onClick={() => setDiceTrayOpen(true)}
+                        className="flex flex-col items-center group -mb-1"
+                        title="Open Dice Tray"
+                    >
+                        <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest group-hover:text-amber-500 transition-colors">Roll</span>
+                        <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110">
+                            <svg viewBox="0 0 100 100" className="w-full h-full fill-current text-white group-hover:text-amber-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
+                                <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <text x="50" y="62" fontSize="35" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
+                            </svg>
+                        </div>
+                    </button>
                 </div>
             </div>
 
             {/* Tabs */}
             <div className="flex border-b-2 border-black bg-white overflow-x-auto mb-6 mx-4">
-                {tabs.map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`min-w-[80px] flex-1 py-2 text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 border-r border-black last:border-r-0 ${activeTab === tab ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}`}
-                    >
-                        {tab}
-                    </button>
-                ))}
+                {
+                    tabs.map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`min-w-[80px] flex-1 py-2 text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 border-r border-black last:border-r-0 ${activeTab === tab ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}`}
+                        >
+                            {tab}
+                        </button>
+                    ))
+                }
             </div>
 
             {/* Content Area */}
             <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
 
                 {activeTab === 'details' && (
-                    <BackgroundTab
+                    <DetailsTab
                         actor={actor}
                         systemData={systemData}
                         onUpdate={onUpdate}
                         foundryUrl={foundryUrl}
                     />
-                )}
+                )
+                }
 
-                {activeTab === 'abilities' && (
-                    <AbilitiesTab
-                        actor={actor}
-                        onUpdate={onUpdate}
-                        triggerRollDialog={triggerRollDialog}
-                    />
-                )}
-
-                {activeTab === 'spells' && (
-                    <SpellsTab
-                        actor={actor}
-                        onUpdate={onUpdate}
-                        triggerRollDialog={triggerRollDialog}
-                        onChatSend={onChatSend}
-                        onRoll={onRoll}
-                        foundryUrl={foundryUrl}
-                    />
-                )}
-
-                {activeTab === 'talents' && (
-                    <TalentsTab
-                        actor={actor}
-                        onRoll={onRoll}
-                        onChatSend={onChatSend}
-                    />
-                )}
-
-                {activeTab === 'chat' && (
-                    <div className="h-[800px] overflow-hidden p-2">
-                        <ChatTab
-                            messages={messages}
-                            onSend={onChatSend}
-                            foundryUrl={foundryUrl}
-                            onRoll={onRoll}
-                            variant="shadowdark"
+                {
+                    activeTab === 'abilities' && (
+                        <AbilitiesTab
+                            actor={actor}
+                            onUpdate={onUpdate}
+                            triggerRollDialog={triggerRollDialog}
                         />
-                    </div>
-                )}
+                    )
+                }
 
-                {activeTab === 'inventory' && (
-                    <InventoryTab
-                        actor={actor}
-                        onUpdate={onUpdate}
-                        onRoll={onRoll}
-                        onChatSend={onChatSend}
-                        triggerRollDialog={triggerRollDialog}
-                        foundryUrl={foundryUrl}
-                    />
-                )}
+                {
+                    activeTab === 'spells' && (
+                        <SpellsTab
+                            actor={actor}
+                            onUpdate={onUpdate}
+                            triggerRollDialog={triggerRollDialog}
+                            onChatSend={onChatSend}
+                            onRoll={onRoll}
+                            foundryUrl={foundryUrl}
+                        />
+                    )
+                }
 
-                {activeTab === 'notes' && (
-                    <NotesTab
-                        actor={actor}
-                        onUpdate={onUpdate}
-                    />
-                )}
+                {
+                    activeTab === 'talents' && (
+                        <TalentsTab
+                            actor={actor}
+                            onRoll={onRoll}
+                            onChatSend={onChatSend}
+                            foundryUrl={foundryUrl}
+                        />
+                    )
+                }
 
-                {activeTab === 'effects' && (
-                    <EffectsTab
-                        actor={actor}
-                        foundryUrl={foundryUrl}
-                    />
-                )}
+                {
+                    activeTab === 'chat' && (
+                        <div className="h-[800px] overflow-hidden p-2">
+                            <ChatTab
+                                messages={messages}
+                                onSend={onChatSend}
+                                foundryUrl={foundryUrl}
+                                onRoll={onRoll}
+                                variant="shadowdark"
+                            />
+                        </div>
+                    )
+                }
+
+                {
+                    activeTab === 'inventory' && (
+                        <InventoryTab
+                            actor={actor}
+                            onUpdate={onUpdate}
+                            onRoll={onRoll}
+                            onChatSend={onChatSend}
+                            triggerRollDialog={triggerRollDialog}
+                            foundryUrl={foundryUrl}
+                            onDeleteItem={onDeleteItem}
+                        />
+                    )
+                }
+
+                {
+                    activeTab === 'notes' && (
+                        <NotesTab
+                            actor={actor}
+                            onUpdate={onUpdate}
+                        />
+                    )
+                }
+
+                {
+                    activeTab === 'effects' && (
+                        <EffectsTab
+                            actor={actor}
+                            foundryUrl={foundryUrl}
+                            onToggleEffect={onToggleEffect}
+                            onDeleteEffect={onDeleteEffect}
+                            onCreatePredefinedEffect={onCreatePredefinedEffect}
+                        />
+                    )
+                }
 
                 {/* Debug Data Card */}
                 <div className="mt-20 border-t border-neutral-200 pt-4">
@@ -264,7 +312,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                         <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
                     </details>
                 </div>
-            </div>
+            </div >
 
             <RollDialog
                 isOpen={rollDialog.open}
@@ -277,6 +325,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                 }}
                 onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
             />
-        </div>
+
+            <DiceTrayDialog
+                isOpen={diceTrayOpen}
+                onClose={() => setDiceTrayOpen(false)}
+                onSend={onChatSend}
+            />
+        </div >
     );
 }

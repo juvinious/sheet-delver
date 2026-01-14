@@ -39,7 +39,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                                 className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none"
                             />
                             <span className="text-neutral-400 text-xl font-sans font-light">/</span>
-                            <span>{actor.hp.max}</span>
+                            <span>{actor.computed?.maxHp ?? actor.hp.max}</span>
                         </div>
                     </div>
                 )}
@@ -53,7 +53,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                             <img src="/icons/shield.svg" className="w-4 h-4 invert opacity-50" alt="" />
                         </div>
                         <div className="text-center font-serif text-3xl font-bold py-2">
-                            {actor.ac || 10}
+                            {actor.computed?.ac ?? actor.ac ?? 10}
                         </div>
                     </div>
                     {/* Luck */}
@@ -75,6 +75,36 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         </div>
                     </div>
                 </div>
+
+                {/* XP Progress */}
+                {actor.level && (
+                    <div className={cardStyle}>
+                        <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 flex justify-between items-center border-b border-white">
+                            <span className="font-serif font-bold text-lg">LEVEL {actor.level.value}</span>
+                            {actor.computed?.levelUp && (
+                                <span className="bg-amber-500 text-black px-2 py-0.5 text-xs font-bold rounded animate-pulse">
+                                    LEVEL UP!
+                                </span>
+                            )}
+                        </div>
+                        <div className="py-2">
+                            <div className="flex justify-between text-sm mb-1">
+                                <span className="text-neutral-600">XP Progress</span>
+                                <span className="font-bold">
+                                    {actor.level.xp ?? 0} / {actor.computed?.xpNextLevel ?? (actor.level.value * 10)}
+                                </span>
+                            </div>
+                            <div className="w-full bg-neutral-200 rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-black h-full transition-all duration-300"
+                                    style={{
+                                        width: `${Math.min(100, ((actor.level.xp ?? 0) / (actor.computed?.xpNextLevel ?? (actor.level.value * 10))) * 100)}%`
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Stats Grid */}
                 <div className={cardStyle}>
@@ -112,43 +142,45 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <span className="font-serif font-bold text-lg uppercase">Melee Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.type === 'melee').map((item: any) => {
-                            const isFinesse = item.system?.properties?.some((p: any) => p.includes('finesse') || p.includes('Finesse'));
-                            const strMod = actor.stats?.STR?.mod || 0;
-                            const dexMod = actor.stats?.DEX?.mod || 0;
-                            const bonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + (item.system?.bonuses?.attackBonus || 0);
-                            const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
+                        {(actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.type === 'melee' && i.system?.equipped) || [])
+                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                            .map((item: any) => {
+                                const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase() === 'finesse');
+                                const strMod = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
+                                const dexMod = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
+                                const bonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + (item.system?.bonuses?.attackBonus || 0);
+                                const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
 
-                            return (
-                                <div
-                                    key={item.id}
-                                    onClick={() => triggerRollDialog('item', item.id)}
-                                    className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
-                                >
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                            <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                                {item.system?.damage?.twoHanded ? '(2H)' : '(1H)'}
-                                            </span>
-                                        </div>
-                                        <div className="text-sm text-neutral-700 font-sans mt-1">
-                                            <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
-                                            {item.system?.properties?.length > 0 && <span className="text-neutral-400 text-xs ml-2 italic">({item.system.properties.length} props)</span>}
-                                        </div>
-                                    </div>
-                                    <button
-                                        className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                return (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => triggerRollDialog('item', item.id)}
+                                        className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                                     >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
-                                            <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
-                                            <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
-                                        </svg>
-                                    </button>
-                                </div>
-                            );
-                        })}
-                        {!actor.items?.some((i: any) => i.type === 'Weapon' && i.system?.type === 'melee') && (
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
+                                                <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                                                    {item.system?.damage?.twoHanded ? '(2H)' : '(1H)'}
+                                                </span>
+                                            </div>
+                                            <div className="text-sm text-neutral-700 font-sans mt-1">
+                                                <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
+                                                {item.system?.properties?.length > 0 && <span className="text-neutral-400 text-xs ml-2 italic">({item.system.properties.length} props)</span>}
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                        >
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
+                                                <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
+                                                <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        {!actor.items?.some((i: any) => i.type === 'Weapon' && i.system?.type === 'melee' && i.system?.equipped) && (
                             <div className="text-neutral-400 text-sm italic text-center py-2">No melee weapons equipped.</div>
                         )}
                     </div>
@@ -160,40 +192,42 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <span className="font-serif font-bold text-lg uppercase">Ranged Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {actor.items?.filter((i: any) => i.type === 'Weapon' && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far')).map((item: any) => {
-                            const dexMod = actor.stats?.DEX?.mod || 0;
-                            const bonus = dexMod + (item.system?.bonuses?.attackBonus || 0);
-                            const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
+                        {(actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.equipped && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far' || (i.system?.type === 'melee' && i.system?.properties?.some((p: any) => p === 'thrown')))) || [])
+                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                            .map((item: any) => {
+                                const dexMod = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
+                                const bonus = dexMod + (item.system?.bonuses?.attackBonus || 0);
+                                const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
 
-                            return (
-                                <div
-                                    key={item.id}
-                                    onClick={() => triggerRollDialog('item', item.id)}
-                                    className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
-                                >
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                            <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                                ({item.system?.range})
-                                            </span>
-                                        </div>
-                                        <div className="text-sm text-neutral-700 font-sans mt-1">
-                                            <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
-                                        </div>
-                                    </div>
-                                    <button
-                                        className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                return (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => triggerRollDialog('item', item.id)}
+                                        className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                                     >
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
-                                            <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
-                                            <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
-                                        </svg>
-                                    </button>
-                                </div>
-                            );
-                        })}
-                        {!actor.items?.some((i: any) => i.type === 'Weapon' && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far')) && (
+                                        <div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
+                                                <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                                                    ({item.system?.range})
+                                                </span>
+                                            </div>
+                                            <div className="text-sm text-neutral-700 font-sans mt-1">
+                                                <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                        >
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
+                                                <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
+                                                <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        {!actor.items?.some((i: any) => i.type === 'Weapon' && i.system?.equipped && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far' || (i.system?.type === 'melee' && i.system?.properties?.some((p: any) => p === 'thrown')))) && (
                             <div className="text-neutral-400 text-sm italic text-center py-2">No ranged weapons equipped.</div>
                         )}
                     </div>

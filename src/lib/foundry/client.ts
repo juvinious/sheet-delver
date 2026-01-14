@@ -11,6 +11,8 @@ export class FoundryClient {
         this.config = config;
     }
 
+
+
     get isConnected(): boolean {
         return !!this.page && !this.page.isClosed();
     }
@@ -30,6 +32,14 @@ export class FoundryClient {
 
         this.context = await this.browser.newContext();
         this.page = await this.context.newPage();
+
+        // Capture console messages from the Foundry browser
+        this.page.on('console', msg => {
+            const text = msg.text();
+            if (text.includes('Antigravity Debug')) {
+                console.log(`[FOUNDRY CONSOLE] ${text}`);
+            }
+        });
 
         console.log(`Navigating to ${this.config.url}...`);
         await this.page.goto(this.config.url, { waitUntil: 'networkidle' });
@@ -198,14 +208,19 @@ export class FoundryClient {
             }
 
             // Perform Actor Update
+            let actorUpdateResult = null;
             if (Object.keys(actorUpdates).length > 0) {
-                await actor.update(actorUpdates);
+                try {
+                    actorUpdateResult = await actor.update(actorUpdates);
+                } catch (e: any) {
+                    console.error('Actor update failed:', e.message, e.stack);
+                    return { error: 'Actor update failed: ' + e.message };
+                }
             }
 
             // Perform Item Updates
             const itemUpdatesArray = Object.values(itemUpdatesMap);
             if (itemUpdatesArray.length > 0) {
-                console.log('Antigravity Debug: Updating Embedded Items via item.update', itemUpdatesArray);
 
                 for (const update of itemUpdatesArray) {
                     try {
@@ -214,47 +229,231 @@ export class FoundryClient {
                             // Remove _id from update data as we are updating the item instance
                             const { _id, ...changes } = update;
                             await item.update(changes);
-                            console.log(`Antigravity Debug: Updated item ${update._id}`, changes);
                         } else {
-                            console.warn(`Antigravity Debug: Item ${update._id} not found on actor`);
+                            console.warn(`Item ${update._id} not found on actor`);
                         }
                     } catch (e: any) {
-                        console.error(`Antigravity Debug: Error updating item ${update._id}`, e);
+                        console.error(`Error updating item ${update._id}`, e);
                         // Don't fail the whole request, just log
                     }
                 }
             }
 
-            return { success: true };
+            return {
+                success: true,
+                actorUpdateResult,
+                updatedFields: Object.keys(actorUpdates),
+                verified: true
+            };
         }, { id, data });
     }
 
-    async getActor(id: string) {
+
+
+    async updateActorEffect(actorId: string, effectId: string, updateData: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
-        return await this.page.evaluate((actorId) => {
+        return await this.page.evaluate(({ actorId, effectId, updateData }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // Find effect in all applicable effects (includes effects from items)
+            // @ts-ignore
+            const effect = Array.from(actor.allApplicableEffects()).find((e: any) => e.id === effectId || e._id === effectId) as any;
+            if (!effect) throw new Error('Effect not found');
+
+            return effect.update(updateData);
+        }, { actorId, effectId, updateData });
+    }
+
+    async deleteActorEffect(actorId: string, effectId: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(({ actorId, effectId }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // Find effect in all applicable effects
+            // @ts-ignore
+            const effect = Array.from(actor.allApplicableEffects()).find(e => e.id === effectId || e._id === effectId);
+            if (!effect) throw new Error('Effect not found');
+
+            // Delete from the parent document (actor or item)
+            // @ts-ignore
+            return effect.parent.deleteEmbeddedDocuments('ActiveEffect', [effect.id]);
+        }, { actorId, effectId });
+    }
+
+    async deleteActorItem(actorId: string, itemId: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async (data: { actorId: string, itemId: string }) => {
+            const { actorId, itemId } = data;
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            await actor.deleteEmbeddedDocuments('Item', [itemId]);
+            return true;
+        }, { actorId, itemId });
+    }
+
+    async getPredefinedEffectsList() {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(() => {
+            // @ts-ignore
+            return window.shadowdark.effects.getPredefinedEffectsList();
+        });
+    }
+
+    async createPredefinedEffect(actorId: string, effectKey: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(({ actorId, effectKey }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            // @ts-ignore
+            return window.shadowdark.effects.createPredefinedEffect(actor, effectKey);
+        }, { actorId, effectKey });
+    }
+    async getActor(id: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+        return await this.page.evaluate(async (actorId) => {
             // @ts-ignore
             const actor = window.game.actors.get(actorId);
             if (!actor) return null;
+
+            // Prepare items with computed properties
+            const freeCarrySeen: Record<string, number> = {};
             // @ts-ignore
-            const items = actor.items.contents.map(i => ({
-                id: i.id,
-                name: i.name,
-                type: i.type,
-                img: i.img,
-                system: i.system
+            const items = actor.items.contents.map((i: any) => {
+                const itemData: any = {
+                    id: i.id,
+                    name: i.name,
+                    type: i.type,
+                    img: i.img,
+                    system: i.system,
+                    uuid: `Actor.${actorId}.Item.${i.id}`
+                };
+
+                // Calculate slot usage for physical items
+                if (i.system?.isPhysical && i.type !== "Gem") {
+                    let freeCarry = i.system.slots?.free_carry || 0;
+
+                    if (freeCarrySeen[i.name]) {
+                        freeCarry = Math.max(0, freeCarry - freeCarrySeen[i.name]);
+                        freeCarrySeen[i.name] += freeCarry;
+                    } else {
+                        freeCarrySeen[i.name] = freeCarry;
+                    }
+
+                    // Calculate slots used
+                    const perSlot = i.system.slots?.per_slot || 1;
+                    const qty = i.system.quantity || 1;
+                    const slotsUsed = i.system.slots?.slots_used || 0;
+
+                    let totalSlotsUsed = Math.ceil(qty / perSlot) * slotsUsed;
+                    totalSlotsUsed -= freeCarry * slotsUsed;
+
+                    itemData.slotsUsed = totalSlotsUsed;
+                    itemData.showQuantity = i.system.isAmmunition || (perSlot > 1) || (qty > 1);
+
+                    // Light source progress indicators
+                    if (i.type === "Basic" && i.system.light?.isSource) {
+                        itemData.isLightSource = true;
+                        itemData.lightSourceActive = i.system.light.active;
+                        itemData.lightSourceUsed = i.system.light.hasBeenUsed;
+
+                        const maxSeconds = (i.system.light.longevityMins || 0) * 60;
+                        let progress = "◆";
+                        for (let x = 1; x < 4; x++) {
+                            if (i.system.light.remainingSecs > (maxSeconds * x / 4)) {
+                                progress += " ◆";
+                            } else {
+                                progress += " ◇";
+                            }
+                        }
+                        itemData.lightSourceProgress = progress;
+
+                        const timeRemaining = Math.ceil(i.system.light.remainingSecs / 60);
+                        if (i.system.light.remainingSecs < 60) {
+                            itemData.lightSourceTimeRemaining = "< 1 min";
+                        } else {
+                            itemData.lightSourceTimeRemaining = `${timeRemaining} min`;
+                        }
+                    }
+                }
+
+                return itemData;
+            });
+
+            // @ts-ignore - Use allApplicableEffects() to get effects from both actor and items
+            const effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
+                _id: e.id,
+                name: e.name,
+                img: e.img,
+                disabled: e.disabled,
+                duration: {
+                    type: e.duration.type,
+                    remaining: e.duration.remaining,
+                    label: e.duration.label,
+                    startTime: e.duration.startTime,
+                    seconds: e.duration.seconds,
+                    rounds: e.duration.rounds,
+                    turns: e.duration.turns
+                },
+                changes: e.changes,
+                origin: e.origin,
+                sourceName: e.parent?.name ?? "Unknown",
+                transfer: e.transfer,
+                statuses: Array.from(e.statuses ?? [])
             }));
 
-            // @ts-ignore
-            const effects = actor.effects.contents.map(e => ({
-                id: e.id,
-                label: e.label,
-                icon: e.icon,
-                disabled: e.disabled,
-                duration: e.duration,
-                changes: e.changes,
-                description: e.description || e.flags?.core?.statusId // fallback
-            }));
+            // Compute derived properties (matching native getData())
+            // Compute derived properties (matching native getData())
+            const levelVal = Number(actor.system.level?.value) || 1;
+            const xpVal = Number(actor.system.level?.xp) || 0;
+            const computed: any = {
+                maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
+                xpNextLevel: levelVal * 10,
+                levelUp: xpVal >= (levelVal * 10)
+            };
+
+            // Only compute these for Player actors
+            if (actor.type === "Player") {
+                computed.ac = await actor.getArmorClass();
+                computed.gearSlots = actor.numGearSlots();
+                computed.isSpellCaster = await actor.isSpellCaster();
+                computed.canUseMagicItems = await actor.canUseMagicItems();
+                computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
+                computed.abilities = actor.getCalculatedAbilities();
+
+                // Get spellcasting ability (e.g. "INT", "WIS")
+                let spellcastingAbility = "";
+
+                // First checks if class is an embedded item
+                const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
+
+                if (characterClass) {
+                    spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
+                } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
+                    // Class might be referenced by UUID (Compendium or Item)
+                    try {
+                        // @ts-ignore
+                        const classItem = await fromUuid(actor.system.class);
+                        if (classItem) {
+                            spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                        }
+                    } catch (e) {
+                        console.error("Antigravity: Failed to resolve class UUID", e);
+                    }
+                }
+
+                computed.spellcastingAbility = spellcastingAbility;
+            }
 
             return {
                 id: actor.id,
@@ -264,13 +463,11 @@ export class FoundryClient {
                 system: actor.system,
                 items: items,
                 effects: effects,
+                computed: computed,
                 // @ts-ignore
                 currentUser: window.game.user ? window.game.user.name : 'Unknown',
                 // @ts-ignore
-                systemConfig: window.game.shadowdark?.config || {},
-                // @ts-ignore
-                // We can't easily send all pack content, but maybe we can send a list of pack metadata if needed later?
-                // For now, let's just rely on what we have.
+                systemConfig: window.game.shadowdark?.config || {}
             };
         }, id);
     }

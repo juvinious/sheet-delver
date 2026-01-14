@@ -2,14 +2,14 @@
 
 import { resolveImage } from './sheet-utils';
 
-interface BackgroundTabProps {
+interface DetailsTabProps {
     actor: any;
     systemData: any;
     onUpdate: (path: string, value: any) => void;
     foundryUrl?: string;
 }
 
-export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl }: BackgroundTabProps) {
+export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: DetailsTabProps) {
 
     // Common container style for standard sheet feel
     const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-sm relative";
@@ -28,8 +28,22 @@ export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl 
                             <span className="font-serif font-bold text-lg uppercase">Level</span>
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
-                        <div className="p-2 text-center font-serif text-xl font-bold bg-white">
-                            {actor.level?.value || 1}
+                        <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
+                            {actor.computed?.levelUp ? (
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="w-8 h-8 text-emerald-600 animate-bounce"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                    strokeWidth={3}
+                                >
+                                    <title>Level Up Available!</title>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                                </svg>
+                            ) : (
+                                <span>{actor.level?.value || 1}</span>
+                            )}
                         </div>
                     </div>
 
@@ -74,9 +88,21 @@ export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl 
                             <input
                                 type="number"
                                 defaultValue={actor.level?.xp || 0}
+                                min={0}
+                                max={10}
                                 onBlur={(e) => {
-                                    const val = parseInt(e.target.value);
-                                    if (!isNaN(val) && val !== actor.level?.xp) onUpdate('system.level.xp', val);
+                                    let val = parseInt(e.target.value);
+                                    if (isNaN(val)) val = 0;
+                                    // Constraint validation
+                                    if (val < 0) val = 0;
+                                    if (val > 10) val = 10;
+
+                                    // Update input if corrected
+                                    if (val.toString() !== e.target.value) {
+                                        e.target.value = val.toString();
+                                    }
+
+                                    if (val !== actor.level?.xp) onUpdate('system.level.xp', val);
                                 }}
                                 className="w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1"
                             />
@@ -116,12 +142,12 @@ export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl 
                         <div className="p-2 font-serif text-lg bg-white">
                             <select
                                 className="w-full bg-transparent outline-none cursor-pointer"
-                                defaultValue={actor.details?.alignment || 'neutral'}
+                                defaultValue={actor.details?.alignment || 'Neutral'}
                                 onChange={(e) => onUpdate('system.details.alignment', e.target.value)}
                             >
-                                <option value="lawful">Lawful</option>
-                                <option value="neutral">Neutral</option>
-                                <option value="chaotic">Chaotic</option>
+                                <option value="Lawful">Lawful</option>
+                                <option value="Neutral">Neutral</option>
+                                <option value="Chaotic">Chaotic</option>
                             </select>
                         </div>
                     </div>
@@ -181,32 +207,33 @@ export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl 
                                 return acc;
                             }, {});
 
-                            return resolvedLangs.map((lang: any, i: number) => {
-                                let isClass = classConfig.fixed.includes(lang.name) ||
-                                    classConfig.fixed.includes(lang.raw) ||
-                                    (lang.uuid && classConfig.fixed.includes(lang.uuid));
+                            return resolvedLangs.sort((a: any, b: any) => a.name.localeCompare(b.name))
+                                .map((lang: any, i: number) => {
+                                    let isClass = classConfig.fixed.includes(lang.name) ||
+                                        classConfig.fixed.includes(lang.raw) ||
+                                        (lang.uuid && classConfig.fixed.includes(lang.uuid));
 
-                                if (!isClass) {
-                                    if (lang.rarity === 'common' && classConfig.common > 0) {
-                                        if (actorCounts['common'] <= classConfig.common) isClass = true;
-                                    } else if (lang.rarity === 'rare' && classConfig.rare > 0) {
-                                        if (actorCounts['rare'] <= classConfig.rare) isClass = true;
+                                    if (!isClass) {
+                                        if (lang.rarity === 'common' && classConfig.common > 0) {
+                                            if (actorCounts['common'] <= classConfig.common) isClass = true;
+                                        } else if (lang.rarity === 'rare' && classConfig.rare > 0) {
+                                            if (actorCounts['rare'] <= classConfig.rare) isClass = true;
+                                        }
                                     }
-                                }
 
-                                let tooltip = lang.desc && lang.desc !== '<p></p>' ? lang.desc.replace(/<[^>]*>?/gm, '') : 'No description.';
-                                if (lang.rarity) tooltip += ` (${lang.rarity})`;
+                                    let tooltip = lang.desc && lang.desc !== '<p></p>' ? lang.desc.replace(/<[^>]*>?/gm, '') : 'No description.';
+                                    if (lang.rarity) tooltip += ` (${lang.rarity})`;
 
-                                return (
-                                    <span
-                                        key={i}
-                                        title={tooltip}
-                                        className={`cursor-help font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${isClass ? 'bg-black' : 'bg-[#7c4f8d]'}`}
-                                    >
-                                        {lang.name}
-                                    </span>
-                                );
-                            });
+                                    return (
+                                        <span
+                                            key={i}
+                                            title={tooltip}
+                                            className={`cursor-help font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${isClass ? 'bg-black' : 'bg-[#7c4f8d]'}`}
+                                        >
+                                            {lang.name}
+                                        </span>
+                                    );
+                                });
                         })()}
                         {(!actor.details?.languages || actor.details.languages.length === 0) && <span className="text-neutral-500 text-sm italic">None known</span>}
                     </div>
@@ -223,20 +250,22 @@ export default function BackgroundTab({ actor, systemData, onUpdate, foundryUrl 
                         <div className="col-span-3 text-center">Level</div>
                     </div>
                     <div className="divide-y divide-neutral-200">
-                        {actor.items?.filter((i: any) => i.type === 'Boon').map((item: any) => (
-                            <div key={item.id} className="grid grid-cols-12 py-2 px-2 text-sm font-serif items-center">
-                                <div className="col-span-6 font-bold flex items-center">
-                                    <img
-                                        src={resolveImage(item.img, foundryUrl)}
-                                        alt={item.name}
-                                        className="w-6 h-6 object-cover border border-black mr-2 bg-neutral-200"
-                                    />
-                                    {item.name}
+                        {(actor.items?.filter((i: any) => i.type === 'Boon') || [])
+                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                            .map((item: any) => (
+                                <div key={item.id} className="grid grid-cols-12 py-2 px-2 text-sm font-serif items-center">
+                                    <div className="col-span-6 font-bold flex items-center">
+                                        <img
+                                            src={resolveImage(item.img, foundryUrl)}
+                                            alt={item.name}
+                                            className="w-6 h-6 object-cover border border-black mr-2 bg-neutral-200"
+                                        />
+                                        {item.name}
+                                    </div>
+                                    <div className="col-span-3 text-neutral-600 capitalize">{item.system?.boonType || item.system?.type || '-'}</div>
+                                    <div className="col-span-3 text-center">{item.system?.level?.value || item.system?.level || '-'}</div>
                                 </div>
-                                <div className="col-span-3 text-neutral-600 capitalize">{item.system?.boonType || item.system?.type || '-'}</div>
-                                <div className="col-span-3 text-center">{item.system?.level?.value || item.system?.level || '-'}</div>
-                            </div>
-                        ))}
+                            ))}
                         {(!actor.items?.some((i: any) => i.type === 'Boon')) && (
                             <div className="text-center text-neutral-400 italic py-4 text-xs">No boons recorded.</div>
                         )}

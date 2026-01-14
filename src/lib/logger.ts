@@ -11,8 +11,8 @@ export const LogLevel = {
 
 async function getLevel() {
     const cfg = await loadConfig();
-    if (!cfg?.config?.debug?.enabled) return 0;
-    return cfg.config.debug.level;
+    if (!cfg?.debug?.enabled) return 0;
+    return cfg.debug.level;
 }
 
 export const logger = {
