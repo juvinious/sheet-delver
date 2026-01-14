@@ -167,6 +167,40 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const handleUpdate = async (path: string, value: any) => {
         if (!actor) return;
+
+        // Optimistic Update
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+
+        // Mapping for known mismatches between Foundry Path and Local Normalized Data
+        let targetPath = path;
+        // Shadowdark Adapter: 'system.attributes.hp.value' -> 'hp.value'
+        if (path === 'system.attributes.hp.value') targetPath = 'hp.value';
+        if (path === 'system.luck.available') targetPath = 'luck.available';
+        // Add other mappings if needed, or implement a smarter adapter-aware updater.
+
+        // Safety: Check if we can traverse.
+        const parts = targetPath.split('.');
+        let current = optimisticActor;
+        let valid = true;
+
+        for (let i = 0; i < parts.length - 1; i++) {
+            // If missing, create it.
+            if (current[parts[i]] === undefined || current[parts[i]] === null) {
+                current[parts[i]] = {};
+            }
+            // If we hit a primitive where we expect an object, we can't traverse.
+            else if (typeof current[parts[i]] !== 'object') {
+                valid = false;
+                break;
+            }
+            current = current[parts[i]];
+        }
+
+        if (valid) {
+            current[parts[parts.length - 1]] = value;
+            setActor(optimisticActor);
+        }
+
         try {
             const res = await fetch(`/api/actors/${actor.id}/update`, {
                 method: 'POST',
@@ -181,9 +215,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 fetchActor(actor.id, true);
             } else {
                 addNotification('Update failed: ' + data.error, 'error');
+                // Revert on failure
+                fetchActor(actor.id, true); // Fetch true state
             }
         } catch (e: any) {
             addNotification('Error updating: ' + e.message, 'error');
+            fetchActor(actor.id, true);
         }
     };
 

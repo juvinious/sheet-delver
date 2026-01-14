@@ -39,7 +39,7 @@ async function run() {
         await client.connect();
         await client.login();
 
-        await client['page']?.waitForFunction(() => window.game && window.game.packs.size > 0, null, { timeout: 10000 });
+        await client['page']?.waitForFunction(() => (window as any).game && (window as any).game.packs.size > 0, null, { timeout: 10000 });
 
         const packs = await client['page']?.evaluate(async () => {
             // @ts-ignore

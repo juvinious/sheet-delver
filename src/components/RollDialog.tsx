@@ -9,6 +9,7 @@ interface RollDialogProps {
         abilityBonus?: number;
         itemBonus?: number;
         talentBonus?: number;
+        showItemBonus?: boolean;
     };
     onConfirm: (options: any) => void;
     onClose: () => void;
@@ -61,7 +62,7 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
 
                     <div className="space-y-3 mb-6">
                         {/* Dynamic Inputs based on Type */}
-                        {(type === 'attack' || type === 'spell') && (
+                        {(type === 'attack' || type === 'spell') && (defaults?.showItemBonus !== false) && (
                             <div className="grid grid-cols-3 items-center gap-4">
                                 <label className="col-span-1 font-bold text-sm">Item Bonus</label>
                                 <input
@@ -83,15 +84,17 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                             />
                         </div>
 
-                        <div className="grid grid-cols-3 items-center gap-4">
-                            <label className="col-span-1 font-bold text-sm">Talent Bonus</label>
-                            <input
-                                type="number"
-                                value={talentBonus}
-                                onChange={e => setTalentBonus(Number(e.target.value))}
-                                className="col-span-2 p-1 border border-neutral-300 rounded bg-[#F5F2EB] focus:ring-1 focus:ring-neutral-500 outline-none"
-                            />
-                        </div>
+                        {(type === 'attack' || type === 'spell') && (
+                            <div className="grid grid-cols-3 items-center gap-4">
+                                <label className="col-span-1 font-bold text-sm">Talent Bonus</label>
+                                <input
+                                    type="number"
+                                    value={talentBonus}
+                                    onChange={e => setTalentBonus(Number(e.target.value))}
+                                    className="col-span-2 p-1 border border-neutral-300 rounded bg-[#F5F2EB] focus:ring-1 focus:ring-neutral-500 outline-none"
+                                />
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-3 items-center gap-4 pt-2 border-t border-neutral-200">
                             <label className="col-span-1 font-bold text-sm">Rolling Mode</label>

@@ -85,7 +85,7 @@ export class FoundryClient {
         await this.page.click('button[name="join"]');
         // Wait for board to load or game to be ready
         // #board might not exist in all systems/modules immediately, but game.ready is the source of truth
-        await this.page.waitForFunction(() => window.game && window.game.ready, null, { timeout: 60000 });
+        await this.page.waitForFunction(() => (window as any).game && (window as any).game.ready, null, { timeout: 60000 });
     }
 
     async getSystem(): Promise<{ id: string; title: string; version: string; background?: string; isLoggedIn?: boolean }> {
@@ -521,7 +521,7 @@ export class FoundryClient {
 
     async waitForFunction(pageFunction: Function | string, arg?: any, options?: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        return await this.page.waitForFunction(pageFunction, arg, options);
+        return await this.page.waitForFunction(pageFunction as any, arg, options);
     }
 
     async evaluate<T>(fn: (args: any) => T | Promise<T>, args?: any): Promise<T> {

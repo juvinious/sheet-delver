@@ -4,6 +4,7 @@ import { loadConfig } from '@/lib/config';
 
 async function run() {
     const config = await loadConfig();
+    if (!config) throw new Error("Config not loaded");
     const { url } = config.foundry;
     const client = new FoundryClient({ url, headless: true });
 

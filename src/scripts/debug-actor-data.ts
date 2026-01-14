@@ -38,6 +38,11 @@ async function run() {
     const actors = await client.getActors();
     if (actors.length > 0) {
         const actor = await client.getActor(actors[0].id);
+        if (!actor) {
+            console.log('Actor not found');
+            await client.close();
+            return;
+        }
         console.log('Actor Name:', actor.name);
         console.log('System Data Keys:', Object.keys(actor.system));
         // Check languages and deity specially for Shadowdark

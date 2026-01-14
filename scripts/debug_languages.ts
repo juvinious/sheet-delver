@@ -10,6 +10,8 @@ const settings = yaml.load(fs.readFileSync(path.join(process.cwd(), 'settings.ya
     const client = new FoundryClient(settings.foundryUrl);
     await client.login(settings.foundryUser.username, settings.foundryUser.password);
 
+    if (!client.page) throw new Error("Client page not initialized");
+
     const data = await client.page.evaluate(async () => {
         // @ts-ignore
         const actor = game.actors.contents[0]; // Assuming first actor is the target
@@ -40,5 +42,5 @@ const settings = yaml.load(fs.readFileSync(path.join(process.cwd(), 'settings.ya
     });
 
     console.log(JSON.stringify(data, null, 2));
-    await client.browser.close();
+    if (client.browser) await client.browser.close();
 })();
