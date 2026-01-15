@@ -44,3 +44,4 @@ next-env.d.ts
 # Ignore
 settings.yaml
 temp*
+logos/
