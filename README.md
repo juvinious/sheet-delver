@@ -1,4 +1,4 @@
-# Foundry Sheets
+# SheetDelver
 [![CI](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml)
 
 A modern, external character sheet interface for Foundry VTT.
