@@ -1,6 +1,7 @@
-# SheetDelver
+# Foundry Sheets
+[![CI](https://github.com/juvinious/foundry-sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/foundry-sheets/actions/workflows/ci.yml)
 
-**SheetDelver** is an extensible character sheet manager designed to interface with **Foundry Virtual Tabletop**© for local or in-person play, mainly focused on end-users who do not have a laptop/computer and need access to their character sheet. It focuses on usability, aesthetics, and future multi-system support.
+A modern, external character sheet interface for Foundry VTT.
 
 ## Current Features
 - **Shadowdark RPG Support**: Full support for Shadowdark character sheets with a clean, modern UI.
