@@ -639,7 +639,7 @@ export class FoundryClient {
                         results.languages.push({
                             name: doc.name,
                             uuid: `Compendium.${pack.collection}.Item.${l._id}`,
-                            description: doc.system?.description?.value || doc.system?.desc || '',
+                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
                             rarity: doc.system?.rarity || 'common'
                         });
                     }

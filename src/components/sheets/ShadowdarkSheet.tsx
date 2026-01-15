@@ -15,6 +15,7 @@ import AbilitiesTab from './shadowdark/AbilitiesTab';
 import DetailsTab from './shadowdark/DetailsTab';
 import EffectsTab from './shadowdark/EffectsTab';
 import NotesTab from './shadowdark/NotesTab';
+import BottomNavigation from './shadowdark/BottomNavigation';
 
 // Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
@@ -118,7 +119,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
     const tabs = ['details', 'abilities', 'spells', 'inventory', 'talents', 'notes', 'effects', 'chat'];
 
     return (
-        <div className={`flex flex-col h-full relative pb-32 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
+        <div className={`flex flex-col h-full relative pb-24 md:pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
             {/* Header / Top Nav */}
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex items-stretch justify-between mb-6 border-b-4 border-black h-24">
                 <div className="flex items-center gap-6">
@@ -194,14 +195,14 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                 </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b-2 border-black bg-white overflow-x-auto mb-6 mx-4">
+            {/* Tabs (Hidden on Mobile) */}
+            <div className="hidden md:flex border-b-2 border-black bg-white overflow-x-auto mb-6 mx-4">
                 {
                     tabs.map(tab => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
-                            className={`min-w-[80px] flex-1 py-2 text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 border-r border-black last:border-r-0 ${activeTab === tab ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}`}
+                            className={`min-w-[80px] shrink-0 py-2 text-sm font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 border-r border-black last:border-r-0 ${activeTab === tab ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}`}
                         >
                             {tab}
                         </button>
@@ -331,6 +332,11 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                 onClose={() => setDiceTrayOpen(false)}
                 onSend={onChatSend}
             />
+
+            {/* Mobile Bottom Navigation */}
+            <div className="md:hidden">
+                <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
+            </div>
         </div >
     );
 }

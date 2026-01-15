@@ -186,40 +186,11 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                 };
                             });
 
-                            let classConfig: any = { fixed: [], common: 0, rare: 0, languages: [] };
-                            const rawClassLangs = actor.details?.classLanguages;
-                            let targetClassData = rawClassLangs;
-                            if (!targetClassData && actor.details?.class && systemData?.classes) {
-                                const classDoc = systemData.classes.find((c: any) => c.name === actor.details.class);
-                                if (classDoc) targetClassData = classDoc.languages;
-                            }
-
-                            if (Array.isArray(targetClassData)) {
-                                classConfig.fixed = targetClassData;
-                            } else if (typeof targetClassData === 'object' && targetClassData !== null) {
-                                classConfig.fixed = targetClassData.fixed || [];
-                                classConfig.common = targetClassData.common || 0;
-                                classConfig.rare = targetClassData.rare || 0;
-                            }
-
-                            const actorCounts = resolvedLangs.reduce((acc: any, l: any) => {
-                                acc[l.rarity] = (acc[l.rarity] || 0) + 1;
-                                return acc;
-                            }, {});
-
+                            // Official system logic: Common = Purple, Others = Black
                             return resolvedLangs.sort((a: any, b: any) => a.name.localeCompare(b.name))
                                 .map((lang: any, i: number) => {
-                                    let isClass = classConfig.fixed.includes(lang.name) ||
-                                        classConfig.fixed.includes(lang.raw) ||
-                                        (lang.uuid && classConfig.fixed.includes(lang.uuid));
-
-                                    if (!isClass) {
-                                        if (lang.rarity === 'common' && classConfig.common > 0) {
-                                            if (actorCounts['common'] <= classConfig.common) isClass = true;
-                                        } else if (lang.rarity === 'rare' && classConfig.rare > 0) {
-                                            if (actorCounts['rare'] <= classConfig.rare) isClass = true;
-                                        }
-                                    }
+                                    const isCommon = lang.rarity?.toLowerCase() === 'common';
+                                    const bgColor = isCommon ? 'bg-[#78557e]' : 'bg-black';
 
                                     let tooltip = lang.desc && lang.desc !== '<p></p>' ? lang.desc.replace(/<[^>]*>?/gm, '') : 'No description.';
                                     if (lang.rarity) tooltip += ` (${lang.rarity})`;
@@ -228,7 +199,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                         <span
                                             key={i}
                                             title={tooltip}
-                                            className={`cursor-help font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${isClass ? 'bg-black' : 'bg-[#7c4f8d]'}`}
+                                            className={`cursor-help font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${bgColor}`}
                                         >
                                             {lang.name}
                                         </span>
