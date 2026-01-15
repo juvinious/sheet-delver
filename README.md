@@ -1,4 +1,4 @@
-![SheetDelver Logo](logo.png)
+<img src="logo.png" width="25%" alt="SheetDelver Logo">
 
 [![CI](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml)
 
