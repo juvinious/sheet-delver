@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -13,6 +12,16 @@ interface RichTextEditorProps {
     content: string;
     onSave: (html: string) => void;
 }
+
+const ToolbarButton = ({ onClick, isActive, children, title }: any) => (
+    <button
+        onClick={onClick}
+        title={title}
+        className={`p-2 rounded hover:bg-neutral-800 transition-colors ${isActive ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}
+    >
+        {children}
+    </button>
+);
 
 export default function RichTextEditor({ content, onSave }: RichTextEditorProps) {
     const [isEditing, setIsEditing] = useState(false);
@@ -56,16 +65,6 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
     if (!editor) {
         return null;
     }
-
-    const ToolbarButton = ({ onClick, isActive, children, title }: any) => (
-        <button
-            onClick={onClick}
-            title={title}
-            className={`p-2 rounded hover:bg-neutral-800 transition-colors ${isActive ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}
-        >
-            {children}
-        </button>
-    );
 
     const handleSave = () => {
         onSave(editor.getHTML());

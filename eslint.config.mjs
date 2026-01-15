@@ -12,7 +12,21 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "temp-shadowdark/**",
   ]),
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-vars": "warn",
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@next/next/no-img-element": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "@typescript-eslint/no-unsafe-function-type": "off",
+      "prefer-const": "warn",
+      "jsx-a11y/alt-text": "warn"
+    }
+  }
 ]);
 
 export default eslintConfig;

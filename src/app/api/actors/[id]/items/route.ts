@@ -17,11 +17,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     try {
-        try {
-            await client.deleteActorItem(id, itemId);
-            return NextResponse.json({ success: true });
-        } catch (e: any) {
-            console.error(e);
-            return NextResponse.json({ success: false, error: e.message }, { status: 500 });
-        }
+        await client.deleteActorItem(id, itemId);
+        return NextResponse.json({ success: true });
+    } catch (e: any) {
+        console.error(e);
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
     }
+}

@@ -1,5 +1,5 @@
 # Foundry Sheets
-[![CI](https://github.com/juvinious/foundry-sheets/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/foundry-sheets/actions/workflows/ci.yml)
+[![CI](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml)
 
 A modern, external character sheet interface for Foundry VTT.
 
