@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Cinzel } from "next/font/google";
 import "./globals.css";
 
+import ShutdownWatcher from "@/components/ShutdownWatcher";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -32,6 +34,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} antialiased`}
       >
+        <ShutdownWatcher />
         {children}
       </body>
     </html>

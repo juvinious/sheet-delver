@@ -74,7 +74,7 @@ export class FoundryClient {
         // Capture console messages from the Foundry browser
         this.page.on('console', msg => {
             const text = msg.text();
-            if (text.includes('Antigravity Debug') || text.includes('[FOUNDRY STATE DUMP]')) {
+            if (text.toLowerCase().includes('antigravity debug') || text.includes('[FOUNDRY STATE DUMP]')) {
                 console.log(`[FOUNDRY CONSOLE] ${text}`);
             }
         });
@@ -146,11 +146,23 @@ export class FoundryClient {
         await this.page.waitForLoadState('networkidle');
     }
 
-    async getSystem(): Promise<{ id: string; title: string; version: string; background?: string; isLoggedIn?: boolean }> {
+    async getSystem(): Promise<{
+        id: string;
+        title: string;
+        version: string;
+        worldTitle?: string;
+        worldDescription?: string;
+        nextSession?: string | null;
+        users?: { active: number; total: number };
+        background?: string;
+        isLoggedIn?: boolean
+    }> {
         if (!this.page) throw new Error('Not connected');
 
         try {
             const data = await this.page.evaluate(async () => {
+                const DEFAULT_BACKGROUND = 'ui/backgrounds/setup.webp';
+
                 // @ts-ignore
                 const game = window.game;
 
@@ -174,7 +186,6 @@ export class FoundryClient {
                         // Check if we arrived at setup (either 200 OK on /setup, or redirected to /setup or /auth)
                         // If the world is stopped, accessing /setup will often redirect to /auth (Admin Login)
                         if (setupCheck.ok && (setupCheck.url.includes('/setup') || setupCheck.url.includes('/auth'))) {
-                            console.log('Antigravity Debug: Setup Probed successfully. World is stopped. Forcing Redirect.');
                             if (!window.location.href.includes('/setup')) {
                                 setTimeout(() => { window.location.href = '/setup'; }, 200);
                             }
@@ -182,7 +193,11 @@ export class FoundryClient {
                                 id: 'setup',
                                 title: 'World Stopped (Probe)',
                                 version: '0.0.0',
-                                background: undefined,
+                                worldTitle: '',
+                                worldDescription: '',
+                                nextSession: null,
+                                users: { active: 0, total: 0 },
+                                background: DEFAULT_BACKGROUND,
                                 isLoggedIn: false
                             };
                         }
@@ -211,19 +226,34 @@ export class FoundryClient {
                     }
                 }
 
+                if (!bg) {
+                    bg = DEFAULT_BACKGROUND;
+                }
+
 
 
                 // Setup Mode Detection
-                const isSetup = document.title.includes('Foundry Virtual Tabletop') ||
-                    document.getElementById('setup') ||
-                    window.location.href.includes('/setup');
+                const isSetupTitle = document.title.includes('Foundry Virtual Tabletop');
+                const isSetupElement = !!document.getElementById('setup');
+                const isSetupUrl = window.location.href.includes('/setup');
+                const isAuthUrl = window.location.href.includes('/auth');
+
+                // Fallback attempt: Check for common setup page elements if #setup is missing
+                const hasSetupLogo = !!document.querySelector('#logo'); // Often present on setup
+                const hasWorldList = !!document.querySelector('#worlds-list'); // Found on setup/world picker
+
+                const isSetup = isSetupElement || isSetupUrl || isAuthUrl;
 
                 if (isSetup) {
                     return {
                         id: 'setup',
                         title: 'Foundry Setup',
                         version: '0.0.0',
-                        background: undefined,
+                        worldTitle: '',
+                        worldDescription: '',
+                        nextSession: null,
+                        users: { active: 0, total: 0 },
+                        background: DEFAULT_BACKGROUND,
                         isLoggedIn: false
                     };
                 }
@@ -231,21 +261,22 @@ export class FoundryClient {
                 // Socket / Connection Check
                 // @ts-ignore
                 if (window.game && window.game.socket && window.game.socket.connected === false) {
-                    console.log('Antigravity Debug: Socket disconnected, assuming Setup/Offline.');
                     return {
                         id: 'setup',
                         title: 'Connection Lost',
                         version: '0.0.0',
-                        background: undefined,
+                        worldTitle: '',
+                        worldDescription: '',
+                        nextSession: null,
+                        users: { active: 0, total: 0 },
+                        background: DEFAULT_BACKGROUND,
                         isLoggedIn: false
                     };
                 }
 
-                // Zombie State Detection
-                // If we are NOT on setup, but have no system ID, OR world active is false
+                // Zombie State Detection (Explicit)
                 // @ts-ignore
-                if ((!s || !s.id) || (window.game && window.game.world && window.game.world.active === false)) {
-                    console.log('Antigravity Debug: Detected Zombie/Stopped State. returning setup.');
+                if (window.game && window.game.world && window.game.world.active === false) {
 
                     // Force navigation to clear state (Async to allow return value to pass)
                     if (!window.location.href.includes('/setup')) {
@@ -258,16 +289,57 @@ export class FoundryClient {
                         id: 'setup',
                         title: 'Redirecting to Setup...',
                         version: '0.0.0',
-                        background: undefined,
+                        worldTitle: '',
+                        worldDescription: '',
+                        nextSession: null,
+                        users: { active: 0, total: 0 },
+                        background: DEFAULT_BACKGROUND,
+                        isLoggedIn: false
+                    };
+                }
+
+                // Missing System / Loading State
+                // If we are here, we are NOT on a Setup page, and the world is NOT explicitly inactive.
+                // But we couldn't find a system ID. This implies the game is still loading or in an undefined state.
+                if (!s || !s.id) {
+                    return {
+                        id: 'loading',
+                        title: 'Loading...',
+                        version: '0.0.0',
+                        worldTitle: '',
+                        worldDescription: '',
+                        nextSession: null,
+                        users: { active: 0, total: 0 },
+                        background: bg || DEFAULT_BACKGROUND,
                         isLoggedIn: false
                     };
                 }
 
                 if (s && (s.id || s._id)) {
+                    // @ts-ignore
+                    const users = window.game.users;
+                    // @ts-ignore
+                    console.log('[DEBUG] game.world:', window.game.world);
+                    // @ts-ignore
+                    console.log('[DEBUG] game.users:', window.game.users);
+
+                    // @ts-ignore
+                    const activeUsers = users ? users.filter(u => u.active).length : 0;
+                    // @ts-ignore
+                    const totalUsers = users ? users.size : 0;
+
                     return {
                         id: s.id || s._id,
                         title: s.title || 'Unknown',
                         version: s.version || '0.0.0',
+                        // @ts-ignore
+                        worldTitle: game.world?.title || '',
+                        // @ts-ignore
+                        worldDescription: game.world?.description || '',
+                        // @ts-ignore
+                        nextSession: game.world?.nextSession || null,
+                        // @ts-ignore
+                        users: { active: activeUsers, total: totalUsers },
                         background: bg,
                         // @ts-ignore
                         isLoggedIn: !!(window.game && window.game.user)
@@ -278,6 +350,10 @@ export class FoundryClient {
                     id: 'setup',
                     title: 'Unknown / Setup',
                     version: '0.0.0',
+                    worldTitle: '',
+                    worldDescription: '',
+                    nextSession: null,
+                    users: { active: 0, total: 0 },
                     background: bg,
                     // @ts-ignore
                     isLoggedIn: !!(window.game && window.game.user)
@@ -295,7 +371,11 @@ export class FoundryClient {
                 id: 'setup',
                 title: 'Foundry Setup',
                 version: '0.0.0',
-                background: undefined,
+                worldTitle: '',
+                worldDescription: '',
+                nextSession: null,
+                users: { active: 0, total: 0 },
+                background: 'ui/backgrounds/setup.webp',
                 isLoggedIn: false
             };
 
@@ -306,7 +386,11 @@ export class FoundryClient {
                 id: 'setup',
                 title: 'Connection Error / Setup',
                 version: '0.0.0',
-                background: undefined,
+                worldTitle: '',
+                worldDescription: '',
+                nextSession: null,
+                users: { active: 0, total: 0 },
+                background: 'ui/backgrounds/setup.webp',
                 isLoggedIn: false
             };
         }

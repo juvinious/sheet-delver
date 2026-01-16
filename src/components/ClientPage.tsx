@@ -11,7 +11,12 @@ interface SystemInfo {
   id: string;
   title: string;
   version: string;
+  worldTitle?: string;
+  worldDescription?: string;
+  nextSession?: string | null;
+  users?: { active: number; total: number };
   background?: string;
+  isLoggedIn?: boolean;
 }
 
 interface ClientPageProps {
@@ -35,6 +40,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   // Dashboard State
   const [actors, setActors] = useState<any[]>([]);
   const [recentActors, setRecentActors] = useState<any[]>([]);
+
+  // Shutdown Logic moved to global watcher
 
   // Theme Logic
   const getTheme = () => {
@@ -67,7 +74,12 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   // Resolve background image
   const bgStyle = system?.background
-    ? { backgroundImage: `url(${system.background.startsWith('http') ? system.background : `${url}/${system.background}`})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    ? {
+      backgroundImage: `url(${system.background.startsWith('http') ? system.background : `${url}/${system.background}`})`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat'
+    }
     : {};
 
   // Auto-Connect Effect
@@ -137,32 +149,23 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   }, []);
 
+
+
   // Polling for System State Changes (e.g. World Shutdown / Startup)
+  // MOVED TO GLOBAL ShutdownWatcher.tsx
+  // We no longer need to check for shutdown here, as the global watcher will redirect us.
+  // However, we might want to check for "Start Up" (Transition from Setup -> Login) if we are sitting on Setup page.
   useEffect(() => {
     const interval = setInterval(async () => {
-      // Don't poll if we are in the middle of connecting manually
       if (loading) return;
-
       try {
         const res = await fetch('/api/session/connect');
         const data = await res.json();
-
-        if (data.system) {
-          // Detect transition TO Setup Mode
-          if (data.system.id === 'setup' && step !== 'setup') {
-            setStep('setup');
-            setSystem(data.system);
-          }
-          // Detect transition FROM Setup Mode to Login/Connect
-          else if (data.system.id !== 'setup' && step === 'setup') {
-            window.location.reload(); // Reload to get fresh context
-          }
+        if (data.system && data.system.id !== 'setup' && step === 'setup') {
+          window.location.reload();
         }
-      } catch (e) {
-        // ignore transient poll errors
-      }
-    }, 5000); // Check every 5 seconds
-
+      } catch (e) { }
+    }, 2000);
     return () => clearInterval(interval);
   }, [step, loading]);
 
@@ -286,53 +289,90 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         </div>
       )}
 
+
       {step === 'login' && (
-        <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg`}>
-          <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
-          <div className="space-y-4">
-            {users.length > 0 ? (
-              <div>
-                <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
-                <select
-                  value={selectedUser}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                  className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
-                >
-                  {users.map(u => (
-                    <option key={u.id} value={u.name}>{u.name}</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
-                <input
-                  type="text"
-                  value={selectedUser}
-                  onChange={(e) => setSelectedUser(e.target.value)}
-                  className={`w-full p-2 rounded border outline-none ${theme.input}`}
-                  placeholder="Enter username manually"
-                />
-                <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
-              </div>
+        <div className="flex flex-col-reverse md:flex-row gap-8 max-w-4xl mx-auto items-stretch md:items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+          {/* World Info Card */}
+          <div className={`flex-1 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+            {system?.worldTitle && (
+              <h1 className={`text-4xl font-bold mb-4 ${theme.headerFont} text-amber-500 tracking-tight`}>
+                {system.worldTitle}
+              </h1>
             )}
 
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className={`w-full p-2 rounded border outline-none ${theme.input}`}
+            {system?.worldDescription && (
+              <div className="prose prose-invert prose-sm max-w-none opacity-80 mb-6"
+                dangerouslySetInnerHTML={{ __html: system.worldDescription }}
               />
+            )}
+
+            <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-white/10">
+              <div>
+                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Next Session</label>
+                <div className="font-mono text-lg">
+                  {system?.nextSession ? system.nextSession : <span className="opacity-30 italic">Not Scheduled</span>}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Current Players</label>
+                <div className="font-mono text-lg flex items-center gap-2">
+                  <span className="text-green-400">{system?.users?.active || 0}</span>
+                  <span className="opacity-40">/</span>
+                  <span>{system?.users?.total || 0}</span>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
-            >
-              {loading ? 'Logging in...' : 'Login'}
-            </button>
+          </div>
+
+          {/* Login Form */}
+          <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+            <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
+            <div className="space-y-4">
+              {users.length > 0 ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
+                  <select
+                    value={selectedUser}
+                    onChange={(e) => setSelectedUser(e.target.value)}
+                    className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
+                  >
+                    {users.map(u => (
+                      <option key={u.id} value={u.name}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
+                  <input
+                    type="text"
+                    value={selectedUser}
+                    onChange={(e) => setSelectedUser(e.target.value)}
+                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                    placeholder="Enter username manually"
+                  />
+                  <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                />
+              </div>
+              <button
+                onClick={handleLogin}
+                disabled={loading}
+                className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
+              >
+                {loading ? 'Logging in...' : 'Login'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -350,12 +390,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               No world is available to login, please check back later.
             </p>
 
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-amber-600/20 border border-amber-600/50 hover:bg-amber-600 hover:text-white text-amber-500 rounded transition-all duration-300 uppercase tracking-widest text-xs font-bold mb-8 block mx-auto"
-            >
-              Check Again
-            </button>
+
 
             <a
               href="https://github.com/juvinious/sheet-delver"
@@ -484,6 +519,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           </div>
         </div>
       )}
+
     </main>
   );
 }
