@@ -329,6 +329,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       className={`min-h-screen ${theme.bg} ${theme.text} p-8 font-sans transition-colors duration-500`}
       style={bgStyle}
       data-step={step}
+      data-loading={loading}
     >
 
       {/* Footer Info Box */}
