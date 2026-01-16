@@ -93,7 +93,7 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
             </div>
 
             <div className="text-center mt-8 text-neutral-600 text-sm font-serif italic">
-                "Violence is not the answer. It is the question. The answer is yes."
+                &quot;Violence is not the answer. It is the question. The answer is yes.&quot;
             </div>
         </div>
     );
