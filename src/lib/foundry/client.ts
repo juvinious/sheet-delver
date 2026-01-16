@@ -1,14 +1,52 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright-core';
 import { FoundryConfig } from './types';
+import { SystemAdapter } from './adapters/SystemAdapter';
+import { ShadowdarkAdapter } from './adapters/ShadowdarkAdapter';
+import { MorkBorgAdapter } from './adapters/MorkBorgAdapter';
+import { GenericAdapter } from './adapters/GenericAdapter';
 
 export class FoundryClient {
     public browser: Browser | null = null;
     public context: BrowserContext | null = null;
     public page: Page | null = null;
     private config: FoundryConfig;
+    private adapter: SystemAdapter | null = null;
 
     constructor(config: FoundryConfig) {
         this.config = config;
+    }
+
+    private async resolveAdapter(): Promise<SystemAdapter> {
+        if (this.adapter) return this.adapter;
+
+        const sys = await this.getSystem();
+        const systemId = sys.id;
+
+        if (systemId === 'shadowdark') {
+            this.adapter = new ShadowdarkAdapter();
+        }
+
+        if (!this.adapter) {
+            // Sanitize systemId
+            const cleanId = systemId ? systemId.trim().toLowerCase() : '';
+
+            if (cleanId === 'morkborg') {
+                this.adapter = new MorkBorgAdapter();
+            } else if (cleanId === 'shadowdark') {
+                this.adapter = new ShadowdarkAdapter();
+            } else {
+                // Unknown system - use Generic Adapter
+                console.log(`Unknown system '${systemId}', using GenericAdapter.`);
+                this.adapter = new GenericAdapter();
+                // We inject the actual systemId into variables or rely on GenericAdapter to find it
+                // GenericAdapter hardcodes 'generic' as systemId for the interface, but passes through raw data.
+                // However, we want strict filtering to work.
+                // It's better if GenericAdapter adopts the systemId it finds.
+                this.adapter.systemId = cleanId || 'generic';
+            }
+        }
+
+        return this.adapter;
     }
 
 
@@ -36,7 +74,7 @@ export class FoundryClient {
         // Capture console messages from the Foundry browser
         this.page.on('console', msg => {
             const text = msg.text();
-            if (text.includes('Antigravity Debug')) {
+            if (text.includes('Antigravity Debug') || text.includes('[FOUNDRY STATE DUMP]')) {
                 console.log(`[FOUNDRY CONSOLE] ${text}`);
             }
         });
@@ -54,7 +92,7 @@ export class FoundryClient {
         if (isLoggedIn) return [];
 
         try {
-            await this.page.waitForSelector('select[name="userid"]', { timeout: 5000 });
+            await this.page.waitForSelector('select[name="userid"]', { timeout: 1000 });
             const options = await this.page.$$eval('select[name="userid"] option', (els) => {
                 return els.map(el => ({
                     id: el.getAttribute('value'),
@@ -98,62 +136,180 @@ export class FoundryClient {
         await this.page.waitForFunction(() => (window as any).game && (window as any).game.ready, null, { timeout: 60000 });
     }
 
+    async logout() {
+        if (!this.page) return;
+        console.log('Logging out...');
+        // Force navigation to the join screen
+        // Construct join URL
+        const joinUrl = this.config.url.endsWith('/') ? this.config.url + 'join' : this.config.url + '/join';
+        await this.page.goto(joinUrl);
+        await this.page.waitForLoadState('networkidle');
+    }
+
     async getSystem(): Promise<{ id: string; title: string; version: string; background?: string; isLoggedIn?: boolean }> {
         if (!this.page) throw new Error('Not connected');
 
-        return await this.page.evaluate(() => {
-            // @ts-ignore
-            const game = window.game;
-            // 1. Try standard game.system (logged in)
-            let s = game?.system;
-            // 2. Try game.data.system (older versions or specific contexts)
-            if (!s?.id) s = game?.data?.system;
-            // 3. Try game.world.system (sometimes available on login screen)
-            if (!s?.id && game?.world?.system) {
-                // game.world.system often looks like "dnd5e" (string) or an object
-                const ws = game.world.system;
-                if (typeof ws === 'string') {
-                    // If it's just a string ID, we might not get title/version easily, but ID is most important so we default others
-                    s = { id: ws, title: ws, version: '0.0.0' };
-                } else {
-                    s = ws;
-                }
-            }
+        try {
+            const data = await this.page.evaluate(async () => {
+                // @ts-ignore
+                const game = window.game;
 
-            // Extract generic background
-            let bg = game?.world?.background; // Official world background
-            if (!bg) {
-                // Fallback to scraping CSS if on login screen
-                // The login screen usually has a background on .main or body
-                const bodyStyle = window.getComputedStyle(document.body);
-                const bgImage = bodyStyle.backgroundImage;
-                if (bgImage && bgImage !== 'none') {
-                    // Extract url("...") -> ...
-                    const match = bgImage.match(/url\((['"]?)(.*?)\1\)/);
-                    if (match) bg = match[2];
-                }
-            }
+                // 1. Try standard game.system (logged in)
+                let s = game?.system;
+                // 2. Try game.data.system (older versions or specific contexts)
+                if (!s?.id) s = game?.data?.system;
 
-            if (s && (s.id || s._id)) {
+                // 3. Try game.world.system (sometimes available on login screen)
+                if (!s?.id && game?.world?.system) {
+
+                    // ZOMBIE STATE PROBE
+                    // If we are relying on cached world system data, we might be in a Zombie state (World Stopped).
+                    // We check if the '/setup' endpoint is actually available and active.
+                    // If it is, correct the state.
+
+                    try {
+                        const setupCheck = await fetch('/setup', { method: 'HEAD' });
+                        console.log(`[DEBUG PROBE] /setup Status: ${setupCheck.status}, URL: ${setupCheck.url}`);
+
+                        // Check if we arrived at setup (either 200 OK on /setup, or redirected to /setup or /auth)
+                        // If the world is stopped, accessing /setup will often redirect to /auth (Admin Login)
+                        if (setupCheck.ok && (setupCheck.url.includes('/setup') || setupCheck.url.includes('/auth'))) {
+                            console.log('Antigravity Debug: Setup Probed successfully. World is stopped. Forcing Redirect.');
+                            if (!window.location.href.includes('/setup')) {
+                                setTimeout(() => { window.location.href = '/setup'; }, 200);
+                            }
+                            return {
+                                id: 'setup',
+                                title: 'World Stopped (Probe)',
+                                version: '0.0.0',
+                                background: undefined,
+                                isLoggedIn: false
+                            };
+                        }
+                    } catch (e: any) {
+                        console.log(`[DEBUG PROBE] Error: ${e.message}`);
+                    }
+
+                    // Extract system from world info
+                    const ws = game.world.system;
+                    if (typeof ws === 'string') {
+                        s = { id: ws, title: ws, version: '0.0.0' };
+                    } else {
+                        s = ws;
+                    }
+                }
+
+                // Extract generic background
+                let bg = game?.world?.background; // Official world background
+                if (!bg) {
+                    // Fallback to scraping CSS if on login screen
+                    const bodyStyle = window.getComputedStyle(document.body);
+                    const bgImage = bodyStyle.backgroundImage;
+                    if (bgImage && bgImage !== 'none') {
+                        const match = bgImage.match(/url\((['"]?)(.*?)\1\)/);
+                        if (match) bg = match[2];
+                    }
+                }
+
+
+
+                // Setup Mode Detection
+                const isSetup = document.title.includes('Foundry Virtual Tabletop') ||
+                    document.getElementById('setup') ||
+                    window.location.href.includes('/setup');
+
+                if (isSetup) {
+                    return {
+                        id: 'setup',
+                        title: 'Foundry Setup',
+                        version: '0.0.0',
+                        background: undefined,
+                        isLoggedIn: false
+                    };
+                }
+
+                // Socket / Connection Check
+                // @ts-ignore
+                if (window.game && window.game.socket && window.game.socket.connected === false) {
+                    console.log('Antigravity Debug: Socket disconnected, assuming Setup/Offline.');
+                    return {
+                        id: 'setup',
+                        title: 'Connection Lost',
+                        version: '0.0.0',
+                        background: undefined,
+                        isLoggedIn: false
+                    };
+                }
+
+                // Zombie State Detection
+                // If we are NOT on setup, but have no system ID, OR world active is false
+                // @ts-ignore
+                if ((!s || !s.id) || (window.game && window.game.world && window.game.world.active === false)) {
+                    console.log('Antigravity Debug: Detected Zombie/Stopped State. returning setup.');
+
+                    // Force navigation to clear state (Async to allow return value to pass)
+                    if (!window.location.href.includes('/setup')) {
+                        setTimeout(() => {
+                            window.location.href = '/setup';
+                        }, 500);
+                    }
+
+                    return {
+                        id: 'setup',
+                        title: 'Redirecting to Setup...',
+                        version: '0.0.0',
+                        background: undefined,
+                        isLoggedIn: false
+                    };
+                }
+
+                if (s && (s.id || s._id)) {
+                    return {
+                        id: s.id || s._id,
+                        title: s.title || 'Unknown',
+                        version: s.version || '0.0.0',
+                        background: bg,
+                        // @ts-ignore
+                        isLoggedIn: !!(window.game && window.game.user)
+                    };
+                }
+
                 return {
-                    id: s.id || s._id,
-                    title: s.title || 'Unknown',
-                    version: s.version || '0.0.0',
+                    id: 'setup',
+                    title: 'Unknown / Setup',
+                    version: '0.0.0',
                     background: bg,
                     // @ts-ignore
                     isLoggedIn: !!(window.game && window.game.user)
                 };
+            });
+
+            // Post-processing
+            if (data) {
+                if (data.id && data.id !== 'setup' && data.id !== 'unknown') {
+                    return data;
+                }
             }
 
             return {
-                id: 'unknown',
-                title: 'Unknown',
+                id: 'setup',
+                title: 'Foundry Setup',
                 version: '0.0.0',
-                background: bg,
-                // @ts-ignore
-                isLoggedIn: !!(window.game && window.game.user)
+                background: undefined,
+                isLoggedIn: false
             };
-        });
+
+        } catch (error) {
+            console.error('getSystem Error:', error);
+            // Default to setup on error
+            return {
+                id: 'setup',
+                title: 'Connection Error / Setup',
+                version: '0.0.0',
+                background: undefined,
+                isLoggedIn: false
+            };
+        }
     }
 
     async getActors() {
@@ -321,155 +477,8 @@ export class FoundryClient {
     }
     async getActor(id: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        return await this.page.evaluate(async (actorId) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) return null;
-
-            // Prepare items with computed properties
-            const freeCarrySeen: Record<string, number> = {};
-            // @ts-ignore
-            const items = actor.items.contents.map((i: any) => {
-                const itemData: any = {
-                    id: i.id,
-                    name: i.name,
-                    type: i.type,
-                    img: i.img,
-                    system: i.system,
-                    uuid: `Actor.${actorId}.Item.${i.id}`
-                };
-
-                // Calculate slot usage for physical items
-                if (i.system?.isPhysical && i.type !== "Gem") {
-                    let freeCarry = i.system.slots?.free_carry || 0;
-
-                    if (freeCarrySeen[i.name]) {
-                        freeCarry = Math.max(0, freeCarry - freeCarrySeen[i.name]);
-                        freeCarrySeen[i.name] += freeCarry;
-                    } else {
-                        freeCarrySeen[i.name] = freeCarry;
-                    }
-
-                    // Calculate slots used
-                    const perSlot = i.system.slots?.per_slot || 1;
-                    const qty = i.system.quantity || 1;
-                    const slotsUsed = i.system.slots?.slots_used || 0;
-
-                    let totalSlotsUsed = Math.ceil(qty / perSlot) * slotsUsed;
-                    totalSlotsUsed -= freeCarry * slotsUsed;
-
-                    itemData.slotsUsed = totalSlotsUsed;
-                    itemData.showQuantity = i.system.isAmmunition || (perSlot > 1) || (qty > 1);
-
-                    // Light source progress indicators
-                    if (i.type === "Basic" && i.system.light?.isSource) {
-                        itemData.isLightSource = true;
-                        itemData.lightSourceActive = i.system.light.active;
-                        itemData.lightSourceUsed = i.system.light.hasBeenUsed;
-
-                        const maxSeconds = (i.system.light.longevityMins || 0) * 60;
-                        let progress = "◆";
-                        for (let x = 1; x < 4; x++) {
-                            if (i.system.light.remainingSecs > (maxSeconds * x / 4)) {
-                                progress += " ◆";
-                            } else {
-                                progress += " ◇";
-                            }
-                        }
-                        itemData.lightSourceProgress = progress;
-
-                        const timeRemaining = Math.ceil(i.system.light.remainingSecs / 60);
-                        if (i.system.light.remainingSecs < 60) {
-                            itemData.lightSourceTimeRemaining = "< 1 min";
-                        } else {
-                            itemData.lightSourceTimeRemaining = `${timeRemaining} min`;
-                        }
-                    }
-                }
-
-                return itemData;
-            });
-
-            // @ts-ignore - Use allApplicableEffects() to get effects from both actor and items
-            const effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
-                _id: e.id,
-                name: e.name,
-                img: e.img,
-                disabled: e.disabled,
-                duration: {
-                    type: e.duration.type,
-                    remaining: e.duration.remaining,
-                    label: e.duration.label,
-                    startTime: e.duration.startTime,
-                    seconds: e.duration.seconds,
-                    rounds: e.duration.rounds,
-                    turns: e.duration.turns
-                },
-                changes: e.changes,
-                origin: e.origin,
-                sourceName: e.parent?.name ?? "Unknown",
-                transfer: e.transfer,
-                statuses: Array.from(e.statuses ?? [])
-            }));
-
-            // Compute derived properties (matching native getData())
-            // Compute derived properties (matching native getData())
-            const levelVal = Number(actor.system.level?.value) || 1;
-            const xpVal = Number(actor.system.level?.xp) || 0;
-            const computed: any = {
-                maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
-                xpNextLevel: levelVal * 10,
-                levelUp: xpVal >= (levelVal * 10)
-            };
-
-            // Only compute these for Player actors
-            if (actor.type === "Player") {
-                computed.ac = await actor.getArmorClass();
-                computed.gearSlots = actor.numGearSlots();
-                computed.isSpellCaster = await actor.isSpellCaster();
-                computed.canUseMagicItems = await actor.canUseMagicItems();
-                computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
-                computed.abilities = actor.getCalculatedAbilities();
-
-                // Get spellcasting ability (e.g. "INT", "WIS")
-                let spellcastingAbility = "";
-
-                // First checks if class is an embedded item
-                const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
-
-                if (characterClass) {
-                    spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
-                } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
-                    // Class might be referenced by UUID (Compendium or Item)
-                    try {
-                        // @ts-ignore
-                        const classItem = await fromUuid(actor.system.class);
-                        if (classItem) {
-                            spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
-                        }
-                    } catch (e) {
-                        console.error("Antigravity: Failed to resolve class UUID", e);
-                    }
-                }
-
-                computed.spellcastingAbility = spellcastingAbility;
-            }
-
-            return {
-                id: actor.id,
-                name: actor.name,
-                type: actor.type,
-                img: actor.img,
-                system: actor.system,
-                items: items,
-                effects: effects,
-                computed: computed,
-                // @ts-ignore
-                currentUser: window.game.user ? window.game.user.name : 'Unknown',
-                // @ts-ignore
-                systemConfig: window.game.shadowdark?.config || {}
-            };
-        }, id);
+        const adapter = await this.resolveAdapter();
+        return await adapter.getActor(this, id);
     }
 
     async sendMessage(content: string) {
@@ -504,6 +513,12 @@ export class FoundryClient {
             await r.evaluate();
             // @ts-ignore
             if (window.ChatMessage) {
+                // @ts-ignore
+                console.log(`${dumpPrefix} User ID: ${window.game.user?.id}`);
+                // @ts-ignore
+                console.log(`${dumpPrefix} User Count: ${window.game.users?.size || 0}`);
+                // @ts-ignore
+                console.log(`${dumpPrefix} World Active: ${window.game.world?.active}`);
                 // @ts-ignore
                 await window.ChatMessage.create({
                     // @ts-ignore
@@ -571,93 +586,8 @@ export class FoundryClient {
 
     async getSystemData() {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(async () => {
-            // @ts-ignore
-            const packs = window.game.packs.contents;
-            const results = {
-                classes: [] as any[],
-                ancestries: [] as any[],
-                backgrounds: [] as any[],
-                languages: [] as any[], // Add languages
-                titles: {} // Cache titles by Class Name -> { level, name }[]
-            };
-
-            for (const pack of packs) {
-                // @ts-ignore
-                if (pack.documentName !== 'Item') continue;
-
-                // @ts-ignore
-                if (!pack.index.size) await pack.getIndex();
-                // @ts-ignore
-                const index = pack.index;
-
-                // @ts-ignore
-                // Index Classes (Deep fetch for languages)
-                const classIndex = index.filter((i: any) => i.type === 'Class');
-                for (const c of classIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(c._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.classes.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${c._id}`,
-                            languages: doc.system?.languages || []
-                        });
-                    }
-                }
-
-                // Index Ancestries (Deep fetch for languages if needed, though mostly Class matters for color)
-                const ancestryIndex = index.filter((i: any) => i.type === 'Ancestry');
-                // We might as well deep fetch these too for consistency
-                for (const a of ancestryIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(a._id);
-                    if (doc) {
-                        results.ancestries.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${a._id}`,
-                            languages: doc.system?.languages || []
-                        });
-                    }
-                }
-
-                // @ts-ignore
-                results.backgrounds.push(...index.filter(i => i.type === 'Background').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}` })));
-
-                // Index Languages (Need descriptions, so might need deep fetch or just trust index? Index usually doesn't have desc. We probably need full docs for languages to get description)
-                // Let's try to get them from index first, if desc is missing we might need to load them.
-                // Shadowdark languages are usually simple.
-                const langIndex = index.filter((i: any) => i.type === 'Language');
-                // We'll fetch the docs for languages to get descriptions
-                for (const l of langIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(l._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.languages.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${l._id}`,
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
-                            rarity: doc.system?.rarity || 'common'
-                        });
-                    }
-                }
-
-                // Deep Fetch for Titles (only for Classes)
-                for (const c of classIndex) {
-                    // We need full document to get system.titles
-                    // @ts-ignore
-                    const doc = await pack.getDocument(c._id);
-                    if (doc && doc.system?.titles) {
-                        // @ts-ignore
-                        results.titles[doc.name] = doc.system.titles;
-                    }
-                }
-            }
-            return results;
-        });
+        const adapter = await this.resolveAdapter();
+        return await adapter.getSystemData(this);
     }
 
     async getChatLog(limit: number = 20) {

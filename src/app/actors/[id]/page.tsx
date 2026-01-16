@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import ShadowdarkSheet from '@/components/sheets/ShadowdarkSheet';
+import SheetRouter from '@/components/SheetRouter';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -38,7 +38,13 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 // Save to Recent Actors
                 try {
                     const recent = JSON.parse(localStorage.getItem('recent_actors') || '[]');
-                    const entry = { id: id, name: data.name, img: data.img, system: data.system?.details?.race || 'Unknown' };
+                    const entry = {
+                        id: id,
+                        name: data.name,
+                        img: data.img,
+                        system: data.system?.details?.race || 'Unknown',
+                        systemId: data.systemId
+                    };
                     // Remove existing if present
                     const filtered = recent.filter((r: any) => r.id !== id);
                     // Add to top, limit to 5
@@ -315,13 +321,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     if (!actor) return null;
 
     // Detect system (fallback to shadowdark for now if unknown/missing)
-    // The actor object from API might need to contain system info. 
-    // For now we assume the current user is using Shadowdark as per context.
-    const isShadowdark = true; // TODO: Check actor.system type or similar
+    // The actor object from API might need to contain system info.
 
     return (
-        <main className="min-h-screen bg-neutral-950 text-neutral-200 font-sans selection:bg-amber-900 pb-20">
-            {/* Navigation Header */}
+        <main className="min-h-screen font-sans selection:bg-amber-900 pb-20">
+            {/* Navigation Header - Hide for Mork Borg? or Style it? */}
+            {/* Leaving it for now, but removing page bg so MorkBorgSheet can take over */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 px-4 py-3 shadow-md flex items-center justify-between backdrop-blur-sm bg-opacity-95">
                 <button
                     onClick={() => router.push('/')}
@@ -337,24 +342,19 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
             {/* Main Content */}
             <div className="w-full max-w-5xl mx-auto p-4 pt-20">
-                {isShadowdark ? (
-                    <ShadowdarkSheet
-                        actor={actor}
-                        foundryUrl={actor?.foundryUrl}
-                        messages={messages}
-                        onRoll={handleRoll}
-                        onChatSend={handleChatSend}
-                        onUpdate={handleUpdate}
-                        onToggleEffect={handleToggleEffect}
-                        onDeleteEffect={handleDeleteEffect}
-                        onDeleteItem={handleDeleteItem}
-                        onCreatePredefinedEffect={handleCreatePredefinedEffect}
-                    />
-                ) : (
-                    <div className="text-center p-10 mt-20 text-neutral-500 italic">
-                        Unsupported System Configuration
-                    </div>
-                )}
+                <SheetRouter
+                    systemId={actor.systemId || 'shadowdark'}
+                    actor={actor}
+                    foundryUrl={actor?.foundryUrl}
+                    messages={messages}
+                    onRoll={handleRoll}
+                    onChatSend={handleChatSend}
+                    onUpdate={handleUpdate}
+                    onToggleEffect={handleToggleEffect}
+                    onDeleteEffect={handleDeleteEffect}
+                    onDeleteItem={handleDeleteItem}
+                    onCreatePredefinedEffect={handleCreatePredefinedEffect}
+                />
             </div>
 
             {/* Notifications Container */}
