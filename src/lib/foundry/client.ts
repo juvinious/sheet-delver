@@ -86,24 +86,60 @@ export class FoundryClient {
     async getUsers() {
         if (!this.page) throw new Error('Not connected');
 
-        // Wait for the select element to be visible (implies we are on the login screen)
-        // If we are already logged in, this will timeout or fail, so we should check for that.
-        const isLoggedIn = await this.page.locator('#board').isVisible().catch(() => false);
-        if (isLoggedIn) return [];
+        // Instant check for state
+        const state = await this.page.evaluate(() => {
+            if (document.getElementById('board')) return 'loggedin';
+            if (document.querySelector('select[name="userid"]')) return 'loginform';
+            return 'unknown';
+        });
+
+        if (state !== 'loginform') return [];
 
         try {
-            await this.page.waitForSelector('select[name="userid"]', { timeout: 1000 });
             const options = await this.page.$$eval('select[name="userid"] option', (els) => {
                 return els.map(el => ({
                     id: el.getAttribute('value'),
                     name: el.textContent || ''
-                })).filter(u => u.id !== ''); // Filter out empty default if any
+                })).filter(u => u.id !== '');
             });
             return options;
         } catch (e) {
-            console.warn('Could not find user select list', e);
             return [];
         }
+    }
+
+    async getUsersDetails() {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(() => {
+            // @ts-ignore
+            if (!window.game || !window.game.users) return [];
+
+            // @ts-ignore
+            return window.game.users.contents.map(u => ({
+                id: u.id,
+                name: u.name,
+                isGM: u.isGM,
+                active: u.active,
+                color: u.color,
+                characterName: u.character?.name || '', // Assigned actor name
+                role: u.role // 0=None, 1=Player, 2=Trusted, 3=Assistant, 4=GM
+            })).sort((a: any, b: any) => {
+                // 1. "Gamemaster" always top (Case insensitive check)
+                const aName = a.name.toLowerCase();
+                const bName = b.name.toLowerCase();
+
+                if (aName === 'gamemaster') return -1;
+                if (bName === 'gamemaster') return 1;
+
+                // 2. GMs next
+                if (a.isGM && !b.isGM) return -1;
+                if (!a.isGM && b.isGM) return 1;
+
+                // 3. Alphabetical
+                return a.name.localeCompare(b.name);
+            });
+        });
     }
 
     async login(username?: string, password?: string) {
@@ -131,9 +167,21 @@ export class FoundryClient {
         }
 
         await this.page.click('button[name="join"]');
-        // Wait for board to load or game to be ready
-        // #board might not exist in all systems/modules immediately, but game.ready is the source of truth
-        await this.page.waitForFunction(() => (window as any).game && (window as any).game.ready, null, { timeout: 60000 });
+
+        // Race between Success (Game Ready) and Failure (Error Notification)
+        const successPromise = this.page.waitForFunction(() => (window as any).game && (window as any).game.ready, null, { timeout: 60000 });
+
+        const failurePromise = this.page.waitForSelector('#notifications .notification.error', { timeout: 10000 })
+            .then(async (el) => {
+                const text = await el?.textContent();
+                throw new Error(text || 'Login failed');
+            })
+            .catch(() => {
+                // If this times out, it means no error appeared within 10 seconds.
+                return new Promise((_, reject) => { /* infinite wait */ });
+            });
+
+        await Promise.race([successPromise, failurePromise]);
     }
 
     async logout() {
@@ -559,9 +607,20 @@ export class FoundryClient {
             return window.shadowdark.effects.createPredefinedEffect(actor, effectKey);
         }, { actorId, effectKey });
     }
-    async getActor(id: string) {
+    async getActor(id: string, forceSystemId?: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        const adapter = await this.resolveAdapter();
+
+        let adapter: SystemAdapter;
+        if (forceSystemId) {
+            switch (forceSystemId.toLowerCase()) {
+                case 'morkborg': adapter = new MorkBorgAdapter(); break;
+                case 'shadowdark': adapter = new ShadowdarkAdapter(); break;
+                default: adapter = new GenericAdapter(); break;
+            }
+        } else {
+            adapter = await this.resolveAdapter();
+        }
+
         return await adapter.getActor(this, id);
     }
 
@@ -582,6 +641,7 @@ export class FoundryClient {
     }
 
     async roll(formula: string) {
+        // [FORCE REBUILD] - Ensuring dumpPrefix is gone
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
         // Strip /r or /roll prefix (and optional whitespace)
@@ -597,12 +657,6 @@ export class FoundryClient {
             await r.evaluate();
             // @ts-ignore
             if (window.ChatMessage) {
-                // @ts-ignore
-                console.log(`${dumpPrefix} User ID: ${window.game.user?.id}`);
-                // @ts-ignore
-                console.log(`${dumpPrefix} User Count: ${window.game.users?.size || 0}`);
-                // @ts-ignore
-                console.log(`${dumpPrefix} World Active: ${window.game.world?.active}`);
                 // @ts-ignore
                 await window.ChatMessage.create({
                     // @ts-ignore
@@ -689,16 +743,11 @@ export class FoundryClient {
 
             // @ts-ignore
             return messages.map(m => {
+                if (!m) return null;
+                // DEBUG: Log raw message structure
+                // console.log('ANTIGRAVITY DEBUG [Raw Message]', JSON.stringify(m, null, 2));
                 // @ts-ignore
                 const roll = m.rolls?.length ? m.rolls[0] : m.roll;
-                if (m.isRoll || roll) {
-                    console.log('Roll Debug:', {
-                        id: m.id,
-                        total: roll?.total,
-                        formula: roll?._formula || roll?.formula,
-                        keys: roll ? Object.keys(roll) : []
-                    });
-                }
 
                 // @ts-ignore
                 const total = roll?.total ?? roll?._total ?? roll?.result;
@@ -726,7 +775,7 @@ export class FoundryClient {
                     // @ts-ignore
                     debug: roll ? { total: roll.total, _total: roll._total, result: roll.result, formula: roll.formula, class: roll.constructor?.name } : null
                 };
-            }).reverse();
+            }).filter(m => m !== null).reverse();
         }, limit);
     }
 

@@ -11,12 +11,11 @@ interface SpellsTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
-    onChatSend: (msg: string) => void;
     onRoll: (type: string, key: string, options?: any) => void;
     foundryUrl?: string;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSend, onRoll, foundryUrl }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: SpellsTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -40,9 +39,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
             if (action === 'roll-check') {
                 const stat = rollBtn.getAttribute('data-stat');
                 if (stat) onRoll('ability', stat);
-            } else if (action === 'roll-formula') {
-                const formula = rollBtn.getAttribute('data-formula');
-                if (formula) onChatSend(`/r ${formula}`);
             }
         }
     };
@@ -260,7 +256,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onChatSe
                                     onClick={() => toggleItem(item.id)}
                                 >
                                     <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                        <img src={resolveImage(item.img, foundryUrl)} className="w-full h-full object-cover" />
+                                        <img src={resolveImage(item.img, foundryUrl)} alt={item.name} className="w-full h-full object-cover" />
                                     </div>
                                     <div className="flex-1">
                                         <div className="font-serif font-bold text-lg leading-none">{item.name}</div>

@@ -5,7 +5,7 @@ interface ViolenceTabProps {
     onUpdate: (path: string, value: any) => void;
 }
 
-export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProps) {
+export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
     const handleInitiative = (individual: boolean) => {
         // Mork Borg uses d6 for individual init
         // But system likely has a specific roll type
@@ -41,7 +41,7 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
                     {actor.items.weapons.map((w: any) => (
                         <div key={w.id} className="bg-neutral-900/80 p-3 border-l-8 border-red-900 flex items-center justify-between group">
                             <div className="flex items-center gap-4">
-                                <img src={w.img} className="w-10 h-10 border border-neutral-600" />
+                                <img src={w.img} alt={w.name} className="w-10 h-10 border border-neutral-600" />
                                 <div>
                                     <div className="font-bold text-xl text-neutral-200">{w.name}</div>
                                     <div className="text-sm text-red-400 font-mono tracking-tighter">
@@ -70,7 +70,7 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
                     {actor.items.armor.map((a: any) => (
                         <div key={a.id} className="bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex items-center justify-between">
                             <div className="flex items-center gap-4">
-                                <img src={a.img} className="w-10 h-10 border border-neutral-600 grayscale" />
+                                <img src={a.img} alt={a.name} className="w-10 h-10 border border-neutral-600 grayscale" />
                                 <div>
                                     <div className="font-bold text-xl text-neutral-200">{a.name}</div>
                                     <div className="text-sm text-slate-400 font-mono">

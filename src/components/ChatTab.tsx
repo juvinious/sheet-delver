@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import DiceTray from './DiceTray';
 
 interface ChatTabProps {
@@ -9,23 +8,24 @@ interface ChatTabProps {
     onRoll?: (type: string, key: string) => void;
     foundryUrl?: string;
     variant?: 'default' | 'shadowdark';
+    hideDiceTray?: boolean;
 }
 
 const styles = {
     default: {
-        container: "bg-slate-800 rounded-lg border border-slate-700",
-        header: "text-slate-400 text-sm font-bold uppercase mb-4 border-b border-slate-700 pb-2",
-        msgContainer: (isRoll: boolean) => `p-3 rounded-lg border ${isRoll ? 'bg-slate-700 border-slate-600' : 'bg-slate-900/50 border-slate-800'}`,
-        user: "font-bold text-amber-500 text-sm",
-        time: "text-xs text-slate-500",
-        flavor: "text-sm italic text-slate-300 mb-1",
-        content: "text-sm messages-content [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:rounded [&_img]:border [&_img]:border-slate-700",
-        rollResult: "mt-2 bg-slate-900 p-2 rounded text-center border border-slate-800",
-        rollFormula: "text-xs text-slate-500",
-        rollTotal: "text-xl font-bold font-mono text-white",
-        button: "inline-flex items-center gap-1 bg-slate-700 hover:bg-slate-600 border border-slate-500 hover:border-amber-500 rounded px-2 py-0.5 text-xs font-bold text-white transition-colors cursor-pointer my-1 shadow-sm",
-        buttonText: "text-slate-300 uppercase",
-        buttonValue: "text-amber-400"
+        container: "bg-zinc-950 rounded-lg border border-zinc-800 shadow-inner",
+        header: "text-zinc-400 text-xs font-bold uppercase mb-4 border-b border-zinc-800 pb-2 flex items-center gap-2 tracking-wider",
+        msgContainer: (isRoll: boolean) => `p-3 rounded-md border text-sm ${isRoll ? 'bg-zinc-900/50 border-zinc-800' : 'bg-transparent border-t border-b border-zinc-800/50 border-l-0 border-r-0'}`,
+        user: "font-bold text-amber-500 text-xs uppercase tracking-wide",
+        time: "text-[10px] text-zinc-600 font-mono",
+        flavor: "text-xs italic text-zinc-500 mb-1",
+        content: "text-zinc-300 leading-relaxed messages-content [&_p]:mb-1 [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:rounded [&_img]:border [&_img]:border-zinc-700",
+        rollResult: "mt-2 bg-zinc-900 p-2 rounded text-center border border-zinc-800 font-mono",
+        rollFormula: "text-[10px] text-zinc-500",
+        rollTotal: "text-lg font-bold text-white",
+        button: "inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded px-2 py-0.5 text-[10px] font-bold text-zinc-300 transition-all cursor-pointer my-1 shadow-sm",
+        buttonText: "text-zinc-400 uppercase",
+        buttonValue: "text-amber-500"
     },
     shadowdark: {
         container: "bg-white border-2 border-black",
@@ -44,8 +44,7 @@ const styles = {
     }
 };
 
-export default function ChatTab({ messages, onSend, foundryUrl, onRoll, variant = 'default' }: ChatTabProps) {
-
+export default function ChatTab({ messages, onSend, foundryUrl, onRoll, variant = 'default', hideDiceTray = false }: ChatTabProps) {
     const s = styles[variant] || styles.default;
 
     // Helper to format content content with fixed image URLs AND parsing inline checks
@@ -143,12 +142,6 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, variant 
                     className="flex-1 overflow-y-auto space-y-4 pr-2"
                     onClick={handleChatClick}
                 >
-                    <style>{`
-                        .messages-content .dice-roll { display: none !important; }
-                        .messages-content .dice-tooltip { display: none !important; }
-                        .messages-content .dice-formula { display: none !important; }
-                        .messages-content .dice-total { display: none !important; }
-                    `}</style>
                     {messages.map((msg) => (
                         <div key={msg.id} className={s.msgContainer(msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
@@ -179,9 +172,11 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, variant 
             </div>
 
             {/* Dice Tray / Chat Input (Bottom) */}
-            <div className="h-[400px]">
-                <DiceTray onSend={onSend} variant={variant} />
-            </div>
+            {!hideDiceTray && (
+                <div className="flex-none">
+                    <DiceTray onSend={onSend} variant={variant} />
+                </div>
+            )}
         </div>
     );
 }

@@ -61,6 +61,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
     }
 
+    // REFETCH if we detected a different system than what was likely used (Generic)
+    // The MorkBorgAdapter produces specific computed structures (actor.computed) that the sheet needs.
+    // If we originally fetched with GenericAdapter, that structure is missing.
+    if (finalSystemId === 'morkborg' && (!actor.computed || actor.systemId !== 'morkborg')) {
+        console.log(`[API] Re-fetching actor ${id} with MorkBorgAdapter`);
+        const reFetched = await client.getActor(id, 'morkborg');
+        if (reFetched) {
+            // Merge or replace
+            Object.assign(actor, reFetched);
+        }
+    }
+
     // Return data directly from client (which now uses SystemAdapter)
     return NextResponse.json({
         ...resolvedActor,

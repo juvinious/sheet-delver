@@ -3,6 +3,8 @@
 import { useState, useEffect, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import SheetRouter from '@/components/SheetRouter';
+import GlobalChat from '@/components/GlobalChat';
+import PlayerList from '@/components/PlayerList';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -35,24 +37,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
 
-                // Save to Recent Actors
-                try {
-                    const recent = JSON.parse(localStorage.getItem('recent_actors') || '[]');
-                    const entry = {
-                        id: id,
-                        name: data.name,
-                        img: data.img,
-                        system: data.system?.details?.race || 'Unknown',
-                        systemId: data.systemId
-                    };
-                    // Remove existing if present
-                    const filtered = recent.filter((r: any) => r.id !== id);
-                    // Add to top, limit to 5
-                    const updated = [entry, ...filtered].slice(0, 5);
-                    localStorage.setItem('recent_actors', JSON.stringify(updated));
-                } catch (e) {
-                    console.error('Failed to save recent actor', e);
-                }
+                if (data.currentUser) currentUserRef.current = data.currentUser;
             } else {
                 if (!silent) {
                     // Redirect instead of alert
@@ -343,12 +328,10 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             {/* Main Content */}
             <div className="w-full max-w-5xl mx-auto p-4 pt-20">
                 <SheetRouter
-                    systemId={actor.systemId || 'shadowdark'}
+                    systemId={actor.systemId || 'generic'}
                     actor={actor}
                     foundryUrl={actor?.foundryUrl}
-                    messages={messages}
                     onRoll={handleRoll}
-                    onChatSend={handleChatSend}
                     onUpdate={handleUpdate}
                     onToggleEffect={handleToggleEffect}
                     onDeleteEffect={handleDeleteEffect}
@@ -356,6 +339,18 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     onCreatePredefinedEffect={handleCreatePredefinedEffect}
                 />
             </div>
+
+            {/* Global Chat Overlay */}
+            <GlobalChat
+                messages={messages}
+                onSend={handleChatSend}
+                onRoll={handleRoll}
+                foundryUrl={actor?.foundryUrl}
+                variant={actor.systemId === 'shadowdark' ? 'shadowdark' : 'default'}
+            />
+
+            {/* Player List */}
+            <PlayerList />
 
             {/* Notifications Container */}
             <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">

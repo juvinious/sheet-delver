@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import PlayerList from './PlayerList';
+import { useNotifications, NotificationContainer } from './NotificationSystem';
 
 interface User {
   id: string;
@@ -25,6 +27,7 @@ interface ClientPageProps {
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [step, setStep] = useState<'connect' | 'login' | 'dashboard' | 'setup'>('connect');
+  const { notifications, addNotification, removeNotification } = useNotifications();
 
   // Connect State
   const [url, setUrl] = useState(initialUrl);
@@ -36,12 +39,119 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [password, setPassword] = useState('');
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [appVersion, setAppVersion] = useState('');
-
-  // Dashboard State
   const [actors, setActors] = useState<any[]>([]);
-  const [recentActors, setRecentActors] = useState<any[]>([]);
+  const [loginMessage, setLoginMessage] = useState('');
 
-  // Shutdown Logic moved to global watcher
+  // Chat State
+  const [messages, setMessages] = useState<any[]>([]);
+
+  const handleLogin = async () => {
+    setLoading(true);
+    setLoginMessage('Logging into Foundry VTT...');
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 15000); // Force timeout after 15 seconds
+
+    // Timer for "taking longer" message (visual feedback only)
+    const slowTimer = setTimeout(() => {
+      setLoginMessage('Taking longer than expected... Please wait.');
+    }, 5000);
+
+    try {
+      const res = await fetch('/api/session/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: selectedUser, password }),
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      const data = await res.json();
+
+      clearTimeout(slowTimer);
+
+      if (data.success) {
+        setLoginMessage('Login Successful!');
+        setStep('dashboard');
+        fetchActors();
+      } else {
+        setLoginMessage('');
+        setPassword(''); // Clear password on failure
+        addNotification('Login failed: ' + data.error, 'error');
+      }
+    } catch (e: any) {
+      clearTimeout(timeoutId);
+      clearTimeout(slowTimer);
+      setLoginMessage('');
+      setPassword('');
+
+      if (e.name === 'AbortError') {
+        addNotification('Login timed out. The server took too long to respond. Please check your password or try again.', 'error');
+      } else {
+        addNotification('Error: ' + e.message, 'error');
+      }
+    } finally {
+      setLoading(false);
+      setLoginMessage('');
+    }
+  };
+
+  // ... (render) ...
+
+
+
+  // Chat Polling
+  const fetchChat = async () => {
+    try {
+      const res = await fetch('/api/chat');
+      const data = await res.json();
+      if (data.messages) {
+        setMessages(data.messages);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    if (step === 'dashboard') {
+      fetchChat();
+      const interval = setInterval(fetchChat, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [step]);
+
+  const handleChatSend = async (msg: string) => {
+    try {
+      if (msg.startsWith('/r') || msg.startsWith('/roll')) {
+        await fetch('/api/dice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ formula: msg })
+        });
+      } else {
+        await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: msg })
+        });
+      }
+      fetchChat();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRoll = async (type: string, key: string) => {
+    // Basic roll handler for dashboard if needed, or pass empty/null
+    // Only support basic dice clicks if DiceTray is used
+    try {
+      // Construct a simple formula based on type/key if possible?
+      // GlobalChat's DiceTray usually handles the formula construction internally and calls onSend?
+      // Wait, DiceTray takes onSend. GlobalChat passes onSend to DiceTray.
+      // The onRoll prop in GlobalChat is for *custom* click handlers (like skill checks).
+      // DiceTray calculates its own strings and calls onSend.
+    } catch (e) { }
+  };
 
   // Theme Logic
   const getTheme = () => {
@@ -89,7 +199,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     // try {
     //   const stored = localStorage.getItem('recent_actors');
     //   if (stored) setRecentActors(JSON.parse(stored));
-    // } catch (e) { console.error(e); }
+    // } catch (e) {console.error(e); }
 
     const checkConfig = async () => {
       try {
@@ -109,18 +219,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               setStep('setup');
               return;
             }
-
-            // Filter recent actors by system
-            const stored = localStorage.getItem('recent_actors');
-            if (stored) {
-              const allRecent = JSON.parse(stored);
-              // Strict Filter: Actor MUST have a systemId and it MUST match the current system.
-              // Legacy actors (no systemId) are discarded.
-              const filtered = allRecent.filter((r: any) => r.systemId && r.systemId === data.system.id);
-              setRecentActors(filtered);
-            }
           }
-          if (data.appVersion) setAppVersion(data.appVersion);
           if (data.users.length > 0) setSelectedUser(data.users[0].name);
 
 
@@ -191,12 +290,10 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             return;
           }
 
-          // Filter recent actors
-          const stored = localStorage.getItem('recent_actors');
-          if (stored) {
-            const allRecent = JSON.parse(stored);
-            const filtered = allRecent.filter((r: any) => r.systemId === data.system.id);
-            setRecentActors(filtered);
+          if (data.system.id === 'setup') {
+            setStep('setup');
+            setLoading(false);
+            return;
           }
         }
         if (data.users.length > 0) {
@@ -204,36 +301,16 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         }
         setStep('login');
       } else {
-        alert('Connection failed: ' + data.error);
+        addNotification('Connection failed: ' + data.error, 'error');
       }
     } catch (e) {
-      alert('Error: ' + e);
+      addNotification('Error: ' + e, 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/session/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: selectedUser, password }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStep('dashboard');
-        fetchActors();
-      } else {
-        alert('Login failed: ' + data.error);
-      }
-    } catch (e) {
-      alert('Error: ' + e);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const fetchActors = async () => {
     const res = await fetch('/api/actors');
@@ -415,7 +492,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
               <span className="text-sm font-bold opacity-80">Online</span>
-              <span className="text-sm font-bold opacity-80">Online</span>
               <button
                 onClick={async () => {
                   setLoading(true);
@@ -434,43 +510,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               </button>
             </div>
           </div>
-
-          {/* Recent Actors */}
-          {recentActors.length > 0 && (
-            <div>
-              <div className="flex justify-between items-end mb-4 opacity-70">
-                <h3 className={`text-lg ${theme.headerFont}`}>Recent Actors</h3>
-                <button
-                  onClick={() => { localStorage.removeItem('recent_actors'); setRecentActors([]); }}
-                  className="text-xs text-red-400 hover:text-red-300 underline"
-                >
-                  Clear History
-                </button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                {recentActors.map((actor: any) => (
-                  <div
-                    key={`recent-${actor.id}`}
-                    onClick={() => window.location.href = `/actors/${actor.id}`}
-                    className={`
-                                    ${theme.panelBg} p-3 rounded-lg shadow border border-transparent 
-                                    hover:border-amber-500/50 transition-all cursor-pointer group relative overflow-hidden
-                                `}
-                  >
-                    <div className="aspect-square bg-black/40 rounded mb-2 overflow-hidden">
-                      <img
-                        src={actor.img !== 'icons/svg/mystery-man.svg' ? (url + '/' + actor.img) : '/placeholder.png'}
-                        alt={actor.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                    </div>
-                    <div className={`font-bold text-sm truncate ${theme.accent}`}>{actor.name}</div>
-                    <div className="text-[10px] opacity-50 truncate">{actor.system}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* All Actors */}
           <div>
@@ -519,6 +558,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           </div>
         </div>
       )}
+
+      {/* Persistent Player List when logged in */}
+      {(step === 'dashboard') && <PlayerList />}
+
+      <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
     </main>
   );

@@ -17,7 +17,7 @@ export async function GET() {
     // Check existing connection
     if (existingClient && existingClient.isConnected) {
         try {
-            await logger.debug('Checking existing connection...');
+
             const system = await existingClient.getSystem().catch(() => null);
             // If setup, don't bother with users
             const users = (system?.id === 'setup') ? [] : await existingClient.getUsers();

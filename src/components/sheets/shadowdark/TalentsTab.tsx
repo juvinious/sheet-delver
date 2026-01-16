@@ -10,11 +10,10 @@ import {
 interface TalentsTabProps {
     actor: any;
     onRoll: (type: string, key: string, options?: any) => void;
-    onChatSend: (msg: string) => void;
     foundryUrl?: string; // Added prop
 }
 
-export default function TalentsTab({ actor, onRoll, onChatSend, foundryUrl }: TalentsTabProps) {
+export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -38,9 +37,6 @@ export default function TalentsTab({ actor, onRoll, onChatSend, foundryUrl }: Ta
             if (action === 'roll-check') {
                 const stat = rollBtn.getAttribute('data-stat');
                 if (stat) onRoll('ability', stat);
-            } else if (action === 'roll-formula') {
-                const formula = rollBtn.getAttribute('data-formula');
-                if (formula) onChatSend(`/r ${formula}`);
             }
         }
     };

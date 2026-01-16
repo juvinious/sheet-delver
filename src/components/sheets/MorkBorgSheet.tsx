@@ -58,7 +58,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
     if (!actor) return null;
 
     return (
-        <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`}>
+        <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
             {/* Global Yellow Background Force */}
             <div className="fixed inset-0 -z-50" style={{ backgroundColor: '#ffe900' }}></div>
 
@@ -99,17 +99,17 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
                             {/* Core Vitality Stats */}
                             <div className="flex gap-4 self-center md:self-auto bg-white/50 p-3 border border-black shadow-inner">
-                                <StatBlock label="HP" value={actor.computed.currentHp} max={actor.computed.maxHp} path="system.hp.value" onUpdate={onUpdate} />
-                                <StatBlock label="Omens" value={actor.computed.omens.value} max={actor.computed.omens.max} path="system.omens.value" onUpdate={onUpdate} />
-                                <StatBlock label="Powers" value={actor.computed.powers.value} max={actor.computed.powers.max} path="system.powerUses.value" onUpdate={onUpdate} />
+                                <StatBlock label="HP" value={actor.computed?.currentHp ?? 0} max={actor.computed?.maxHp ?? 1} path="system.hp.value" onUpdate={onUpdate} />
+                                <StatBlock label="Omens" value={actor.computed?.omens?.value ?? 0} max={actor.computed?.omens?.max ?? 0} path="system.omens.value" onUpdate={onUpdate} />
+                                <StatBlock label="Powers" value={actor.computed?.powers?.value ?? 0} max={actor.computed?.powers?.max ?? 0} path="system.powerUses.value" onUpdate={onUpdate} />
                             </div>
 
                             {/* Abilities Vertical Stack */}
                             <div className="flex flex-col gap-2 border-l-4 border-black pl-6 py-2">
-                                <AbilityBlock label="Strength" value={actor.computed.abilities.strength.value} path="strength" onRoll={onRoll} />
-                                <AbilityBlock label="Agility" value={actor.computed.abilities.agility.value} path="agility" onRoll={onRoll} />
-                                <AbilityBlock label="Presence" value={actor.computed.abilities.presence.value} path="presence" onRoll={onRoll} />
-                                <AbilityBlock label="Toughness" value={actor.computed.abilities.toughness.value} path="toughness" onRoll={onRoll} />
+                                <AbilityBlock label="Strength" value={actor.computed?.abilities?.strength?.value ?? 0} path="strength" onRoll={onRoll} />
+                                <AbilityBlock label="Agility" value={actor.computed?.abilities?.agility?.value ?? 0} path="agility" onRoll={onRoll} />
+                                <AbilityBlock label="Presence" value={actor.computed?.abilities?.presence?.value ?? 0} path="presence" onRoll={onRoll} />
+                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness?.value ?? 0} path="toughness" onRoll={onRoll} />
                             </div>
                         </div>
                     </header>

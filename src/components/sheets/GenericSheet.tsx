@@ -12,6 +12,7 @@ interface GenericSheetProps {
 
 export default function GenericSheet({ actor, onUpdate }: GenericSheetProps) {
     const [activeTab, setActiveTab] = useState<'system' | 'items' | 'effects'>('system');
+    const [searchTerm, setSearchTerm] = useState('');
 
     // Safe accessors
     const systemId = actor.systemId || actor.system?.details?.system || 'unknown';

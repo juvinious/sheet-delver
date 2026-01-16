@@ -13,13 +13,14 @@ export class ShadowdarkAdapter implements SystemAdapter {
             // --- SHADOWDARK ITEM PROCESSING ---
             const freeCarrySeen: Record<string, number> = {};
             // @ts-ignore
-            const items = actor.items.contents.map((i: any) => {
+            const items = (actor.items?.contents || []).map((i: any) => {
+                if (!i) return null;
                 const itemData: any = {
                     id: i.id,
                     name: i.name,
                     type: i.type,
                     img: i.img,
-                    system: i.system,
+                    system: i.system || {},
                     uuid: `Actor.${id}.Item.${i.id}`
                 };
 
@@ -72,30 +73,48 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 return itemData;
-            });
+            }).filter((i: any) => i !== null);
 
             // --- SHADOWDARK EFFECTS PROCESSING ---
-            // @ts-ignore - Use allApplicableEffects() to get effects from both actor and items
-            const effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
-                _id: e.id,
-                name: e.name,
-                img: e.img,
-                disabled: e.disabled,
-                duration: {
-                    type: e.duration.type,
-                    remaining: e.duration.remaining,
-                    label: e.duration.label,
-                    startTime: e.duration.startTime,
-                    seconds: e.duration.seconds,
-                    rounds: e.duration.rounds,
-                    turns: e.duration.turns
-                },
-                changes: e.changes,
-                origin: e.origin,
-                sourceName: e.parent?.name ?? "Unknown",
-                transfer: e.transfer,
-                statuses: Array.from(e.statuses ?? [])
-            }));
+            let effects = [];
+            try {
+                // @ts-ignore - Use allApplicableEffects() to get effects from both actor and items
+                if (typeof actor.allApplicableEffects === 'function') {
+                    // @ts-ignore
+                    effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
+                        _id: e.id,
+                        name: e.name,
+                        img: e.img,
+                        disabled: e.disabled,
+                        duration: {
+                            type: e.duration?.type,
+                            remaining: e.duration?.remaining,
+                            label: e.duration?.label,
+                            startTime: e.duration?.startTime,
+                            seconds: e.duration?.seconds,
+                            rounds: e.duration?.rounds,
+                            turns: e.duration?.turns
+                        },
+                        changes: e.changes,
+                        origin: e.origin,
+                        sourceName: e.parent?.name ?? "Unknown",
+                        transfer: e.transfer,
+                        statuses: Array.from(e.statuses ?? [])
+                    }));
+                } else if (actor.effects) {
+                    // Fallback to basic effects
+                    // @ts-ignore
+                    effects = actor.effects.contents.map((e: any) => ({
+                        _id: e.id,
+                        name: e.name,
+                        img: e.img,
+                        disabled: e.disabled,
+                        changes: e.changes
+                    }));
+                }
+            } catch (err) {
+                console.error('Error processing effects:', err);
+            }
 
             // --- DERIVED STATS ---
             const levelVal = Number(actor.system.level?.value) || 1;
@@ -107,31 +126,48 @@ export class ShadowdarkAdapter implements SystemAdapter {
             };
 
             if (actor.type === "Player") {
-                computed.ac = await actor.getArmorClass();
-                computed.gearSlots = actor.numGearSlots();
-                computed.isSpellCaster = await actor.isSpellCaster();
-                computed.canUseMagicItems = await actor.canUseMagicItems();
+                try {
+                    computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
+                } catch (err) { console.error('Error calculating AC:', err); computed.ac = 10; }
+
+                try {
+                    computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
+                } catch (err) { console.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+
+                try {
+                    computed.isSpellCaster = (typeof actor.isSpellCaster === 'function') ? await actor.isSpellCaster() : false;
+                } catch (err) { console.error('Error checking isSpellCaster:', err); computed.isSpellCaster = false; }
+
+                try {
+                    computed.canUseMagicItems = (typeof actor.canUseMagicItems === 'function') ? await actor.canUseMagicItems() : false;
+                } catch (err) { console.error('Error checking canUseMagicItems:', err); computed.canUseMagicItems = false; }
+
                 computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
-                computed.abilities = actor.getCalculatedAbilities();
+
+                try {
+                    computed.abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
+                } catch (err) { console.error('Error calculating Abilities:', err); computed.abilities = actor.system.abilities || {}; }
 
                 // Get spellcasting ability (e.g. "INT", "WIS")
                 let spellcastingAbility = "";
 
-                const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
+                try {
+                    const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
 
-                if (characterClass) {
-                    spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
-                } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
-                    try {
-                        // @ts-ignore
-                        const classItem = await fromUuid(actor.system.class);
-                        if (classItem) {
-                            spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                    if (characterClass) {
+                        spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
+                    } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
+                        try {
+                            // @ts-ignore
+                            const classItem = await fromUuid(actor.system.class);
+                            if (classItem) {
+                                spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                            }
+                        } catch (e) {
+                            // console.error("FoundryAdapter: Failed to resolve class UUID", e);
                         }
-                    } catch (e) {
-                        // console.error("FoundryAdapter: Failed to resolve class UUID", e);
                     }
-                }
+                } catch (err) { console.error('Error resolving class/spellcasting:', err); }
 
                 computed.spellcastingAbility = spellcastingAbility;
             }

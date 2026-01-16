@@ -23,7 +23,7 @@ export default function SpecialTab({ actor, onRoll }: SpecialTabProps) {
                             </div>
 
                             <div className="flex gap-4 items-start relative z-10">
-                                <img src={s.img} className="w-12 h-12 shadow-lg border border-purple-500/30" />
+                                <img src={s.img} alt={s.name} className="w-12 h-12 shadow-lg border border-purple-500/30" />
                                 <div className="flex-1">
                                     <h4 className="font-bold text-lg text-purple-100 font-serif">{s.name}</h4>
                                     <div className="text-purple-300/60 text-xs mt-1 line-clamp-2 italic">

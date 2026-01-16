@@ -24,3 +24,31 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Chat Overrides for Visibility */
+.messages-content .roll-card,
+.messages-content .dice-roll,
+.messages-content .dice-total,
+.messages-content .dice-formula,
+.messages-content .card-title,
+.messages-content .dr-modifier,
+.messages-content .roll-result {
+  color: white !important;
+  background-color: transparent !important;
+  border-color: #525252 !important; /* Zinc-600 */
+}
+
+.messages-content .roll-card .card-title {
+  border-bottom: 1px solid #525252;
+  margin-bottom: 4px;
+  font-weight: bold;
+}
+
+.messages-content .dice-total {
+  font-size: 1.25rem;
+  font-weight: bold;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  padding: 4px;
+  border-radius: 4px;
+}

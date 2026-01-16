@@ -15,13 +15,11 @@ interface InventoryTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    onChatSend: (msg: string) => void;
-    triggerRollDialog: (type: string, key: string, name?: string) => void;
     foundryUrl?: string;
     onDeleteItem?: (itemId: string) => void;
 }
 
-export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, triggerRollDialog, foundryUrl, onDeleteItem }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDeleteItem }: InventoryTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -115,23 +113,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll, onChatSend, trig
         setItemToDelete(null);
     };
 
-    const handleDescriptionClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        const target = e.target as HTMLElement;
-        const rollBtn = target.closest('button[data-action]');
 
-        if (rollBtn) {
-            e.preventDefault();
-            e.stopPropagation();
-            const action = rollBtn.getAttribute('data-action');
-            if (action === 'roll-check') {
-                const stat = rollBtn.getAttribute('data-stat');
-                if (stat) onRoll('ability', stat);
-            } else if (action === 'roll-formula') {
-                const formula = rollBtn.getAttribute('data-formula');
-                if (formula) onChatSend(`/r ${formula}`);
-            }
-        }
-    };
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
