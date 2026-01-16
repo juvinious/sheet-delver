@@ -7,7 +7,7 @@ import DiceTray from './DiceTray';
 interface DiceTrayDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    onSend: (msg: string) => void;
+    onSend?: (msg: string) => void;
 }
 
 export default function DiceTrayDialog({ isOpen, onClose, onSend }: DiceTrayDialogProps) {
@@ -46,7 +46,7 @@ export default function DiceTrayDialog({ isOpen, onClose, onSend }: DiceTrayDial
                             <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
                         </svg>
                     </button>
-                    <DiceTray onSend={(msg) => { onSend(msg); onClose(); }} variant="shadowdark" />
+                    <DiceTray onSend={(msg) => { if (onSend) onSend(msg); onClose(); }} variant="shadowdark" />
                 </div>
             </div>
         </div>

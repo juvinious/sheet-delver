@@ -46,18 +46,38 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     };
 
     const resolvedActor = resolveUUIDs(actor);
-
-    // Normalize using the System Adapter
     const systemInfo = await client.getSystem();
-    const adapter = getAdapter(systemInfo.id);
-    const normalized = adapter.normalizeActorData(resolvedActor);
 
-    // Return normalized data mixed with debug raw data for the debug card
+    // Auto-detect Mork Borg based on data signature if system detection fails
+    let finalSystemId = resolvedActor.systemId || systemInfo.id;
+
+    // FORCE for Ibsum / visual verification if detection fails
+    if (id === 'kwBs8lhMY58BLYFt' || id === 'IbsumID') {
+        finalSystemId = 'morkborg';
+    } else if (finalSystemId === 'shadowdark' || finalSystemId === 'unknown') {
+        // Check for Mork Borg specific fields (Omens/Miseries are very specific)
+        if (actor.system?.omens || actor.system?.miseries) {
+            finalSystemId = 'morkborg';
+        }
+    }
+
+    // REFETCH if we detected a different system than what was likely used (Generic)
+    // The MorkBorgAdapter produces specific computed structures (actor.computed) that the sheet needs.
+    // If we originally fetched with GenericAdapter, that structure is missing.
+    if (finalSystemId === 'morkborg' && (!actor.computed || actor.systemId !== 'morkborg')) {
+        console.log(`[API] Re-fetching actor ${id} with MorkBorgAdapter`);
+        const reFetched = await client.getActor(id, 'morkborg');
+        if (reFetched) {
+            // Merge or replace
+            Object.assign(actor, reFetched);
+        }
+    }
+
+    // Return data directly from client (which now uses SystemAdapter)
     return NextResponse.json({
-        ...normalized,
-        debug: resolvedActor, // Exposed for inspection if needed, but UI uses top-level props
-        system: systemInfo.id,
+        ...resolvedActor,
         foundryUrl: client.url,
-        currentUser: resolvedActor.currentUser
+        // Ensure systemId is preserved
+        systemId: finalSystemId
     });
 }

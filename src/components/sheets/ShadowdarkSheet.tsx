@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ChatTab from '../ChatTab';
 import RollDialog from '../RollDialog';
 import DiceTrayDialog from '../DiceTrayDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
@@ -25,9 +24,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 interface ShadowdarkSheetProps {
     actor: any;
     foundryUrl?: string;
-    messages: any[];
     onRoll: (type: string, key: string, options?: any) => void;
-    onChatSend: (msg: string) => void;
     onUpdate: (path: string, value: any) => void;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
@@ -35,7 +32,7 @@ interface ShadowdarkSheetProps {
     onCreatePredefinedEffect?: (effectKey: string) => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, onChatSend, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [diceTrayOpen, setDiceTrayOpen] = useState(false);
@@ -116,7 +113,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
     }, []);
 
 
-    const tabs = ['details', 'abilities', 'spells', 'inventory', 'talents', 'notes', 'effects', 'chat'];
+    const tabs = ['details', 'abilities', 'spells', 'inventory', 'talents', 'notes', 'effects'];
 
     return (
         <div className={`flex flex-col h-full relative pb-24 md:pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
@@ -239,7 +236,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                             actor={actor}
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
-                            onChatSend={onChatSend}
                             onRoll={onRoll}
                             foundryUrl={foundryUrl}
                         />
@@ -251,23 +247,8 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                         <TalentsTab
                             actor={actor}
                             onRoll={onRoll}
-                            onChatSend={onChatSend}
                             foundryUrl={foundryUrl}
                         />
-                    )
-                }
-
-                {
-                    activeTab === 'chat' && (
-                        <div className="h-[800px] overflow-hidden p-2">
-                            <ChatTab
-                                messages={messages}
-                                onSend={onChatSend}
-                                foundryUrl={foundryUrl}
-                                onRoll={onRoll}
-                                variant="shadowdark"
-                            />
-                        </div>
                     )
                 }
 
@@ -277,8 +258,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
                             actor={actor}
                             onUpdate={onUpdate}
                             onRoll={onRoll}
-                            onChatSend={onChatSend}
-                            triggerRollDialog={triggerRollDialog}
                             foundryUrl={foundryUrl}
                             onDeleteItem={onDeleteItem}
                         />
@@ -330,7 +309,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, messages, onRoll, o
             <DiceTrayDialog
                 isOpen={diceTrayOpen}
                 onClose={() => setDiceTrayOpen(false)}
-                onSend={onChatSend}
             />
 
             {/* Mobile Bottom Navigation */}

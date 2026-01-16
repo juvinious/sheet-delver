@@ -17,10 +17,7 @@ export async function GET() {
         const limit = config?.app.chatHistory || 25;
 
         const messages = await client.getChatLog(limit);
-        if (messages.length > 0) {
-            await logger.debug(`API/Chat Debug:`, JSON.stringify(messages[0].debug, null, 2));
-        }
-        await logger.info(`API/Chat: Limit=${limit}, Count=${messages.length}`);
+
         return NextResponse.json({ messages });
     } catch (error: any) {
         await logger.error('API/Chat Error', error);

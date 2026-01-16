@@ -17,9 +17,11 @@ export async function GET() {
     // Check existing connection
     if (existingClient && existingClient.isConnected) {
         try {
-            await logger.debug('Checking existing connection...');
-            const users = await existingClient.getUsers();
+
             const system = await existingClient.getSystem().catch(() => null);
+            // If setup, don't bother with users
+            const users = (system?.id === 'setup') ? [] : await existingClient.getUsers();
+
             return NextResponse.json({ connected: true, users, system, url: existingClient.url, appVersion });
         } catch (e) {
             await logger.warn('Existing connection check failed, trying to reconnect...');
@@ -37,12 +39,18 @@ export async function GET() {
             await client.connect();
             setClient(client);
 
-            // Auto-Login removed as per user request (foundryUser is for utility scripts only)
+            setClient(client);
 
+            // Auto-Login Removed via User Request
+            // if (config.debug.foundryUser && config.debug.foundryUser.name) { ... }
 
-            const users = await client.getUsers();
+            // Auto-Login Removed via User Request
+            // if (config.debug.foundryUser && config.debug.foundryUser.name) { ... }
+
             const system = await client.getSystem().catch(() => null);
-            return NextResponse.json({ connected: true, users, system, url: url, auto: true, appVersion });
+            const users = (system?.id === 'setup') ? [] : await client.getUsers();
+
+            return NextResponse.json({ connected: true, users, system, url: url, appVersion });
         } catch (error: any) {
             await logger.error('Auto-connect failed', error);
             return NextResponse.json({ connected: false, error: 'Auto-connect failed: ' + error.message, appVersion });

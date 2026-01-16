@@ -1,5 +1,6 @@
 <img src="logo.png" width="25%" alt="SheetDelver Logo">
 
+[![GitHub Repo](https://img.shields.io/badge/github-repo-blue?logo=github)](https://github.com/juvinious/sheet-delver)
 [![CI](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml/badge.svg)](https://github.com/juvinious/sheet-delver/actions/workflows/ci.yml)
 
 A modern, external character sheet interface for [Foundry VTT](https://foundryvtt.com/).
@@ -12,8 +13,23 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
 - **Mobile Friendly**: optimized touch targets and layout.
 
+## Supported Systems
+- **Shadowdark RPG**: Complete support (Stats, Inventory, Spells, Talents, Effects).
+- **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).
+
+## Architecture
+SheetDelver uses a multi-system architecture to support different RPGs via:
+1.  **System Adapters** (`src/lib/foundry/adapters`): Decouples backend logic from specific systems.
+2.  **Sheet Router** (`src/components/SheetRouter.tsx`): Dynamically loads the correct UI based on the actor's system.
+3.  **Generic Data**: The API normalizes data where possible while preserving system-specific structures in `system` fields.
+
+To add a new system:
+1.  Implement `SystemAdapter` for backend data processing.
+2.  Create a `[System]Sheet.tsx` component.
+3.  Register them in `client.ts` and `SheetRouter.tsx`.
+
 ## Future Roadmap
-- **System Extensibility**: Plugin architecture to easily add support for 5e, Pathfinder, and other systems.
+- **Component Library**: Generic "Base Sheet" components for rapid system development.
 - **Character Builder**: 'CharacterForge' style builder for creating new characters step-by-step.
 - **Module Integration**: Better integration with core Foundry modules.
 
