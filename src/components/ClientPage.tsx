@@ -260,8 +260,12 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       try {
         const res = await fetch('/api/session/connect');
         const data = await res.json();
-        if (data.system && data.system.id !== 'setup' && step === 'setup') {
-          window.location.reload();
+        if (data.system) {
+          // 1. Setup -> Game (Start Up)
+          if (data.system.id !== 'setup' && step === 'setup') {
+            window.location.reload();
+          }
+          // Game -> Setup logic handled by global ShutdownWatcher
         }
       } catch (e) { }
     }, 2000);
@@ -324,6 +328,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     <main
       className={`min-h-screen ${theme.bg} ${theme.text} p-8 font-sans transition-colors duration-500`}
       style={bgStyle}
+      data-step={step}
     >
 
       {/* Footer Info Box */}

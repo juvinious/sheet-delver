@@ -23,7 +23,15 @@ export default function ShutdownWatcher() {
 
         const interval = setInterval(async () => {
             // If we are on the home page, ClientPage handles the setup UI.
-            if (pathname === '/') return;
+            // If we are on the home page, we only want to trigger if we are currently "In Game" (Dashboard/Login).
+            // This prevents an infinite loop where we reload, land on Setup (not logged in), and then reload again.
+            // If we are on the home page, we check the data-step attribute.
+            // If the app is already in 'setup' or 'connect' mode, we are already handling the "No World" state.
+            // We only want to trigger if we remain in 'dashboard' or 'login' mode while the world is stopped.
+            if (pathname === '/') {
+                const currentStep = document.querySelector('main')?.getAttribute('data-step');
+                if (currentStep === 'setup' || currentStep === 'connect') return;
+            }
 
             // If already shutting down, don't keep polling
             if (shutdownRef.current) return;
