@@ -56,6 +56,10 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [messages, setMessages] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<{ id: number, message: string, type: 'info' | 'success' | 'error' }[]>([]);
 
+    // Lifted state for Universal Roller
+    const [isDiceTrayOpen, setDiceTrayOpen] = useState(false);
+    const toggleDiceTray = () => setDiceTrayOpen(prev => !prev);
+
     const notificationIdRef = useRef(0);
 
     const addNotification = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
@@ -337,6 +341,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     onDeleteEffect={handleDeleteEffect}
                     onDeleteItem={handleDeleteItem}
                     onCreatePredefinedEffect={handleCreatePredefinedEffect}
+                    onToggleDiceTray={toggleDiceTray}
                 />
             </div>
 
@@ -347,6 +352,8 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 onRoll={handleRoll}
                 foundryUrl={actor?.foundryUrl}
                 variant={actor.systemId === 'shadowdark' ? 'shadowdark' : 'default'}
+                isDiceTrayOpen={isDiceTrayOpen}
+                onToggleDiceTray={toggleDiceTray}
             />
 
             {/* Player List */}

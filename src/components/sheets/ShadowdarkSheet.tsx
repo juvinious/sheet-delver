@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import RollDialog from '../RollDialog';
-import DiceTrayDialog from '../DiceTrayDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveImage } from './shadowdark/sheet-utils';
 
@@ -30,9 +29,10 @@ interface ShadowdarkSheetProps {
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem?: (itemId: string) => void;
     onCreatePredefinedEffect?: (effectKey: string) => void;
+    onToggleDiceTray?: () => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [diceTrayOpen, setDiceTrayOpen] = useState(false);
@@ -128,7 +128,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     <div className="py-2">
                         <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {actor.items?.find((i: any) => i.type === 'Ancestry')?.name} {actor.items?.find((i: any) => i.type === 'Class')?.name} {actor.system?.level?.value ? `Level ${actor.system.level.value}` : ''}
+                            {actor.system?.ancestry} {actor.system?.class} {actor.system?.level?.value ? `Level ${actor.system.level.value}` : ''}
                         </p>
                     </div>
                 </div>
@@ -179,7 +179,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
                     {/* Dice Tray Button */}
                     <button
-                        onClick={() => setDiceTrayOpen(true)}
+                        onClick={() => onToggleDiceTray?.()}
                         className="flex flex-col items-center group -mb-1"
                         title="Open Dice Tray"
                     >
@@ -288,12 +288,14 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 }
 
                 {/* Debug Data Card */}
-                <div className="mt-20 border-t border-neutral-200 pt-4">
-                    <details className="text-xs font-mono text-neutral-400">
-                        <summary className="cursor-pointer mb-2">Debug Data</summary>
-                        <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
-                    </details>
-                </div>
+                {(actor.debugLevel ?? 0) >= 4 && (
+                    <div className="mt-20 border-t border-neutral-200 pt-4">
+                        <details className="text-xs font-mono text-neutral-400">
+                            <summary className="cursor-pointer mb-2">Debug Data</summary>
+                            <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
+                        </details>
+                    </div>
+                )}
             </div >
 
             <RollDialog
@@ -308,10 +310,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
             />
 
-            <DiceTrayDialog
-                isOpen={diceTrayOpen}
-                onClose={() => setDiceTrayOpen(false)}
-            />
+
 
             {/* Mobile Bottom Navigation */}
             <div className="md:hidden">

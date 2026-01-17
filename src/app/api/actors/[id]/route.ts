@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { getClient } from '@/lib/foundry/instance';
 import { CompendiumCache } from '@/lib/foundry/compendium-cache';
 import { getAdapter } from '@/lib/systems/factory';
+import { loadConfig } from '@/lib/config';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const client = getClient();
@@ -74,10 +75,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // Return data directly from client (which now uses SystemAdapter)
+    const config = await loadConfig();
     return NextResponse.json({
         ...resolvedActor,
         foundryUrl: client.url,
         // Ensure systemId is preserved
-        systemId: finalSystemId
+        systemId: finalSystemId,
+        debugLevel: config?.debug?.level ?? 1
     });
 }

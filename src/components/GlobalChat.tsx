@@ -15,11 +15,26 @@ interface GlobalChatProps {
     foundryUrl?: string;
     variant?: 'default' | 'shadowdark';
     hideDice?: boolean;
+    // Controlled props for Dice Tray
+    isDiceTrayOpen?: boolean;
+    onToggleDiceTray?: () => void;
 }
 
 export default function GlobalChat(props: GlobalChatProps) {
     const [isChatOpen, setIsChatOpen] = useState(false);
-    const [isDiceOpen, setIsDiceOpen] = useState(false);
+    const [isDiceOpenLocal, setIsDiceOpenLocal] = useState(false);
+
+    // Use controlled state if provided, otherwise local
+    const isDiceOpen = props.isDiceTrayOpen ?? isDiceOpenLocal;
+
+    const toggleDice = () => {
+        if (props.onToggleDiceTray) {
+            props.onToggleDiceTray();
+        } else {
+            setIsDiceOpenLocal(!isDiceOpenLocal);
+        }
+    };
+
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Click Outside Handler
@@ -28,7 +43,16 @@ export default function GlobalChat(props: GlobalChatProps) {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 // Only close if we are actually open
                 if (isChatOpen) setIsChatOpen(false);
-                if (isDiceOpen) setIsDiceOpen(false);
+
+                // Close controlled or local
+                if (isDiceOpen) {
+                    if (props.onToggleDiceTray) {
+                        // Only close if it's open
+                        if (props.isDiceTrayOpen) props.onToggleDiceTray();
+                    } else {
+                        setIsDiceOpenLocal(false);
+                    }
+                }
             }
         };
 
@@ -38,7 +62,7 @@ export default function GlobalChat(props: GlobalChatProps) {
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isChatOpen, isDiceOpen]);
+    }, [isChatOpen, isDiceOpen, props]);
 
     return (
         <div ref={containerRef} className={`fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-none ${inter.className}`}>
@@ -56,10 +80,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                     `}>
                         <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800">
                             <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">Dice Tray</span>
-                            <button onClick={() => setIsDiceOpen(false)} className="text-zinc-500 hover:text-white px-2">✕</button>
+                            <button onClick={toggleDice} className="text-zinc-500 hover:text-white px-2">✕</button>
                         </div>
                         <div>
-                            <DiceTray onSend={(msg) => { props.onSend(msg); setIsDiceOpen(false); }} variant={props.variant} />
+                            <DiceTray onSend={(msg) => { props.onSend(msg); toggleDice(); }} variant={props.variant} />
                         </div>
                     </div>
                 )}
@@ -94,7 +118,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                     <button
                         onClick={() => {
                             if (!isDiceOpen) setIsChatOpen(false);
-                            setIsDiceOpen(!isDiceOpen);
+                            toggleDice();
                         }}
                         className={`
                             h-12 w-12 rounded-full shadow-lg flex items-center justify-center
@@ -110,7 +134,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                 {/* Chat Toggle */}
                 <button
                     onClick={() => {
-                        if (!isChatOpen) setIsDiceOpen(false);
+                        if (!isChatOpen && isDiceOpen) toggleDice();
                         setIsChatOpen(!isChatOpen);
                     }}
                     className={`

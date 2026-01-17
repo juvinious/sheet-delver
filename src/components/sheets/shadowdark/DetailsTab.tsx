@@ -55,7 +55,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             {(() => {
-                                const clsVal = actor.items?.find((i: any) => i.type === 'Class')?.name;
+                                const clsVal = actor.system?.class;
                                 const clsObj = systemData?.classes?.find((c: any) => c.uuid === clsVal || c.name === clsVal);
                                 const clsName = clsObj ? clsObj.name : clsVal;
                                 const lvl = actor.system?.level?.value || 1;
@@ -74,7 +74,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2">
                             <i className="fas fa-book text-neutral-400"></i>
-                            {actor.items?.find((i: any) => i.type === 'Class')?.name || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.class || ''}
+                                onChange={(e) => onUpdate('system.class', e.target.value)}
+                                placeholder="Class"
+                            />
                         </div>
                     </div>
 
@@ -118,7 +124,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.items?.find((i: any) => i.type === 'Ancestry')?.name || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.ancestry || ''}
+                                onChange={(e) => onUpdate('system.ancestry', e.target.value)}
+                                placeholder="Ancestry"
+                            />
                         </div>
                     </div>
 
@@ -129,7 +141,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.items?.find((i: any) => i.type === 'Background')?.name || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.background || ''}
+                                onChange={(e) => onUpdate('system.background', e.target.value)}
+                                placeholder="Background"
+                            />
                         </div>
                     </div>
 
@@ -159,7 +177,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.items?.find((i: any) => i.type === 'Deity')?.name || actor.system?.deity || '-'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.deity || ''}
+                                onChange={(e) => onUpdate('system.deity', e.target.value)}
+                                placeholder="Deity"
+                            />
                         </div>
                     </div>
                 </div>
@@ -243,6 +267,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                     </div>
                 </div>
             </div>
+
         </div>
+
     );
 }
