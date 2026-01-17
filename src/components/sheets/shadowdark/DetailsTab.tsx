@@ -42,7 +42,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                 </svg>
                             ) : (
-                                <span>{actor.level?.value || 1}</span>
+                                <span>{actor.system?.level?.value || 1}</span>
                             )}
                         </div>
                     </div>
@@ -55,13 +55,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             {(() => {
-                                const clsVal = actor.details?.class;
+                                const clsVal = actor.system?.class;
                                 const clsObj = systemData?.classes?.find((c: any) => c.uuid === clsVal || c.name === clsVal);
                                 const clsName = clsObj ? clsObj.name : clsVal;
-                                const lvl = actor.level?.value || 1;
+                                const lvl = actor.system?.level?.value || 1;
                                 const sysTitle = systemData?.titles?.[clsName]?.find((t: any) => lvl >= t.from && lvl <= t.to);
-                                const alignment = (actor.details?.alignment || 'neutral').toLowerCase();
-                                return actor.details?.title || sysTitle?.[alignment] || '-';
+                                const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
+                                return actor.system?.title || sysTitle?.[alignment] || '-';
                             })()}
                         </div>
                     </div>
@@ -74,7 +74,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2">
                             <i className="fas fa-book text-neutral-400"></i>
-                            {actor.details?.class || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.class || ''}
+                                onChange={(e) => onUpdate('system.class', e.target.value)}
+                                placeholder="Class"
+                            />
                         </div>
                     </div>
 
@@ -87,7 +93,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         <div className="p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white">
                             <input
                                 type="number"
-                                defaultValue={actor.level?.xp || 0}
+                                defaultValue={actor.system?.level?.xp || 0}
                                 min={0}
                                 max={10}
                                 onBlur={(e) => {
@@ -102,12 +108,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                         e.target.value = val.toString();
                                     }
 
-                                    if (val !== actor.level?.xp) onUpdate('system.level.xp', val);
+                                    if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
                                 className="w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1"
                             />
                             <span className="text-neutral-400">/</span>
-                            <span>{actor.level?.next || 10}</span>
+                            <span>{actor.system?.level?.next || 10}</span>
                         </div>
                     </div>
 
@@ -118,7 +124,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.details?.ancestry || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.ancestry || ''}
+                                onChange={(e) => onUpdate('system.ancestry', e.target.value)}
+                                placeholder="Ancestry"
+                            />
                         </div>
                     </div>
 
@@ -129,7 +141,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.details?.background || 'Unknown'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.background || ''}
+                                onChange={(e) => onUpdate('system.background', e.target.value)}
+                                placeholder="Background"
+                            />
                         </div>
                     </div>
 
@@ -142,12 +160,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         <div className="p-2 font-serif text-lg bg-white">
                             <select
                                 className="w-full bg-transparent outline-none cursor-pointer"
-                                defaultValue={actor.details?.alignment || 'Neutral'}
-                                onChange={(e) => onUpdate('system.details.alignment', e.target.value)}
+                                defaultValue={actor.system?.alignment || 'neutral'}
+                                onChange={(e) => onUpdate('system.alignment', e.target.value)}
                             >
-                                <option value="Lawful">Lawful</option>
-                                <option value="Neutral">Neutral</option>
-                                <option value="Chaotic">Chaotic</option>
+                                <option value="lawful">Lawful</option>
+                                <option value="neutral">Neutral</option>
+                                <option value="chaotic">Chaotic</option>
                             </select>
                         </div>
                     </div>
@@ -159,7 +177,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            {actor.details?.deity || '-'}
+                            <input
+                                type="text"
+                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                value={actor.system?.deity || ''}
+                                onChange={(e) => onUpdate('system.deity', e.target.value)}
+                                placeholder="Deity"
+                            />
                         </div>
                     </div>
                 </div>
@@ -172,7 +196,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                     </div>
                     <div className="p-1 flex flex-wrap gap-2">
                         {(() => {
-                            const actorLangsRaw = actor.details?.languages || [];
+                            const actorLangsRaw = actor.system?.languages || [];
                             const resolvedLangs = actorLangsRaw.map((l: any) => {
                                 const isObj = typeof l === 'object';
                                 const val = isObj ? l.name : l;
@@ -206,7 +230,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                     );
                                 });
                         })()}
-                        {(!actor.details?.languages || actor.details.languages.length === 0) && <span className="text-neutral-500 text-sm italic">None known</span>}
+                        {(!actor.system?.languages || actor.system.languages.length === 0) && <span className="text-neutral-500 text-sm italic">None known</span>}
                     </div>
                 </div>
 
@@ -243,6 +267,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                     </div>
                 </div>
             </div>
+
         </div>
+
     );
 }

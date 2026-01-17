@@ -29,7 +29,14 @@ export default function ShutdownWatcher() {
             // If the app is already in 'setup' or 'connect' mode, we are already handling the "No World" state.
             // We only want to trigger if we remain in 'dashboard' or 'login' mode while the world is stopped.
             if (pathname === '/') {
-                const currentStep = document.querySelector('main')?.getAttribute('data-step');
+                const mainEl = document.querySelector('main');
+                const currentStep = mainEl?.getAttribute('data-step');
+                const isLoading = mainEl?.getAttribute('data-loading') === 'true';
+
+                // Prevent race conditions: If the app is busy (logging in/connecting), pause detection.
+                if (isLoading) return;
+
+                // Prevent infinite loops: If we are already in Setup/Connect, we are handling the state.
                 if (currentStep === 'setup' || currentStep === 'connect') return;
             }
 

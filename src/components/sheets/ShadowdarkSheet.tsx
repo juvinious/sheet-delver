@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import RollDialog from '../RollDialog';
-import DiceTrayDialog from '../DiceTrayDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveImage } from './shadowdark/sheet-utils';
 
@@ -30,9 +29,10 @@ interface ShadowdarkSheetProps {
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem?: (itemId: string) => void;
     onCreatePredefinedEffect?: (effectKey: string) => void;
+    onToggleDiceTray?: () => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [diceTrayOpen, setDiceTrayOpen] = useState(false);
@@ -128,33 +128,35 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     <div className="py-2">
                         <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {actor.details?.ancestry} {actor.details?.class} {actor.level?.value ? `Level ${actor.level.value}` : ''}
+                            {actor.system?.ancestry} {actor.system?.class} {actor.system?.level?.value ? `Level ${actor.system.level.value}` : ''}
                         </p>
                     </div>
                 </div>
                 {/* Stats Summary */}
                 <div className="flex gap-6 items-center pr-6">
+
                     {actor.computed?.levelUp && (
                         <span className="bg-amber-500 text-black px-3 py-1 text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50">
                             LEVEL UP!
                         </span>
                     )}
-                    {actor.hp && (
+                    {actor.system?.attributes?.hp && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
                             <div className="flex items-center gap-1 font-serif font-bold text-2xl">
                                 <input
-                                    key={actor.hp.value} // Force remount to sync when other tabs update it
+                                    key={actor.system.attributes.hp.value} // Force remount to sync when other tabs update it
                                     type="number"
-                                    defaultValue={actor.hp.value}
+                                    defaultValue={actor.system.attributes.hp.value}
                                     onBlur={(e) => {
                                         let val = parseInt(e.target.value);
+                                        const max = actor.computed?.maxHp || 1;
                                         // Enforce Max HP Cap
-                                        if (val > actor.hp.max) val = actor.hp.max;
+                                        if (val > max) val = max;
                                         // Reset input display if it was capped
                                         if (val !== parseInt(e.target.value)) e.target.value = val.toString();
 
-                                        if (val !== actor.hp.value) onUpdate('system.attributes.hp.value', val);
+                                        if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
                                     }}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
@@ -164,20 +166,20 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                     className="w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors"
                                 />
                                 <span className="opacity-50">/</span>
-                                <span>{actor.computed?.maxHp ?? actor.hp.max}</span>
+                                <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
                             </div>
                         </div>
                     )}
-                    {(actor.computed?.ac !== undefined || actor.ac !== undefined) && (
+                    {(actor.computed?.ac !== undefined) && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
-                            <span className="font-serif font-bold text-2xl">{actor.computed?.ac ?? actor.ac}</span>
+                            <span className="font-serif font-bold text-2xl">{actor.computed.ac}</span>
                         </div>
                     )}
 
                     {/* Dice Tray Button */}
                     <button
-                        onClick={() => setDiceTrayOpen(true)}
+                        onClick={() => onToggleDiceTray?.()}
                         className="flex flex-col items-center group -mb-1"
                         title="Open Dice Tray"
                     >
@@ -286,12 +288,14 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 }
 
                 {/* Debug Data Card */}
-                <div className="mt-20 border-t border-neutral-200 pt-4">
-                    <details className="text-xs font-mono text-neutral-400">
-                        <summary className="cursor-pointer mb-2">Debug Data</summary>
-                        <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
-                    </details>
-                </div>
+                {(actor.debugLevel ?? 0) >= 4 && (
+                    <div className="mt-20 border-t border-neutral-200 pt-4">
+                        <details className="text-xs font-mono text-neutral-400">
+                            <summary className="cursor-pointer mb-2">Debug Data</summary>
+                            <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
+                        </details>
+                    </div>
+                )}
             </div >
 
             <RollDialog
@@ -306,10 +310,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
             />
 
-            <DiceTrayDialog
-                isOpen={diceTrayOpen}
-                onClose={() => setDiceTrayOpen(false)}
-            />
+
 
             {/* Mobile Bottom Navigation */}
             <div className="md:hidden">

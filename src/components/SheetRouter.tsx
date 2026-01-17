@@ -13,6 +13,7 @@ interface SheetRouterProps {
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem: (itemId: string) => void;
     onCreatePredefinedEffect: (effectKey: string) => void;
+    onToggleDiceTray?: () => void;
 }
 
 export default function SheetRouter(props: SheetRouterProps) {

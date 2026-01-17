@@ -18,7 +18,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
             <div className="md:col-span-1 flex flex-col gap-4 overflow-y-auto pr-2 pb-20">
 
                 {/* HP Box */}
-                {actor.hp && (
+                {actor.system?.attributes?.hp && (
                     <div className={cardStyle}>
                         <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 flex justify-between items-center px-2 border-b border-white">
                             <span className="font-serif font-bold text-lg">HP</span>
@@ -26,20 +26,21 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         </div>
                         <div className="flex justify-center items-baseline gap-2 font-serif text-3xl font-bold pt-2">
                             <input
-                                key={actor.hp.value}
+                                key={actor.system.attributes.hp.value}
                                 type="number"
-                                defaultValue={actor.hp.value}
+                                defaultValue={actor.system.attributes.hp.value}
                                 onBlur={(e) => {
                                     let val = parseInt(e.target.value);
-                                    if (val > actor.hp.max) val = actor.hp.max;
+                                    const max = actor.computed?.maxHp || 1;
+                                    if (val > max) val = max;
                                     if (val !== parseInt(e.target.value)) e.target.value = val.toString();
-                                    if (val !== actor.hp.value) onUpdate('system.attributes.hp.value', val);
+                                    if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
                                 }}
                                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                 className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none"
                             />
                             <span className="text-neutral-400 text-xl font-sans font-light">/</span>
-                            <span>{actor.computed?.maxHp ?? actor.hp.max}</span>
+                            <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
                         </div>
                     </div>
                 )}
@@ -53,7 +54,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                             <img src="/icons/shield.svg" className="w-4 h-4 invert opacity-50" alt="" />
                         </div>
                         <div className="text-center font-serif text-3xl font-bold py-2">
-                            {actor.computed?.ac ?? actor.ac ?? 10}
+                            {actor.computed?.ac ?? actor.system?.attributes?.ac?.value ?? 10}
                         </div>
                     </div>
                     {/* Luck */}
@@ -63,10 +64,10 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         </div>
                         <div className="flex justify-center py-2 h-full items-center">
                             <button
-                                onClick={() => onUpdate('system.luck.available', !actor.luck?.available)}
+                                onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
                                 className={`w-8 h-8 rounded border-2 border-black shadow-sm flex items-center justify-center transition-all bg-white hover:bg-neutral-100`}
                             >
-                                {actor.luck?.available && (
+                                {actor.system?.luck?.available && (
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" className="w-5 h-5 text-black">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                                     </svg>
@@ -77,10 +78,10 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                 </div>
 
                 {/* XP Progress */}
-                {actor.level && (
+                {actor.system?.level && (
                     <div className={cardStyle}>
                         <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 flex justify-between items-center border-b border-white">
-                            <span className="font-serif font-bold text-lg">LEVEL {actor.level.value}</span>
+                            <span className="font-serif font-bold text-lg">LEVEL {actor.system.level.value}</span>
                             {actor.computed?.levelUp && (
                                 <span className="bg-amber-500 text-black px-2 py-0.5 text-xs font-bold rounded animate-pulse">
                                     LEVEL UP!
@@ -91,14 +92,14 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                             <div className="flex justify-between text-sm mb-1">
                                 <span className="text-neutral-600">XP Progress</span>
                                 <span className="font-bold">
-                                    {actor.level.xp ?? 0} / {actor.computed?.xpNextLevel ?? (actor.level.value * 10)}
+                                    {actor.system.level.xp ?? 0} / {actor.computed?.xpNextLevel ?? (actor.system.level.value * 10)}
                                 </span>
                             </div>
                             <div className="w-full bg-neutral-200 rounded-full h-2 overflow-hidden">
                                 <div
                                     className="bg-black h-full transition-all duration-300"
                                     style={{
-                                        width: `${Math.min(100, ((actor.level.xp ?? 0) / (actor.computed?.xpNextLevel ?? (actor.level.value * 10))) * 100)}%`
+                                        width: `${Math.min(100, ((actor.system.level.xp ?? 0) / (actor.computed?.xpNextLevel ?? (actor.system.level.value * 10))) * 100)}%`
                                     }}
                                 />
                             </div>
@@ -113,7 +114,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <button className="text-neutral-400 hover:text-white"><i className="fas fa-pen text-xs"></i></button>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                        {Object.entries(actor.stats || {}).map(([key, stat]: [string, any]) => (
+                        {Object.entries(actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
                             <div key={key}
                                 className="flex flex-col items-center bg-neutral-100 border-2 border-neutral-300 rounded cursor-pointer transition-all hover:border-black hover:bg-white hover:scale-105 active:scale-95 group overflow-hidden"
                                 onClick={() => triggerRollDialog('ability', key)}>
@@ -146,8 +147,9 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                             .sort((a: any, b: any) => a.name.localeCompare(b.name))
                             .map((item: any) => {
                                 const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase() === 'finesse');
-                                const strMod = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
-                                const dexMod = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
+                                const abilities = actor.computed?.abilities || actor.system?.abilities || {};
+                                const strMod = abilities.STR?.mod ?? abilities.str?.mod ?? 0;
+                                const dexMod = abilities.DEX?.mod ?? abilities.dex?.mod ?? 0;
                                 const bonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + (item.system?.bonuses?.attackBonus || 0);
                                 const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
 
@@ -195,7 +197,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         {(actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.equipped && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far' || (i.system?.type === 'melee' && i.system?.properties?.some((p: any) => p === 'thrown')))) || [])
                             .sort((a: any, b: any) => a.name.localeCompare(b.name))
                             .map((item: any) => {
-                                const dexMod = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
+                                const abilities = actor.computed?.abilities || actor.system?.abilities || {};
+                                const dexMod = abilities.DEX?.mod ?? abilities.dex?.mod ?? 0;
                                 const bonus = dexMod + (item.system?.bonuses?.attackBonus || 0);
                                 const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
 

@@ -226,7 +226,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                             <label className="font-bold text-amber-600 font-serif">GP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.coins?.gp || 0}
+                                defaultValue={actor.system?.coins?.gp || 0}
                                 onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value))}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
                             />
@@ -235,7 +235,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                             <label className="font-bold text-neutral-500 font-serif">SP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.coins?.sp || 0}
+                                defaultValue={actor.system?.coins?.sp || 0}
                                 onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value))}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
                             />
@@ -244,7 +244,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                             <label className="font-bold text-orange-700 font-serif">CP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.coins?.cp || 0}
+                                defaultValue={actor.system?.coins?.cp || 0}
                                 onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value))}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
                             />

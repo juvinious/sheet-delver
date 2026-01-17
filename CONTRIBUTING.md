@@ -60,6 +60,14 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
   - `shadowdark/`: Modules for the Shadowdark RPG sheet (Inventory, Spells, etc.).
 - `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
 
+## Module Architecture & Isolation
+
+To maintain a stable and maintainable codebase, we strictly enforce **Module Isolation**.
+
+*   **Core vs. Modules**: The core application (`src/lib/foundry`, `src/components/ClientPage.tsx`, `src/app/*`) provides the infrastructure. Sheet Modules (`src/components/sheets/[system]/*`) are self-contained plugins that consume data.
+*   **The Golden Rule**: When working on a Sheet Module (e.g., Shadowdark), you **MUST NOT** modify core application files to fix a module-specific issue.
+*   **Data Flow**: Modules should adapt to the data structure provided by the `SystemAdapter`. If the data is missing, update the Adapter (if you are extending the system capability), but **never** change the core client logic to accommodate a view layer quirk.
+
 ## Development Workflow
 
 1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files in `src/components/sheets/[system]/`.
