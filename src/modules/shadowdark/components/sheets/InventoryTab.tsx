@@ -99,6 +99,8 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
             <div className="lg:col-span-2 space-y-6">
 
                 {/* Equipped Gear Section */}
+
+                {/* Equipped Gear Section */}
                 <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <div className="bg-black text-white p-2 font-bold font-serif uppercase tracking-widest text-sm mb-1">
                         Equipped Gear

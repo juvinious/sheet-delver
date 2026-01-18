@@ -5,7 +5,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
 
     async getActor(client: any, actorId: string): Promise<any> {
-        return await client.evaluate(async (id: string) => {
+        const actorData = await client.evaluate(async (id: string) => {
             // @ts-ignore
             const actor = window.game.actors.get(id);
             if (!actor) return null;
@@ -182,6 +182,17 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 systemConfig: window.game.shadowdark?.config || {}
             };
         }, actorId);
+
+        if (actorData) {
+            const abilities = actorData.system.abilities || actorData.system.stats || {};
+            const derived = {
+                ...this.calculateAttacks(actorData, abilities),
+                ...this.categorizeInventory(actorData, abilities)
+            };
+            actorData.derived = derived;
+        }
+
+        return actorData;
     }
 
     async getSystemData(client: any): Promise<any> {
@@ -388,9 +399,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // Stashed items do NOT count towards slots.
             } else {
                 // Carried (Not Equipped, Not Stashed)
-                // Filter out non-tangible items like Class/Talent/Spell/Effect
-                const tangibleTypes = ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand', 'Gem', 'Treasure'];
-                if (tangibleTypes.includes(type)) {
+                // Filter out non-tangible items explicitly
+                const excludedTypes = ['Class', 'Ancestry', 'Background', 'Language', 'Talent', 'Spell', 'Effect', 'Deity', 'Title', 'Feature', 'Boon'];
+                // Check if type is excluded (case-insensitive just in case)
+                const isExcluded = excludedTypes.some(t => t.toLowerCase() === type.toLowerCase());
+
+                if (!isExcluded) {
                     carried.push({ ...item, derived: { ...item.derived, slots } });
                     totalSlots += slots;
                 }
