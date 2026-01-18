@@ -1,4 +1,8 @@
 
+// Re-export shared logic from lib
+import { calculateItemSlots, calculateMaxSlots } from '../rules';
+export { calculateItemSlots, calculateMaxSlots };
+
 export const resolveImage = (path: string, foundryUrl?: string) => {
     if (!path) return '/placeholder.png';
     if (path.startsWith('http') || path.startsWith('data:')) return path;
@@ -9,42 +13,6 @@ export const resolveImage = (path: string, foundryUrl?: string) => {
         return `${cleanUrl}${cleanPath}`;
     }
     return path;
-};
-
-export const calculateItemSlots = (item: any) => {
-    const s = item.system?.slots;
-    if (!s) return 0;
-
-    // Handle simple number case
-    if (typeof s !== 'object') {
-        return Number(s) * (Number(item.system?.quantity) || 1);
-    }
-
-    const quantity = Number(item.system?.quantity) || 0;
-    const perSlot = Number(s.per_slot) || 1;
-    const slotsUsed = Number(s.slots_used) || 0;
-    const freeCarry = Number(s.free_carry) || 0;
-
-    const rawCost = Math.ceil(quantity / perSlot) * slotsUsed;
-    return Math.max(0, rawCost - freeCarry);
-};
-
-export const calculateMaxSlots = (actor: any) => {
-    // 1. Base slots = Max(10, STR Score)
-    // Check both 'str' and 'STR' just in case, and check .value (score) vs .mod
-    const strObj = actor.stats?.str || actor.stats?.STR || actor.attributes?.str || actor.attributes?.STR;
-    const strScore = Number(strObj?.value) || 10;
-    const base = Math.max(10, strScore);
-
-    // 2. Hauler Talent: Add CON mod slots
-    const hauler = actor.items?.find((i: any) => i.type === 'Talent' && i.name.toLowerCase() === 'hauler');
-    let bonus = 0;
-    if (hauler) {
-        const conObj = actor.stats?.con || actor.stats?.CON || actor.attributes?.con || actor.attributes?.CON;
-        bonus = Number(conObj?.mod) || 0;
-    }
-
-    return base + bonus;
 };
 
 export const getSafeDescription = (system: any) => {
@@ -69,7 +37,7 @@ export const formatDescription = (desc: any) => {
 
     // 2. Inline Rolls: [[/r 1d8]] or [[/roll 1d8]]
     fixed = fixed.replace(/\[\[(.*?)\]\]/g, (match, content) => {
-        let cleanContent = content.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/<[^>]*>/g, '');
+        const cleanContent = content.replace(/<[^>]*>?/gm, '').replace(/&amp;/g, '&').replace(/<[^>]*>/g, '');
         const lower = cleanContent.toLowerCase().trim();
 
         const checkMatch = lower.match(/^check\s+(\d+)\s+(\w+)$/);

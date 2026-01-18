@@ -1,19 +1,19 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import RollDialog from '../RollDialog';
+import RollDialog from '@/components/RollDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage } from './shadowdark/sheet-utils';
+import { resolveImage } from './sheet-utils';
 
 // Sub-components
-import InventoryTab from './shadowdark/InventoryTab';
-import SpellsTab from './shadowdark/SpellsTab';
-import TalentsTab from './shadowdark/TalentsTab';
-import AbilitiesTab from './shadowdark/AbilitiesTab';
-import DetailsTab from './shadowdark/DetailsTab';
-import EffectsTab from './shadowdark/EffectsTab';
-import NotesTab from './shadowdark/NotesTab';
-import BottomNavigation from './shadowdark/BottomNavigation';
+import InventoryTab from './InventoryTab';
+import SpellsTab from './SpellsTab';
+import TalentsTab from './TalentsTab';
+import AbilitiesTab from './AbilitiesTab';
+import DetailsTab from './DetailsTab';
+import EffectsTab from './EffectsTab';
+import NotesTab from './NotesTab';
+import BottomNavigation from './BottomNavigation';
 
 // Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
@@ -35,7 +35,6 @@ interface ShadowdarkSheetProps {
 export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
-    const [diceTrayOpen, setDiceTrayOpen] = useState(false);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -54,7 +53,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const triggerRollDialog = (type: string, key: string, name?: string) => {
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
-        let defaults: any = {};
+        const defaults: any = {};
 
         if (type === 'ability') {
             dialogType = 'ability';

@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
 import { Inter } from 'next/font/google';
 import { LayoutGrid, Package, Sparkles, AlertCircle, Search } from 'lucide-react';
 

@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 
 interface EquipmentTabProps {
@@ -6,7 +8,7 @@ interface EquipmentTabProps {
     onDeleteItem: (itemId: string) => void;
 }
 
-export default function EquipmentTab({ actor, onUpdate, onDeleteItem }: EquipmentTabProps) {
+export default function EquipmentTab({ actor, onUpdate: _onUpdate, onDeleteItem }: EquipmentTabProps) {
     // Flatten all items except Scrolls/Abilities which go in Special
     // Just show everything here for "Stuff" management if needed, but per tab rules:
     // "Equipment" = Treasures/Items?

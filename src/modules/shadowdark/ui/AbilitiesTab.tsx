@@ -143,46 +143,35 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <span className="font-serif font-bold text-lg uppercase">Melee Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {(actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.type === 'melee' && i.system?.equipped) || [])
-                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                            .map((item: any) => {
-                                const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase() === 'finesse');
-                                const abilities = actor.computed?.abilities || actor.system?.abilities || {};
-                                const strMod = abilities.STR?.mod ?? abilities.str?.mod ?? 0;
-                                const dexMod = abilities.DEX?.mod ?? abilities.dex?.mod ?? 0;
-                                const bonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + (item.system?.bonuses?.attackBonus || 0);
-                                const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
-
-                                return (
-                                    <div
-                                        key={item.id}
-                                        onClick={() => triggerRollDialog('item', item.id)}
-                                        className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
-                                    >
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                                <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                                    {item.system?.damage?.twoHanded ? '(2H)' : '(1H)'}
-                                                </span>
-                                            </div>
-                                            <div className="text-sm text-neutral-700 font-sans mt-1">
-                                                <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
-                                                {item.system?.properties?.length > 0 && <span className="text-neutral-400 text-xs ml-2 italic">({item.system.properties.length} props)</span>}
-                                            </div>
-                                        </div>
-                                        <button
-                                            className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
-                                        >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
-                                                <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
-                                                <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
-                                            </svg>
-                                        </button>
+                        {(actor.derived?.attacks?.melee || []).map((item: any) => (
+                            <div
+                                key={item.id}
+                                onClick={() => triggerRollDialog('item', item.id)}
+                                className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
+                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                                            {item.system?.damage?.twoHanded ? '(2H)' : '(1H)'}
+                                        </span>
                                     </div>
-                                );
-                            })}
-                        {!actor.items?.some((i: any) => i.type === 'Weapon' && i.system?.type === 'melee' && i.system?.equipped) && (
+                                    <div className="text-sm text-neutral-700 font-sans mt-1">
+                                        <span className="font-bold">{item.derived?.toHit}</span> to hit, <span className="font-bold">{item.derived?.damage}</span> dmg
+                                        {item.system?.properties?.length > 0 && <span className="text-neutral-400 text-xs ml-2 italic">({item.system.properties.length} props)</span>}
+                                    </div>
+                                </div>
+                                <button
+                                    className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
+                                        <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
+                                        <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
+                                    </svg>
+                                </button>
+                            </div>
+                        ))}
+                        {(!actor.derived?.attacks?.melee || actor.derived.attacks.melee.length === 0) && (
                             <div className="text-neutral-400 text-sm italic text-center py-2">No melee weapons equipped.</div>
                         )}
                     </div>
@@ -194,43 +183,34 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <span className="font-serif font-bold text-lg uppercase">Ranged Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {(actor.items?.filter((i: any) => i.type === 'Weapon' && i.system?.equipped && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far' || (i.system?.type === 'melee' && i.system?.properties?.some((p: any) => p === 'thrown')))) || [])
-                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                            .map((item: any) => {
-                                const abilities = actor.computed?.abilities || actor.system?.abilities || {};
-                                const dexMod = abilities.DEX?.mod ?? abilities.dex?.mod ?? 0;
-                                const bonus = dexMod + (item.system?.bonuses?.attackBonus || 0);
-                                const signedBonus = bonus >= 0 ? `+${bonus}` : bonus;
-
-                                return (
-                                    <div
-                                        key={item.id}
-                                        onClick={() => triggerRollDialog('item', item.id)}
-                                        className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
-                                    >
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                                <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                                    ({item.system?.range})
-                                                </span>
-                                            </div>
-                                            <div className="text-sm text-neutral-700 font-sans mt-1">
-                                                <span className="font-bold">{signedBonus}</span> to hit, <span className="font-bold">{item.system?.damage?.numDice || 1}{item.system?.damage?.oneHanded || 'd4'}</span> dmg
-                                            </div>
-                                        </div>
-                                        <button
-                                            className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
-                                        >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
-                                                <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
-                                                <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
-                                            </svg>
-                                        </button>
+                        {(actor.derived?.attacks?.ranged || []).map((item: any) => (
+                            <div
+                                key={item.id}
+                                onClick={() => triggerRollDialog('item', item.id)}
+                                className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
+                            >
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
+                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                                            ({item.derived?.range ? item.derived.range.charAt(0).toUpperCase() + item.derived.range.slice(1) : '-'})
+                                        </span>
                                     </div>
-                                );
-                            })}
-                        {!actor.items?.some((i: any) => i.type === 'Weapon' && i.system?.equipped && (i.system?.type === 'ranged' || i.system?.range === 'near' || i.system?.range === 'far' || (i.system?.type === 'melee' && i.system?.properties?.some((p: any) => p === 'thrown')))) && (
+                                    <div className="text-sm text-neutral-700 font-sans mt-1">
+                                        <span className="font-bold">{item.derived?.toHit}</span> to hit, <span className="font-bold">{item.derived?.damage}</span> dmg
+                                    </div>
+                                </div>
+                                <button
+                                    className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
+                                >
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white">
+                                        <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
+                                        <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
+                                    </svg>
+                                </button>
+                            </div>
+                        ))}
+                        {(!actor.derived?.attacks?.ranged || actor.derived.attacks.ranged.length === 0) && (
                             <div className="text-neutral-400 text-sm italic text-center py-2">No ranged weapons equipped.</div>
                         )}
                     </div>

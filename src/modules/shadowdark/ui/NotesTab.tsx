@@ -1,6 +1,6 @@
 'use client';
 
-import RichTextEditor from '../../RichTextEditor';
+import RichTextEditor from '@/components/RichTextEditor';
 
 interface NotesTabProps {
     actor: any;
@@ -16,7 +16,7 @@ export default function NotesTab({ actor, onUpdate }: NotesTabProps) {
     const updatePath = 'system.notes';
 
     return (
-        <div className="h-full flex flex-col gap-4">
+        <div className="h-full flex flex-col gap-4 pb-20">
             {/* Header matching Talents Tab */}
             <div className="bg-black text-white p-2 font-serif font-bold text-xl uppercase tracking-wider flex justify-between items-center shadow-md">
                 <span>Character Notes</span>

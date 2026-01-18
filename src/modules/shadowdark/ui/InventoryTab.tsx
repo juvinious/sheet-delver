@@ -1,15 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SHADOWDARK_EQUIPMENT } from '@/lib/systems/shadowdark-data';
+import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
     resolveImage,
     calculateItemSlots,
     calculateMaxSlots,
-    formatDescription,
-    getSafeDescription
+    getSafeDescription,
+    formatDescription
 } from './sheet-utils';
-import { ConfirmationModal } from '../../ui/ConfirmationModal';
+import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
+import { useOptimisticOverrides } from '@/hooks/useOptimisticOverrides';
 
 interface InventoryTabProps {
     actor: any;
@@ -19,7 +20,7 @@ interface InventoryTabProps {
     onDeleteItem?: (itemId: string) => void;
 }
 
-export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDeleteItem }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl }: InventoryTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -35,28 +36,24 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
     // Confirm Delete State
     const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-    // Optimistic Overrides State
-    // Map of itemId -> object of overrides
-    const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
+    // Use the generic hook for optimistic updates
+    const { applyOverrides, setOptimistic } = useOptimisticOverrides();
 
-    // Derived Items List with Overrides applied
-    const displayedItems = (actor.items?.map((item: any) => {
-        const override = optimisticOverrides[item.id];
-        if (!override) return item;
+    // Helper to apply optimistic overrides to a list of items
+    // This function is now provided by useOptimisticOverrides
 
-        // Deep merge logic for 'system'
-        return {
-            ...item,
-            system: {
-                ...item.system,
-                ...override.system, // Merge first level system properties (equipped, stashed, quantity)
-                light: {
-                    ...item.system?.light,
-                    ...(override.system?.light || {})
-                }
-            }
-        };
-    }) || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const equippedItems = applyOverrides(actor.derived?.inventory?.equipped || []);
+    const carriedItems = applyOverrides(actor.derived?.inventory?.carried || []);
+    const stashedItems = applyOverrides(actor.derived?.inventory?.stashed || []);
+
+    // We rely on the adapter for max slots, but we must re-calculate CURRENT usage based on optimistic updates
+    // The adapter gives us 'slots.current', but that doesn't account for local optimistic changes.
+    // So we should re-sum the slots from our *optimistic* lists.
+    // Re-use calculateItemSlots from sheet-utils because it's available and correct.
+
+    const calculateTotal = (list: any[]) => list.reduce((acc, i) => acc + calculateItemSlots(i), 0);
+    const currentSlots = calculateTotal(equippedItems) + calculateTotal(carriedItems); // Stashed don't count
+    const maxSlots = actor.derived?.inventory?.slots?.max || calculateMaxSlots(actor);
 
     const handleOptimisticUpdate = (path: string, value: any) => {
         // Parse path: "items.<id>.system.<prop>"
@@ -65,35 +62,16 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
         const parts = path.split('.');
         if (parts[0] === 'items' && parts[2] === 'system') {
             const itemId = parts[1];
-            const prop = parts[3]; // equipped, stashed, quantity, light
+            // Extract the prop name relative to system.
+            // e.g. "equipped" or "light.active"
+            // parts[3] is the first prop.
 
-            setOptimisticOverrides(prev => {
-                const itemOverrides = prev[itemId] || { system: {} };
+            let prop = parts[3];
+            if (prop === 'light' && parts[4] === 'active') {
+                prop = 'light.active';
+            }
 
-                if (prop === 'light' && parts[4] === 'active') {
-                    // Handle light.active
-                    return {
-                        ...prev,
-                        [itemId]: {
-                            system: {
-                                ...itemOverrides.system,
-                                light: { ...(itemOverrides.system?.light || {}), active: value }
-                            }
-                        }
-                    };
-                }
-
-                // Handle top-level system props
-                return {
-                    ...prev,
-                    [itemId]: {
-                        system: {
-                            ...itemOverrides.system,
-                            [prop]: value
-                        }
-                    }
-                };
-            });
+            setOptimistic(itemId, prop, value);
         }
 
         // Call actual update
@@ -116,9 +94,11 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
 
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Main Inventory: Equipped, Carried, Stashed (Col 1 & 2) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-20">
+            {/* MainInventory: Equipped, Carried, Stashed (Col 1 & 2) */}
             <div className="lg:col-span-2 space-y-6">
+
+                {/* Equipped Gear Section */}
 
                 {/* Equipped Gear Section */}
                 <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -132,10 +112,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {displayedItems.filter((i: any) => i.system?.equipped).map((item: any) => (
+                        {equippedItems.map((item: any) => (
                             <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
                         ))}
-                        {(!displayedItems.some((i: any) => i.system?.equipped)) && (
+                        {(equippedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
                         )}
                     </div>
@@ -153,10 +133,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {displayedItems.filter((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map((item: any) => (
+                        {carriedItems.map((item: any) => (
                             <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
                         ))}
-                        {(!displayedItems.some((i: any) => !i.system?.equipped && !i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
+                        {(carriedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
                         )}
                     </div>
@@ -174,10 +154,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {displayedItems.filter((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type)).map((item: any) => (
+                        {stashedItems.map((item: any) => (
                             <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
                         ))}
-                        {(!displayedItems.some((i: any) => i.system?.stashed && ['Weapon', 'Armor', 'Basic', 'Potion', 'Scroll', 'Wand'].includes(i.type))) && (
+                        {(stashedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>
                         )}
                     </div>
@@ -192,23 +172,21 @@ export default function InventoryTab({ actor, onUpdate, onRoll, foundryUrl, onDe
                     <h3 className="font-serif font-bold text-lg border-b-2 border-black pb-1 mb-3 uppercase tracking-wide">Slots</h3>
                     <div className="flex justify-between items-baseline mb-3">
                         <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Total</span>
-                        <span className={`text-3xl font-serif font-black ${(displayedItems.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => acc + calculateItemSlots(i), 0) > (actor.computed?.gearSlots ?? calculateMaxSlots(actor))) ? 'text-red-600' : ''}`}>
-                            {displayedItems.filter((i: any) => !i.system?.stashed).reduce((acc: number, i: any) => {
-                                return acc + calculateItemSlots(i);
-                            }, 0)} / {actor.computed?.gearSlots ?? calculateMaxSlots(actor)}
+                        <span className={`text-3xl font-serif font-black ${(currentSlots > maxSlots) ? 'text-red-600' : ''}`}>
+                            {currentSlots} / {maxSlots}
                         </span>
                     </div>
                     <hr className="border-neutral-300 mb-3" />
                     <div className="space-y-1 font-serif text-sm">
                         <div className="flex justify-between">
                             <span>Gear</span>
-                            <span className="font-bold">{displayedItems.filter((i: any) => i.type !== 'Gem' && i.type !== 'Treasure' && !i.system?.stashed).reduce((acc: number, i: any) => {
+                            <span className="font-bold">{[...equippedItems, ...carriedItems].filter((i: any) => i.type !== 'Gem' && i.type !== 'Treasure').reduce((acc: number, i: any) => {
                                 return acc + calculateItemSlots(i);
                             }, 0)}</span>
                         </div>
                         <div className="flex justify-between text-neutral-500">
                             <span>Treasure (Free)</span>
-                            <span className="font-bold">{displayedItems.filter((i: any) => (i.type === 'Gem' || i.type === 'Treasure') && !i.system?.stashed).reduce((acc: number, i: any) => {
+                            <span className="font-bold">{[...equippedItems, ...carriedItems].filter((i: any) => i.type === 'Gem' || i.type === 'Treasure').reduce((acc: number, i: any) => {
                                 return acc + calculateItemSlots(i);
                             }, 0)}</span>
                         </div>

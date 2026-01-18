@@ -1,7 +1,34 @@
-import { SystemAdapter, ActorSheetData } from './types';
+import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 
 export class DnD5eAdapter implements SystemAdapter {
     systemId = 'dnd5e';
+
+    async getActor(client: any, actorId: string): Promise<any> {
+        // Basic implementation for now
+        return await client.evaluate((id: string) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(id);
+            if (!actor) return null;
+            return {
+                id: actor.id,
+                name: actor.name,
+                type: actor.type,
+                img: actor.img,
+                system: actor.system,
+                items: actor.items.contents.map((i: any) => ({
+                    id: i.id,
+                    name: i.name,
+                    type: i.type,
+                    img: i.img,
+                    system: i.system
+                })),
+                effects: [],
+                computed: {}
+            };
+        }, actorId);
+    }
+
+    async getSystemData(): Promise<any> { return {}; }
 
     normalizeActorData(actor: any): ActorSheetData {
         const s = actor.system;
@@ -24,7 +51,7 @@ export class DnD5eAdapter implements SystemAdapter {
         };
     }
 
-    getRollData(actor: any, type: string, key: string): { formula: string; type: string; label: string } | null {
+    getRollData(actor: any, type: string, key: string, _options: any = {}): { formula: string; type: string; label: string } | null {
         if (type === 'ability') {
             const abilities = actor.system.abilities;
             if (abilities && abilities[key]) {

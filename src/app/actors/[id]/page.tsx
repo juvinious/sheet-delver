@@ -335,6 +335,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     systemId={actor.systemId || 'generic'}
                     actor={actor}
                     foundryUrl={actor?.foundryUrl}
+                    isOwner={actor?.isOwner ?? true}
                     onRoll={handleRoll}
                     onUpdate={handleUpdate}
                     onToggleEffect={handleToggleEffect}

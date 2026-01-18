@@ -1,9 +1,11 @@
+'use client';
+
 import React, { useState } from 'react';
 import { IM_Fell_Double_Pica, Inter } from 'next/font/google';
-import BackgroundTab from './morkborg/BackgroundTab';
-import EquipmentTab from './morkborg/EquipmentTab';
-import ViolenceTab from './morkborg/ViolenceTab';
-import SpecialTab from './morkborg/SpecialTab';
+import BackgroundTab from './BackgroundTab';
+import EquipmentTab from './EquipmentTab';
+import ViolenceTab from './ViolenceTab';
+import SpecialTab from './SpecialTab';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 const inter = Inter({ subsets: ['latin'] });

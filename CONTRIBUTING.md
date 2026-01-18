@@ -26,25 +26,24 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
     Create a `settings.yaml` file in the root directory. This file is ignored by git.
     ```yaml
     # settings.yaml
-    host: localhost
-    port: 30000
-    protocol: http
-    # Actual Foundry instance
+    app:
+        host: localhost      # Hostname for the SheetDelver application
+        port: 3000           # Port for SheetDelver to listen on
+        protocol: http       # Protocol for SheetDelver (http/https)
+        chat-history: 100    # Max number of chat messages to retain/display
+    
     foundry:
-        host: http://foundryserver.local
-        port: 80
-        protocol: http
-    config:
-        debug:
-            # Enable or disable debug logging
-            debug: true # runs browser in headful mode for debugging
-            # 0 = None, 1 = Error, 2 = Warning, 3 = Info, 4 = Debug
-            level: 4
-            # Replace with user that is game master or assistant game master in Foundry
-            foundryUser:
-                name: foundrygm
-                password: foundry
-        chat-history: 100 # How much of the chat history to show in the application
+        host: foundryserver.local # Hostname of your Foundry VTT instance
+        port: 30000               # Port of your Foundry VTT instance
+        protocol: http            # Protocol (http/https)
+    
+    debug:
+        enabled: true        # Run browser in headful mode (visible) for debugging
+        level: 4             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
+        # Optional: Auto-login credentials for development
+        foundryUser:
+            name: gamemaster # Foundry Username
+            password: password # Foundry Password
     ```
 
 4.  **Run the development server:**
@@ -56,23 +55,105 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
 ## Project Structure
 
 - `src/lib/foundry`: Core logic for `FoundryClient` (Playwright automation).
-- `src/components/sheets`: Character sheet components.
-  - `shadowdark/`: Modules for the Shadowdark RPG sheet (Inventory, Spells, etc.).
+- `src/modules`: Vertical slices for each supported system.
+  - `core/`: Core interfaces and registry (`SystemAdapter`, `ModuleManifest`).
+  - `<system_id>/`: Self-contained system module.
+    - `index.ts`: Module manifest export.
+    - `info.json`: Metadata.
+    - `adapter.ts`: System logic and data implementation.
+    - `ui/`: React components for the sheet.
 - `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
 
-## Module Architecture & Isolation
+## Module Architecture & Vertical Slices
 
-To maintain a stable and maintainable codebase, we strictly enforce **Module Isolation**.
+To maintain a scalable codebase, we use a **Vertical Slice** architecture for systems.
 
-*   **Core vs. Modules**: The core application (`src/lib/foundry`, `src/components/ClientPage.tsx`, `src/app/*`) provides the infrastructure. Sheet Modules (`src/components/sheets/[system]/*`) are self-contained plugins that consume data.
-*   **The Golden Rule**: When working on a Sheet Module (e.g., Shadowdark), you **MUST NOT** modify core application files to fix a module-specific issue.
-*   **Data Flow**: Modules should adapt to the data structure provided by the `SystemAdapter`. If the data is missing, update the Adapter (if you are extending the system capability), but **never** change the core client logic to accommodate a view layer quirk.
+*   **Everything belongs to a Module**: If you are adding support for a new RPG system (e.g., Pathfinder), *all* code related to that system (Types, Adapter logic, React Components, CSS) must reside in `src/modules/pathfinder/`.
+*   **The SystemAdapter Contract**: Each module must implement the `SystemAdapter` interface defined in `src/modules/core/interfaces.ts`. This interface handles:
+    *   **Data Fetching**: `getActor(client, id)` (running in browser context via Playwright).
+    *   **Normalization**: `normalizeActorData(actor)` (converting raw Foundry data to a UI-friendly shape).
+    *   **Rolling**: `getRollData(...)` (handling system-specific dice logic).
+*   **Isolation**: Do not import code from other system modules. Shared UI components (like `RichTextEditor`, `DiceTray`) are available in `@/components`.
+
+## Adding a New System
+
+1.  **Create Directory**: Create `src/modules/<system-id>/`.
+2.  **Metadata**: Add `info.json`:
+    ```json
+    { "id": "mysystem", "title": "My RPG System" }
+    ```
+3.  **Implement Adapter**: Create `adapter.ts` and implement `SystemAdapter`.
+4.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
+5.  **Export Manifest**: Create `index.ts`:
+    ```typescript
+    import React from 'react';
+    import { ModuleManifest } from '../core/interfaces';
+    import { MySystemAdapter } from './adapter';
+    import info from './info.json';
+
+    const manifest: ModuleManifest = {
+        info,
+        adapter: MySystemAdapter,
+        sheet: React.lazy(() => import('./ui/MySystemSheet'))
+    };
+    export default manifest;
+    ```
+6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
 
 ## Development Workflow
 
-1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files in `src/components/sheets/[system]/`.
+1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files within your module's directory.
 2.  **Styling**: Use Tailwind CSS for styling.
-3.  **Testing**: Currently, manual verification is required. Check the sheet against a live Foundry instance to ensure data syncs correctly.
+3.  **Testing**: Verify your changes against a live Foundry instance running the target system.
+
+## Reusable UI Components
+
+We provide several core components to ensure a consistent UI across different system sheets.
+
+### RichTextEditor
+A wrapper around Tiptap for editing HTML content (biographies, notes).
+**Path**: `@/components/RichTextEditor`
+```tsx
+<RichTextEditor 
+    content={actor.system.notes} 
+    onChange={(html) => onUpdate('system.notes', html)} 
+/>
+```
+
+### ConfirmationModal
+A standard modal for destructive actions. Uses React Portal.
+**Path**: `@/components/ui/ConfirmationModal`
+```tsx
+<ConfirmationModal
+    isOpen={isOpen}
+    onClose={() => setIsOpen(false)}
+    onConfirm={handleDelete}
+    title="Delete Item?"
+    message="Are you sure you want to delete this content?"
+    confirmLabel="Delete"
+    isDanger={true}
+/>
+```
+
+### RollDialog
+A unified dialog for configuring dice rolls (Ability checks, Attacks, Spells). Supports generic options or system-specific extensions.
+**Path**: `@/components/RollDialog`
+```tsx
+<RollDialog
+    isOpen={isOpen}
+    onClose={() => setIsOpen(false)}
+    onRoll={(options) => onRoll('attack', 'dager', options)}
+    title="Dagger Attack"
+    config={{
+        modes: ['normal', 'advantage', 'disadvantage'],
+        bonuses: ['ability', 'item', 'talent']
+    }}
+/>
+```
+
+### DiceTray
+A persistent tray for manual dice rolling. Generally handled by the layout but accessible if needed.
+**Path**: `@/components/DiceTray`
 
 ## License
 

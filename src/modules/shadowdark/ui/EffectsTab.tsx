@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { resolveImage } from './sheet-utils';
-import { ConfirmationModal } from '../../ui/ConfirmationModal';
+import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 
 interface EffectsTabProps {
     actor: any;
