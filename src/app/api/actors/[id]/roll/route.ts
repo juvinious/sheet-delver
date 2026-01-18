@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
-import { getAdapter } from '@/lib/systems/factory';
+import { getAdapter } from '@/modules/core/registry';
 
 export async function POST(
     request: Request,
@@ -25,6 +25,10 @@ export async function POST(
         // 2. Get Adapter
         const systemInfo = await client.getSystem();
         const adapter = getAdapter(systemInfo.id);
+
+        if (!adapter) {
+            return NextResponse.json({ error: `System adapter '${systemInfo.id}' not found` }, { status: 400 });
+        }
 
         // 3. Get generic roll data
         let rollData;

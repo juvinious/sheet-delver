@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
-import { getAdapter } from '@/lib/systems/factory';
+import { getAdapter } from '@/modules/core/registry';
 
 export async function GET() {
     const client = getClient();
@@ -13,6 +13,10 @@ export async function GET() {
         // 1. Get current system ID
         const systemInfo = await client.getSystem();
         const adapter = getAdapter(systemInfo.id);
+
+        if (!adapter) {
+            throw new Error(`System adapter '${systemInfo.id}' not found`);
+        }
 
         // 2. Fetch raw actors
         const rawActors = await client.getActors(); // client actually returns a partial structure we defined, but let's assume it passes through 'system'

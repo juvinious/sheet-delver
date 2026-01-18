@@ -1,9 +1,7 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright-core';
 import { FoundryConfig } from './types';
-import { SystemAdapter } from './adapters/SystemAdapter';
-import { ShadowdarkAdapter } from './adapters/ShadowdarkAdapter';
-import { MorkBorgAdapter } from './adapters/MorkBorgAdapter';
-import { GenericAdapter } from './adapters/GenericAdapter';
+import { getAdapter } from '@/modules/core/registry';
+import { ActorSheetData, SystemAdapter } from '@/modules/core/interfaces';
 
 export class FoundryClient {
     public browser: Browser | null = null;
@@ -20,31 +18,23 @@ export class FoundryClient {
         if (this.adapter) return this.adapter;
 
         const sys = await this.getSystem();
-        const systemId = sys.id;
+        const systemId = sys.id ? sys.id.toLowerCase() : 'generic';
 
-        if (systemId === 'shadowdark') {
-            this.adapter = new ShadowdarkAdapter();
+        // Use Registry to get the correct adapter (or fallback to generic)
+        const adapter = getAdapter(systemId);
+
+        if (!adapter) {
+            throw new Error(`Critical Error: Could not resolve adapter for system '${systemId}'`);
         }
 
-        if (!this.adapter) {
-            // Sanitize systemId
-            const cleanId = systemId ? systemId.trim().toLowerCase() : '';
+        this.adapter = adapter;
 
-            if (cleanId === 'morkborg') {
-                this.adapter = new MorkBorgAdapter();
-            } else if (cleanId === 'shadowdark') {
-                this.adapter = new ShadowdarkAdapter();
-            } else {
-                // Unknown system - use Generic Adapter
-                console.log(`Unknown system '${systemId}', using GenericAdapter.`);
-                this.adapter = new GenericAdapter();
-                // We inject the actual systemId into variables or rely on GenericAdapter to find it
-                // GenericAdapter hardcodes 'generic' as systemId for the interface, but passes through raw data.
-                // However, we want strict filtering to work.
-                // It's better if GenericAdapter adopts the systemId it finds.
-                this.adapter.systemId = cleanId || 'generic';
-            }
-        }
+        // If it's a generic adapter handling an unknown system, we might want to inform it?
+        // But the current GenericSystemAdapter hardcodes 'generic'. 
+        // We can just trust the adapter.
+
+        // Log what we found
+        console.log(`Resolved adapter for '${systemId}': ${this.adapter.systemId}`);
 
         return this.adapter;
     }
@@ -103,7 +93,7 @@ export class FoundryClient {
                 })).filter(u => u.id !== '');
             });
             return options;
-        } catch (e) {
+        } catch (_e) {
             return [];
         }
     }
@@ -178,7 +168,7 @@ export class FoundryClient {
             })
             .catch(() => {
                 // If this times out, it means no error appeared within 10 seconds.
-                return new Promise((_, reject) => { /* infinite wait */ });
+                return new Promise((_, _reject) => { /* infinite wait */ });
             });
 
         await Promise.race([successPromise, failurePromise]);
@@ -515,8 +505,8 @@ export class FoundryClient {
                         const item = actor.items.get(update._id);
                         if (item) {
                             // Remove _id from update data as we are updating the item instance
-                            const { _id, ...changes } = update;
-                            await item.update(changes);
+                            const { _id, ...safeUpdate } = update;
+                            await item.update(safeUpdate);
                         } else {
                             console.warn(`Item ${update._id} not found on actor`);
                         }
@@ -612,11 +602,7 @@ export class FoundryClient {
 
         let adapter: SystemAdapter;
         if (forceSystemId) {
-            switch (forceSystemId.toLowerCase()) {
-                case 'morkborg': adapter = new MorkBorgAdapter(); break;
-                case 'shadowdark': adapter = new ShadowdarkAdapter(); break;
-                default: adapter = new GenericAdapter(); break;
-            }
+            adapter = getAdapter(forceSystemId) || getAdapter('generic')!;
         } else {
             adapter = await this.resolveAdapter();
         }
