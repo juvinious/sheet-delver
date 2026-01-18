@@ -21,10 +21,19 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 
 ## Architecture
 SheetDelver uses a multi-system architecture based on specific modules:
-1.  **System Modules** (`src/modules/<system>/`): Self-contained vertical slices containing adapters, components, and logic for each RPG system.
+1.  **System Modules** (`src/modules/<system>/`): Self-contained vertical slices containing proper logic and UI.
 2.  **Core Registry** (`src/modules/core/registry.ts`): Dynamically loads system modules.
 3.  **Sheet Router** (`src/components/SheetRouter.tsx`): Renders the correct UI based on the actor's system.
 4.  **Foundry Adapter**: Decouples backend logic, ensuring valid data flow regardless of the system.
+
+Each module follows a consistent structure:
+```
+src/modules/<system>/
+├── index.ts           # Manifest
+├── info.json          # Metadata
+├── adapter.ts         # Logic & Data Fetching
+└── ui/                # React Components
+```
 
 For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

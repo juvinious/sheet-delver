@@ -1,12 +1,12 @@
 import React from 'react';
 import { ModuleManifest } from '../core/interfaces';
-import { GenericSystemAdapter } from './lib/foundry/adapter';
+import { GenericSystemAdapter } from './adapter';
 import info from './info.json';
 
 const manifest: ModuleManifest = {
     info,
     adapter: GenericSystemAdapter,
-    sheet: React.lazy(() => import('./components/sheets/GenericSheet'))
+    sheet: React.lazy(() => import('./ui/GenericSheet'))
 };
 
 export default manifest;

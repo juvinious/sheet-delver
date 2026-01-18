@@ -58,10 +58,10 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
 - `src/modules`: Vertical slices for each supported system.
   - `core/`: Core interfaces and registry (`SystemAdapter`, `ModuleManifest`).
   - `<system_id>/`: Self-contained system module.
-    - `info.json`: Metadata.
     - `index.ts`: Module manifest export.
-    - `lib/foundry/adapter.ts`: System-specific adapter logic.
-    - `components/sheets/`: React components for the sheet.
+    - `info.json`: Metadata.
+    - `adapter.ts`: System logic and data implementation.
+    - `ui/`: React components for the sheet.
 - `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
 
 ## Module Architecture & Vertical Slices
@@ -82,19 +82,19 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     ```json
     { "id": "mysystem", "title": "My RPG System" }
     ```
-3.  **Implement Adapter**: Create `lib/foundry/adapter.ts` and implement `SystemAdapter`.
-4.  **Create Sheet**: Create `components/sheets/MySystemSheet.tsx`.
+3.  **Implement Adapter**: Create `adapter.ts` and implement `SystemAdapter`.
+4.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
 5.  **Export Manifest**: Create `index.ts`:
     ```typescript
     import React from 'react';
     import { ModuleManifest } from '../core/interfaces';
-    import { MySystemAdapter } from './lib/foundry/adapter';
+    import { MySystemAdapter } from './adapter';
     import info from './info.json';
 
     const manifest: ModuleManifest = {
         info,
         adapter: MySystemAdapter,
-        sheet: React.lazy(() => import('./components/sheets/MySystemSheet'))
+        sheet: React.lazy(() => import('./ui/MySystemSheet'))
     };
     export default manifest;
     ```
