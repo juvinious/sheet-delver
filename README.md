@@ -30,8 +30,8 @@ For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Future Roadmap
 - **Component Library**: Generic "Base Sheet" components for rapid system development.
-- **Character Builder**: 'CharacterForge' style builder for creating new characters step-by-step.
-- **Module Integration**: Better integration with core Foundry modules.
+- **Modules Integration**: Better integration with core Foundry modules.
+- **Character Creation**: Native Foundry character creation support, utilizing system macros where available.
 
 ## Usage
 
@@ -43,26 +43,25 @@ For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 Create a `settings.yaml` file in the root directory to configure the connection to your Foundry instance.
 
 ```yaml
-# Application Server Settings
+# settings.yaml
 app:
-    host: localhost       # Hostname to bind to
-    port: 3000            # Port to run on
-    protocol: http        # Protocol (http/https)
-    chat-history: 100     # Number of chat messages to load
+    host: localhost      # Hostname for the SheetDelver application
+    port: 3000           # Port for SheetDelver to listen on
+    protocol: http       # Protocol for SheetDelver (http/https)
+    chat-history: 100    # Max number of chat messages to retain/display
 
-# Foundry VTT Connection
 foundry:
-    host: foundry.example.com
-    port: 30000
-    protocol: https
+    host: foundryserver.local # Hostname of your Foundry VTT instance
+    port: 30000               # Port of your Foundry VTT instance
+    protocol: http            # Protocol (http/https)
 
-# Debug Configuration
 debug:
-    enabled: true        # Enable debug logging
-    level: 4             # 0=None, 1=Error, 2=Warn, 3=Info, 4=Debug
+    enabled: true        # Run browser in headful mode (visible) for debugging
+    level: 4             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
+    # Optional: Auto-login credentials for development
     foundryUser:
-        name: Gamemaster
-        password: password
+        name: gamemaster # Foundry Username
+        password: password # Foundry Password
 ```
 
 ### Running Locally
