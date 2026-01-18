@@ -16,17 +16,17 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 ## Supported Systems
 - **Shadowdark RPG**: Complete support (Stats, Inventory, Spells, Talents, Effects).
 - **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).
+- **D&D 5e**: Basic adapter support (Stats, Skills).
+- **Generic**: Fallback support for any Foundry system (Raw data view).
 
 ## Architecture
-SheetDelver uses a multi-system architecture to support different RPGs via:
-1.  **System Adapters** (`src/lib/foundry/adapters`): Decouples backend logic from specific systems.
-2.  **Sheet Router** (`src/components/SheetRouter.tsx`): Dynamically loads the correct UI based on the actor's system.
-3.  **Generic Data**: The API normalizes data where possible while preserving system-specific structures in `system` fields.
+SheetDelver uses a multi-system architecture based on specific modules:
+1.  **System Modules** (`src/modules/<system>/`): Self-contained vertical slices containing adapters, components, and logic for each RPG system.
+2.  **Core Registry** (`src/modules/core/registry.ts`): Dynamically loads system modules.
+3.  **Sheet Router** (`src/components/SheetRouter.tsx`): Renders the correct UI based on the actor's system.
+4.  **Foundry Adapter**: Decouples backend logic, ensuring valid data flow regardless of the system.
 
-To add a new system:
-1.  Implement `SystemAdapter` for backend data processing.
-2.  Create a `[System]Sheet.tsx` component.
-3.  Register them in `client.ts` and `SheetRouter.tsx`.
+For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Future Roadmap
 - **Component Library**: Generic "Base Sheet" components for rapid system development.
