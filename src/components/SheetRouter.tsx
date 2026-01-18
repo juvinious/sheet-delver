@@ -1,7 +1,6 @@
 'use client';
 
 import { getSheet } from '@/modules/core/registry';
-import { useMemo } from 'react';
 
 interface SheetRouterProps {
     systemId: string;
@@ -17,12 +16,11 @@ interface SheetRouterProps {
     onUpdate: (path: string, value: any) => Promise<void>;
 }
 
-/* eslint-disable react/no-unstable-nested-components */
 export default function SheetRouter(props: SheetRouterProps) {
     const { systemId, ...sheetProps } = props;
 
-    // Dynamic Lookup with Fallback - Memoized to prevent "component creation in render" lint error
-    const SheetComponent = useMemo(() => getSheet(systemId), [systemId]);
+    // Dynamic Lookup with Fallback
+    const SheetComponent = getSheet(systemId);
 
     if (!SheetComponent) {
         return (
@@ -33,5 +31,6 @@ export default function SheetRouter(props: SheetRouterProps) {
         );
     }
 
+    // eslint-disable-next-line
     return <SheetComponent {...sheetProps} />;
 }
