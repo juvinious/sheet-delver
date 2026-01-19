@@ -12,7 +12,7 @@ export default function Generator() {
     const [systemData, setSystemData] = useState<any>(null);
     const [ancestryDetails, setAncestryDetails] = useState<any>(null);
     const [classDetails, setClassDetails] = useState<any>(null);
-    const [backgroundDetails, setBackgroundDetails] = useState<any>(null);
+
 
     const [formData, setFormData] = useState({
         level0: true,
@@ -30,7 +30,9 @@ export default function Generator() {
             INT: { value: 10, mod: 0 },
             WIS: { value: 10, mod: 0 },
             CHA: { value: 10, mod: 0 }
-        }
+        },
+        hp: 0,
+        gold: 0
     });
 
     // Helper: Calculate Modifier
@@ -59,14 +61,7 @@ export default function Generator() {
             .catch(err => console.error('Failed to load system data', err));
     }, []);
 
-    // Fetch Background Details on change
-    useEffect(() => {
-        if (!formData.background) {
-            setBackgroundDetails(null);
-            return;
-        }
-        fetchDocument(formData.background).then(data => setBackgroundDetails(data));
-    }, [formData.background]);
+
 
     // Fetch Class Details on change
     useEffect(() => {
@@ -89,6 +84,38 @@ export default function Generator() {
 
         setFormData(prev => ({ ...prev, stats: newStats }));
     };
+
+    // Calculate HP based on Class Hit Die + CON mod
+    const calculateHP = () => {
+        let hitDie = "d4";
+        if (classDetails?.system?.hitPoints) {
+            hitDie = classDetails.system.hitPoints;
+        } else if (formData.level0) {
+            hitDie = "d4"; // Level 0 uses d4
+        }
+
+        // Parse "d8" -> 8
+        const sides = parseInt(hitDie.replace("d", "")) || 4;
+        const roll = Math.floor(Math.random() * sides) + 1;
+
+        // Add CON mod, minimum 1 HP total
+        const hp = Math.max(1, roll + formData.stats.CON.mod);
+
+        setFormData(prev => ({ ...prev, hp }));
+    };
+
+    // Calculate Gold: 2d6 * 5
+    const calculateGold = () => {
+        const d6 = () => Math.floor(Math.random() * 6) + 1;
+        const gold = (d6() + d6()) * 5;
+        setFormData(prev => ({ ...prev, gold }));
+    };
+
+    // Recalculate HP when Class or CON mod changes
+    useEffect(() => {
+        calculateHP();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [classDetails, formData.stats.CON.mod, formData.level0]);
 
     // Helper: Random Text from Roll Table
     const randomNameFromTable = async (tableUuid: string) => {
@@ -179,7 +206,10 @@ export default function Generator() {
         // 2. Roll Stats
         rollStats();
 
-        // 3. Update State (Base)
+        // 3. Roll Gold
+        calculateGold();
+
+        // 4. Update State (Base)
         setFormData(prev => ({
             ...prev,
             ancestry: newAncestry,
@@ -189,7 +219,7 @@ export default function Generator() {
             deity: newDeity,
         }));
 
-        // 4. Async Randomizations (Name)
+        // 5. Async Randomizations (Name)
         if (newAncestry) {
             await randomizeName(newAncestry);
         }
@@ -209,6 +239,7 @@ export default function Generator() {
         if (formData.level0 && formData.class) {
             setFormData(prev => ({ ...prev, class: '' }));
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData.level0, systemData]);
 
     const [classTalentNames, setClassTalentNames] = useState<string[]>([]);
@@ -296,6 +327,12 @@ export default function Generator() {
                         wis: { mod: formData.stats.WIS.mod, base: formData.stats.WIS.value },
                         cha: { mod: formData.stats.CHA.mod, base: formData.stats.CHA.value }
                     },
+                    attributes: {
+                        hp: { value: formData.hp, max: formData.hp }
+                    },
+                    currency: {
+                        gp: formData.gold
+                    },
                     notes: formData.description
                 },
                 items: items
@@ -333,7 +370,6 @@ export default function Generator() {
 
     return (
         <div className={`flex flex-col min-h-screen ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black pb-24`}>
-            {/* ... (Header remains same) ... */}
 
             {/* Top Navigation Bar */}
             <div className="bg-black text-neutral-400 text-xs font-bold uppercase tracking-widest flex items-center justify-between px-6 py-2 border-b border-white/10">
@@ -380,10 +416,26 @@ export default function Generator() {
             <div className="flex-1 px-4 max-w-5xl mx-auto w-full pt-6 mb-20 space-y-8">
 
                 {/* Main Grid Layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* ... (Columns 1, 2, 3 remain same) ... */}
-                    {/* Column 1: Core Identity */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+
+                    {/* Column 1: Type, Stats, HP, Gold */}
                     <div className="space-y-6">
+                        {/* Name (Moved to top) */}
+                        <div className="bg-white p-6 border-2 border-black shadow-sm">
+                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
+                                <span>Name</span>
+                            </h2>
+                            <div>
+                                <input
+                                    type="text"
+                                    className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg font-bold placeholder:text-neutral-300"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="Character Name"
+                                />
+                            </div>
+                        </div>
+
                         {/* Level 0 Toggle */}
                         <div className="bg-white p-6 border-2 border-black shadow-sm">
                             <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1">Type</h2>
@@ -411,6 +463,91 @@ export default function Generator() {
                                     <span className="text-[8px] opacity-70">Hero</span>
                                 </label>
                             </div>
+                        </div>
+
+                        {/* Stats Block */}
+                        <div className="bg-white p-6 border-2 border-black shadow-sm relative">
+                            <div className="flex justify-between items-center mb-4 border-b-2 border-black pb-1">
+                                <h2 className="text-black font-black font-serif text-xl">Stats</h2>
+                                <button onClick={rollStats} className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 hover:text-black transition-colors">
+                                    <span className="fas fa-dice mr-1"></span>
+                                    Roll 3d6
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                                {['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(stat => {
+                                    // @ts-ignore
+                                    const st = formData.stats[stat];
+                                    return (
+                                        <div key={stat} className="flex items-center justify-between">
+                                            <span className="font-bold text-neutral-500 text-sm tracking-widest">{stat}</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'}`}>{st.value}</span>
+                                                <span className="text-xs font-bold bg-neutral-200 px-2 py-0.5 rounded-full text-neutral-600 min-w-[2rem] text-center">
+                                                    {st.mod >= 0 ? '+' : ''}{st.mod}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+
+                        {/* HP & Gold */}
+                        <div className="grid grid-cols-2 gap-4">
+                            {/* Hit Points */}
+                            <div className="bg-white p-4 border-2 border-black shadow-sm">
+                                <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
+                                    <span>HP</span>
+                                    <button onClick={calculateHP} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>
+                                </h2>
+                                <div className="text-center">
+                                    <span className="text-3xl font-black font-serif">{formData.hp}</span>
+                                    <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">
+                                        {(formData.level0 || !classDetails?.system?.hitPoints) ? "d4" : classDetails.system.hitPoints} + CON
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Gold */}
+                            <div className="bg-white p-4 border-2 border-black shadow-sm">
+                                <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
+                                    <span>Gold</span>
+                                    <button onClick={calculateGold} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>
+                                </h2>
+                                <div className="text-center">
+                                    <span className="text-3xl font-black font-serif">{formData.gold}</span>
+                                    <span className="text-xs font-bold text-neutral-400 ml-1">GP</span>
+                                    <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">2d6 x 5</p>
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+
+                    {/* Column 2: Identity & Choices */}
+                    <div className="space-y-6">
+                        {/* Class */}
+                        <div className={`bg-white p-6 border-2 border-black shadow-sm transition-opacity ${formData.level0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
+                                <span>Class</span>
+                            </h2>
+                            <select
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
+                                value={formData.class}
+                                onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
+                                disabled={formData.level0}
+                            >
+                                <option value="" disabled={!formData.level0 && formData.class !== ""}>
+                                    {formData.level0 ? "Gauntlet (No Class)" : "Choose Class..."}
+                                </option>
+                                {systemData?.classes?.filter((c: any) => c.name !== "Level 0").map((a: any) => (
+                                    <option key={a.uuid} value={a.uuid}>{a.name}</option>
+                                ))}
+                            </select>
+                            {formData.level0 && <p className="text-xs text-neutral-400 mt-2 text-center italic">Class is not available for Level 0 characters.</p>}
                         </div>
 
                         {/* Ancestry */}
@@ -446,111 +583,43 @@ export default function Generator() {
                                 ))}
                             </select>
                         </div>
-                    </div>
 
-                    {/* Column 2: Stats & Class */}
-                    <div className="space-y-6">
-                        {/* Stats */}
+                        {/* Alignment */}
                         <div className="bg-white p-6 border-2 border-black shadow-sm">
-                            <div className="flex justify-between items-center border-b-2 border-black mb-4 pb-1">
-                                <h2 className="text-black font-black font-serif text-xl">Stats</h2>
-                                <button onClick={rollStats} className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 hover:text-black transition-colors">
-                                    <span className="fas fa-dice mr-1"></span>
-                                    Roll 3d6
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-y-4 gap-x-6">
-                                {['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(stat => {
-                                    // @ts-ignore
-                                    const st = formData.stats[stat];
-                                    return (
-                                        <div key={stat} className="flex items-center justify-between">
-                                            <span className="font-bold text-neutral-500 text-sm tracking-widest">{stat}</span>
-                                            <div className="flex items-center gap-3">
-                                                <span className={`font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'}`}>{st.value}</span>
-                                                <span className="text-xs font-bold bg-neutral-200 px-2 py-0.5 rounded-full text-neutral-600 min-w-[2rem] text-center">
-                                                    {st.mod >= 0 ? '+' : ''}{st.mod}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
+                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1">Alignment</h2>
+                            <select
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
+                                value={formData.alignment}
+                                onChange={(e) => setFormData(prev => ({ ...prev, alignment: e.target.value }))}
+                            >
+                                <option value="lawful">Lawful</option>
+                                <option value="neutral">Neutral</option>
+                                <option value="chaotic">Chaotic</option>
+                            </select>
                         </div>
 
-                        {/* Class Selector */}
-                        <div className={`bg-white p-6 border-2 border-black shadow-sm transition-opacity ${formData.level0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
-                                <span>Class</span>
-                            </h2>
+                        {/* Deity */}
+                        <div className="bg-white p-6 border-2 border-black shadow-sm">
+                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1">Deity</h2>
                             <select
-                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
-                                value={formData.class}
-                                onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
-                                disabled={formData.level0}
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
+                                value={formData.deity}
+                                onChange={(e) => setFormData(prev => ({ ...prev, deity: e.target.value }))}
                             >
-                                <option value="">Select Class...</option>
-                                {systemData?.classes?.map((a: any) => (
+                                <option value="">None / Select...</option>
+                                {/* Populate from systemData if available, or fetch */}
+                                {systemData?.deities?.map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
-                            {formData.level0 && <p className="text-xs text-neutral-400 mt-2 text-center italic">Class is not available for Level 0 characters.</p>}
                         </div>
-                    </div>
 
-                    {/* Column 3: Identity */}
-                    <div className="space-y-6">
-                        <div className="bg-white p-6 border-2 border-black shadow-sm">
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1">Identity</h2>
 
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">Name</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            className="flex-1 bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg font-bold placeholder:text-neutral-300"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                                            placeholder="Character Name"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">Alignment</label>
-                                    <select
-                                        className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
-                                        value={formData.alignment}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, alignment: e.target.value }))}
-                                    >
-                                        <option value="lawful">Lawful</option>
-                                        <option value="neutral">Neutral</option>
-                                        <option value="chaotic">Chaotic</option>
-                                    </select>
-                                </div>
-
-                                <div>
-                                    <label className="block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">Deity</label>
-                                    <select
-                                        className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
-                                        value={formData.deity}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, deity: e.target.value }))}
-                                    >
-                                        <option value="">None / Select...</option>
-                                        {/* Populate from systemData if available, or fetch */}
-                                        {systemData?.deities?.map((a: any) => (
-                                            <option key={a.uuid} value={a.uuid}>{a.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
-                <div className="bg-[#eaeae5] border-2 border-black font-sans text-sm text-black">
+                {/* Details Section (Full Width) */}
+                <div className="bg-[#eaeae5] border-2 border-black font-sans text-sm text-black h-full">
                     {/* Header */}
                     <div className="bg-black text-white font-serif font-black text-xl p-2 mb-2 flex items-center justify-between">
                         <span>DETAILS</span>
@@ -560,9 +629,7 @@ export default function Generator() {
                         </div>
                     </div>
 
-                    {/* Content - Strictly ordered per user request & Foundry module */}
                     <div className="p-4 space-y-1">
-
                         {/* 1. Class Flavor Text (Description) */}
                         {classDetails?.system?.description && !formData.level0 && (
                             <div
@@ -571,16 +638,12 @@ export default function Generator() {
                             />
                         )}
 
-                        {/* 2. Ancestry Talent/Feature (e.g. Stealthy) */}
+                        {/* 2. Ancestry Talent/Feature */}
                         {ancestryDetails && (
                             <div className="mb-1">
                                 {(() => {
-                                    // Try to find a 'feature' or 'talent' description if possible, otherwise use generic description
-                                    // The user example shows "Stealthy. Once per day..." which is likely the ancestry description or a specific item.
-                                    // We'll strip HTML from the description to match the clean text look.
                                     const rawDesc = ancestryDetails.system?.description?.value || ancestryDetails.system?.description || "";
                                     const cleanDesc = rawDesc.replace(/<[^>]+>/g, '');
-                                    // If we had specific talent items, we'd list them here. For now, use the description which usually contains it.
                                     return (
                                         <span dangerouslySetInnerHTML={{ __html: cleanDesc }} />
                                     );
@@ -600,7 +663,6 @@ export default function Generator() {
                                                     "See sheet"}
                                 </span>
                             ) :
-                                // Level 0 default
                                 formData.level0 ? "All weapons" : "..."
                             }
                         </div>
@@ -612,11 +674,9 @@ export default function Generator() {
                                 <span>
                                     {classDetails.system.allArmor ? "All armor" :
                                         classDetails.system.armor?.length > 0 ? "See sheet" :
-                                            // Fallback if no specific armor listed and flag is false (e.g. Wizard)
                                             "None"}
                                 </span>
                             ) :
-                                // Level 0 default
                                 formData.level0 ? "All armor" : "..."
                             }
                         </div>
@@ -627,20 +687,11 @@ export default function Generator() {
                             {(() => {
                                 const langs: string[] = [];
                                 if (ancestryDetails) langs.push("Common");
-
-                                // Ancestry Select
                                 const ancSelect = ancestryDetails?.system?.languages?.select || 0;
                                 if (ancSelect > 0) langs.push(`+${ancSelect} others`);
-
-                                // Class Select
                                 if (!formData.level0 && classDetails) {
                                     const clsSelect = classDetails.system?.languages?.select || 0;
-                                    // Some classes allow choosing rare/common
                                     if (clsSelect > 0) langs.push(`+${clsSelect} class languages`);
-
-                                    // Fixed Class IDs - we'd need to resolve these names but for now we skip complex mapping
-                                    // If we had the systemData.languages mapping we could look them up.
-                                    // systemData.languages has { name, uuid ... }
                                     if (classDetails.system?.languages?.fixed?.length > 0) {
                                         classDetails.system.languages.fixed.forEach((uuid: string) => {
                                             const known = systemData?.languages?.find((l: any) => l.uuid === uuid);
@@ -648,24 +699,21 @@ export default function Generator() {
                                         });
                                     }
                                 }
-
                                 return langs.length > 0 ? langs.join(", ") : "Common";
                             })()}
                         </div>
 
-                        {/* 6. Patron (Warlock/Cleric) */}
+                        {/* 6. Patron */}
                         {classDetails?.system?.patron?.required && (
                             <div>
                                 <span className="font-bold">Patron: </span>
                                 <span className="italic text-neutral-600">
-                                    {/* Ideally we would pick a patron here if we had the table */}
                                     Randomly selected during creation...
                                 </span>
                             </div>
                         )}
 
-                        {/* 7. Class Talents (Level 1) */}
-                        {/* 7. Class Talents (Level 1) */}
+                        {/* 7. Class Talents */}
                         {!formData.level0 && classDetails && (
                             <div className="mt-1">
                                 <span className="font-bold">Class Talent: </span>
@@ -677,14 +725,13 @@ export default function Generator() {
                             </div>
                         )}
 
-                        {/* 8. Starting Gear (LEVEL 0 ONLY) */}
+                        {/* 8. Starting Gear */}
                         {formData.level0 && (
                             <div className="mt-2 text-sm">
                                 <span className="font-bold">Starting Gear: </span>
                                 <span className="italic text-neutral-600">Randomized Level 0 Gear...</span>
                             </div>
                         )}
-
                     </div>
                 </div>
 
@@ -702,7 +749,7 @@ export default function Generator() {
 
                 {/* Create Character CTA Button (Full Width Bottom) */}
                 <div className="bg-neutral-900 text-white p-8 border-2 border-black shadow-lg flex flex-col items-center justify-center gap-4">
-                    <p className="text-neutral-400 font-serif italic text-lg opacity-80">"The darkness holds its breath..."</p>
+                    <p className="text-neutral-400 font-serif italic text-lg opacity-80">&quot;The darkness holds its breath...&quot;</p>
                     <button
                         onClick={createCharacter}
                         disabled={loading}
@@ -712,7 +759,6 @@ export default function Generator() {
                     </button>
                     <p className="text-xs text-neutral-500">Creates a new actor in Foundry VTT</p>
                 </div>
-
             </div>
         </div>
     );
