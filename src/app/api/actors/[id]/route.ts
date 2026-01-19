@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { getClient } from '@/lib/foundry/instance';
 import { CompendiumCache } from '@/lib/foundry/compendium-cache';
+import { getMatchingAdapter } from '@/modules/core/registry';
 import { loadConfig } from '@/lib/config';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -48,18 +49,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const resolvedActor = resolveUUIDs(actor);
     const systemInfo = await client.getSystem();
 
-    // Auto-detect Mork Borg based on data signature if system detection fails
-    let finalSystemId = resolvedActor.systemId || systemInfo.id;
 
-    // FORCE for Ibsum / visual verification if detection fails
-    if (id === 'kwBs8lhMY58BLYFt' || id === 'IbsumID') {
-        finalSystemId = 'morkborg';
-    } else if (finalSystemId === 'shadowdark' || finalSystemId === 'unknown') {
-        // Check for Mork Borg specific fields (Omens/Miseries are very specific)
-        if (actor.system?.omens || actor.system?.miseries) {
-            finalSystemId = 'morkborg';
-        }
-    }
+    // Use the Registry's matcher logic to find the best adapter for this actor data
+    const adapter = getMatchingAdapter(resolvedActor);
+    const finalSystemId = adapter.systemId;
 
     // REFETCH if we detected a different system than what was likely used (Generic)
     // The MorkBorgAdapter produces specific computed structures (actor.computed) that the sheet needs.

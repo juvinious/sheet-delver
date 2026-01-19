@@ -25,6 +25,27 @@ export async function GET() {
         const actors = rawActors.map((actor: any) => adapter.normalizeActorData(actor));
 
         return NextResponse.json({ actors, system: systemInfo.id });
+
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+export async function POST(req: Request) {
+    const client = getClient();
+    if (!client) {
+        return NextResponse.json({ error: 'Not connected' }, { status: 503 });
+    }
+
+    try {
+        const body = await req.json();
+        const result = await client.createActor(body);
+
+        if (result.error) {
+            return NextResponse.json({ error: result.error }, { status: 400 });
+        }
+
+        return NextResponse.json(result);
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }

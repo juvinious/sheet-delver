@@ -3,6 +3,10 @@ import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 export class DnD5eAdapter implements SystemAdapter {
     systemId = 'dnd5e';
 
+    match(actor: any): boolean {
+        return actor.systemId === 'dnd5e';
+    }
+
     async getActor(client: any, actorId: string): Promise<any> {
         // Basic implementation for now
         return await client.evaluate((id: string) => {

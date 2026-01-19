@@ -3,6 +3,10 @@ import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 export class GenericSystemAdapter implements SystemAdapter {
     systemId = 'generic';
 
+    match(actor: any): boolean {
+        return false; // Generic never matches specifically, it is the fallback
+    }
+
     async getActor(client: any, actorId: string): Promise<any> {
         return await client.evaluate((id: string) => {
             // @ts-ignore

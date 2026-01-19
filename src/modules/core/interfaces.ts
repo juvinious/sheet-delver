@@ -15,6 +15,11 @@ export interface SystemAdapter {
     systemId: string;
     normalizeActorData(actor: any): ActorSheetData;
     getRollData(actor: any, type: string, key: string, options?: any): any;
+
+    /**
+     * Checks if the given actor data matches this system adapter.
+     */
+    match(actor: any): boolean;
     getActor(client: any, actorId: string): Promise<any>;
     getSystemData(client: any): Promise<any>;
 }
@@ -26,4 +31,5 @@ export interface ModuleManifest {
     };
     adapter: new () => SystemAdapter; // Constructor
     sheet: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
+    tools?: Record<string, LazyExoticComponent<ComponentType<any>> | ComponentType<any>>;
 }

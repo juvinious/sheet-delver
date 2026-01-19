@@ -33,6 +33,31 @@ export const getSheet = (systemId: string) => {
     return manifest?.sheet;
 };
 
-export const getModuleInfo = (systemId: string) => {
-    return moduleMap.get(systemId)?.info;
+
+export const getMatchingAdapter = (actor: any): SystemAdapter => {
+    // 1. Try explicit systemId match from the actor data
+    if (actor.systemId) {
+        const exact = getAdapter(actor.systemId);
+        if (exact && exact.systemId !== 'generic') return exact;
+    }
+
+    // 2. Iterate all adapters to find a heuristic match
+    for (const m of modules) {
+        // Skip generic for matching
+        if (m.info.id === 'generic') continue;
+
+        const adapter = new m.adapter();
+        if (adapter.match(actor)) {
+            return adapter;
+        }
+    }
+
+    // 3. Fallback to generic
+    return getAdapter('generic')!;
+};
+
+export const getTool = (systemId: string, toolId: string) => {
+    const manifest = moduleMap.get(systemId);
+    if (!manifest || !manifest.tools) return null;
+    return manifest.tools[toolId];
 };

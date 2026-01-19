@@ -597,6 +597,23 @@ export class FoundryClient {
             return window.shadowdark.effects.createPredefinedEffect(actor, effectKey);
         }, { actorId, effectKey });
     }
+
+    async createActor(data: any) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async (actorData) => {
+            // @ts-ignore
+            if (!window.Actor) return { error: 'Actor class not found' };
+            try {
+                // @ts-ignore
+                const actor = await window.Actor.create(actorData);
+                return { success: true, id: actor.id, name: actor.name };
+            } catch (e: any) {
+                return { error: e.message };
+            }
+        }, data);
+    }
+
     async getActor(id: string, forceSystemId?: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 

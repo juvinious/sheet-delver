@@ -4,6 +4,10 @@ import { calculateItemSlots, calculateMaxSlots } from './rules';
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
 
+    match(actor: any): boolean {
+        return actor.systemId === 'shadowdark' || actor.system?.attributes?.hp?.base !== undefined; // Heuristic fallback if systemId missing, but usually systemId is there.
+    }
+
     async getActor(client: any, actorId: string): Promise<any> {
         const actorData = await client.evaluate(async (id: string) => {
             // @ts-ignore
@@ -204,6 +208,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 ancestries: [] as any[],
                 backgrounds: [] as any[],
                 languages: [] as any[],
+                deities: [] as any[],
                 titles: {}
             };
 
@@ -211,9 +216,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // @ts-ignore
                 if (pack.documentName !== 'Item') continue;
                 // @ts-ignore
-                if (!pack.index.size) await pack.getIndex();
+                // Ensure we index the type field
                 // @ts-ignore
-                const index = pack.index;
+                const index = await pack.getIndex({ fields: ['type'] });
 
                 // Index Classes
                 const classIndex = index.filter((i: any) => i.type === 'Class');
@@ -260,6 +265,24 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         });
                     }
                 }
+
+                // Index Deities
+                const deityIndex = index.filter((i: any) => i.type === 'Deity');
+                console.log(`[ShadowdarkAdapter] Found ${deityIndex.length} deities in ${pack.collection}`);
+                for (const d of deityIndex) {
+                    // @ts-ignore
+                    const doc = await pack.getDocument(d._id);
+                    if (doc) {
+                        // @ts-ignore
+                        results.deities = results.deities || [];
+                        results.deities.push({
+                            name: doc.name,
+                            uuid: `Compendium.${pack.collection}.Item.${d._id}`,
+                            alignment: doc.system?.alignment || 'neutral'
+                        });
+                    }
+                }
+
                 // Deep Fetch for Titles
                 for (const c of classIndex) {
                     // @ts-ignore
