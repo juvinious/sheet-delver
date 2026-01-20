@@ -561,7 +561,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                   >
                     <div className="flex items-start gap-4">
                       <img
-                        src={actor.img !== 'icons/svg/mystery-man.svg' ? (url + '/' + actor.img) : '/placeholder.png'}
+                        src={actor.img ? (actor.img.startsWith('http') ? actor.img : `${url}/${actor.img}`) : `${url}/icons/svg/mystery-man.svg`}
                         alt={actor.name}
                         className="w-16 h-16 rounded bg-black/20 object-cover"
                       />
