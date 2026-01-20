@@ -37,7 +37,8 @@ const styles = {
         modGroup: "flex gap-1",
         modBtn: "px-3 py-2 bg-white hover:bg-neutral-200 font-bold border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none font-serif",
         advGroup: "flex bg-neutral-100 border-2 border-black p-1 gap-1",
-        advBtn: (active: boolean, type: 'normal' | 'adv' | 'dis') => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        advBtn: (active: boolean, _type: 'normal' | 'adv' | 'dis') => {
             const base = "px-2 py-1 text-xs font-bold border-2 border-transparent transition-all";
             if (!active) return `${base} text-neutral-400 hover:text-black`;
             return `${base} bg-black text-white border-black`;
@@ -55,7 +56,6 @@ export default function DiceTray({ onSend, variant = 'default' }: DiceTrayProps)
 
     const addTerm = (term: string) => {
         setFormula(prev => {
-            const prefix = prev ? ' + ' : '/r ';
             // If empty, start with /r 
             const newFormula = prev || '/r ';
             // Simple check to avoid double spaces or weird joins

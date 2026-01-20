@@ -13,13 +13,11 @@ export default function SystemTools({ systemId, setLoading, setLoginMessage, the
     const ToolsComponent = getSystemToolsComponent(systemId);
 
     if (ToolsComponent) {
-        return (
-            <ToolsComponent
-                setLoading={setLoading}
-                setLoginMessage={setLoginMessage}
-                theme={theme}
-            />
-        );
+        return React.createElement(ToolsComponent, {
+            setLoading,
+            setLoginMessage,
+            theme
+        });
     }
 
     return null;

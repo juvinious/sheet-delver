@@ -23,7 +23,7 @@ export async function GET() {
             const users = (system?.id === 'setup') ? [] : await existingClient.getUsers();
 
             return NextResponse.json({ connected: true, users, system, url: existingClient.url, appVersion });
-        } catch (e) {
+        } catch {
             await logger.warn('Existing connection check failed, trying to reconnect...');
         }
     }

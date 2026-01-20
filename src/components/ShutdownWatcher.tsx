@@ -56,13 +56,13 @@ export default function ShutdownWatcher() {
                         setCountDown(3);
                     }
                 }
-            } catch (e) {
+            } catch {
                 // Ignore transient errors
             }
         }, 2000); // Poll every 2 seconds
 
         return () => clearInterval(interval);
-    }, []);
+    }, [pathname]);
 
     // Countdown Effect
     useEffect(() => {

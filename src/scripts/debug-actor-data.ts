@@ -22,7 +22,6 @@ async function main() {
             const strBonus = strStat?.bonus;
 
             let apiMod = 'Method Missing';
-            let calculatedMod = 'N/A';
 
             // Check API
             // @ts-ignore
@@ -56,7 +55,7 @@ async function main() {
     } catch (error) {
         console.error('Debug script failed:', error);
     } finally {
-        await client.disconnect();
+        await client.close();
     }
 }
 

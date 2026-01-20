@@ -49,7 +49,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
         callback: null
     });
 
-    const triggerRollDialog = (type: string, key: string, name?: string) => {
+    const triggerRollDialog = (type: string, key: string) => {
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
         const defaults: any = {};

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useEffect, useState, useMemo } from 'react';
+import { use, useEffect, useState } from 'react';
 import { getTool } from '@/modules/core/registry';
 
 // Dynamic route component

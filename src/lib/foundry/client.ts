@@ -1,7 +1,7 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright-core';
 import { FoundryConfig } from './types';
 import { getAdapter } from '@/modules/core/registry';
-import { ActorSheetData, SystemAdapter } from '@/modules/core/interfaces';
+import { SystemAdapter } from '@/modules/core/interfaces';
 
 export class FoundryClient {
     public browser: Browser | null = null;
@@ -94,7 +94,7 @@ export class FoundryClient {
                 })).filter(u => u.id !== '');
             });
             return options;
-        } catch (_e) {
+        } catch {
             return [];
         }
     }
@@ -169,7 +169,7 @@ export class FoundryClient {
             })
             .catch(() => {
                 // If this times out, it means no error appeared within 10 seconds.
-                return new Promise((_, _reject) => { /* infinite wait */ });
+                return new Promise(() => { /* infinite wait */ });
             });
 
         await Promise.race([successPromise, failurePromise]);
@@ -273,14 +273,9 @@ export class FoundryClient {
 
 
                 // Setup Mode Detection
-                const isSetupTitle = document.title.includes('Foundry Virtual Tabletop');
                 const isSetupElement = !!document.getElementById('setup');
                 const isSetupUrl = window.location.href.includes('/setup');
                 const isAuthUrl = window.location.href.includes('/auth');
-
-                // Fallback attempt: Check for common setup page elements if #setup is missing
-                const hasSetupLogo = !!document.querySelector('#logo'); // Often present on setup
-                const hasWorldList = !!document.querySelector('#worlds-list'); // Found on setup/world picker
 
                 const isSetup = isSetupElement || isSetupUrl || isAuthUrl;
 
@@ -508,6 +503,7 @@ export class FoundryClient {
                         const item = actor.items.get(update._id);
                         if (item) {
                             // Remove _id from update data as we are updating the item instance
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             const { _id, ...safeUpdate } = update;
                             await item.update(safeUpdate);
                         } else {

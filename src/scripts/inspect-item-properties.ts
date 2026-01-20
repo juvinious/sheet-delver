@@ -3,7 +3,7 @@ import { getClient } from '../lib/foundry/instance.ts';
 import { loadConfig } from '../lib/config.ts';
 
 async function main() {
-    const config = await loadConfig();
+    await loadConfig();
     const client = getClient();
     if (!client) {
         console.error('Failed to initialize client');

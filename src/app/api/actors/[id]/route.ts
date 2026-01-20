@@ -47,7 +47,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     };
 
     const resolvedActor = resolveUUIDs(actor);
-    const systemInfo = await client.getSystem();
 
 
     // Use the Registry's matcher logic to find the best adapter for this actor data

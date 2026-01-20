@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, use, useRef } from 'react';
+import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import SheetRouter from '@/components/SheetRouter';
 import GlobalChat from '@/components/GlobalChat';
@@ -13,21 +13,9 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [loading, setLoading] = useState(true);
     const currentUserRef = useRef<string | null>(null);
 
-    useEffect(() => {
-        if (!id) return;
 
-        // Initial fetch
-        fetchActor(id);
 
-        // Poll for updates
-        const interval = setInterval(() => {
-            fetchActor(id, true); // Pass true to silent loading
-        }, 5000);
-
-        return () => clearInterval(interval);
-    }, [id]);
-
-    const fetchActor = async (id: string, silent = false) => {
+    const fetchActor = useCallback(async (id: string, silent = false) => {
         if (!silent) setLoading(true);
         try {
             const res = await fetch(`/api/actors/${id}`);
@@ -50,7 +38,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         } finally {
             if (!silent) setLoading(false);
         }
-    };
+    }, [router]);
 
     // ... (keep state definitions)
     const [messages, setMessages] = useState<any[]>([]);
@@ -76,7 +64,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const lastSeenTimestamp = useRef<number>(0);
 
-    const fetchChat = async () => {
+    const fetchChat = useCallback(async () => {
         try {
             const res = await fetch('/api/chat');
             const data = await res.json();
@@ -110,14 +98,28 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         } catch (e) {
             console.error(e);
         }
-    };
+    }, []);
 
     useEffect(() => {
         // Poll for chat
         const interval = setInterval(fetchChat, 3000);
         fetchChat();
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchChat]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        // Initial fetch
+        fetchActor(id);
+
+        // Poll for updates
+        const interval = setInterval(() => {
+            fetchActor(id, true); // Pass true to silent loading
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [id, fetchActor]);
 
     const handleChatSend = async (message: string) => {
         try {
@@ -167,7 +169,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         const optimisticActor = JSON.parse(JSON.stringify(actor));
 
         // Mapping for known mismatches between Foundry Path and Local Normalized Data
-        let targetPath = path;
+        const targetPath = path;
         // Add other mappings if needed, or implement a smarter adapter-aware updater.
 
         // Safety: Check if we can traverse.

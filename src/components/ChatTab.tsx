@@ -63,7 +63,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, variant 
             });
 
             fixed = fixed.replace(/url\(([^)]+)\)/g, (match, p1) => {
-                let path = p1.replace(/['"]/g, '');
+                const path = p1.replace(/['"]/g, '');
                 if (path.startsWith('http') || path.startsWith('data:')) return match;
                 const cleanUrl = foundryUrl.endsWith('/') ? foundryUrl : `${foundryUrl}/`;
                 const cleanPath = path.startsWith('/') ? path.slice(1) : path;

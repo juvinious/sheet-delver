@@ -45,7 +45,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [loginMessage, setLoginMessage] = useState('');
 
   // Chat State
-  const [messages, setMessages] = useState<any[]>([]);
+
 
   const handleLogin = async () => {
     setLoading(true);
@@ -103,57 +103,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
 
-  // Chat Polling
-  const fetchChat = async () => {
-    try {
-      const res = await fetch('/api/chat');
-      const data = await res.json();
-      if (data.messages) {
-        setMessages(data.messages);
-      }
-    } catch (e) { console.error(e); }
-  };
 
-  useEffect(() => {
-    if (step === 'dashboard') {
-      fetchChat();
-      const interval = setInterval(fetchChat, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [step]);
-
-  const handleChatSend = async (msg: string) => {
-    try {
-      if (msg.startsWith('/r') || msg.startsWith('/roll')) {
-        await fetch('/api/dice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ formula: msg })
-        });
-      } else {
-        await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: msg })
-        });
-      }
-      fetchChat();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleRoll = async (type: string, key: string) => {
-    // Basic roll handler for dashboard if needed, or pass empty/null
-    // Only support basic dice clicks if DiceTray is used
-    try {
-      // Construct a simple formula based on type/key if possible?
-      // GlobalChat's DiceTray usually handles the formula construction internally and calls onSend?
-      // Wait, DiceTray takes onSend. GlobalChat passes onSend to DiceTray.
-      // The onRoll prop in GlobalChat is for *custom* click handlers (like skill checks).
-      // DiceTray calculates its own strings and calls onSend.
-    } catch (e) { }
-  };
 
   // Theme Logic
   const defaultTheme = {
@@ -228,8 +178,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           // Not connected to Foundry at all
           setStep('connect');
         }
-      } catch (e) {
-        console.error(e);
+      } catch {
+        console.error('Check failed'); // Log without e, or just silence
         setStep('connect');
       } finally {
         setLoading(false);
@@ -259,7 +209,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           }
           // Game -> Setup logic handled by global ShutdownWatcher
         }
-      } catch (e) { }
+      } catch { }
     }, 2000);
     return () => clearInterval(interval);
   }, [step, loading]);

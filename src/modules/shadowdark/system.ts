@@ -163,7 +163,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     // The following code runs inside the browser!
                     // We have access to the real ActorSD instance here.
 
-                    let abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
+                    const abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
                     const keys = Object.keys(abilities);
                     const safeAbilities: any = {};
 
@@ -217,7 +217,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             if (classItem) {
                                 spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
                             }
-                        } catch (_e) { }
+                        } catch { }
                     }
                 } catch (err) { console.error('Error resolving class/spellcasting:', err); }
                 computed.spellcastingAbility = spellcastingAbility;
@@ -244,7 +244,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             const abilities = actorData.system.abilities || actorData.system.stats || {};
             const derived = {
                 ...this.calculateAttacks(actorData, abilities),
-                ...this.categorizeInventory(actorData, abilities)
+                ...this.categorizeInventory(actorData)
             };
             actorData.derived = derived;
         }
@@ -469,7 +469,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             },
             derived: {
                 ...this.calculateAttacks(actor, abilities),
-                ...this.categorizeInventory(actor, abilities)
+                ...this.categorizeInventory(actor)
             }
         };
 
@@ -490,7 +490,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         return sheetData;
     }
 
-    private categorizeInventory(actor: any, abilities: any) {
+    private categorizeInventory(actor: any) {
         const equipped: any[] = [];
         const carried: any[] = [];
         const stashed: any[] = [];

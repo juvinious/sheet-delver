@@ -24,7 +24,7 @@ export default function PlayerList() {
             if (data.users) {
                 setUsers(data.users);
             }
-        } catch (e) {
+        } catch {
             // Silent error
         }
     };

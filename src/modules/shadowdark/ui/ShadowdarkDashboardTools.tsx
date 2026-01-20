@@ -1,5 +1,4 @@
 import React from 'react';
-import { useRouter } from 'next/navigation';
 
 interface ShadowdarkDashboardToolsProps {
     setLoading: (loading: boolean) => void;
@@ -8,7 +7,6 @@ interface ShadowdarkDashboardToolsProps {
 }
 
 export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, theme }: ShadowdarkDashboardToolsProps) {
-    const router = useRouter();
 
     return (
         <div className={`p-4 rounded-lg bg-black/20 border border-white/5`}>

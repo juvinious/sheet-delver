@@ -55,6 +55,7 @@ export class DnD5eAdapter implements SystemAdapter {
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getRollData(actor: any, type: string, key: string, _options: any = {}): { formula: string; type: string; label: string } | null {
         if (type === 'ability') {
             const abilities = actor.system.abilities;

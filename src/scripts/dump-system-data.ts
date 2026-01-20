@@ -36,7 +36,7 @@ async function run() {
                 }
                 await client.page.click('button[name="join"]');
                 console.log('Clicked Join...');
-            } catch (e) {
+            } catch {
                 console.log('Login elements not found or already logged in (or no auth needed). Continuing...');
             }
         }

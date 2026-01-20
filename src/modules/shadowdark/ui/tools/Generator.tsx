@@ -68,7 +68,7 @@ export default function Generator() {
                 if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.system?.isLoggedIn) {
                     window.location.href = '/';
                 }
-            } catch (e) {
+            } catch {
                 window.location.href = '/';
             }
         };
@@ -367,7 +367,7 @@ export default function Generator() {
 
         let newPatron = '';
         if (cls && cls.uuid) {
-            const clsDoc = systemData.classes.find((c: any) => c.uuid === cls.uuid);
+
             // We need to check if class requires patron. The systemData summary might not have it.
             // We might need to fetch the class doc, but we can't await inside this sync block easily for logic check.
             // However, we know Warlock usually needs it.
@@ -493,7 +493,6 @@ export default function Generator() {
     const [ancestryTalents, setAncestryTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number }>({ fixed: [], choice: [], choiceCount: 0 });
 
     // Gear State
-    const LEVEL_ZERO_GEAR_TABLE_UUID = "Compendium.shadowdark.rollable-tables.RollTable.WKVfMaGkoXe3DGub";
     const [gearSelected, setGearSelected] = useState<any[]>([]);
 
     // Language State
@@ -528,8 +527,8 @@ export default function Generator() {
             // 1. Talents
             const fixed: any[] = [];
             const choice: any[] = [];
-            let choiceCount = classDetails.system.talentChoiceCount || 0;
-            let table = classDetails.system.classTalentTable || false;
+            const choiceCount = classDetails.system.talentChoiceCount || 0;
+            const table = classDetails.system.classTalentTable || false;
 
             // Fixed Talents
             if (classDetails.system.talents?.length > 0) {
@@ -604,9 +603,6 @@ export default function Generator() {
         try {
             // 1. Prepare Items & System Data Strings
             const items: any[] = [];
-            let ancestryName = "";
-            let backgroundName = "";
-            let className = "";
 
             // Helper to add item by UUID and return it
             const addItem = async (uuid: string) => {
@@ -629,8 +625,7 @@ export default function Generator() {
                 return null;
             };
 
-            const ancestryItem = await addItem(formData.ancestry);
-            if (ancestryItem) ancestryName = ancestryItem.name;
+            await addItem(formData.ancestry);
 
             // Add Ancestry Fixed Talents & Choices
             for (const t of ancestryTalents.fixed) {
@@ -665,12 +660,10 @@ export default function Generator() {
                 }
             }
 
-            const backgroundItem = await addItem(formData.background);
-            if (backgroundItem) backgroundName = backgroundItem.name;
+            await addItem(formData.background);
 
             if (!formData.level0) {
-                const classItem = await addItem(formData.class);
-                if (classItem) className = classItem.name;
+                await addItem(formData.class);
             }
 
             // Collect Language UUIDs for system.languages array

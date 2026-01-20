@@ -67,21 +67,9 @@ const settings = yaml.load(fs.readFileSync(path.join(process.cwd(), 'settings.ya
                 flags: i.flags
             }));
 
-            const classItem = items.find(i => i.type === 'Class' || i.type === 'class');
-            const ancestryItem = items.find(i => i.type === 'Ancestry' || i.type === 'ancestry');
+            // const classItem = items.find(i => i.type === 'Class' || i.type === 'class');
+            // const ancestryItem = items.find(i => i.type === 'Ancestry' || i.type === 'ancestry');
 
-            // Helper to recursively find keys with "lang"
-            const findLangKeys = (obj, prefix = '') => {
-                let keys = [];
-                for (const k in obj) {
-                    if (k.toLowerCase().includes('lang')) keys.push(prefix + k);
-                    if (typeof obj[k] === 'object' && obj[k] !== null && prefix.length < 20) {
-                        // keys = keys.concat(findLangKeys(obj[k], prefix + k + '.'));
-                        // limit recursion for sanity
-                    }
-                }
-                return keys;
-            };
 
             // Fetch Language Details
             // Found UUIDs: Compendium.shadowdark.languages.Item.DQzHvoMWSZ0eiRWP (Common usually)
