@@ -283,26 +283,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
     };
 
-    const handleCreatePredefinedEffect = async (effectKey: string) => {
-        if (!actor) return;
-        try {
-            const res = await fetch(`/api/actors/${actor.id}/predefined-effects`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ effectKey })
-            });
-            const data = await res.json();
-            if (data.success) {
-                // Refresh actor data to show new effect
-                fetchActor(actor.id, true);
-                addNotification('Effect Added', 'success');
-            } else {
-                addNotification('Failed to add effect: ' + data.error, 'error');
-            }
-        } catch (e: any) {
-            addNotification('Error: ' + e.message, 'error');
-        }
-    };
+
 
     // ... (Keep existing loading/error checks)
     if (loading) return <div className="p-8 text-neutral-400">Loading...</div>;
@@ -341,7 +322,6 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     onToggleEffect={handleToggleEffect}
                     onDeleteEffect={handleDeleteEffect}
                     onDeleteItem={handleDeleteItem}
-                    onCreatePredefinedEffect={handleCreatePredefinedEffect}
                     onToggleDiceTray={toggleDiceTray}
                 />
             </div>
@@ -352,7 +332,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 onSend={handleChatSend}
                 onRoll={handleRoll}
                 foundryUrl={actor?.foundryUrl}
-                variant={actor.systemId === 'shadowdark' ? 'shadowdark' : 'default'}
+                variant={actor.systemId || 'default'}
                 isDiceTrayOpen={isDiceTrayOpen}
                 onToggleDiceTray={toggleDiceTray}
             />

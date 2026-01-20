@@ -28,11 +28,10 @@ interface ShadowdarkSheetProps {
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem?: (itemId: string) => void;
-    onCreatePredefinedEffect?: (effectKey: string) => void;
     onToggleDiceTray?: () => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreatePredefinedEffect, onToggleDiceTray }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
 
@@ -127,7 +126,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     <div className="py-2">
                         <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {actor.system?.ancestry} {actor.system?.class} {actor.system?.level?.value ? `Level ${actor.system.level.value}` : ''}
+                            {actor.system?.ancestry} {actor.system?.class} {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
                         </p>
                     </div>
                 </div>
@@ -281,7 +280,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             foundryUrl={foundryUrl}
                             onToggleEffect={onToggleEffect}
                             onDeleteEffect={onDeleteEffect}
-                            onCreatePredefinedEffect={onCreatePredefinedEffect}
                         />
                     )
                 }

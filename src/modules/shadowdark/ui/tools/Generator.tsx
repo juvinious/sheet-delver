@@ -12,6 +12,12 @@ export default function Generator() {
     const [systemData, setSystemData] = useState<any>(null);
     const [ancestryDetails, setAncestryDetails] = useState<any>(null);
     const [classDetails, setClassDetails] = useState<any>(null);
+    const [patronDetails, setPatronDetails] = useState<any>(null);
+    const [showPatronModal, setShowPatronModal] = useState(false);
+
+    // Ancestry Choice State
+    const [showAncestryTalentsModal, setShowAncestryTalentsModal] = useState(false);
+    const [selectedAncestryTalents, setSelectedAncestryTalents] = useState<string[]>([]);
 
 
     const [formData, setFormData] = useState({
@@ -21,6 +27,7 @@ export default function Generator() {
         background: '',
         alignment: 'neutral',
         deity: '',
+        patron: '',
         name: '',
         description: '',
         stats: {
@@ -50,12 +57,31 @@ export default function Generator() {
         }
     };
 
+    // Verify Connection on Mount
+    useEffect(() => {
+        const checkConnection = async () => {
+            try {
+                const res = await fetch('/api/session/connect');
+                const data = await res.json();
+
+                // If not connected, system mismatch, or NOT LOGGED IN, redirect to home.
+                if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.system?.isLoggedIn) {
+                    window.location.href = '/';
+                }
+            } catch (e) {
+                window.location.href = '/';
+            }
+        };
+        checkConnection();
+    }, []);
+
     // Load System Data
     useEffect(() => {
         fetch('/api/system/data')
             .then(res => res.json())
             .then(data => {
                 setSystemData(data);
+                console.log("[Generator] System Data Loaded:", data);
                 setLoading(false);
             })
             .catch(err => console.error('Failed to load system data', err));
@@ -65,12 +91,21 @@ export default function Generator() {
 
     // Fetch Class Details on change
     useEffect(() => {
+        setClassDetails(null); // Clear previous class immediately
         if (!formData.class) {
-            setClassDetails(null);
             return;
         }
         fetchDocument(formData.class).then(data => setClassDetails(data));
     }, [formData.class]);
+
+    // Fetch Patron Details on change
+    useEffect(() => {
+        if (!formData.patron) {
+            setPatronDetails(null);
+            return;
+        }
+        fetchDocument(formData.patron).then(data => setPatronDetails(data));
+    }, [formData.patron]);
 
     // Roll Stats (3d6 down the line)
     const rollStats = () => {
@@ -85,37 +120,162 @@ export default function Generator() {
         setFormData(prev => ({ ...prev, stats: newStats }));
     };
 
-    // Calculate HP based on Class Hit Die + CON mod
+    // Calculate HP based on Level Rules
     const calculateHP = () => {
-        let hitDie = "d4";
-        if (classDetails?.system?.hitPoints) {
-            hitDie = classDetails.system.hitPoints;
-        } else if (formData.level0) {
-            hitDie = "d4"; // Level 0 uses d4
+        let hp = 1;
+
+        if (formData.level0) {
+            // Level 0: 1 + CON mod (min 1)
+            hp = Math.max(1, 1 + formData.stats.CON.mod);
+        } else {
+            // Level 1: Hit Die + CON mod
+            let hitDie = "d4";
+            if (classDetails?.system?.hitPoints) {
+                hitDie = classDetails.system.hitPoints;
+            }
+
+            // Parse "d8" -> 8
+            const sides = parseInt(hitDie.replace("d", "")) || 4;
+            const roll = Math.floor(Math.random() * sides) + 1;
+
+            // Add CON mod, minimum 1 HP total
+            hp = Math.max(1, roll + formData.stats.CON.mod);
         }
-
-        // Parse "d8" -> 8
-        const sides = parseInt(hitDie.replace("d", "")) || 4;
-        const roll = Math.floor(Math.random() * sides) + 1;
-
-        // Add CON mod, minimum 1 HP total
-        const hp = Math.max(1, roll + formData.stats.CON.mod);
 
         setFormData(prev => ({ ...prev, hp }));
     };
 
-    // Calculate Gold: 2d6 * 5
+    // Calculate Gold: 2d6 * 5 or 0 for Level 0
     const calculateGold = () => {
+        if (formData.level0) {
+            setFormData(prev => ({ ...prev, gold: 0 }));
+            return;
+        }
         const d6 = () => Math.floor(Math.random() * 6) + 1;
         const gold = (d6() + d6()) * 5;
         setFormData(prev => ({ ...prev, gold }));
     };
 
-    // Recalculate HP when Class or CON mod changes
+    // Randomize Gear (Level 0)
+    const randomizeGear = async () => {
+        const GEAR_TABLE_UUID = "Compendium.shadowdark.rollable-tables.RollTable.EOr6HKQIQVuR35Ry";
+
+        // Count Logic: Roll 1d4 to determine how many times to draw
+        const count = Math.floor(Math.random() * 4) + 1;
+
+        const gearTable = await fetchDocument(GEAR_TABLE_UUID);
+        if (!gearTable || !gearTable.results) return;
+
+        let max = 0;
+        gearTable.results.forEach((r: any) => {
+            if (r.range[1] > max) max = r.range[1];
+        });
+
+        const selectedItems: any[] = [];
+        const seenNames = new Set<string>();
+
+        // Loop until we have enough items
+        let attempts = 0;
+        while (selectedItems.length < count && attempts < 50) {
+            attempts++;
+            const roll = Math.floor(Math.random() * max) + 1;
+            const result = gearTable.results.find((r: any) => roll >= r.range[0] && roll <= r.range[1]);
+
+            if (result && result.documentUuid) {
+                // Enforce NO DUPLICATES
+                if (seenNames.has(result.text || result.name)) continue;
+
+                const item = await fetchDocument(result.documentUuid);
+                if (item) {
+                    seenNames.add(result.text || result.name); // Mark as seen
+
+                    // Special case: Shortbow and 5 arrows (Legacy Item)
+                    if (item.name === "Shortbow and 5 arrows") {
+                        const arrows = await fetchDocument("Compendium.shadowdark.gear.Item.XXwA9ZWajYEDmcea");
+                        if (arrows) {
+                            const fiveArrows = JSON.parse(JSON.stringify(arrows));
+                            if (!fiveArrows.system) fiveArrows.system = {};
+                            fiveArrows.system.quantity = 5;
+                            selectedItems.push(fiveArrows);
+                        }
+                        selectedItems.push(item);
+                    } else {
+                        selectedItems.push(item);
+                    }
+                }
+            }
+        }
+
+        // Post-Processing: Shortbow/Arrow Dependency
+        // Verify if we have a Shortbow but no Arrows, or Arrows but no Shortbow.
+        // We check for names including "Shortbow" or "Arrows".
+        const hasShortbow = selectedItems.some(i => i.name.toLowerCase().includes("shortbow"));
+        const hasArrows = selectedItems.some(i => i.name.toLowerCase().includes("arrows"));
+
+        if (hasShortbow && !hasArrows) {
+            const arrows = await fetchDocument("Compendium.shadowdark.gear.Item.XXwA9ZWajYEDmcea");
+            if (arrows) {
+                const fiveArrows = JSON.parse(JSON.stringify(arrows));
+                if (!fiveArrows.system) fiveArrows.system = {};
+                fiveArrows.system.quantity = 5;
+                selectedItems.push(fiveArrows);
+            }
+        } else if (hasArrows && !hasShortbow) {
+            // Need to find Shortbow UUID.
+            // Assuming it's in the table, or we can look it up.
+            // If we can't find it easily, we might skip or try to fetch from pack if we knew UUID.
+            // Let's assume the user considers Shortbow + Arrows a set.
+            // We can search the gear table results for "Shortbow"?
+            // Or use a hardcodded UUID if we knew it.
+            // For now, let's rely on the table containing it or the user accepting arrow-only (rare).
+            // BUT user said "or vice versa".
+            // Let's check table results for "Shortbow".
+            const shortbowResult = gearTable.results.find((r: any) => r.text?.toLowerCase() === "shortbow" || r.name?.toLowerCase() === "shortbow");
+            if (shortbowResult && shortbowResult.documentUuid) {
+                const shortbow = await fetchDocument(shortbowResult.documentUuid);
+                if (shortbow) selectedItems.push(shortbow);
+            }
+        }
+
+        setGearSelected(selectedItems);
+    };
+
+    // Effect 1: Hit Points & Gold (Stats changes)
     useEffect(() => {
         calculateHP();
+        // Gold is random, don't re-roll on stats change.
+        // But do we want to re-roll Gold on Level toggle?
+        // calculateGold is called by randomizeAll.
+        // We should just init gold on mount? Or on Level Toggle?
+        if (formData.level0) {
+            // If switching to Level 0, ensure Gold is 0.
+            // But we don't want to infinite loop if we setFormData here.
+            // Actually calculateGold checks level0 and sets 0
+            // But doing this in effect might loop if gold isn't stable.
+            // Just let `level0` change trigger it once.
+            setFormData(prev => ({ ...prev, gold: 0 }));
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [classDetails, formData.stats.CON.mod, formData.level0]);
+    }, [formData.stats.CON.mod]); // Only CON mod? Class is handled by level change.
+
+    // Effect 2: Gear & Gold (Level/Class changes)
+    useEffect(() => {
+        // If Class changes (and not level 0), maybe re-calc HP?
+        calculateHP();
+
+        // If Level 0 toggled
+        if (formData.level0) {
+            randomizeGear();
+            setFormData(prev => ({ ...prev, gold: 0 }));
+        } else {
+            setGearSelected([]);
+            // If switching to Level 1, maybe roll gold?
+            // Only if gold is 0?
+            // calculateGold(); // Randomizes.
+            // User might want to keep rolled gold.
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [classDetails, formData.level0]);
 
     // Helper: Random Text from Roll Table
     const randomNameFromTable = async (tableUuid: string) => {
@@ -151,6 +311,8 @@ export default function Generator() {
         'Half-Orc': ['Grom', 'Thark', 'Mog', 'Varg', 'Karg', 'Urak', 'Grish', 'Naz'],
         'default': ['Hero', 'Adventurer', 'Wanderer', 'Traveler']
     };
+
+
 
     const randomizeName = async (ancestryUuid: string) => {
         if (!ancestryUuid) return;
@@ -203,6 +365,24 @@ export default function Generator() {
         const newAlignment = rand(['lawful', 'neutral', 'chaotic']);
         const newDeity = deity?.uuid || '';
 
+        let newPatron = '';
+        if (cls && cls.uuid) {
+            const clsDoc = systemData.classes.find((c: any) => c.uuid === cls.uuid);
+            // We need to check if class requires patron. The systemData summary might not have it.
+            // We might need to fetch the class doc, but we can't await inside this sync block easily for logic check.
+            // However, we know Warlock usually needs it.
+            // Let's assume if systemData.patrons exists and we picked a class, we *might* want one?
+            // Actually, `classDetails` updates async. `randomizeAll` updates `formData`.
+            // Ideally we check `systemData.classes` if it has extra metadata, but `ShadowdarkAdapter` only provides basic info.
+            // Workaround: If we pick a class, we can try to find if it's Warlock by name? Or just pick a random patron if available,
+            // and if the class doesn't need it, it just ignores it.
+            const isWarlock = cls.name?.toLowerCase().includes('warlock');
+            if (isWarlock && systemData.patrons?.length > 0) {
+                // @ts-ignore
+                newPatron = rand(systemData.patrons).uuid;
+            }
+        }
+
         // 2. Roll Stats
         rollStats();
 
@@ -217,11 +397,19 @@ export default function Generator() {
             class: newClass,
             alignment: newAlignment,
             deity: newDeity,
+            patron: newPatron,
         }));
 
-        // 5. Async Randomizations (Name)
         if (newAncestry) {
             await randomizeName(newAncestry);
+        }
+
+        // 6. Gold & Gear
+        calculateGold();
+        if (formData.level0) {
+            await randomizeGear();
+        } else {
+            setGearSelected([]);
         }
 
         setLoading(false);
@@ -242,43 +430,165 @@ export default function Generator() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData.level0, systemData]);
 
-    const [classTalentNames, setClassTalentNames] = useState<string[]>([]);
-
-    // Effect: Load Class Details (Talents)
+    // Effect: Load Ancestry Details & Talents
     useEffect(() => {
-        if (!classDetails?.system?.talents || formData.level0) {
-            setClassTalentNames([]);
+        // Always reset selections when ancestry changes
+        setSelectedAncestryTalents([]);
+        setKnownLanguages(prev => ({ ...prev, fixed: [], selected: [] })); // Reset languages
+
+        if (!formData.ancestry) {
+            setAncestryDetails(null);
+            setAncestryTalents({ fixed: [], choice: [], choiceCount: 0 });
             return;
         }
 
-        const loadTalents = async () => {
-            const names: string[] = [];
+        const loadAncestry = async () => {
+            try {
+                const details = await fetchDocument(formData.ancestry);
+                setAncestryDetails(details);
+
+                // Load Fixed Languages from Ancestry
+                if (details.system.languages?.fixed?.length > 0) {
+                    const langDocs = await Promise.all(details.system.languages.fixed.map((u: string) => fetchDocument(u)));
+                    const resolvedLangs = langDocs.map((d, i) => d ? {
+                        uuid: details.system.languages.fixed[i],
+                        name: d.name
+                    } : null).filter(d => d);
+                    setKnownLanguages(prev => ({ ...prev, fixed: resolvedLangs }));
+                }
+
+                if (!details?.system) return;
+
+                const fixed: any[] = [];
+                const choice: any[] = [];
+                const choiceCount = details.system.talentChoiceCount || 0;
+
+                if (details.system.talents?.length > 0) {
+                    const docs = await Promise.all(details.system.talents.map((u: string) => fetchDocument(u)));
+                    const loaded = docs.map((d, i) => d ? {
+                        uuid: details.system.talents[i],
+                        name: d.name,
+                        description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
+                    } : null).filter(d => d);
+
+                    // Logic: If available talents <= choice count, they are all fixed (you get all of them).
+                    // Otherwise, they are choices.
+                    if (loaded.length <= choiceCount) {
+                        fixed.push(...loaded);
+                    } else {
+                        choice.push(...loaded);
+                    }
+                }
+
+                setAncestryTalents({ fixed, choice, choiceCount });
+
+            } catch (e) {
+                console.error("Ancestry load error", e);
+            }
+        };
+        loadAncestry();
+    }, [formData.ancestry]);
+
+    const [classTalents, setClassTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number, table?: boolean }>({ fixed: [], choice: [], choiceCount: 0 });
+    const [ancestryTalents, setAncestryTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number }>({ fixed: [], choice: [], choiceCount: 0 });
+
+    // Gear State
+    const LEVEL_ZERO_GEAR_TABLE_UUID = "Compendium.shadowdark.rollable-tables.RollTable.WKVfMaGkoXe3DGub";
+    const [gearSelected, setGearSelected] = useState<any[]>([]);
+
+    // Language State
+    const [knownLanguages, setKnownLanguages] = useState<{ fixed: any[], selected: string[] }>({ fixed: [], selected: [] });
+    const [languageConfig, setLanguageConfig] = useState<{ common: number, rare: number, fixed: string[] }>({ common: 0, rare: 0, fixed: [] });
+    const [showLanguageModal, setShowLanguageModal] = useState(false);
+    const [weaponNames, setWeaponNames] = useState<string[]>([]);
+    const [armorNames, setArmorNames] = useState<string[]>([]);
+
+    useEffect(() => {
+        if (!classDetails?.system || formData.level0) {
+            setClassTalents({ fixed: [], choice: [], choiceCount: 0 });
+            setWeaponNames([]);
+            setArmorNames([]);
+            setLanguageConfig({ common: 0, rare: 0, fixed: [] });
+            setKnownLanguages(prev => ({ ...prev, selected: [] }));
+            return;
+        }
+
+        const loadDetails = async () => {
+            // Configure Languages from Class
+            if (classDetails.system.languages) {
+                setLanguageConfig({
+                    common: classDetails.system.languages.common || 0,
+                    rare: classDetails.system.languages.rare || 0,
+                    fixed: classDetails.system.languages.fixed || []
+                });
+            } else {
+                setLanguageConfig({ common: 0, rare: 0, fixed: [] });
+            }
+
+            // 1. Talents
+            const fixed: any[] = [];
+            const choice: any[] = [];
+            let choiceCount = classDetails.system.talentChoiceCount || 0;
+            let table = classDetails.system.classTalentTable || false;
 
             // Fixed Talents
-            for (const uuid of classDetails.system.talents) {
+            if (classDetails.system.talents?.length > 0) {
                 try {
-                    const doc = await fetchDocument(uuid);
-                    if (doc?.name) names.push(doc.name);
+                    const docs = await Promise.all(classDetails.system.talents.map((u: string) => fetchDocument(u)));
+                    fixed.push(...docs.map((d, i) => d ? {
+                        uuid: classDetails.system.talents[i],
+                        name: d.name,
+                        description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
+                    } : null).filter(d => d));
                 } catch (e) {
-                    console.error("Failed to load talent", uuid);
+                    console.error("Talent load error", e);
                 }
             }
 
-            // Choice Count
-            if (classDetails.system.talentChoiceCount > 0) {
-                names.push(`+${classDetails.system.talentChoiceCount} Choice(s)`);
+            // Choice Talents
+            if (classDetails.system.talentChoices?.length > 0) {
+                try {
+                    const docs = await Promise.all(classDetails.system.talentChoices.map((u: string) => fetchDocument(u)));
+                    choice.push(...docs.map((d, i) => d ? {
+                        uuid: classDetails.system.talentChoices[i],
+                        name: d.name,
+                        description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
+                    } : null).filter(d => d));
+                } catch (e) {
+                    console.error("Talent choice load error", e);
+                }
             }
 
-            // Class Talent Table (e.g. Random 1st level talent for Fighter)
-            // Some classes rely on a table roll for their main feature at lvl 1
-            if (classDetails.system.classTalentTable) {
-                names.push("+ Random Class Talent");
+            setClassTalents({ fixed, choice, choiceCount, table });
+
+            // 2. Weapons
+            if (Array.isArray(classDetails.system.weapons) && classDetails.system.weapons.length > 0) {
+                try {
+                    const docs = await Promise.all(classDetails.system.weapons.map((u: string) => fetchDocument(u)));
+                    setWeaponNames(docs.filter(d => d && d.name).map(d => d.name));
+                } catch (e) {
+                    console.error("Weapon load error", e);
+                    setWeaponNames([]);
+                }
+            } else {
+                setWeaponNames([]);
             }
 
-            setClassTalentNames(names);
+            // 3. Armor
+            if (Array.isArray(classDetails.system.armor) && classDetails.system.armor.length > 0) {
+                try {
+                    const docs = await Promise.all(classDetails.system.armor.map((u: string) => fetchDocument(u)));
+                    setArmorNames(docs.filter(d => d && d.name).map(d => d.name));
+                } catch (e) {
+                    console.error("Armor load error", e);
+                    setArmorNames([]);
+                }
+            } else {
+                setArmorNames([]);
+            }
         };
 
-        loadTalents();
+        loadDetails();
     }, [classDetails, formData.level0]);
 
 
@@ -292,19 +602,79 @@ export default function Generator() {
         setLoading(true);
 
         try {
-            // 1. Prepare Items
+            // 1. Prepare Items & System Data Strings
             const items: any[] = [];
+            let ancestryName = "";
+            let backgroundName = "";
+            let className = "";
 
-            // Helper to add item by UUID
+            // Helper to add item by UUID and return it
             const addItem = async (uuid: string) => {
-                if (!uuid) return;
-                const itemData = await fetchDocument(uuid);
-                if (itemData) items.push(itemData);
+                if (!uuid) return null;
+                const doc = await fetchDocument(uuid);
+                if (doc) {
+                    // Clone and strip ID to ensure clean creation
+                    const itemData = JSON.parse(JSON.stringify(doc));
+                    delete itemData._id;
+                    delete itemData.ownership;
+                    items.push(itemData);
+                    return itemData;
+                }
+                return null;
             };
 
-            await addItem(formData.ancestry);
-            await addItem(formData.background);
-            if (!formData.level0) await addItem(formData.class);
+            const ancestryItem = await addItem(formData.ancestry);
+            if (ancestryItem) ancestryName = ancestryItem.name;
+
+            // Add Ancestry Fixed Talents & Choices
+            for (const t of ancestryTalents.fixed) {
+                await addItem(t.uuid);
+            }
+            for (const uuid of selectedAncestryTalents) {
+                await addItem(uuid);
+            }
+
+            // Languages
+            for (const l of knownLanguages.fixed) {
+                await addItem(l.uuid);
+            }
+            if (languageConfig.fixed?.length > 0) {
+                for (const uuid of languageConfig.fixed) {
+                    await addItem(uuid);
+                }
+            }
+            for (const uuid of knownLanguages.selected) {
+                await addItem(uuid);
+            }
+
+            // Gear (Level 0)
+            if (formData.level0 && gearSelected.length > 0) {
+                for (const item of gearSelected) {
+                    // Gear items are already fetched and stripped (mostly) in randomizeGear?
+                    // Actually randomizeGear fetches docs. We should clean them too.
+                    const cleanItem = JSON.parse(JSON.stringify(item));
+                    delete cleanItem._id;
+                    delete cleanItem.ownership;
+                    items.push(cleanItem);
+                }
+            }
+
+            const backgroundItem = await addItem(formData.background);
+            if (backgroundItem) backgroundName = backgroundItem.name;
+
+            if (!formData.level0) {
+                const classItem = await addItem(formData.class);
+                if (classItem) className = classItem.name;
+            }
+
+            // Collect Language UUIDs for system.languages array
+            const languageUuids: string[] = [];
+            for (const l of knownLanguages.fixed) languageUuids.push(l.uuid);
+            if (languageConfig.fixed?.length > 0) {
+                for (const uuid of languageConfig.fixed) languageUuids.push(uuid);
+            }
+            for (const uuid of knownLanguages.selected) languageUuids.push(uuid);
+
 
             // 2. Prepare Actor Data
             const actorData = {
@@ -312,12 +682,16 @@ export default function Generator() {
                 type: 'Player',
                 img: 'icons/svg/mystery-man.svg',
                 system: {
-                    details: {
-                        alignment: formData.alignment,
-                        deity: formData.deity,
-                        level: {
-                            value: formData.level0 ? 0 : 1
-                        }
+                    ancestry: formData.ancestry,   // Use UUID
+                    background: formData.background, // Use UUID
+                    class: formData.class || "",     // Use UUID if present
+                    alignment: formData.alignment,
+                    deity: formData.deity,
+                    languages: languageUuids,
+                    level: {
+                        value: formData.level0 ? 0 : 1,
+                        xp: 0,
+                        next: formData.level0 ? 0 : 10
                     },
                     abilities: {
                         str: { mod: formData.stats.STR.mod, base: formData.stats.STR.value },
@@ -361,9 +735,14 @@ export default function Generator() {
     };
 
     if (loading && !systemData) { // Only full load screen on initial system load
+        // Return minimal skeleton or transparent loader to let dashboard transition look smoother?
+        // Or a nicer themed loader.
         return (
-            <div className="min-h-screen bg-neutral-900 text-white flex items-center justify-center">
-                <div className="text-2xl font-serif animate-pulse text-amber-500">Loading Shadowdark Data...</div>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900 text-white">
+                <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
+                    <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="text-xl font-serif text-amber-500 animate-pulse">Summoning the Shadowdark...</div>
+                </div>
             </div>
         );
     }
@@ -377,7 +756,9 @@ export default function Generator() {
                     onClick={() => window.location.href = '/'}
                     className="hover:text-white transition-colors flex items-center gap-2"
                 >
-                    <span className="fas fa-arrow-left"></span>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                        <path fillRule="evenodd" d="M11.03 3.97a.75.75 0 010 1.06l-6.22 6.22H21a.75.75 0 010 1.5H4.81l6.22 6.22a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0z" clipRule="evenodd" />
+                    </svg>
                     Back to Dashboard
                 </button>
                 <span className="text-neutral-500">Generating New Character</span>
@@ -387,10 +768,12 @@ export default function Generator() {
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex items-center justify-between px-6 border-b-4 border-black h-24">
                 <div className="flex items-center gap-6">
                     <div className="w-16 h-16 bg-neutral-800 border-2 border-white/10 flex items-center justify-center rounded">
-                        <span className="fas fa-user-plus text-3xl opacity-50"></span>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 opacity-50">
+                            <path d="M5.25 6.375a4.125 4.125 0 118.25 0 4.125 4.125 0 01-8.25 0zM2.25 19.125a7.125 7.125 0 0114.25 0v.003l-.001.119a.75.75 0 01-.363.63 13.067 13.067 0 01-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 01-.364-.63l-.001-.122zM18.75 7.5a.75.75 0 00-1.5 0v2.25H15a.75.75 0 000 1.5h2.25v2.25a.75.75 0 001.5 0v-2.25H21a.75.75 0 000-1.5h-2.25V7.5z" />
+                        </svg>
                     </div>
                     <div className="py-2">
-                        <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">Generator</h1>
+                        <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">Create Character</h1>
                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
                             Shadowdark RPG
                         </p>
@@ -398,15 +781,17 @@ export default function Generator() {
                 </div>
 
                 <div className="flex gap-6 items-center pr-2">
-                    {/* Randomize Button (Mimics Stat Block) */}
+                    {/* Randomize Button */}
                     <button
                         onClick={randomizeAll}
-                        className="flex flex-col items-center group -mb-1"
+                        className="group relative flex items-center justify-center -mb-2"
                         title="Randomize All"
                     >
-                        <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest group-hover:text-amber-500 transition-colors">Random</span>
-                        <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110">
-                            <span className="fas fa-dice text-2xl text-white group-hover:text-amber-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"></span>
+                        <div className="w-14 h-14 flex items-center justify-center transition-transform group-hover:scale-110 bg-neutral-800 rounded-full border-2 border-neutral-700 group-hover:border-amber-500 shadow-lg">
+                            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-current text-white group-hover:text-amber-500">
+                                <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
+                                <text x="50" y="66" fontSize="30" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
+                            </svg>
                         </div>
                     </button>
                 </div>
@@ -517,9 +902,21 @@ export default function Generator() {
                                     <button onClick={calculateGold} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>
                                 </h2>
                                 <div className="text-center">
-                                    <span className="text-3xl font-black font-serif">{formData.gold}</span>
-                                    <span className="text-xs font-bold text-neutral-400 ml-1">GP</span>
-                                    <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">2d6 x 5</p>
+                                    {
+                                        formData.level0 ? (
+                                            <>
+                                                <span className="text-xl font-black font-serif">See Details</span>
+                                                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">Starting Gear</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="text-3xl font-black font-serif">{formData.gold}</span>
+                                                <span className="text-xs font-bold text-neutral-400 ml-1">GP</span>
+                                                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">2d6 x 5</p>
+                                            </>
+                                        )
+                                    }
+
                                 </div>
                             </div>
                         </div>
@@ -619,17 +1016,25 @@ export default function Generator() {
                 </div>
 
                 {/* Details Section (Full Width) */}
-                <div className="bg-[#eaeae5] border-2 border-black font-sans text-sm text-black h-full">
-                    {/* Header */}
-                    <div className="bg-black text-white font-serif font-black text-xl p-2 mb-2 flex items-center justify-between">
-                        <span>DETAILS</span>
-                        <div className="h-6 w-6 relative opacity-80">
-                            {/* Icon placeholder for visual balance */}
-                            <span className="fas fa-scroll"></span>
-                        </div>
-                    </div>
+                <div className="bg-white p-4 border-2 border-black shadow-sm mt-4">
+                    <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2">Details</h2>
 
                     <div className="p-4 space-y-1">
+
+                        {/*          
+                        // Need to see temp/shadowdark/templates/apps/character-generator/details.hbs
+                        // Follow all leads implement each section as such
+	<div class="content details">
+		{{> apps/character-generator/details/class-description}}
+		{{> apps/character-generator/details/ancestry-talents}}
+		{{> apps/character-generator/details/weapons}}
+		{{> apps/character-generator/details/armor}}
+		{{> apps/character-generator/details/languages}}
+		{{> apps/character-generator/details/patron}}
+		{{> apps/character-generator/details/class-talents}}
+		{{> apps/character-generator/details/gear}}
+	</div>
+        */}
                         {/* 1. Class Flavor Text (Description) */}
                         {classDetails?.system?.description && !formData.level0 && (
                             <div
@@ -641,110 +1046,411 @@ export default function Generator() {
                         {/* 2. Ancestry Talent/Feature */}
                         {ancestryDetails && (
                             <div className="mb-1">
-                                {(() => {
-                                    const rawDesc = ancestryDetails.system?.description?.value || ancestryDetails.system?.description || "";
-                                    const cleanDesc = rawDesc.replace(/<[^>]+>/g, '');
-                                    return (
-                                        <span dangerouslySetInnerHTML={{ __html: cleanDesc }} />
-                                    );
-                                })()}
+                                <div className="leading-tight mb-2">
+                                    {(() => {
+                                        const rawDesc = ancestryDetails.system?.description?.value || ancestryDetails.system?.description || "";
+                                        const cleanDesc = rawDesc.replace(/<[^>]+>/g, ' ');
+                                        return <span dangerouslySetInnerHTML={{ __html: cleanDesc }} />;
+                                    })()}
+                                </div>
+
+                                {ancestryTalents.fixed.map((talent, i) => (
+                                    <div key={`anc-fixed-${i}`} className="mb-1 leading-tight">
+                                        <span className="font-bold">{talent.name}. </span>
+                                        <span dangerouslySetInnerHTML={{ __html: talent.description }}></span>
+                                    </div>
+                                ))}
+
+                                {ancestryTalents.choice.length > 0 && (
+                                    <div className="mt-2">
+                                        <span className="font-bold italic text-neutral-600">
+                                            Choose {ancestryTalents.choiceCount}:
+                                        </span>
+                                        <div className="mt-2">
+                                            <span className="font-bold text-neutral-600 block mb-1">
+                                                Ancestry Choice ({selectedAncestryTalents.length}/{ancestryTalents.choiceCount}):
+                                            </span>
+
+                                            {/* Show selected talents */}
+                                            {selectedAncestryTalents.length > 0 && (
+                                                <div className="ml-2 mb-2">
+                                                    {ancestryTalents.choice
+                                                        .filter(t => selectedAncestryTalents.includes(t.uuid))
+                                                        .map((talent, i) => (
+                                                            <div key={`sel-anc-${i}`} className="mb-1 leading-tight text-neutral-800">
+                                                                <span className="font-bold text-xs">● {talent.name}. </span>
+                                                                <span className="text-xs" dangerouslySetInnerHTML={{ __html: talent.description }}></span>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            )}
+
+                                            {/* Selection Button */}
+                                            <button
+                                                onClick={() => setShowAncestryTalentsModal(true)}
+                                                className={`text-xs px-2 py-1 rounded border ${selectedAncestryTalents.length === ancestryTalents.choiceCount
+                                                    ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
+                                                    : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
+                                                    }`}
+                                            >
+                                                {selectedAncestryTalents.length === ancestryTalents.choiceCount ? 'Re-select Talents' : 'Select Talents'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Ancestry Talent Modal */}
+                                {showAncestryTalentsModal && (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                        <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
+                                            <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
+                                                <h3 className="font-bold font-serif text-lg">Choose {ancestryTalents.choiceCount} Talent{ancestryTalents.choiceCount > 1 ? 's' : ''}</h3>
+                                                <button
+                                                    onClick={() => setShowAncestryTalentsModal(false)}
+                                                    className="text-neutral-500 hover:text-black"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                            <div className="p-4 overflow-y-auto">
+                                                <div className="space-y-2">
+                                                    {ancestryTalents.choice.map((t: any) => {
+                                                        const isSelected = selectedAncestryTalents.includes(t.uuid);
+                                                        const canSelect = isSelected || selectedAncestryTalents.length < ancestryTalents.choiceCount;
+
+                                                        return (
+                                                            <div
+                                                                key={t.uuid || t.name} // Prefer UUID
+                                                                onClick={() => {
+                                                                    if (isSelected) {
+                                                                        setSelectedAncestryTalents(prev => prev.filter(id => id !== t.uuid));
+                                                                    } else if (canSelect) {
+                                                                        setSelectedAncestryTalents(prev => [...prev, t.uuid]);
+                                                                    }
+                                                                }}
+                                                                className={`p-2 border rounded cursor-pointer transition-colors ${isSelected
+                                                                    ? 'border-indigo-500 bg-indigo-50'
+                                                                    : canSelect
+                                                                        ? 'hover:bg-neutral-50 border-neutral-200'
+                                                                        : 'opacity-50 cursor-not-allowed border-neutral-100'
+                                                                    }`}
+                                                            >
+                                                                <div className="flex justify-between items-start">
+                                                                    <div className="font-bold text-sm">{t.name}</div>
+                                                                    {isSelected && <span className="fas fa-check text-indigo-600"></span>}
+                                                                </div>
+                                                                <div className="text-xs text-neutral-600 mt-1" dangerouslySetInnerHTML={{ __html: t.description }}></div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right flex justify-between items-center">
+                                                <span className="text-xs text-neutral-500">
+                                                    {selectedAncestryTalents.length} / {ancestryTalents.choiceCount} selected
+                                                </span>
+                                                <button
+                                                    onClick={() => setShowAncestryTalentsModal(false)}
+                                                    className="px-3 py-1 bg-neutral-800 text-white hover:bg-black rounded text-sm disabled:opacity-50"
+                                                    disabled={selectedAncestryTalents.length !== ancestryTalents.choiceCount}
+                                                >
+                                                    Confirm
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {/* 3. Weapons */}
                         <div>
                             <span className="font-bold">Weapons: </span>
-                            {classDetails?.system ? (
+                            {formData.level0 ? (
+                                <span>All weapons</span>
+                            ) : (
                                 <span>
-                                    {classDetails.system.allWeapons ? "All weapons" :
-                                        classDetails.system.allMeleeWeapons && classDetails.system.allRangedWeapons ? "All weapons" :
-                                            classDetails.system.allMeleeWeapons ? "All melee weapons" :
-                                                classDetails.system.allRangedWeapons ? "All ranged weapons" :
-                                                    "See sheet"}
+                                    {(() => {
+                                        if (!classDetails?.system) return "...";
+                                        const s = classDetails.system;
+                                        const parts = [];
+                                        if (s.allWeapons) return "All weapons";
+                                        if (s.allMeleeWeapons) parts.push("All melee weapons");
+                                        if (s.allRangedWeapons) parts.push("All ranged weapons");
+                                        if (s.weapons && Array.isArray(s.weapons)) {
+                                            // Check if we have standard weapon permissions (All, Melee, Ranged)
+                                            // If so, and the list is empty/UUIDs, we prefer the general text?
+                                            // Actually, usually it's additive.
+                                            // But if we have resolved names, use them.
+                                            if (weaponNames.length > 0) {
+                                                parts.push(weaponNames.join(", "));
+                                            } else if (s.weapons.length > 0) {
+                                                // Fallback to loading text if UUIDs present but not resolved yet
+                                                parts.push("Loading...");
+                                            }
+                                        }
+                                        return parts.length > 0 ? parts.join(", ") : "None";
+                                    })()}
                                 </span>
-                            ) :
-                                formData.level0 ? "All weapons" : "..."
-                            }
+                            )}
                         </div>
 
                         {/* 4. Armor */}
                         <div>
                             <span className="font-bold">Armor: </span>
-                            {classDetails?.system ? (
+                            {formData.level0 ? (
+                                <span>All armor, shields</span>
+                            ) : (
                                 <span>
-                                    {classDetails.system.allArmor ? "All armor" :
-                                        classDetails.system.armor?.length > 0 ? "See sheet" :
-                                            "None"}
+                                    {(() => {
+                                        if (!classDetails?.system) return "...";
+                                        const s = classDetails.system;
+                                        const parts = [];
+                                        if (s.allArmor) return "All armor";
+                                        if (s.armor && Array.isArray(s.armor)) {
+                                            if (armorNames.length > 0) {
+                                                parts.push(armorNames.join(", "));
+                                            } else if (s.armor.length > 0) {
+                                                parts.push("Loading...");
+                                            }
+                                        }
+                                        return parts.length > 0 ? parts.join(", ") : "None";
+                                    })()}
                                 </span>
-                            ) :
-                                formData.level0 ? "All armor" : "..."
-                            }
+                            )}
                         </div>
 
                         {/* 5. Languages */}
+                        {/* 5. Languages */}
                         <div>
                             <span className="font-bold">Languages: </span>
-                            {(() => {
-                                const langs: string[] = [];
-                                if (ancestryDetails) langs.push("Common");
-                                const ancSelect = ancestryDetails?.system?.languages?.select || 0;
-                                if (ancSelect > 0) langs.push(`+${ancSelect} others`);
-                                if (!formData.level0 && classDetails) {
-                                    const clsSelect = classDetails.system?.languages?.select || 0;
-                                    if (clsSelect > 0) langs.push(`+${clsSelect} class languages`);
-                                    if (classDetails.system?.languages?.fixed?.length > 0) {
-                                        classDetails.system.languages.fixed.forEach((uuid: string) => {
-                                            const known = systemData?.languages?.find((l: any) => l.uuid === uuid);
-                                            if (known) langs.push(known.name);
-                                        });
-                                    }
-                                }
-                                return langs.length > 0 ? langs.join(", ") : "Common";
-                            })()}
+                            <span>
+                                {[
+                                    ...knownLanguages.fixed.map(l => l.name),
+                                    ...(knownLanguages.selected.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)?.name).filter(Boolean))
+                                ].join(", ") || "Common"}
+                            </span>
+
+                            {(languageConfig.common > 0 || languageConfig.rare > 0) && (
+                                <button
+                                    onClick={() => setShowLanguageModal(true)}
+                                    className={`ml-2 text-xs px-2 py-1 rounded border ${knownLanguages.selected.length === (languageConfig.common + languageConfig.rare)
+                                        ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
+                                        : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
+                                        }`}
+                                >
+                                    Select Languages ({knownLanguages.selected.length}/{languageConfig.common + languageConfig.rare})
+                                </button>
+                            )}
                         </div>
 
                         {/* 6. Patron */}
                         {classDetails?.system?.patron?.required && (
-                            <div>
-                                <span className="font-bold">Patron: </span>
-                                <span className="italic text-neutral-600">
-                                    Randomly selected during creation...
-                                </span>
+                            <div className="mb-2">
+                                {/*<span className="font-bold">Patron: </span>*/}
+                                {formData.patron && patronDetails ? (
+                                    <span>
+                                        <button
+                                            onClick={() => setShowPatronModal(true)}
+                                            className="text-[10px] uppercase bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-1 rounded mr-2 border border-neutral-400"
+                                        >
+                                            Edit/Change
+                                        </button>
+                                        <span className="font-bold">{patronDetails.name}: </span>
+                                        <span className="italic text-neutral-600 text-sm">
+                                            <span dangerouslySetInnerHTML={{ __html: (patronDetails.system?.description?.value || patronDetails.system?.description || "").replace(/<[^>]+>/g, ' ') }}></span>
+                                        </span>
+                                    </span>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowPatronModal(true)}
+                                        className="text-xs bg-red-100 hover:bg-red-200 text-red-800 px-2 py-1 rounded border border-red-300"
+                                    >
+                                        Select Patron
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Patron Selection Modal */}
+                        {/* Patron Selection Modal */}
+                        {showPatronModal && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
+                                        <h3 className="font-bold font-serif text-lg">Choose Patron</h3>
+                                        <button
+                                            onClick={() => setShowPatronModal(false)}
+                                            className="text-neutral-500 hover:text-black"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="p-4 overflow-y-auto">
+                                        {!systemData?.patrons?.length ? (
+                                            <p className="italic text-neutral-500">No patrons found in list.</p>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {/* @ts-ignore */}
+                                                {systemData.patrons.map((p: any) => (
+                                                    <div
+                                                        key={p.uuid}
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, patron: p.uuid }));
+                                                            setShowPatronModal(false);
+                                                        }}
+                                                        className={`p-2 border rounded cursor-pointer hover:bg-neutral-50 ${formData.patron === p.uuid ? 'border-indigo-500 bg-indigo-50' : 'border-neutral-200'}`}
+                                                    >
+                                                        <div className="font-bold text-sm">{p.name}</div>
+                                                        <div className="text-xs text-neutral-600 line-clamp-2">
+                                                            {(p.description || "").replace(/<[^>]+>/g, ' ')}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right">
+                                        <button
+                                            onClick={() => setShowPatronModal(false)}
+                                            className="px-3 py-1 bg-neutral-200 hover:bg-neutral-300 rounded text-sm"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Language Selection Modal */}
+                        {showLanguageModal && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                <div className="bg-white rounded shadow-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
+                                        <h3 className="font-bold font-serif text-lg">Select Languages</h3>
+                                        <button onClick={() => setShowLanguageModal(false)} className="text-neutral-500 hover:text-black">✕</button>
+                                    </div>
+                                    <div className="p-4 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        {['common', 'rare'].map(rarity => {
+                                            const allowed = rarity === 'common' ? languageConfig.common : languageConfig.rare;
+                                            if (allowed <= 0) return null;
+
+                                            // @ts-ignore
+                                            const options = systemData?.languages?.filter((l: any) => l.rarity === rarity || (rarity === 'common' && !l.rarity));
+                                            const selectedInBucket = knownLanguages.selected.filter(uuid => {
+                                                // @ts-ignore
+                                                const l = systemData?.languages?.find((x: any) => x.uuid === uuid);
+                                                return (l?.rarity || 'common') === rarity;
+                                            });
+
+                                            return (
+                                                <div key={rarity}>
+                                                    <h4 className="font-bold text-sm uppercase text-neutral-500 mb-2 border-b border-neutral-200 flex justify-between">
+                                                        <span className="capitalize">{rarity} Languages</span>
+                                                        <span>{selectedInBucket.length} / {allowed}</span>
+                                                    </h4>
+                                                    <div className="space-y-1">
+                                                        {options.map((l: any) => {
+                                                            const isFixed = knownLanguages.fixed.some(f => f.uuid === l.uuid);
+                                                            if (isFixed) return null;
+
+                                                            const isSelected = knownLanguages.selected.includes(l.uuid);
+                                                            const canSelect = isSelected || selectedInBucket.length < allowed;
+
+                                                            return (
+                                                                <div
+                                                                    key={l.uuid}
+                                                                    onClick={() => {
+                                                                        if (isSelected) {
+                                                                            setKnownLanguages(prev => ({ ...prev, selected: prev.selected.filter(id => id !== l.uuid) }));
+                                                                        } else if (canSelect) {
+                                                                            setKnownLanguages(prev => ({ ...prev, selected: [...prev.selected, l.uuid] }));
+                                                                        }
+                                                                    }}
+                                                                    className={`p-2 border rounded cursor-pointer text-sm ${isSelected ? 'bg-indigo-50 border-indigo-500 font-bold' :
+                                                                        canSelect ? 'hover:bg-neutral-50 border-neutral-200' : 'opacity-50 cursor-not-allowed border-neutral-100'
+                                                                        }`}
+                                                                >
+                                                                    {l.name}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right">
+                                        <button
+                                            onClick={() => setShowLanguageModal(false)}
+                                            className="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-900"
+                                        >
+                                            Done
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
                         {/* 7. Class Talents */}
                         {!formData.level0 && classDetails && (
                             <div className="mt-1">
-                                <span className="font-bold">Class Talent: </span>
-                                <span className="italic text-neutral-600">
-                                    {classTalentNames.length > 0 ?
-                                        classTalentNames.join(", ") :
-                                        (classDetails.system.talents?.length > 0 ? "Loading..." : "See sheet")}
-                                </span>
+                                {classTalents.fixed.map((talent, i) => (
+                                    <div key={`fixed-${i}`} className="mb-1 leading-tight">
+                                        <span className="font-bold">{talent.name}: </span>
+                                        <span dangerouslySetInnerHTML={{ __html: talent.description }}></span>
+                                    </div>
+                                ))}
+
+                                {classTalents.choiceCount > 0 && (
+                                    <div className="mt-2">
+                                        <span className="font-bold italic text-neutral-600">Choose {classTalents.choiceCount}:</span>
+                                        {classTalents.choice.length > 0 ? (
+                                            <div className="ml-2">
+                                                {classTalents.choice.map((talent, i) => (
+                                                    <div key={`choice-${i}`} className="mb-1 leading-tight text-neutral-700">
+                                                        <span className="font-bold text-xs">○ {talent.name}: </span>
+                                                        <span className="text-xs" dangerouslySetInnerHTML={{ __html: talent.description }}></span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <span className="italic text-neutral-500"> (Options loading or see sheet)</span>
+                                        )}
+                                    </div>
+                                )}
+
+                                {classTalents.table && (
+                                    <div className="mt-1 italic text-neutral-600">
+                                        + Random Class Talent (Roll on table)
+                                    </div>
+                                )}
                             </div>
                         )}
 
-                        {/* 8. Starting Gear */}
+                        {/* 8. Gear */}
+                        {/* 8. Gear */}
                         {formData.level0 && (
                             <div className="mt-2 text-sm">
                                 <span className="font-bold">Starting Gear: </span>
-                                <span className="italic text-neutral-600">Randomized Level 0 Gear...</span>
+                                {gearSelected.length > 0 ? (
+                                    <ul className="list-disc list-inside text-sm ml-2 mt-1">
+                                        {gearSelected.map((item, i) => (
+                                            <li key={i}>
+                                                {item.name}
+                                                {item.system?.quantity > 1 ? ` (${item.system.quantity})` : ''}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <span className="italic text-neutral-500">None</span>
+                                )}
                             </div>
                         )}
                     </div>
                 </div>
 
-                {/* Personal Notes (Kept separate but styled inline with the clean aesthetic) */}
-                <div className="bg-white p-4 border-2 border-black shadow-sm mt-4">
-                    <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2">Personal Notes</h2>
-                    <textarea
-                        className="w-full h-20 bg-transparent border-0 focus:ring-0 p-0 outline-none resize-none font-sans text-sm placeholder:italic"
-                        placeholder="Character appearance, backstory, or lucky charm..."
-                        value={formData.description}
-                        onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    ></textarea>
-                </div>
+
 
 
                 {/* Create Character CTA Button (Full Width Bottom) */}
@@ -760,6 +1466,6 @@ export default function Generator() {
                     <p className="text-xs text-neutral-500">Creates a new actor in Foundry VTT</p>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

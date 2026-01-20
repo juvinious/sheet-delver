@@ -1,3 +1,4 @@
+import { ShadowdarkAdapter } from '../modules/shadowdark/system';
 import { FoundryClient } from '../lib/foundry/client';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs/promises';
@@ -6,6 +7,8 @@ import * as path from 'path';
 
 dotenv.config();
 
+// Mock Client-like object or use real client
+// We need a real client to connect to Foundry
 async function loadConfig() {
     try {
         const configPath = path.resolve(process.cwd(), 'settings.yaml');
@@ -30,7 +33,7 @@ async function loadConfig() {
 async function run() {
     const config = await loadConfig();
     if (!config) {
-        console.error('No config found');
+        console.error("No config");
         return;
     }
 
@@ -39,28 +42,17 @@ async function run() {
         await client.connect();
         await client.login();
 
-        await client['page']?.waitForFunction(() => (window as any).game && (window as any).game.packs.size > 0, null, { timeout: 10000 });
+        const adapter = new ShadowdarkAdapter();
+        console.log("Fetching System Data...");
+        const data = await adapter.getSystemData(client);
 
-        const packs = await client['page']?.evaluate(async () => {
-            // @ts-ignore
-            const packs = window.game.packs.contents;
-            const result = [];
+        console.log("--- PATRONS ---");
+        // @ts-ignore
+        console.log(data.patrons.map(p => `${p.name} (${p.uuid})`));
 
-            for (const p of packs) {
-                // We need to load the index if it's not loaded, but typically we can request it
-                // @ts-ignore
-                const index = await p.getIndex();
-                result.push({
-                    collection: p.collection,
-                    title: p.title,
-                    // @ts-ignore
-                    index: index.map(i => ({ _id: i._id, name: i.name, type: i.type, img: i.img }))
-                });
-            }
-            return result.filter(p => p.collection.toLowerCase().includes('patron') || p.collection.toLowerCase().includes('deiti') || p.title.toLowerCase().includes('patron'));
-        });
-
-        console.log(JSON.stringify(packs, null, 2));
+        console.log("--- DEITIES ---");
+        // @ts-ignore
+        console.log(data.deities.map(d => `${d.name} (${d.uuid})`));
 
     } catch (e) {
         console.error(e);

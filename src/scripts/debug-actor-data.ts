@@ -1,67 +1,63 @@
 
 import { FoundryClient } from '../lib/foundry/client';
-import * as dotenv from 'dotenv';
-import * as fs from 'fs/promises';
-import * as yaml from 'js-yaml';
-import * as path from 'path';
 
-dotenv.config();
+async function main() {
+    const client = new FoundryClient({
+        url: 'http://localhost:30000',
+        headless: true
+    });
 
-async function loadConfig() {
     try {
-        const configPath = path.resolve(process.cwd(), 'settings.yaml');
-        const fileContents = await fs.readFile(configPath, 'utf8');
-        const doc = yaml.load(fileContents) as any;
+        await client.connect();
+        const actorId = 'n93JSRyao3o2kSva'; // ID from user logs
 
-        if (doc && doc.foundry) {
-            return {
-                url: `${doc.foundry.protocol}://${doc.foundry.host}:${doc.foundry.port}`,
-                username: doc.debug?.foundryUser?.name,
-                password: doc.debug?.foundryUser?.password,
-                headless: !doc.debug?.enabled
-            };
-        }
-    } catch (e) {
-        console.error('Failed to load config', e);
-        return null;
-    }
-    return null;
-}
+        const debugInfo = await client.evaluate(async (id) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(id);
+            if (!actor) return { error: 'Actor not found' };
 
-async function run() {
-    const config = await loadConfig();
-    const client = new FoundryClient(config!);
-    await client.connect();
-    await client.login();
+            const type = actor.type;
+            const strStat = actor.system.abilities?.str;
+            const strBase = strStat?.base;
+            const strBonus = strStat?.bonus;
 
-    // Get first actor
-    const actors = await client.getActors();
-    if (actors.length > 0) {
-        const actor = await client.getActor(actors[0].id);
-        if (!actor) {
-            console.log('Actor not found');
-            await client.close();
-            return;
-        }
-        console.log('Actor Name:', actor.name);
-        console.log('System Data Keys:', Object.keys(actor.system));
-        // Check languages and deity specially for Shadowdark
-        console.log('Languages:', JSON.stringify(actor.system.languages, null, 2));
-        console.log('Deity:', actor.system.deity);
+            let apiMod = 'Method Missing';
+            let calculatedMod = 'N/A';
 
-        // Also check if any other fields look like Compendium links
-        console.log('Full System Dump (first level):');
-        for (const key in actor.system) {
-            const val = actor.system[key];
-            if (typeof val === 'string' && val.startsWith('Compendium')) {
-                console.log(`${key}: ${val}`);
+            // Check API
+            // @ts-ignore
+            if (typeof actor.abilityModifier === 'function') {
+                try {
+                    // @ts-ignore
+                    apiMod = actor.abilityModifier('str');
+                } catch (e: any) {
+                    apiMod = `Error: ${e.message}`;
+                }
             }
-        }
-    } else {
-        console.log('No actors found');
-    }
 
-    await client.close();
+            // Check Raw System Data
+            return {
+                id,
+                name: actor.name,
+                type,
+                abilities: actor.system.abilities,
+                strDebug: {
+                    base: strBase,
+                    bonus: strBonus,
+                    apiResult: apiMod
+                },
+                proto: actor.constructor.name
+            };
+
+        }, actorId);
+
+        console.log(JSON.stringify(debugInfo, null, 2));
+
+    } catch (error) {
+        console.error('Debug script failed:', error);
+    } finally {
+        await client.disconnect();
+    }
 }
 
-run();
+main();

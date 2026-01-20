@@ -15,7 +15,8 @@ export class FoundryClient {
     }
 
     private async resolveAdapter(): Promise<SystemAdapter> {
-        if (this.adapter) return this.adapter;
+        // if (this.adapter) return this.adapter; // Disable caching for development
+        // Always re-fetch adapter to allow for HMR updates
 
         const sys = await this.getSystem();
         const systemId = sys.id ? sys.id.toLowerCase() : 'generic';
@@ -193,7 +194,8 @@ export class FoundryClient {
         nextSession?: string | null;
         users?: { active: number; total: number };
         background?: string;
-        isLoggedIn?: boolean
+        isLoggedIn?: boolean;
+        theme?: any;
     }> {
         if (!this.page) throw new Error('Not connected');
 
@@ -401,7 +403,8 @@ export class FoundryClient {
             // Post-processing
             if (data) {
                 if (data.id && data.id !== 'setup' && data.id !== 'unknown') {
-                    return data;
+                    const adapter = getAdapter(data.id);
+                    return { ...data, theme: adapter?.theme };
                 }
             }
 
@@ -577,26 +580,7 @@ export class FoundryClient {
         }, { actorId, itemId });
     }
 
-    async getPredefinedEffectsList() {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
-        return await this.page.evaluate(() => {
-            // @ts-ignore
-            return window.shadowdark.effects.getPredefinedEffectsList();
-        });
-    }
-
-    async createPredefinedEffect(actorId: string, effectKey: string) {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(({ actorId, effectKey }) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) throw new Error('Actor not found');
-            // @ts-ignore
-            return window.shadowdark.effects.createPredefinedEffect(actor, effectKey);
-        }, { actorId, effectKey });
-    }
 
     async createActor(data: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');

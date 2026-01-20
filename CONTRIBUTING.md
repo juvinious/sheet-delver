@@ -73,7 +73,9 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     *   **Data Fetching**: `getActor(client, id)` (running in browser context via Playwright).
     *   **Normalization**: `normalizeActorData(actor)` (converting raw Foundry data to a UI-friendly shape).
     *   **Rolling**: `getRollData(...)` (handling system-specific dice logic).
+    *   **Theming**: `theme` (optional configuration for system-specific colors/fonts).
 *   **Isolation**: Do not import code from other system modules. Shared UI components (like `RichTextEditor`, `DiceTray`) are available in `@/components`.
+*   **Registry**: Frontend components that need valid server-side rendering or dynamic imports (like Dashboard Tools) are registered in `src/modules/core/component-registry.tsx`.
 
 ## Adding a New System
 
@@ -98,7 +100,9 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     };
     export default manifest;
     ```
+100:     ```
 6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
+7.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
 
 ## Development Workflow
 

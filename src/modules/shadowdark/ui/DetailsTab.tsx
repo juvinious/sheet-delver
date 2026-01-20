@@ -42,7 +42,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
                                 </svg>
                             ) : (
-                                <span>{actor.system?.level?.value || 1}</span>
+                                <span>{actor.system?.level?.value ?? 1}</span>
                             )}
                         </div>
                     </div>
@@ -58,7 +58,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                 const clsVal = actor.system?.class;
                                 const clsObj = systemData?.classes?.find((c: any) => c.uuid === clsVal || c.name === clsVal);
                                 const clsName = clsObj ? clsObj.name : clsVal;
-                                const lvl = actor.system?.level?.value || 1;
+                                const lvl = actor.system?.level?.value ?? 1;
                                 const sysTitle = systemData?.titles?.[clsName]?.find((t: any) => lvl >= t.from && lvl <= t.to);
                                 const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
                                 return actor.system?.title || sysTitle?.[alignment] || '-';
@@ -113,7 +113,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                 className="w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1"
                             />
                             <span className="text-neutral-400">/</span>
-                            <span>{actor.system?.level?.next || 10}</span>
+                            <span>{actor.system?.level?.next ?? 10}</span>
                         </div>
                     </div>
 

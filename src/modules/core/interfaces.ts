@@ -21,7 +21,22 @@ export interface SystemAdapter {
      */
     match(actor: any): boolean;
     getActor(client: any, actorId: string): Promise<any>;
+    getActor(client: any, actorId: string): Promise<any>;
     getSystemData(client: any): Promise<any>;
+
+    /**
+     * Optional theme configuration for the client UI.
+     */
+    theme?: {
+        bg?: string;
+        panelBg?: string;
+        text?: string;
+        accent?: string;
+        button?: string;
+        headerFont?: string;
+        input?: string;
+        success?: string;
+    };
 }
 
 export interface ModuleManifest {

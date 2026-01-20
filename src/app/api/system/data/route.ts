@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 
+// Force rebuild 2
 export async function GET() {
     try {
         const config = await loadConfig();

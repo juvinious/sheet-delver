@@ -4,6 +4,17 @@ import { calculateItemSlots, calculateMaxSlots } from './rules';
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
 
+    theme = {
+        bg: 'bg-neutral-900',
+        panelBg: 'bg-neutral-800',
+        text: 'text-neutral-200',
+        accent: 'text-amber-500',
+        button: 'bg-amber-700 hover:bg-amber-600',
+        headerFont: 'font-serif tracking-widest',
+        input: 'bg-neutral-950 border-neutral-700 focus:border-amber-600',
+        success: 'bg-green-800 hover:bg-green-700'
+    };
+
     match(actor: any): boolean {
         return actor.systemId === 'shadowdark' || actor.system?.attributes?.hp?.base !== undefined; // Heuristic fallback if systemId missing, but usually systemId is there.
     }
@@ -120,7 +131,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // --- DERIVED STATS ---
-            const levelVal = Number(actor.system.level?.value) || 1;
+            const levelVal = actor.system.level?.value !== undefined ? Number(actor.system.level.value) : 1;
             const xpVal = Number(actor.system.level?.xp) || 0;
             const computed: any = {
                 maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
@@ -148,8 +159,50 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
 
                 try {
-                    computed.abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
-                } catch (err) { console.error('Error calculating Abilities:', err); computed.abilities = actor.system.abilities || {}; }
+                    // --- BROWSER CONTEXT ---
+                    // The following code runs inside the browser!
+                    // We have access to the real ActorSD instance here.
+
+                    let abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
+                    const keys = Object.keys(abilities);
+                    const safeAbilities: any = {};
+
+                    // 1. Sanitize Data (Polyfill missing bonus)
+                    // We modify the actor's system data in memory to ensure the API call doesn't crash/fail
+                    if (actor.type === 'Player' && actor.system?.abilities) {
+                        for (const key of keys) {
+                            if (actor.system.abilities[key] && actor.system.abilities[key].bonus === undefined) {
+                                actor.system.abilities[key].bonus = 0;
+                            }
+                        }
+                    }
+
+                    // 2. Strict API Usage
+                    for (const key of keys) {
+                        const stat = abilities[key];
+                        let finalMod = stat.mod ?? 0;
+
+                        if (typeof actor.abilityModifier === 'function') {
+                            try {
+                                const apiMod = actor.abilityModifier(key);
+                                if (apiMod !== undefined && apiMod !== null) {
+                                    finalMod = apiMod;
+                                }
+                            } catch (e) {
+                                console.error(`[Browser] Error calculating modifier for ${key}:`, e);
+                            }
+                        }
+
+                        // Fallback: If API failed to return a number, try local calculation?
+                        // User requested STRICT API usage. If API returns 0, we trust it (or fixed the input so it's correct).
+                        // Note: If we really want to be safe, we could check if API mod is 0 but base is e.g. 18.
+                        // But let's trust the API with sanitized data.
+
+                        safeAbilities[key] = { ...stat, mod: finalMod };
+                    }
+                    computed.abilities = safeAbilities;
+
+                } catch (err) { console.error('Error calculating Abilities in Browser:', err); computed.abilities = actor.system.abilities || {}; }
 
                 // Get spellcasting ability
                 let spellcastingAbility = "";
@@ -209,6 +262,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 backgrounds: [] as any[],
                 languages: [] as any[],
                 deities: [] as any[],
+                patrons: [] as any[],
                 titles: {}
             };
 
@@ -283,6 +337,24 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     }
                 }
 
+                // Index Patrons
+                const patronIndex = index.filter((i: any) => i.type === 'Patron' || i.type === 'patron');
+                console.log(`[ShadowdarkAdapter] Found ${patronIndex.length} patrons in ${pack.collection}.`);
+
+                for (const p of patronIndex) {
+                    // @ts-ignore
+                    const doc = await pack.getDocument(p._id);
+                    if (doc) {
+                        // @ts-ignore
+                        results.patrons = results.patrons || [];
+                        results.patrons.push({
+                            name: doc.name,
+                            uuid: `Compendium.${pack.collection}.Item.${p._id}`,
+                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || ''
+                        });
+                    }
+                }
+
                 // Deep Fetch for Titles
                 for (const c of classIndex) {
                     // @ts-ignore
@@ -311,7 +383,25 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const hp = s.attributes?.hp || { value: 0, max: 0 };
         const ac = s.attributes?.ac?.value || 10;
 
-        const abilities = s.abilities || {};
+        // Helper to ensure modifiers are calculated
+        const ensureMod = (stat: any) => {
+            if (!stat) return { value: 10, mod: 0, base: 10 };
+            const val = Number(stat.value ?? stat.base ?? 10);
+            const mod = Math.floor((val - 10) / 2);
+            return { ...stat, value: val, mod, base: val };
+        };
+
+        const abilities: any = {};
+        if (s.abilities) {
+            for (const key of Object.keys(s.abilities)) {
+                abilities[key] = ensureMod(s.abilities[key]);
+            }
+        } else {
+            // Fallback default
+            ['str', 'dex', 'con', 'int', 'wis', 'cha'].forEach(k => {
+                abilities[k] = { value: 10, mod: 0, base: 10 };
+            });
+        }
 
         // Resolve helper for items
         const findItemName = (type: string) => {

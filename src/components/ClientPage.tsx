@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import PlayerList from './PlayerList';
 import { useNotifications, NotificationContainer } from './NotificationSystem';
+import SystemTools from './SystemTools';
 
 interface User {
   id: string;
@@ -19,6 +20,7 @@ interface SystemInfo {
   users?: { active: number; total: number };
   background?: string;
   isLoggedIn?: boolean;
+  theme?: any;
 }
 
 interface ClientPageProps {
@@ -154,33 +156,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   };
 
   // Theme Logic
-  const getTheme = () => {
-    if (system?.id === 'shadowdark') {
-      return {
-        bg: 'bg-neutral-900',
-        panelBg: 'bg-neutral-800',
-        text: 'text-neutral-200',
-        accent: 'text-amber-500',
-        button: 'bg-amber-700 hover:bg-amber-600',
-        headerFont: 'font-serif tracking-widest',
-        input: 'bg-neutral-950 border-neutral-700 focus:border-amber-600',
-        success: 'bg-green-800 hover:bg-green-700' // Darker green for gritty feel
-      };
-    }
-    // Default / D&D 5eish modern dark
-    return {
-      bg: 'bg-slate-900',
-      panelBg: 'bg-slate-800',
-      text: 'text-slate-100',
-      accent: 'text-amber-500',
-      button: 'bg-amber-600 hover:bg-amber-700',
-      headerFont: 'font-sans font-bold',
-      input: 'bg-slate-700 border-slate-600 focus:border-amber-500',
-      success: 'bg-green-600 hover:bg-green-700'
-    };
+  const defaultTheme = {
+    bg: 'bg-slate-900',
+    panelBg: 'bg-slate-800',
+    text: 'text-slate-100',
+    accent: 'text-amber-500',
+    button: 'bg-amber-600 hover:bg-amber-700',
+    headerFont: 'font-sans font-bold',
+    input: 'bg-slate-700 border-slate-600 focus:border-amber-500',
+    success: 'bg-green-600 hover:bg-green-700'
   };
 
-  const theme = getTheme();
+  const theme = system?.theme || defaultTheme;
 
   // Resolve background image
   const bgStyle = system?.background
@@ -517,23 +504,15 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             </div>
           </div>
 
-          {/* Tools Section */}
-          {system?.id === 'shadowdark' && (
-            <div className={`p-4 rounded-lg bg-black/20 border border-white/5`}>
-              <h3 className="text-sm font-bold opacity-50 uppercase tracking-widest mb-3">Tools</h3>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => window.location.href = '/tools/shadowdark/generator'}
-                  className={`px-4 py-2 rounded font-bold ${theme.button} text-white shadow-lg hover:brightness-110 flex items-center gap-2 transition-all`}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                    <path d="M11.25 4.533A9.707 9.707 0 006 3a9.735 9.735 0 00-3.25.555.75.75 0 00-.5.707v14.25a.75.75 0 001 .75c.75-.436 1.611-.877 2.45-1.125a20.086 20.086 0 003.856.096A9.736 9.736 0 0012 17.585a9.716 9.716 0 002.444.698 20.007 20.007 0 003.856-.096c.839.248 1.7.69 2.45 1.125a.75.75 0 001-.75V5.009a.75.75 0 00-.5-.707A9.735 9.735 0 0018 3.75c-1.63 0-3.19.467-4.5 1.25-.386-.231-.795-.44-1.213-.623a9.778 9.778 0 00-1.037-.344zM12 16.03a8.232 8.232 0 01-1.5.178 8.22 8.22 0 01-1.346-.11A18.57 18.57 0 016 16.29V5.4a8.258 8.258 0 014.5 1.127.75.75 0 001.077-.375A8.25 8.25 0 0112 5.25v10.78zm1.5-10.78a8.258 8.258 0 013.423.852.75.75 0 001.077.375 8.258 8.258 0 014.5-1.127v10.89a18.57 18.57 0 01-3.154-.2 8.22 8.22 0 01-1.346.11 8.232 8.232 0 01-1.5-.178V5.25z" />
-                  </svg>
 
-                  Character Generator
-                </button>
-              </div>
-            </div>
+          {/* System Specific Tools (Modularized) */}
+          {system?.id && (
+            <SystemTools
+              systemId={system.id}
+              setLoading={setLoading}
+              setLoginMessage={setLoginMessage}
+              theme={theme}
+            />
           )}
 
           {/* All Actors */}
@@ -589,6 +568,15 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
+      {/* Loading Overlay */}
+      {loading && loginMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className={`p-8 rounded-xl bg-neutral-900 border border-white/10 shadow-2xl text-center space-y-4`}>
+            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <h2 className={`text-xl font-bold text-white ${theme.headerFont}`}>{loginMessage}</h2>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

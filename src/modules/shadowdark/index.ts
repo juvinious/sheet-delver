@@ -1,6 +1,7 @@
 import React from 'react';
 import { ModuleManifest } from '../core/interfaces';
-import { ShadowdarkAdapter } from './adapter';
+import { ShadowdarkAdapter } from './system';
+export { ShadowdarkAdapter };
 import info from './info.json';
 
 const manifest: ModuleManifest = {

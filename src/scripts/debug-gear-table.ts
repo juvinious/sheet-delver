@@ -1,3 +1,4 @@
+
 import { FoundryClient } from '../lib/foundry/client';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs/promises';
@@ -30,7 +31,7 @@ async function loadConfig() {
 async function run() {
     const config = await loadConfig();
     if (!config) {
-        console.error('No config found');
+        console.error("No config");
         return;
     }
 
@@ -39,28 +40,35 @@ async function run() {
         await client.connect();
         await client.login();
 
-        await client['page']?.waitForFunction(() => (window as any).game && (window as any).game.packs.size > 0, null, { timeout: 10000 });
+        const uuid = "Compendium.shadowdark.rollable-tables.RollTable.WKVfMaGkoXe3DGub";
+        console.log(`Fetching table: ${uuid}`);
 
-        const packs = await client['page']?.evaluate(async () => {
+        const tableData = await client['page'].evaluate(async (uuid) => {
             // @ts-ignore
-            const packs = window.game.packs.contents;
-            const result = [];
+            const doc = await fromUuid(uuid);
+            if (!doc) return null;
+            // @ts-ignore
+            return {
+                name: doc.name,
+                formula: doc.formula,
+                description: doc.description,
+                results: doc.results.map((r: any) => ({
+                    text: r.text,
+                    range: r.range,
+                    documentCollection: r.documentCollection,
+                    documentId: r.documentId
+                }))
+            };
+        }, uuid);
 
-            for (const p of packs) {
-                // We need to load the index if it's not loaded, but typically we can request it
-                // @ts-ignore
-                const index = await p.getIndex();
-                result.push({
-                    collection: p.collection,
-                    title: p.title,
-                    // @ts-ignore
-                    index: index.map(i => ({ _id: i._id, name: i.name, type: i.type, img: i.img }))
-                });
-            }
-            return result.filter(p => p.collection.toLowerCase().includes('patron') || p.collection.toLowerCase().includes('deiti') || p.title.toLowerCase().includes('patron'));
-        });
-
-        console.log(JSON.stringify(packs, null, 2));
+        if (tableData) {
+            console.log("Table Name:", tableData.name);
+            console.log("Formula:", tableData.formula);
+            console.log("Results Count:", tableData.results.length);
+            console.log("Results Sample:", JSON.stringify(tableData.results, null, 2));
+        } else {
+            console.log("Table not found via fromUuid in browser context.");
+        }
 
     } catch (e) {
         console.error(e);

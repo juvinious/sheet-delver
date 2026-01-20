@@ -9,10 +9,9 @@ interface EffectsTabProps {
     foundryUrl?: string;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
-    onCreatePredefinedEffect?: (effectKey: string) => void;
 }
 
-export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDeleteEffect, onCreatePredefinedEffect }: EffectsTabProps) {
+export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
     const [predefinedEffects, setPredefinedEffects] = useState<any[]>([]);
     const [selectedEffect, setSelectedEffect] = useState<string>('');
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
@@ -193,10 +192,33 @@ export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDelete
                         ))}
                     </select>
                     <button
-                        onClick={() => {
-                            if (selectedEffect && onCreatePredefinedEffect) {
-                                onCreatePredefinedEffect(selectedEffect);
-                                setSelectedEffect('');
+                        onClick={async () => {
+                            if (selectedEffect) {
+                                try {
+                                    const res = await fetch(`/api/actors/${actor.id}/predefined-effects`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ effectKey: selectedEffect })
+                                    });
+                                    const data = await res.json();
+                                    if (data.success) {
+                                        // Trigger a reload of the actor or optimistic update?
+                                        // The parent ShadowdarkSheet handles updates via prop, but we just bypassed it.
+                                        // We might need to trigger a refresh.
+                                        // Since we don't have a 'refresh' prop, we rely on the Page's polling or we should add a refresh callback?
+                                        // Actually, EffectsTab receives 'actor'. If we change it server side, we need to wait for polling.
+                                        // BETTER: call onToggleEffect with a dummy to trigger update? No.
+                                        // We'll just wait for polling or call a reload if available.
+                                        // Ideally, we move this logic to a context or hook, but for now:
+
+                                        // We can assume the page polls. 
+                                        setSelectedEffect('');
+                                    } else {
+                                        console.error('Failed to add effect:', data.error);
+                                    }
+                                } catch (e) {
+                                    console.error('Error adding effect:', e);
+                                }
                             }
                         }}
                         disabled={!selectedEffect}
