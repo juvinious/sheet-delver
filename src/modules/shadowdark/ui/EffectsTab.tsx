@@ -186,7 +186,7 @@ export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDelete
                     >
                         <option value="">Select an effect...</option>
                         {predefinedEffects.map((effect: any) => (
-                            <option key={effect.key} value={effect.key}>
+                            <option key={effect.id} value={effect.id}>
                                 {effect.label || effect.name}
                             </option>
                         ))}

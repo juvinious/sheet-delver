@@ -582,7 +582,19 @@ export class FoundryClient {
 
 
 
+    async toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay = false) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
+        return await this.page.evaluate(async ({ actorId, effectId, active, overlay }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // toggleStatusEffect(statusId, {active, overlay})
+            // @ts-ignore
+            return await actor.toggleStatusEffect(effectId, { active, overlay });
+        }, { actorId, effectId, active, overlay });
+    }
     async createActor(data: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 

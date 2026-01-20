@@ -369,6 +369,19 @@ export class ShadowdarkAdapter implements SystemAdapter {
         });
     }
 
+    async getPredefinedEffects(client: any): Promise<any[]> {
+        return await client.evaluate(() => {
+            // @ts-ignore
+            const effects = CONFIG.statusEffects || [];
+            return effects.map((e: any) => ({
+                id: e.id, // Shadowdark usually uses 'blinded' etc. as ID
+                label: e.label, // Name of the condition
+                icon: e.icon,
+                changes: e.changes
+            }));
+        });
+    }
+
     // ... existing normalizeActorData below ...
 
     normalizeActorData(actor: any): ActorSheetData {
@@ -411,15 +424,18 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
 
         // Shadowdark stores class/ancestry sometimes as links in system, but we might prefer the Item name if it exists on the actor
-        const className = s.class || s.details?.class || findItemName('class') || '';
-        const ancestryName = s.ancestry || s.details?.ancestry || findItemName('ancestry') || '';
-        const backgroundName = s.background || s.details?.background || findItemName('background') || '';
+        // We prioritize findItemName because s.class/s.ancestry might be IDs (from our new linking logic)
+        // Ensure we match the Item Type casing (usually TitleCase)
+        const className = findItemName('Class') || s.class || s.details?.class || '';
+        const ancestryName = findItemName('Ancestry') || s.ancestry || s.details?.ancestry || '';
+        const backgroundName = findItemName('Background') || s.background || s.details?.background || '';
 
         const sheetData: ActorSheetData = {
             id: actor.id,
             name: actor.name,
             type: actor.type,
             img: actor.img,
+            system: s, // Include raw system data for bindings
             hp: { value: hp.value, max: hp.max },
             ac: ac,
             attributes: abilities,

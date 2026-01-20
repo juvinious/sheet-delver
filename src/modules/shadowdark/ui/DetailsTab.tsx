@@ -214,7 +214,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                                     // Let's try to display the name of the Patron item if found, else just text input?
 
                                     const patronItem = (actor.items || []).find((i: any) => i.type?.toLowerCase() === 'patron');
-                                    console.log('[DetailsTab] Warlock detected. Finding Patron:', { items: actor.items, patronItem, systemPatron: actor.system?.patron });
                                     const patronName = patronItem ? patronItem.name : (actor.system?.patron || '');
 
                                     return (
