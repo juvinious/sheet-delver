@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import RollDialog from '@/components/RollDialog';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage } from './sheet-utils';
+import { resolveImage, resolveEntityName } from './sheet-utils';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -126,7 +126,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     <div className="py-2">
                         <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {actor.system?.ancestry} {actor.system?.class} {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
+                            {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {resolveEntityName(actor.system?.class, actor, systemData, 'classes')} {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
                         </p>
                     </div>
                 </div>

@@ -445,6 +445,7 @@ export default function Generator() {
         const loadAncestry = async () => {
             try {
                 const details = await fetchDocument(formData.ancestry);
+                console.log('[Generator] Ancestry Details:', details);
                 setAncestryDetails(details);
 
                 // Load Fixed Languages from Ancestry
@@ -604,6 +605,16 @@ export default function Generator() {
             // 1. Prepare Items & System Data Strings
             const items: any[] = [];
 
+            // Helper to generate 16-char Foundry-like ID
+            const randomID = () => {
+                const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+                let result = "";
+                for (let i = 0; i < 16; i++) {
+                    result += chars.charAt(Math.floor(Math.random() * chars.length));
+                }
+                return result;
+            };
+
             // Helper to add item by UUID and return it
             const addItem = async (uuid: string) => {
                 if (!uuid) return null;
@@ -611,10 +622,12 @@ export default function Generator() {
                 if (doc) {
                     // Clone and strip ID to ensure clean creation
                     const itemData = JSON.parse(JSON.stringify(doc));
-                    delete itemData._id;
+
+                    // PRE-GENERATE ID so we can link to it immediately
+                    itemData._id = randomID();
                     delete itemData.ownership;
 
-                    // Attach Source ID for linking
+                    // Attach Source ID for linking (still useful for reference)
                     if (!itemData.flags) itemData.flags = {};
                     if (!itemData.flags.core) itemData.flags.core = {};
                     itemData.flags.core.sourceId = uuid;
@@ -625,7 +638,7 @@ export default function Generator() {
                 return null;
             };
 
-            await addItem(formData.ancestry);
+            const ancestryItem = await addItem(formData.ancestry);
 
             // Add Ancestry Fixed Talents & Choices
             for (const t of ancestryTalents.fixed) {
@@ -651,19 +664,24 @@ export default function Generator() {
             // Gear (Level 0)
             if (formData.level0 && gearSelected.length > 0) {
                 for (const item of gearSelected) {
-                    // Gear items are already fetched and stripped (mostly) in randomizeGear?
-                    // Actually randomizeGear fetches docs. We should clean them too.
                     const cleanItem = JSON.parse(JSON.stringify(item));
-                    delete cleanItem._id;
+                    cleanItem._id = randomID(); // Pre-gen IDs for gear too
                     delete cleanItem.ownership;
                     items.push(cleanItem);
                 }
             }
 
-            await addItem(formData.background);
+            const backgroundItem = await addItem(formData.background);
 
+            // Add Patron if selected (Warlock)
+            let patronItem = null;
+            if (formData.patron) {
+                patronItem = await addItem(formData.patron);
+            }
+
+            let classItem = null;
             if (!formData.level0) {
-                await addItem(formData.class);
+                classItem = await addItem(formData.class);
             }
 
             // Collect Language UUIDs for system.languages array
@@ -681,9 +699,10 @@ export default function Generator() {
                 type: 'Player',
                 img: 'icons/svg/mystery-man.svg',
                 system: {
-                    ancestry: formData.ancestry,   // Use UUID
-                    background: formData.background, // Use UUID
-                    class: formData.class || "",     // Use UUID if present
+                    ancestry: ancestryItem ? ancestryItem._id : formData.ancestry,   // Link to Pre-Gen ID
+                    background: backgroundItem ? backgroundItem._id : formData.background, // Link to Pre-Gen ID
+                    class: classItem ? classItem._id : (formData.class || ""),     // Link to Pre-Gen ID
+                    patron: patronItem ? patronItem._id : formData.patron,         // Link to Pre-Gen ID
                     alignment: formData.alignment,
                     deity: formData.deity,
                     languages: languageUuids,
@@ -693,12 +712,12 @@ export default function Generator() {
                         next: formData.level0 ? 0 : 10
                     },
                     abilities: {
-                        str: { mod: formData.stats.STR.mod, value: formData.stats.STR.value },
-                        dex: { mod: formData.stats.DEX.mod, value: formData.stats.DEX.value },
-                        con: { mod: formData.stats.CON.mod, value: formData.stats.CON.value },
-                        int: { mod: formData.stats.INT.mod, value: formData.stats.INT.value },
-                        wis: { mod: formData.stats.WIS.mod, value: formData.stats.WIS.value },
-                        cha: { mod: formData.stats.CHA.mod, value: formData.stats.CHA.value }
+                        str: { value: formData.stats.STR.value, base: formData.stats.STR.value, bonus: 0 },
+                        dex: { value: formData.stats.DEX.value, base: formData.stats.DEX.value, bonus: 0 },
+                        con: { value: formData.stats.CON.value, base: formData.stats.CON.value, bonus: 0 },
+                        int: { value: formData.stats.INT.value, base: formData.stats.INT.value, bonus: 0 },
+                        wis: { value: formData.stats.WIS.value, base: formData.stats.WIS.value, bonus: 0 },
+                        cha: { value: formData.stats.CHA.value, base: formData.stats.CHA.value, bonus: 0 }
                     },
                     attributes: {
                         hp: { value: formData.hp, max: formData.hp }

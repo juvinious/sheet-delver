@@ -12,6 +12,11 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [actor, setActor] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const currentUserRef = useRef<string | null>(null);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+    // Chat State
+    const [messages, setMessages] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<{ id: number, message: string, type: 'info' | 'success' | 'error' }[]>([]);
 
 
 
@@ -24,25 +29,22 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             if (data && !data.error) {
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
-
-                if (data.currentUser) currentUserRef.current = data.currentUser;
             } else {
                 if (!silent) {
-                    // Redirect instead of alert
-                    router.push('/');
+                    setShowDeleteModal(true);
+                } else {
+                    // If silent update fails (e.g. background polling), also check if it really is gone 
+                    // or just a network blip. For now, if API says error/null, assume deleted.
+                    setShowDeleteModal(true);
                 }
             }
         } catch (e) {
             console.error(e);
-            if (!silent) router.push('/');
+            if (!silent) setShowDeleteModal(true);
         } finally {
             if (!silent) setLoading(false);
         }
     }, [router]);
-
-    // ... (keep state definitions)
-    const [messages, setMessages] = useState<any[]>([]);
-    const [notifications, setNotifications] = useState<{ id: number, message: string, type: 'info' | 'success' | 'error' }[]>([]);
 
     // Lifted state for Universal Roller
     const [isDiceTrayOpen, setDiceTrayOpen] = useState(false);
@@ -371,6 +373,25 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     </div>
                 ))}
             </div>
+
+            {/* Deletion Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="bg-neutral-900 border border-amber-500/30 p-8 rounded-xl max-w-md w-full text-center shadow-2xl">
+                        <div className="text-5xl mb-4">💀</div>
+                        <h2 className="text-2xl font-bold text-white mb-2 font-serif">Character Deleted</h2>
+                        <p className="text-neutral-400 mb-8">
+                            This character has been deleted from the world.
+                        </p>
+                        <button
+                            onClick={() => router.push('/')}
+                            className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
+                        >
+                            Return to Dashboard
+                        </button>
+                    </div>
+                </div>
+            )}
 
         </main>
     );

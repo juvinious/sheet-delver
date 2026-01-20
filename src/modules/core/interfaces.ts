@@ -20,9 +20,20 @@ export interface SystemAdapter {
      * Checks if the given actor data matches this system adapter.
      */
     match(actor: any): boolean;
-    getActor(client: any, actorId: string): Promise<any>;
-    getActor(client: any, actorId: string): Promise<any>;
+    /**
+     * Whether the core application should render its default navigation and shell.
+     * Defaults to true. Set to false if the sheet handles its own full-page layout.
+     */
+    renderNavigation?: boolean;
+
     getSystemData(client: any): Promise<any>;
+
+    /**
+     * Optional hook to run after an actor is created.
+     * Useful for linking items, normalizing data, or applying default effects.
+     * Executes in the Node context, so use `client.evaluate` or similar to touch Foundry.
+     */
+    postCreate?(client: any, actorId: string, sourceData: any): Promise<void>;
 
     /**
      * Optional theme configuration for the client UI.

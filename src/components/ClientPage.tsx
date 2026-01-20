@@ -76,7 +76,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       if (data.success) {
         setLoginMessage('Login Successful!');
         setStep('dashboard');
-        fetchActors();
+        // fetchActors(); // Handled by effect
       } else {
         setLoginMessage('');
         setPassword(''); // Clear password on failure
@@ -259,12 +259,29 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
   const fetchActors = async () => {
-    const res = await fetch('/api/actors');
-    const data = await res.json();
-    if (data.actors) {
-      setActors(data.actors);
+    try {
+      const res = await fetch('/api/actors');
+      const data = await res.json();
+      if (data.actors) {
+        setActors(data.actors);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
+
+  useEffect(() => {
+    if (step !== 'dashboard') return;
+
+    // Initial fetch
+    fetchActors();
+
+    const interval = setInterval(() => {
+      fetchActors();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [step]);
 
   return (
     <main

@@ -1,6 +1,6 @@
 'use client';
 
-import { resolveImage } from './sheet-utils';
+import { resolveImage, resolveEntityName } from './sheet-utils';
 
 interface DetailsTabProps {
     actor: any;
@@ -55,10 +55,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             {(() => {
-                                const clsVal = actor.system?.class;
-                                const clsObj = systemData?.classes?.find((c: any) => c.uuid === clsVal || c.name === clsVal);
-                                const clsName = clsObj ? clsObj.name : clsVal;
+                                const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
                                 const lvl = actor.system?.level?.value ?? 1;
+                                // Debug Title Resolution
+                                // console.log('Title Debug:', { clsName, lvl, titles: systemData?.titles });
                                 const sysTitle = systemData?.titles?.[clsName]?.find((t: any) => lvl >= t.from && lvl <= t.to);
                                 const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
                                 return actor.system?.title || sysTitle?.[alignment] || '-';
@@ -77,7 +77,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <input
                                 type="text"
                                 className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={actor.system?.class || ''}
+                                value={(() => {
+                                    return resolveEntityName(actor.system?.class, actor, systemData, 'classes');
+                                })()}
                                 onChange={(e) => onUpdate('system.class', e.target.value)}
                                 placeholder="Class"
                             />
@@ -128,7 +130,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <input
                                 type="text"
                                 className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={actor.system?.ancestry || ''}
+                                value={(() => {
+                                    return resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries');
+                                })()}
                                 onChange={(e) => onUpdate('system.ancestry', e.target.value)}
                                 placeholder="Ancestry"
                             />
@@ -145,7 +149,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <input
                                 type="text"
                                 className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={actor.system?.background || ''}
+                                value={(() => {
+                                    return resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds');
+                                })()}
                                 onChange={(e) => onUpdate('system.background', e.target.value)}
                                 placeholder="Background"
                             />

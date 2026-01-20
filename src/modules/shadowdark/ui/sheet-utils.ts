@@ -56,3 +56,35 @@ export const formatDescription = (desc: any) => {
 
     return fixed;
 };
+
+/**
+ * Resolves a potentially UUID-based field (like class, ancestry, background) to a human-readable name.
+ * 
+ * @param value - The value stored in the system field (could be Name, ID, or UUID)
+ * @param actor - The actor instance containing items
+ * @param systemData - The system data containing compendium indexes (classes, ancestries, etc.)
+ * @param collectionName - The key in systemData to search (e.g., 'classes', 'ancestries')
+ * @returns {string} - The resolved name or the original value if not found
+ */
+export const resolveEntityName = (value: string, actor: any, systemData: any, collectionName: string): string => {
+    if (!value) return '';
+
+    // 1. Try to find an embedded Item on the actor matching ID or UUID
+    const embeddedItem = actor.items?.find((i: any) =>
+        i.id === value ||
+        i.uuid === value ||
+        (typeof value === 'string' && value.endsWith(i.id))
+    );
+    if (embeddedItem) return embeddedItem.name;
+
+    // 2. Try to find it in the System Data (Compendium Index)
+    if (systemData && systemData[collectionName]) {
+        const sysObj = systemData[collectionName].find((c: any) => c.uuid === value || c.name === value);
+        if (sysObj) return sysObj.name;
+    }
+
+    // 3. Fallback: Return the value itself (it might already be the name)
+    // But if it looks like a Source ID or UUID, we might want to clean it?
+    // For now, return as-is to avoid data loss in UI, but hopefully 1 & 2 catch it.
+    return value;
+};

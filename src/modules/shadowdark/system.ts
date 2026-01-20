@@ -90,6 +90,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 return itemData;
             }).filter((i: any) => i !== null);
 
+            console.error(`[Antigravity Debug Read] Actor: ${actor.name} (${id})`);
+            console.error(`[Antigravity Debug Read] System Class:`, actor.system?.class);
+            console.error(`[Antigravity Debug Read] System Ancestry:`, actor.system?.ancestry);
+            console.error(`[Antigravity Debug Read] Items found:`, items.map((i: any) => `${i.name} (${i.id})`).join(', '));
+
             // --- SHADOWDARK EFFECTS PROCESSING ---
             let effects = [];
             try {
@@ -207,6 +212,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // Get spellcasting ability
                 let spellcastingAbility = "";
                 try {
+                    // Try to find the embedded Class item first
                     const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
                     if (characterClass) {
                         spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
@@ -283,9 +289,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         // @ts-ignore
                         results.classes.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${c._id}`,
+                            uuid: `Compendium.${pack.collection}.Item.${c._id}`, // Force constructed UUID
                             languages: doc.system?.languages || []
                         });
+
+                        // Index Titles directly from Class items
+                        if (doc.system?.titles) {
+                            // @ts-ignore
+                            results.titles[doc.name] = doc.system.titles;
+                        }
                     }
                 }
                 // Index Ancestries
@@ -296,7 +308,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (doc) {
                         results.ancestries.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${a._id}`,
+                            uuid: `Compendium.${pack.collection}.Item.${a._id}`, // Force constructed UUID
                             languages: doc.system?.languages || []
                         });
                     }
@@ -313,7 +325,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         // @ts-ignore
                         results.languages.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${l._id}`,
+                            uuid: `Compendium.${pack.collection}.Item.${l._id}`, // Force constructed UUID
                             description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
                             rarity: doc.system?.rarity || 'common'
                         });
@@ -331,7 +343,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         results.deities = results.deities || [];
                         results.deities.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${d._id}`,
+                            uuid: `Compendium.${pack.collection}.Item.${d._id}`, // Force constructed UUID
                             alignment: doc.system?.alignment || 'neutral'
                         });
                     }
@@ -349,7 +361,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         results.patrons = results.patrons || [];
                         results.patrons.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${p._id}`,
+                            uuid: `Compendium.${pack.collection}.Item.${p._id}`, // Force constructed UUID
                             description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || ''
                         });
                     }
@@ -488,6 +500,76 @@ export class ShadowdarkAdapter implements SystemAdapter {
         }
 
         return sheetData;
+    }
+
+    async postCreate(client: any, actorId: string, sourceData: any): Promise<void> {
+        if (!client.page) return;
+
+        await client.page.evaluate(async ({ actorId, sourceData }: { actorId: string, sourceData: any }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor || !actor.system) return;
+
+            const updates: any = {};
+
+            // Helper to link fields by TYPE (Robust Fallback)
+            const linkByType = (field: string, type: string) => {
+                // @ts-ignore
+                const item = actor.items.find((i: any) => i.type === type || i.type === type.toLowerCase() || i.type === type.charAt(0).toUpperCase() + type.slice(1));
+
+                if (item) {
+                    updates[`system.${field}`] = item.uuid;
+                } else {
+                    const sourceUuid = sourceData.system?.[field];
+                    if (sourceUuid && typeof sourceUuid === 'string') {
+                        // @ts-ignore
+                        const match = actor.items.find((i: any) => i.flags?.core?.sourceId === sourceUuid);
+                        if (match) updates[`system.${field}`] = match.uuid;
+                    }
+                }
+            };
+
+            linkByType('class', 'Class');
+            linkByType('ancestry', 'Ancestry');
+            linkByType('background', 'Background');
+            linkByType('patron', 'Patron');
+
+            if (sourceData.system?.alignment) updates['system.alignment'] = sourceData.system.alignment;
+            if (sourceData.system?.deity) updates['system.deity'] = sourceData.system.deity;
+
+            if (sourceData.system?.attributes?.hp) {
+                const hp = sourceData.system.attributes.hp;
+                if (hp.value !== undefined) updates['system.attributes.hp.value'] = hp.value;
+                if (hp.max !== undefined) updates['system.attributes.hp.base'] = hp.max;
+                if (hp.max !== undefined) updates['system.attributes.hp.max'] = hp.max;
+            }
+
+            if (sourceData.system?.currency?.gp !== undefined) {
+                updates['system.currency.gp'] = sourceData.system.currency.gp;
+                // @ts-ignore
+                if (actor.system.coins) updates['system.coins.gp'] = sourceData.system.currency.gp;
+            }
+
+            if (sourceData.system?.abilities && actor.system?.abilities) {
+                const sourceAbilities = sourceData.system.abilities;
+                const targetKeys = Object.keys(actor.system.abilities);
+
+                for (const sourceKey of Object.keys(sourceAbilities)) {
+                    const targetKey = targetKeys.find(k => k.toLowerCase() === sourceKey.toLowerCase());
+                    if (targetKey) {
+                        const stat = sourceAbilities[sourceKey];
+                        if (stat.value !== undefined) {
+                            updates[`system.abilities.${targetKey}.value`] = stat.value;
+                            updates[`system.abilities.${targetKey}.base`] = stat.value;
+                        }
+                    }
+                }
+            }
+
+            if (Object.keys(updates).length > 0) {
+                await actor.update(updates);
+            }
+        }, { actorId, sourceData });
     }
 
     private categorizeInventory(actor: any) {

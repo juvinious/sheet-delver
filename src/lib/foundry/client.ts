@@ -65,7 +65,7 @@ export class FoundryClient {
         // Capture console messages from the Foundry browser
         this.page.on('console', msg => {
             const text = msg.text();
-            if (text.toLowerCase().includes('antigravity debug') || text.includes('[FOUNDRY STATE DUMP]')) {
+            if (text.toLowerCase().includes('antigravity') || text.includes('[FOUNDRY STATE DUMP]')) {
                 console.log(`[FOUNDRY CONSOLE] ${text}`);
             }
         });
@@ -598,66 +598,81 @@ export class FoundryClient {
             // @ts-ignore
             if (!window.Actor) return { error: 'Actor class not found' };
             try {
-                // @ts-ignore
-                const actor = await window.Actor.create(actorData);
-
-                // Post-Creation Linking (Critical for Shadowdark Level 1)
-                // We need to link 'class', 'ancestry', 'background' to the actual embedded Item IDs
-                // instead of the Compendium UUIDs provided in actorData.
-                if (actor.system) {
-                    const updates: any = {};
-
-                    // Helper to link fields
-                    const linkField = (field: string) => {
-                        // Check if the original data had a UUID for this field
-                        // @ts-ignore
-                        const sourceUuid = actorData.system?.[field];
-                        if (sourceUuid && typeof sourceUuid === 'string') {
-                            // Find the embedded item with this Source ID
-                            const item = actor.items.find((i: any) =>
-                                i.flags?.core?.sourceId === sourceUuid ||
-                                i.name === sourceUuid // Fallback if name matches UUID? Unlikely, but maybe name match if sourceId missing
-                            );
-                            if (item) {
-                                updates[`system.${field}`] = item.id;
-                            }
-                        }
-                    };
-
-                    linkField('class');
-                    linkField('ancestry');
-                    linkField('background');
-                    linkField('patron');
-
-                    // Force persist simple fields in the update as well, to prevent system reset/hooks from clearing them logic
-                    // @ts-ignore
-                    if (actorData.system?.alignment) updates['system.alignment'] = actorData.system.alignment;
-                    // @ts-ignore
-                    if (actorData.system?.deity) updates['system.deity'] = actorData.system.deity;
-
-                    // Re-apply HP if provided, as Class update might reset it
-                    // @ts-ignore
-                    if (actorData.system?.attributes?.hp) {
-                        // Flatten keys to ensure both value and max are applied and not lost in merge
-                        const hp = actorData.system.attributes.hp;
-                        // @ts-ignore
-                        if (hp.value !== undefined) updates['system.attributes.hp.value'] = hp.value;
-                        // @ts-ignore
-                        if (hp.max !== undefined) updates['system.attributes.hp.max'] = hp.max;
-                    }
-
-                    if (Object.keys(updates).length > 0) {
-                        await actor.update(updates);
-                    }
+                // Debug Stats Payload
+                if (actorData.system?.abilities) {
+                    console.log('[Antigravity] Stats Payload:', JSON.stringify(actorData.system.abilities));
                 }
 
-                return { success: true, id: actor.id, name: actor.name };
+                // @ts-ignore
+                const actor = await window.Actor.create(actorData);
+                console.log('[Antigravity] Actor Created:', actor);
+                console.log('[Antigravity] Actor System Stats:', JSON.stringify(actor.system.abilities));
+
+                // Post-Creation Linking (Delegated to System Adapter)
+                try {
+                    // We need to resolve the adapter from the client side (browser)
+                    // Since we can't easily pass the full adapter class instance here (serialization),
+                    // we rely on the implementation pattern.
+                    // Actually, we are running INSIDE page.evaluate.
+                    // We don't have access to our local 'adapter' instance here.
+                    // BUT, 'actorData' was passed in.
+
+                    // Wait, we can't call 'adapter.postCreate' inside page.evaluate unless we inject it.
+                    // The previous code WAS running inside evaluate.
+
+                    // Strategy: We return the actor ID, then run postCreate in a separate evaluate?
+                    // OR we accept that we can't easily run complex class methods inside evaluate without injection.
+                    // However, we CAN just return the actor object (serialized) and do the post-work?
+                    // No, 'actor.update' must happen in browser.
+
+                    // NOTE: This refactor is tricky because 'ShadowdarkAdapter' is a Node/React class, 
+                    // not available in the Browser Context where this executes.
+
+                    // REVERT STRATEGY for this step: 
+                    // We need to keep the logic generic HERE, but maybe pass a 'postCreateScript' or similar?
+                    // OR, we simply return, and then call a separate function 'postCreate' that we inject?
+
+                    // Actually, the best way for the 'Module' architecture the user wants is:
+                    // The Application (Node) calls 'adapter.postCreate(client, actorId, sourceData)'.
+                    // The Adapter then calls 'client.evaluate(...)' with its specific logic.
+
+                    return { success: true, id: actor.id, name: actor.name, systemId: actor.system?.id || 'shadowdark' }; // Assume systemId for now or fetch it
+                } catch (err) {
+                    console.error("Post-create error", err);
+                    return { success: true, id: actor.id, name: actor.name, warning: "Post-create failed" };
+                }
             } catch (e: any) {
+                console.error("[Antigravity] Create Error:", e);
                 return { error: e.message };
             }
         }, data);
-    }
 
+        // --- NEW ARCHITECTURE: Adapter Post-Create ---
+        if (result && result.success && result.id) {
+            try {
+                // Resolve Adapter (Server-Side/Node Context)
+                const adapter = await this.resolveAdapter();
+                if (adapter && adapter.postCreate) {
+                    // We need to re-evaluate the postCreate logic inside the browser context...
+                    // WAIT. 'adapter.postCreate' is defined in Node. It cannot directly touch 'window.Actor'.
+                    // It must use 'client.page.evaluate'.
+
+                    // So I need to UPDATE 'ShadowdarkAdapter.postCreate' to take 'client' and 'actorId'.
+                    // My previous edit to 'system.ts' assumed it was running in browser (it accessed 'actor.items').
+                    // BUT 'system.ts' is used by the Next.js app (Node/React).
+
+                    // I made a mistake in the previous step assuming 'actor' passed to postCreate was the Foundry Actor.
+                    // It needs to be the Client + ID so it can drive the browser.
+
+                    await adapter.postCreate(this, result.id, data);
+                }
+            } catch (e) {
+                console.error("Adapter Post-Create Failed:", e);
+            }
+        }
+
+        return result;
+    }
     async getActor(id: string, forceSystemId?: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
