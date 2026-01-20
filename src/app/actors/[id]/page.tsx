@@ -168,9 +168,6 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
         // Mapping for known mismatches between Foundry Path and Local Normalized Data
         let targetPath = path;
-        // Shadowdark Adapter: 'system.attributes.hp.value' -> 'hp.value'
-        if (path === 'system.attributes.hp.value') targetPath = 'hp.value';
-        if (path === 'system.luck.available') targetPath = 'luck.available';
         // Add other mappings if needed, or implement a smarter adapter-aware updater.
 
         // Safety: Check if we can traverse.
@@ -286,12 +283,21 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
 
     // ... (Keep existing loading/error checks)
-    if (loading) return <div className="p-8 text-neutral-400">Loading...</div>;
+    // ... (Keep existing loading/error checks)
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-900 animate-in fade-in duration-300">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Loading Codex...</p>
+                </div>
+            </div>
+        );
+    }
     // If not loading and no actor, we are likely redirecting, so render specific fallback or null
     if (!actor) return null;
 
-    // Detect system (fallback to shadowdark for now if unknown/missing)
-    // The actor object from API might need to contain system info.
+
 
     return (
         <main className="min-h-screen font-sans selection:bg-amber-900 pb-20">

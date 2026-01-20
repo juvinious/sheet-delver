@@ -90,12 +90,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             <span className="font-serif font-bold text-lg uppercase">XP</span>
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
                         </div>
-                        <div className="p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white">
+                        <div className={`p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white min-h-[44px] ${(!actor.system?.level?.value || actor.system.level.value === 0) ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
                             <input
                                 type="number"
                                 defaultValue={actor.system?.level?.xp || 0}
                                 min={0}
                                 max={10}
+                                disabled={!actor.system?.level?.value || actor.system.level.value === 0}
                                 onBlur={(e) => {
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
@@ -110,7 +111,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
 
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
-                                className="w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1"
+                                className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent`}
                             />
                             <span className="text-neutral-400">/</span>
                             <span>{actor.system?.level?.next ?? 10}</span>
@@ -152,7 +153,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                     </div>
 
                     {/* Alignment */}
-                    <div className={`${cardStyleWithoutPadding} md:col-span-1 lg:col-span-1.5`}>
+                    <div className={`${cardStyleWithoutPadding} ${(actor.details?.class || '').toLowerCase().includes('warlock')
+                        ? 'md:col-span-2 lg:col-span-1'
+                        : 'md:col-span-1 lg:col-span-1.5'
+                        }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Alignment</span>
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
@@ -171,7 +175,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                     </div>
 
                     {/* Deity */}
-                    <div className={`${cardStyleWithoutPadding} md:col-span-2 lg:col-span-1.5`}>
+                    <div className={`${cardStyleWithoutPadding} ${(actor.details?.class || '').toLowerCase().includes('warlock')
+                        ? 'md:col-span-1 lg:col-span-1'
+                        : 'md:col-span-2 lg:col-span-1.5'
+                        }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Deity</span>
                             <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
@@ -186,6 +193,51 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: 
                             />
                         </div>
                     </div>
+
+                    {/* Patron (Only for Warlock) */}
+                    {(actor.details?.class || '').toLowerCase().includes('warlock') && (
+                        <div className={`${cardStyleWithoutPadding} md:col-span-1 lg:col-span-1`}>
+                            <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
+                                <span className="font-serif font-bold text-lg uppercase">Patron</span>
+                                <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            </div>
+                            <div className="p-2 font-serif text-lg bg-white">
+                                {(() => {
+                                    // Try to resolve Patron Name
+                                    // It might be stored as a UUID in 'system.patron' or we might look for an Item of type 'Patron'
+                                    // Shadowdark adapter should have resolved it?
+                                    // Let's assume system.patron holds UUID, OR check for item.
+                                    // But input implies we can edit it? Or is it fixed?
+                                    // Usually Warlock Patrons are items.
+                                    // Let's allow editing name for now? Or just display?
+                                    // If we want to support changing passing 'system.patron' (UUID) is hard with text input.
+                                    // Let's try to display the name of the Patron item if found, else just text input?
+
+                                    const patronItem = (actor.items || []).find((i: any) => i.type?.toLowerCase() === 'patron');
+                                    console.log('[DetailsTab] Warlock detected. Finding Patron:', { items: actor.items, patronItem, systemPatron: actor.system?.patron });
+                                    const patronName = patronItem ? patronItem.name : (actor.system?.patron || '');
+
+                                    return (
+                                        <input
+                                            type="text"
+                                            className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
+                                            value={patronName}
+                                            readOnly={!!patronItem} // If item exists, read only? Or allow text override?
+                                            // The user didn't specify editing, just display.
+                                            // But standard fields are editable. 
+                                            // Since 'system.patron' is likely a UUID link, text edit might break it. 
+                                            // Let's disable edit if it looks like a Patron Item exists.
+                                            onChange={(e) => {
+                                                // If no item, maybe we store string in system.patron?
+                                                if (!patronItem) onUpdate('system.patron', e.target.value);
+                                            }}
+                                            placeholder="Patron"
+                                        />
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
 

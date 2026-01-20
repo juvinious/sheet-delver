@@ -582,6 +582,7 @@ export class FoundryClient {
 
 
 
+
     async createActor(data: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
@@ -591,6 +592,57 @@ export class FoundryClient {
             try {
                 // @ts-ignore
                 const actor = await window.Actor.create(actorData);
+
+                // Post-Creation Linking (Critical for Shadowdark Level 1)
+                // We need to link 'class', 'ancestry', 'background' to the actual embedded Item IDs
+                // instead of the Compendium UUIDs provided in actorData.
+                if (actor.system) {
+                    const updates: any = {};
+
+                    // Helper to link fields
+                    const linkField = (field: string) => {
+                        // Check if the original data had a UUID for this field
+                        // @ts-ignore
+                        const sourceUuid = actorData.system?.[field];
+                        if (sourceUuid && typeof sourceUuid === 'string') {
+                            // Find the embedded item with this Source ID
+                            const item = actor.items.find((i: any) =>
+                                i.flags?.core?.sourceId === sourceUuid ||
+                                i.name === sourceUuid // Fallback if name matches UUID? Unlikely, but maybe name match if sourceId missing
+                            );
+                            if (item) {
+                                updates[`system.${field}`] = item.id;
+                            }
+                        }
+                    };
+
+                    linkField('class');
+                    linkField('ancestry');
+                    linkField('background');
+                    linkField('patron');
+
+                    // Force persist simple fields in the update as well, to prevent system reset/hooks from clearing them logic
+                    // @ts-ignore
+                    if (actorData.system?.alignment) updates['system.alignment'] = actorData.system.alignment;
+                    // @ts-ignore
+                    if (actorData.system?.deity) updates['system.deity'] = actorData.system.deity;
+
+                    // Re-apply HP if provided, as Class update might reset it
+                    // @ts-ignore
+                    if (actorData.system?.attributes?.hp) {
+                        // Flatten keys to ensure both value and max are applied and not lost in merge
+                        const hp = actorData.system.attributes.hp;
+                        // @ts-ignore
+                        if (hp.value !== undefined) updates['system.attributes.hp.value'] = hp.value;
+                        // @ts-ignore
+                        if (hp.max !== undefined) updates['system.attributes.hp.max'] = hp.max;
+                    }
+
+                    if (Object.keys(updates).length > 0) {
+                        await actor.update(updates);
+                    }
+                }
+
                 return { success: true, id: actor.id, name: actor.name };
             } catch (e: any) {
                 return { error: e.message };

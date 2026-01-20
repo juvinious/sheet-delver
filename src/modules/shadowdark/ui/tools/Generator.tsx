@@ -617,6 +617,12 @@ export default function Generator() {
                     const itemData = JSON.parse(JSON.stringify(doc));
                     delete itemData._id;
                     delete itemData.ownership;
+
+                    // Attach Source ID for linking
+                    if (!itemData.flags) itemData.flags = {};
+                    if (!itemData.flags.core) itemData.flags.core = {};
+                    itemData.flags.core.sourceId = uuid;
+
                     items.push(itemData);
                     return itemData;
                 }
@@ -694,12 +700,12 @@ export default function Generator() {
                         next: formData.level0 ? 0 : 10
                     },
                     abilities: {
-                        str: { mod: formData.stats.STR.mod, base: formData.stats.STR.value },
-                        dex: { mod: formData.stats.DEX.mod, base: formData.stats.DEX.value },
-                        con: { mod: formData.stats.CON.mod, base: formData.stats.CON.value },
-                        int: { mod: formData.stats.INT.mod, base: formData.stats.INT.value },
-                        wis: { mod: formData.stats.WIS.mod, base: formData.stats.WIS.value },
-                        cha: { mod: formData.stats.CHA.mod, base: formData.stats.CHA.value }
+                        str: { mod: formData.stats.STR.mod, value: formData.stats.STR.value },
+                        dex: { mod: formData.stats.DEX.mod, value: formData.stats.DEX.value },
+                        con: { mod: formData.stats.CON.mod, value: formData.stats.CON.value },
+                        int: { mod: formData.stats.INT.mod, value: formData.stats.INT.value },
+                        wis: { mod: formData.stats.WIS.mod, value: formData.stats.WIS.value },
+                        cha: { mod: formData.stats.CHA.mod, value: formData.stats.CHA.value }
                     },
                     attributes: {
                         hp: { value: formData.hp, max: formData.hp }
@@ -751,21 +757,21 @@ export default function Generator() {
         <div className={`flex flex-col min-h-screen ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black pb-24`}>
 
             {/* Top Navigation Bar */}
-            <div className="bg-black text-neutral-400 text-xs font-bold uppercase tracking-widest flex items-center justify-between px-6 py-2 border-b border-white/10">
+            <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 px-4 py-3 shadow-md flex items-center justify-between backdrop-blur-sm bg-opacity-95">
                 <button
                     onClick={() => window.location.href = '/'}
-                    className="hover:text-white transition-colors flex items-center gap-2"
+                    className="flex items-center gap-2 text-neutral-400 hover:text-amber-500 transition-colors font-semibold group text-sm uppercase tracking-wide"
                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                        <path fillRule="evenodd" d="M11.03 3.97a.75.75 0 010 1.06l-6.22 6.22H21a.75.75 0 010 1.5H4.81l6.22 6.22a.75.75 0 11-1.06 1.06l-7.5-7.5a.75.75 0 010-1.06l7.5-7.5a.75.75 0 011.06 0z" clipRule="evenodd" />
-                    </svg>
+                    <span className="group-hover:-translate-x-1 transition-transform">←</span>
                     Back to Dashboard
                 </button>
-                <span className="text-neutral-500">Generating New Character</span>
-            </div>
+                <div className="text-xs text-neutral-600 font-mono hidden md:block">
+                    Generating New Character
+                </div>
+            </nav>
 
             {/* Main Header (Subheader) - Controls & Title */}
-            <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex items-center justify-between px-6 border-b-4 border-black h-24">
+            <div className="bg-neutral-900 text-white shadow-md sticky top-[45px] z-10 flex items-center justify-between px-6 border-b-4 border-black h-24 mt-[45px]">
                 <div className="flex items-center gap-6">
                     <div className="w-16 h-16 bg-neutral-800 border-2 border-white/10 flex items-center justify-center rounded">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 opacity-50">

@@ -28,7 +28,7 @@ interface ClientPageProps {
 }
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'connect' | 'login' | 'dashboard' | 'setup'>('connect');
+  const [step, setStep] = useState<'init' | 'connect' | 'login' | 'dashboard' | 'setup'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   // Connect State
@@ -191,6 +191,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     const checkConfig = async () => {
       try {
         setLoading(true);
+        setLoginMessage('Verifying Session...');
         const res = await fetch('/api/session/connect');
         const data = await res.json();
         if (data.connected) {
@@ -221,14 +222,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               setStep('login');
             }
           } else {
-            // Force Login Step - No Auto-Login
             setStep('login');
           }
+        } else {
+          // Not connected to Foundry at all
+          setStep('connect');
         }
       } catch (e) {
         console.error(e);
+        setStep('connect');
       } finally {
         setLoading(false);
+        setLoginMessage('');
       }
     };
     checkConfig();
@@ -335,233 +340,260 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         </div>
       </div>
 
-      {step === 'connect' && (
-        <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg border border-transparent`}>
-          <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Connect to Instance</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-70">Foundry URL</label>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className={`w-full p-2 rounded border outline-none ${theme.input}`}
-              />
-            </div>
-            <button
-              onClick={handleConnect}
-              disabled={loading}
-              className={`w-full ${theme.button} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
-            >
-              {loading ? 'Connecting...' : 'Connect'}
-            </button>
+
+
+      {step === 'init' && (
+        <div className="flex flex-col items-center justify-center min-h-screen animate-in fade-in duration-700">
+          <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+            SheetDelver
+          </h1>
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Initializing</p>
           </div>
         </div>
-      )}
+      )
+      }
 
-
-      {step === 'login' && (
-        <div className="flex flex-col-reverse md:flex-row gap-8 max-w-4xl mx-auto items-stretch md:items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-          {/* World Info Card */}
-          <div className={`flex-1 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
-            {system?.worldTitle && (
-              <h1 className={`text-4xl font-bold mb-4 ${theme.headerFont} text-amber-500 tracking-tight`}>
-                {system.worldTitle}
-              </h1>
-            )}
-
-            {system?.worldDescription && (
-              <div className="prose prose-invert prose-sm max-w-none opacity-80 mb-6"
-                dangerouslySetInnerHTML={{ __html: system.worldDescription }}
-              />
-            )}
-
-            <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-white/10">
-              <div>
-                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Next Session</label>
-                <div className="font-mono text-lg">
-                  {system?.nextSession ? system.nextSession : <span className="opacity-30 italic">Not Scheduled</span>}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Current Players</label>
-                <div className="font-mono text-lg flex items-center gap-2">
-                  <span className="text-green-400">{system?.users?.active || 0}</span>
-                  <span className="opacity-40">/</span>
-                  <span>{system?.users?.total || 0}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Login Form */}
-          <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
-            <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
+      {
+        step === 'connect' && (
+          <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg border border-transparent`}>
+            <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Connect to Instance</h2>
             <div className="space-y-4">
-              {users.length > 0 ? (
-                <div>
-                  <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
-                  <select
-                    value={selectedUser}
-                    onChange={(e) => setSelectedUser(e.target.value)}
-                    className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
-                  >
-                    {users.map(u => (
-                      <option key={u.id} value={u.name}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
-                  <input
-                    type="text"
-                    value={selectedUser}
-                    onChange={(e) => setSelectedUser(e.target.value)}
-                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
-                    placeholder="Enter username manually"
-                  />
-                  <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
-                </div>
-              )}
-
               <div>
-                <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
+                <label className="block text-sm font-medium mb-1 opacity-70">Foundry URL</label>
                 <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  type="text"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
                   className={`w-full p-2 rounded border outline-none ${theme.input}`}
                 />
               </div>
               <button
-                onClick={handleLogin}
+                onClick={handleConnect}
                 disabled={loading}
-                className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
+                className={`w-full ${theme.button} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
               >
-                {loading ? 'Logging in...' : 'Login'}
+                {loading ? 'Connecting...' : 'Connect'}
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {step === 'setup' && (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center p-8 space-y-6 animate-in fade-in duration-700">
-          <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-            SheetDelver
-          </h1>
-          <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
-
-          <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl">
-            <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
-            <p className="text-lg opacity-80 mb-6 leading-relaxed">
-              No world is available to login, please check back later.
-            </p>
+        )
+      }
 
 
+      {
+        step === 'login' && (
+          <div className="flex flex-col-reverse md:flex-row gap-8 max-w-4xl mx-auto items-stretch md:items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-            <a
-              href="https://github.com/juvinious/sheet-delver"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity hover:scale-105 duration-300"
-            >
-              <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" />
-            </a>
+            {/* World Info Card */}
+            <div className={`flex-1 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+              {system?.worldTitle && (
+                <h1 className={`text-4xl font-bold mb-4 ${theme.headerFont} text-amber-500 tracking-tight`}>
+                  {system.worldTitle}
+                </h1>
+              )}
+
+              {system?.worldDescription && (
+                <div className="prose prose-invert prose-sm max-w-none opacity-80 mb-6"
+                  dangerouslySetInnerHTML={{ __html: system.worldDescription }}
+                />
+              )}
+
+              <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-white/10">
+                <div>
+                  <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Next Session</label>
+                  <div className="font-mono text-lg">
+                    {system?.nextSession ? system.nextSession : <span className="opacity-30 italic">Not Scheduled</span>}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Current Players</label>
+                  <div className="font-mono text-lg flex items-center gap-2">
+                    <span className="text-green-400">{system?.users?.active || 0}</span>
+                    <span className="opacity-40">/</span>
+                    <span>{system?.users?.total || 0}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Login Form */}
+            <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+              <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
+              <div className="space-y-4">
+                {users.length > 0 ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
+                    <select
+                      value={selectedUser}
+                      onChange={(e) => setSelectedUser(e.target.value)}
+                      className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
+                    >
+                      {users.map(u => (
+                        <option key={u.id} value={u.name}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
+                    <input
+                      type="text"
+                      value={selectedUser}
+                      onChange={(e) => setSelectedUser(e.target.value)}
+                      className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                      placeholder="Enter username manually"
+                    />
+                    <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                  />
+                </div>
+                <button
+                  onClick={handleLogin}
+                  disabled={loading}
+                  className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
+                >
+                  {loading ? 'Logging in...' : 'Login'}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-      {step === 'dashboard' && (
-        <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
-          {/* Header / Status */}
-          <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
+      {
+        step === 'setup' && (
+          <div className="flex flex-col items-center justify-center min-h-screen text-center p-8 space-y-6 animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
+
+            <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl">
+              <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
+              <p className="text-lg opacity-80 mb-6 leading-relaxed">
+                No world is available to login, please check back later.
+              </p>
+
+
+
+              <a
+                href="https://github.com/juvinious/sheet-delver"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity hover:scale-105 duration-300"
+              >
+                <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" />
+              </a>
+            </div>
+          </div>
+        )
+      }
+
+      {
+        step === 'dashboard' && (
+          <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
+            {/* Header / Status */}
+            <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
+              <div>
+                <h2 className={`text-2xl ${theme.headerFont} ${theme.accent}`}>Dashboard</h2>
+                <p className="text-xs opacity-50">Connected to {url}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                <span className="text-sm font-bold opacity-80">Online</span>
+                <button
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      await fetch('/api/session/logout', { method: 'POST' });
+                      // Re-run connect check to fetch users
+                      await handleConnect();
+                    } catch (e) { console.error(e); }
+                    setStep('login');
+                    setActors([]);
+                    setLoading(false);
+                  }}
+                  className="ml-4 text-xs opacity-50 hover:opacity-100 hover:text-red-400 underline"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+
+
+            {/* System Specific Tools (Modularized) */}
+            {system?.id && (
+              <SystemTools
+                systemId={system.id}
+                setLoading={setLoading}
+                setLoginMessage={setLoginMessage}
+                theme={theme}
+              />
+            )}
+
+            {/* All Actors */}
             <div>
-              <h2 className={`text-2xl ${theme.headerFont} ${theme.accent}`}>Dashboard</h2>
-              <p className="text-xs opacity-50">Connected to {url}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-sm font-bold opacity-80">Online</span>
-              <button
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    await fetch('/api/session/logout', { method: 'POST' });
-                    // Re-run connect check to fetch users
-                    await handleConnect();
-                  } catch (e) { console.error(e); }
-                  setStep('login');
-                  setActors([]);
-                  setLoading(false);
-                }}
-                className="ml-4 text-xs opacity-50 hover:opacity-100 hover:text-red-400 underline"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-
-
-          {/* System Specific Tools (Modularized) */}
-          {system?.id && (
-            <SystemTools
-              systemId={system.id}
-              setLoading={setLoading}
-              setLoginMessage={setLoginMessage}
-              theme={theme}
-            />
-          )}
-
-          {/* All Actors */}
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {actors.length === 0 && <p className="opacity-50 italic">No actors found (or waiting to fetch...)</p>}
-              {actors.map((actor) => (
-                <div
-                  key={actor.id}
-                  onClick={() => window.location.href = `/actors/${actor.id}`}
-                  className={`
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {actors.length === 0 && <p className="opacity-50 italic">No actors found (or waiting to fetch...)</p>}
+                {actors.map((actor) => (
+                  <div
+                    key={actor.id}
+                    onClick={() => {
+                      setLoading(true);
+                      setLoginMessage('Loading Codex...');
+                      window.location.href = `/actors/${actor.id}`;
+                    }}
+                    className={`
                         ${theme.panelBg} p-4 rounded-lg shadow border border-transparent 
                         hover:border-amber-500/50 transition-all cursor-pointer block group
                       `}
-                >
-                  <div className="flex items-start gap-4">
-                    <img
-                      src={actor.img !== 'icons/svg/mystery-man.svg' ? (url + '/' + actor.img) : '/placeholder.png'}
-                      alt={actor.name}
-                      className="w-16 h-16 rounded bg-black/20 object-cover"
-                    />
-                    <div className="flex-1">
-                      <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
-                      <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
+                  >
+                    <div className="flex items-start gap-4">
+                      <img
+                        src={actor.img !== 'icons/svg/mystery-man.svg' ? (url + '/' + actor.img) : '/placeholder.png'}
+                        alt={actor.name}
+                        className="w-16 h-16 rounded bg-black/20 object-cover"
+                      />
+                      <div className="flex-1">
+                        <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
+                        <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
 
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {actor.hp && (
-                          <div className="bg-black/20 px-2 py-1 rounded">
-                            <span className="opacity-50 text-xs uppercase block">HP</span>
-                            <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
-                            <span className="opacity-50"> / {actor.hp.max}</span>
-                          </div>
-                        )}
-                        {(actor.ac !== undefined) && (
-                          <div className="bg-black/20 px-2 py-1 rounded">
-                            <span className="opacity-50 text-xs uppercase block">AC</span>
-                            <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
-                          </div>
-                        )}
+                        {/* Stats Grid */}
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          {actor.hp && (
+                            <div className="bg-black/20 px-2 py-1 rounded">
+                              <span className="opacity-50 text-xs uppercase block">HP</span>
+                              <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
+                              <span className="opacity-50"> / {actor.hp.max}</span>
+                            </div>
+                          )}
+                          {(actor.ac !== undefined) && (
+                            <div className="bg-black/20 px-2 py-1 rounded">
+                              <span className="opacity-50 text-xs uppercase block">AC</span>
+                              <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
       {/* Persistent Player List when logged in */}
       {(step === 'dashboard') && <PlayerList />}
@@ -569,14 +601,16 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
       {/* Loading Overlay */}
-      {loading && loginMessage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className={`p-8 rounded-xl bg-neutral-900 border border-white/10 shadow-2xl text-center space-y-4`}>
-            <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <h2 className={`text-xl font-bold text-white ${theme.headerFont}`}>{loginMessage}</h2>
+      {
+        loading && loginMessage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className={`p-8 rounded-xl bg-neutral-900 border border-white/10 shadow-2xl text-center space-y-4`}>
+              <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <h2 className={`text-xl font-bold text-white ${theme.headerFont}`}>{loginMessage}</h2>
+            </div>
           </div>
-        </div>
-      )}
-    </main>
+        )
+      }
+    </main >
   );
 }
