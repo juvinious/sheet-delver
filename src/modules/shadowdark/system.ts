@@ -20,230 +20,241 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getActor(client: any, actorId: string): Promise<any> {
-        const actorData = await client.evaluate(async (id: string) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(id);
-            if (!actor) return null;
-
-            // --- SHADOWDARK ITEM PROCESSING ---
-            const freeCarrySeen: Record<string, number> = {};
-            // @ts-ignore
-            const items = (actor.items?.contents || []).map((i: any) => {
-                if (!i) return null;
-                const itemData: any = {
-                    id: i.id,
-                    name: i.name,
-                    type: i.type,
-                    img: i.img,
-                    system: i.system || {},
-                    uuid: `Actor.${id}.Item.${i.id}`
-                };
-
-                // Calculate slot usage for physical items
-                if (i.system?.isPhysical && i.type !== "Gem") {
-                    let freeCarry = i.system.slots?.free_carry || 0;
-
-                    if (freeCarrySeen[i.name]) {
-                        freeCarry = Math.max(0, freeCarry - freeCarrySeen[i.name]);
-                        freeCarrySeen[i.name] += freeCarry;
-                    } else {
-                        freeCarrySeen[i.name] = freeCarry;
-                    }
-
-                    // Calculate slots used
-                    const perSlot = i.system.slots?.per_slot || 1;
-                    const qty = i.system.quantity || 1;
-                    const slotsUsed = i.system.slots?.slots_used || 0;
-
-                    let totalSlotsUsed = Math.ceil(qty / perSlot) * slotsUsed;
-                    totalSlotsUsed -= freeCarry * slotsUsed;
-
-                    itemData.slotsUsed = totalSlotsUsed;
-                    itemData.showQuantity = i.system.isAmmunition || (perSlot > 1) || (qty > 1);
-
-                    // Light source progress indicators
-                    if (i.type === "Basic" && i.system.light?.isSource) {
-                        itemData.isLightSource = true;
-                        itemData.lightSourceActive = i.system.light.active;
-                        itemData.lightSourceUsed = i.system.light.hasBeenUsed;
-
-                        const maxSeconds = (i.system.light.longevityMins || 0) * 60;
-                        let progress = "◆";
-                        for (let x = 1; x < 4; x++) {
-                            if (i.system.light.remainingSecs > (maxSeconds * x / 4)) {
-                                progress += " ◆";
-                            } else {
-                                progress += " ◇";
-                            }
-                        }
-                        itemData.lightSourceProgress = progress;
-
-                        const timeRemaining = Math.ceil(i.system.light.remainingSecs / 60);
-                        if (i.system.light.remainingSecs < 60) {
-                            itemData.lightSourceTimeRemaining = "< 1 min";
-                        } else {
-                            itemData.lightSourceTimeRemaining = `${timeRemaining} min`;
-                        }
-                    }
-                }
-
-                return itemData;
-            }).filter((i: any) => i !== null);
-
-            console.error(`[Antigravity Debug Read] Actor: ${actor.name} (${id})`);
-            console.error(`[Antigravity Debug Read] System Class:`, actor.system?.class);
-            console.error(`[Antigravity Debug Read] System Ancestry:`, actor.system?.ancestry);
-            console.error(`[Antigravity Debug Read] Items found:`, items.map((i: any) => `${i.name} (${i.id})`).join(', '));
-
-            // --- SHADOWDARK EFFECTS PROCESSING ---
-            let effects = [];
+        const actorData = await client.evaluate(async (id: any) => {
             try {
                 // @ts-ignore
-                if (typeof actor.allApplicableEffects === 'function') {
-                    // @ts-ignore
-                    effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
-                        _id: e.id,
-                        name: e.name,
-                        img: e.img,
-                        disabled: e.disabled,
-                        duration: {
-                            type: e.duration?.type,
-                            remaining: e.duration?.remaining,
-                            label: e.duration?.label,
-                            startTime: e.duration?.startTime,
-                            seconds: e.duration?.seconds,
-                            rounds: e.duration?.rounds,
-                            turns: e.duration?.turns
-                        },
-                        changes: e.changes,
-                        origin: e.origin,
-                        sourceName: e.parent?.name ?? "Unknown",
-                        transfer: e.transfer,
-                        statuses: Array.from(e.statuses ?? [])
-                    }));
-                } else if (actor.effects) {
-                    // @ts-ignore
-                    effects = actor.effects.contents.map((e: any) => ({
-                        _id: e.id,
-                        name: e.name,
-                        img: e.img,
-                        disabled: e.disabled,
-                        changes: e.changes
-                    }));
-                }
-            } catch (err) {
-                console.error('Error processing effects:', err);
-            }
+                if (!window.game) return { error: "window.game is undefined", state: document.readyState };
+                // @ts-ignore
+                if (!window.game.ready) return { error: "window.game.ready is false", state: "not-ready" };
+                // @ts-ignore
+                if (!window.game.actors) return { error: "window.game.actors is undefined", state: "missing-actors" };
 
-            // --- DERIVED STATS ---
-            const levelVal = actor.system.level?.value !== undefined ? Number(actor.system.level.value) : 1;
-            const xpVal = Number(actor.system.level?.xp) || 0;
-            const computed: any = {
-                maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
-                xpNextLevel: levelVal * 10,
-                levelUp: xpVal >= (levelVal * 10)
-            };
+                // @ts-ignore
+                const actor = window.game.actors.get(id);
+                if (!actor) return null;
 
-            if (actor.type === "Player") {
-                try {
-                    computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
-                } catch (err) { console.error('Error calculating AC:', err); computed.ac = 10; }
+                // --- SHADOWDARK ITEM PROCESSING ---
+                const freeCarrySeen: Record<string, number> = {};
+                // @ts-ignore
+                const items = (actor.items?.contents || []).map((i: any) => {
+                    if (!i) return null;
+                    const itemData: any = {
+                        id: i.id,
+                        name: i.name,
+                        type: i.type,
+                        img: i.img,
+                        system: i.system || {},
+                        uuid: `Actor.${id}.Item.${i.id}`
+                    };
 
-                try {
-                    computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
-                } catch (err) { console.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+                    // Calculate slot usage for physical items
+                    if (i.system?.isPhysical && i.type !== "Gem") {
+                        let freeCarry = i.system.slots?.free_carry || 0;
 
-                try {
-                    computed.isSpellCaster = (typeof actor.isSpellCaster === 'function') ? await actor.isSpellCaster() : false;
-                } catch (err) { console.error('Error checking isSpellCaster:', err); computed.isSpellCaster = false; }
-
-                try {
-                    computed.canUseMagicItems = (typeof actor.canUseMagicItems === 'function') ? await actor.canUseMagicItems() : false;
-                } catch (err) { console.error('Error checking canUseMagicItems:', err); computed.canUseMagicItems = false; }
-
-                computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
-
-                try {
-                    // --- BROWSER CONTEXT ---
-                    // The following code runs inside the browser!
-                    // We have access to the real ActorSD instance here.
-
-                    const abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
-                    const keys = Object.keys(abilities);
-                    const safeAbilities: any = {};
-
-                    // 1. Sanitize Data (Polyfill missing bonus)
-                    // We modify the actor's system data in memory to ensure the API call doesn't crash/fail
-                    if (actor.type === 'Player' && actor.system?.abilities) {
-                        for (const key of keys) {
-                            if (actor.system.abilities[key] && actor.system.abilities[key].bonus === undefined) {
-                                actor.system.abilities[key].bonus = 0;
-                            }
+                        if (freeCarrySeen[i.name]) {
+                            freeCarry = Math.max(0, freeCarry - freeCarrySeen[i.name]);
+                            freeCarrySeen[i.name] += freeCarry;
+                        } else {
+                            freeCarrySeen[i.name] = freeCarry;
                         }
-                    }
 
-                    // 2. Strict API Usage
-                    for (const key of keys) {
-                        const stat = abilities[key];
-                        let finalMod = stat.mod ?? 0;
+                        // Calculate slots used
+                        const perSlot = i.system.slots?.per_slot || 1;
+                        const qty = i.system.quantity || 1;
+                        const slotsUsed = i.system.slots?.slots_used || 0;
 
-                        if (typeof actor.abilityModifier === 'function') {
-                            try {
-                                const apiMod = actor.abilityModifier(key);
-                                if (apiMod !== undefined && apiMod !== null) {
-                                    finalMod = apiMod;
+                        let totalSlotsUsed = Math.ceil(qty / perSlot) * slotsUsed;
+                        totalSlotsUsed -= freeCarry * slotsUsed;
+
+                        itemData.slotsUsed = totalSlotsUsed;
+                        itemData.showQuantity = i.system.isAmmunition || (perSlot > 1) || (qty > 1);
+
+                        // Light source progress indicators
+                        if (i.type === "Basic" && i.system.light?.isSource) {
+                            itemData.isLightSource = true;
+                            itemData.lightSourceActive = i.system.light.active;
+                            itemData.lightSourceUsed = i.system.light.hasBeenUsed;
+
+                            const maxSeconds = (i.system.light.longevityMins || 0) * 60;
+                            let progress = "◆";
+                            for (let x = 1; x < 4; x++) {
+                                if (i.system.light.remainingSecs > (maxSeconds * x / 4)) {
+                                    progress += " ◆";
+                                } else {
+                                    progress += " ◇";
                                 }
-                            } catch (e) {
-                                console.error(`[Browser] Error calculating modifier for ${key}:`, e);
+                            }
+                            itemData.lightSourceProgress = progress;
+
+                            const timeRemaining = Math.ceil(i.system.light.remainingSecs / 60);
+                            if (i.system.light.remainingSecs < 60) {
+                                itemData.lightSourceTimeRemaining = "< 1 min";
+                            } else {
+                                itemData.lightSourceTimeRemaining = `${timeRemaining} min`;
+                            }
+                        }
+                    }
+
+                    return itemData;
+                }).filter((i: any) => i !== null);
+
+                console.error(`[Antigravity Debug Read] Actor: ${actor.name} (${id})`);
+                console.error(`[Antigravity Debug Read] System Class:`, actor.system?.class);
+                console.error(`[Antigravity Debug Read] System Ancestry:`, actor.system?.ancestry);
+                console.error(`[Antigravity Debug Read] Items found:`, items.map((i: any) => `${i.name} (${i.id})`).join(', '));
+
+                // --- SHADOWDARK EFFECTS PROCESSING ---
+                let effects = [];
+                try {
+                    // @ts-ignore
+                    if (typeof actor.allApplicableEffects === 'function') {
+                        // @ts-ignore
+                        effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
+                            _id: e.id,
+                            name: e.name,
+                            img: e.img,
+                            disabled: e.disabled,
+                            duration: {
+                                type: e.duration?.type,
+                                remaining: e.duration?.remaining,
+                                label: e.duration?.label,
+                                startTime: e.duration?.startTime,
+                                seconds: e.duration?.seconds,
+                                rounds: e.duration?.rounds,
+                                turns: e.duration?.turns
+                            },
+                            changes: e.changes,
+                            origin: e.origin,
+                            sourceName: e.parent?.name ?? "Unknown",
+                            transfer: e.transfer,
+                            statuses: Array.from(e.statuses ?? [])
+                        }));
+                    } else if (actor.effects) {
+                        // @ts-ignore
+                        effects = actor.effects.contents.map((e: any) => ({
+                            _id: e.id,
+                            name: e.name,
+                            img: e.img,
+                            disabled: e.disabled,
+                            changes: e.changes
+                        }));
+                    }
+                } catch (err) {
+                    console.error('Error processing effects:', err);
+                }
+
+                // --- DERIVED STATS ---
+                const levelVal = actor.system.level?.value !== undefined ? Number(actor.system.level.value) : 1;
+                const xpVal = Number(actor.system.level?.xp) || 0;
+                const computed: any = {
+                    maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
+                    xpNextLevel: levelVal * 10,
+                    levelUp: xpVal >= (levelVal * 10)
+                };
+
+                if (actor.type === "Player") {
+                    try {
+                        computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
+                    } catch (err) { console.error('Error calculating AC:', err); computed.ac = 10; }
+
+                    try {
+                        computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
+                    } catch (err) { console.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+
+                    try {
+                        computed.isSpellCaster = (typeof actor.isSpellCaster === 'function') ? await actor.isSpellCaster() : false;
+                    } catch (err) { console.error('Error checking isSpellCaster:', err); computed.isSpellCaster = false; }
+
+                    try {
+                        computed.canUseMagicItems = (typeof actor.canUseMagicItems === 'function') ? await actor.canUseMagicItems() : false;
+                    } catch (err) { console.error('Error checking canUseMagicItems:', err); computed.canUseMagicItems = false; }
+
+                    computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
+
+                    try {
+                        // --- BROWSER CONTEXT ---
+                        // The following code runs inside the browser!
+                        // We have access to the real ActorSD instance here.
+
+                        const abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
+                        const keys = Object.keys(abilities);
+                        const safeAbilities: any = {};
+
+                        // 1. Sanitize Data (Polyfill missing bonus)
+                        // We modify the actor's system data in memory to ensure the API call doesn't crash/fail
+                        if (actor.type === 'Player' && actor.system?.abilities) {
+                            for (const key of keys) {
+                                if (actor.system.abilities[key] && actor.system.abilities[key].bonus === undefined) {
+                                    actor.system.abilities[key].bonus = 0;
+                                }
                             }
                         }
 
-                        // Fallback: If API failed to return a number, try local calculation?
-                        // User requested STRICT API usage. If API returns 0, we trust it (or fixed the input so it's correct).
-                        // Note: If we really want to be safe, we could check if API mod is 0 but base is e.g. 18.
-                        // But let's trust the API with sanitized data.
+                        // 2. Strict API Usage
+                        for (const key of keys) {
+                            const stat = abilities[key];
+                            let finalMod = stat.mod ?? 0;
 
-                        safeAbilities[key] = { ...stat, mod: finalMod };
-                    }
-                    computed.abilities = safeAbilities;
-
-                } catch (err) { console.error('Error calculating Abilities in Browser:', err); computed.abilities = actor.system.abilities || {}; }
-
-                // Get spellcasting ability
-                let spellcastingAbility = "";
-                try {
-                    // Try to find the embedded Class item first
-                    const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
-                    if (characterClass) {
-                        spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
-                    } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
-                        try {
-                            // @ts-ignore
-                            const classItem = await fromUuid(actor.system.class);
-                            if (classItem) {
-                                spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                            if (typeof actor.abilityModifier === 'function') {
+                                try {
+                                    const apiMod = actor.abilityModifier(key);
+                                    if (apiMod !== undefined && apiMod !== null) {
+                                        finalMod = apiMod;
+                                    }
+                                } catch (e) {
+                                    console.error(`[Browser] Error calculating modifier for ${key}:`, e);
+                                }
                             }
-                        } catch { }
-                    }
-                } catch (err) { console.error('Error resolving class/spellcasting:', err); }
-                computed.spellcastingAbility = spellcastingAbility;
-            }
 
-            return {
-                id: actor.id,
-                name: actor.name,
-                type: actor.type,
-                img: actor.img,
-                systemId: 'shadowdark',
-                system: actor.system,
-                items: items,
-                effects: effects,
-                computed: computed,
-                // @ts-ignore
-                currentUser: window.game.user ? window.game.user.name : 'Unknown',
-                // @ts-ignore
-                systemConfig: window.game.shadowdark?.config || {}
-            };
+                            // Fallback: If API failed to return a number, try local calculation?
+                            // User requested STRICT API usage. If API returns 0, we trust it (or fixed the input so it's correct).
+                            // Note: If we really want to be safe, we could check if API mod is 0 but base is e.g. 18.
+                            // But let's trust the API with sanitized data.
+
+                            safeAbilities[key] = { ...stat, mod: finalMod };
+                        }
+                        computed.abilities = safeAbilities;
+
+                    } catch (err) { console.error('Error calculating Abilities in Browser:', err); computed.abilities = actor.system.abilities || {}; }
+
+                    // Get spellcasting ability
+                    let spellcastingAbility = "";
+                    try {
+                        // Try to find the embedded Class item first
+                        const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
+                        if (characterClass) {
+                            spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
+                        } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
+                            try {
+                                // @ts-ignore
+                                const classItem = await fromUuid(actor.system.class);
+                                if (classItem) {
+                                    spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                                }
+                            } catch { }
+                        }
+                    } catch (err) { console.error('Error resolving class/spellcasting:', err); }
+                    computed.spellcastingAbility = spellcastingAbility;
+                }
+
+                return {
+                    id: actor.id,
+                    name: actor.name,
+                    type: actor.type,
+                    img: actor.img,
+                    systemId: 'shadowdark',
+                    system: actor.system,
+                    items: items,
+                    effects: effects,
+                    computed: computed,
+                    // @ts-ignore
+                    currentUser: window.game.user ? window.game.user.name : 'Unknown',
+                    // @ts-ignore
+                    systemConfig: window.game.shadowdark?.config || {}
+                };
+            } catch (err: any) {
+                return { error: err.message, stack: err.stack, state: document.readyState };
+            }
         }, actorId);
 
         if (actorData) {
