@@ -67,6 +67,26 @@ export default function Generator() {
         }
     };
 
+    const handleStatChange = (stat: string, valueStr: string) => {
+        const val = parseInt(valueStr) || 10;
+        // Clamp 1-18 (3d6 max) as requested
+        const clamped = Math.max(1, Math.min(18, val));
+
+        setFormData(prev => ({
+            ...prev,
+            stats: {
+                ...prev.stats,
+                // @ts-ignore
+                [stat]: {
+                    // @ts-ignore
+                    ...prev.stats[stat],
+                    value: clamped,
+                    mod: getMod(clamped)
+                }
+            }
+        }));
+    };
+
     const fetchDocument = async (uuid: string) => {
         try {
             const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
@@ -472,7 +492,7 @@ export default function Generator() {
             // 6. Randomize Languages
             // Calculate Total Points (Approximate without full details load, or fetch)
             // We need to fetch and bucketize.
-            let fixedLangs = new Set<string>();
+            const fixedLangs = new Set<string>();
             let commonCount = 0;
             let rareCount = 0;
             const ankPool = { count: 0, options: [] as string[] }; // Ancestry
@@ -505,7 +525,7 @@ export default function Generator() {
                         }
                     }
                 }
-            } catch (e) { }
+            } catch { }
 
             // Populate Pools
             const selections: { common: string[], rare: string[], ancestry: string[], class: string[] } = {
@@ -987,7 +1007,8 @@ export default function Generator() {
 
             // Add Level Up Items (Talents, Boons, Spells)
             // DEBUG: Inspect extraItems
-            console.log(`[Antigravity Debug] Processing ${extraItems.length} extraItems:`, extraItems);
+            // DEBUG: Inspect extraItems (Names only to reduce noise)
+            console.log(`[Antigravity Debug] Processing ${extraItems.length} extraItems:`, extraItems.map(i => i.name));
 
             for (const item of extraItems) {
                 // These are likely fully formed objects from the modal or just data?
@@ -1016,6 +1037,7 @@ export default function Generator() {
                 const name = cleanItem.name || "";
                 const statRegex = /(?:\+(\d+)\s+(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma))|(?:(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+\+(\d+))/i;
                 const match = name.match(statRegex);
+                console.log(`Generator: Item "${name}" regex match: ${!!match}`, cleanItem.effects);
 
                 if (match) {
                     // Group 1/2 or Group 3/4
@@ -1300,7 +1322,12 @@ export default function Generator() {
                                         <div key={stat} className="flex items-center justify-between">
                                             <span className="font-bold text-neutral-500 text-sm tracking-widest">{stat}</span>
                                             <div className="flex items-center gap-3">
-                                                <span className={`font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'}`}>{st.value}</span>
+                                                <input
+                                                    type="number"
+                                                    value={st.value}
+                                                    onChange={(e) => handleStatChange(stat, e.target.value)}
+                                                    className={`w-12 text-center bg-transparent border-b border-neutral-300 focus:border-black outline-none font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'}`}
+                                                />
                                                 <span className="text-xs font-bold bg-neutral-200 px-2 py-0.5 rounded-full text-neutral-600 min-w-[2rem] text-center">
                                                     {st.mod >= 0 ? '+' : ''}{st.mod}
                                                 </span>

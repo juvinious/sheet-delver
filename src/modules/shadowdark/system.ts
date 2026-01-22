@@ -257,7 +257,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
         }, actorId);
 
-        if (actorData) {
+        if (actorData && actorData.system) {
             const abilities = actorData.system.abilities || actorData.system.stats || {};
             const derived = {
                 ...this.calculateAttacks(actorData, abilities),

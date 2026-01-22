@@ -40,31 +40,8 @@ export const LevelUpModal = ({
     const [selectedSpells, setSelectedSpells] = useState<any[]>([]);
     const [pendingChoices, setPendingChoices] = useState<{ header: string, options: any[], context: 'talent' | 'boon' } | null>(null);
 
-    const simpleRoll = (formula: string): number => {
-        try {
-            // Basic support for XdY+Z
-            const match = formula.match(/(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/);
-            if (!match) {
-                const num = parseInt(formula);
-                return isNaN(num) ? 0 : num;
-            }
-            const [_, countStr, dieStr, op, modStr] = match;
-            const count = parseInt(countStr);
-            const die = parseInt(dieStr);
-            let total = 0;
-            for (let i = 0; i < count; i++) {
-                total += Math.floor(Math.random() * die) + 1;
-            }
-            if (op && modStr) {
-                const mod = parseInt(modStr);
-                total = op === '+' ? total + mod : total - mod;
-            }
-            return total;
-        } catch (e) {
-            console.error("SimpleRoll Error", e);
-            return 0;
-        }
-    };
+    // Spellcasting
+    const isSpellcaster = Boolean(classObj?.system?.spellcasting?.class || classObj?.system?.spellcasting?.ability);
 
     // Computed Requirements
     const needsTalent = true; // Level 1 always odd
@@ -114,18 +91,21 @@ export const LevelUpModal = ({
         // If table is a string (UUID), fetch it first
         let tableObj = table;
         if (typeof table === 'string') {
+            console.log("LevelUpModal: Fetching table by UUID:", table);
             tableObj = await fetchDocument(table);
         }
 
         if (!tableObj) {
             console.error('LevelUpModal: Failed to fetch table document', table);
-            return [];
+            return null; // Should return null to propagate error state
         }
+        console.log("LevelUpModal: Table Object Loaded", tableObj.name, tableObj._id);
 
 
 
         // Handle both EmbeddedCollection (common in Foundry) and Array
         const rawResults = tableObj.results || tableObj.system?.results;
+        console.log("LevelUpModal: Raw Table Results:", rawResults);
 
         // If it's a Collection/Map, convert to array
         let results: any[] = [];
@@ -139,13 +119,14 @@ export const LevelUpModal = ({
         }
 
         if (!results || results.length === 0) {
-            console.error('LevelUpModal: No results found in table', tableObj);
+            console.error('LevelUpModal: No results found in table', tableObj.name);
             return [];
         }
 
         // --- NEW LOGIC: Roll and Filter ---
         const formula = tableObj.formula || "1d1";
         const roll = simpleRoll(formula);
+        console.log(`LevelUpModal: Rolling ${formula} on table ${tableObj.name} => ${roll}`);
 
 
         let matchingResults = results.filter(r => {
@@ -209,16 +190,20 @@ export const LevelUpModal = ({
 
         // CASE 3: No Results (Shouldn't happen with valid tables)
         console.warn("LevelUpModal: No matching results for roll", roll);
-        return [];
+        return null; // Return null instead of []
     };
 
     const processSingleResult = async (result: any): Promise<any[] | null> => {
+        console.log("LevelUpModal: processSingleResult Input:", result);
         let finalResult = {
             name: result.text || result.name || "Unknown Talent",
             type: 'Talent',
             description: result.text || "",
             img: result.img,
             uuid: result.uuid || result.documentUuid,
+            documentUuid: result.documentUuid,
+            documentId: result.documentId,
+            documentCollection: result.documentCollection,
             _id: result._id
         };
 
@@ -245,7 +230,10 @@ export const LevelUpModal = ({
                     type: doc.type,
                     description: doc.system?.description?.value || doc.system?.description || "",
                     img: doc.img || result.img,
-                    uuid: doc.uuid,
+                    uuid: doc.uuid || uuid,
+                    documentUuid: uuid, // Ensure we keep the valid ID
+                    documentId: result.documentId,
+                    documentCollection: result.documentCollection,
                     _id: doc._id || result._id
                 };
             }
@@ -261,7 +249,10 @@ export const LevelUpModal = ({
                     type: doc.type,
                     description: doc.system?.description?.value || doc.system?.description || "",
                     img: doc.img || result.img,
-                    uuid: doc.uuid,
+                    uuid: doc.uuid || result.documentUuid,
+                    documentUuid: result.documentUuid,
+                    documentId: result.documentId, // Might be undefined here but that's ok
+                    documentCollection: null,
                     _id: doc._id || result._id
                 };
             }
@@ -403,7 +394,12 @@ export const LevelUpModal = ({
         setLoading(false);
     };
 
+
+
+    const clearPending = () => setPendingChoices(null);
+
     const handleRollBoon = async () => {
+        clearPending();
         let table = boonTable;
         if (!table) {
             console.warn("LevelUpModal: No boon table found for patron");
@@ -414,11 +410,13 @@ export const LevelUpModal = ({
 
         setLoading(true);
         const res = await fetchTableResult(table, 'boon');
+        console.log("LevelUpModal: Boon Roll Result", res);
         if (res) setRolledBoons(res);
         setLoading(false);
     };
 
     const handleRollExtraBoon = async () => {
+        clearPending();
         let table = boonTable;
         if (!table) {
             console.warn("LevelUpModal: No boon table found for patron");
@@ -450,6 +448,7 @@ export const LevelUpModal = ({
             console.log("LevelUpModal: Resolving results to docs...", results);
             const resolved: any[] = [];
             for (const r of results) {
+                console.log("LevelUpModal: Processing result:", r);
                 // Check if result is a RollTable itself (recursive roll needed)
                 if (r.type === 'document' && r.documentCollection === 'RollTable') {
                     // Need to roll on this table!
@@ -476,10 +475,15 @@ export const LevelUpModal = ({
 
                 // If it's a structural/text result, keep it (Generator regex parsers might use it)
                 // But usually we want the Actual Item if it exists.
-                const uuid = r.documentUuid || r.documentId;
+                // If it's a structural/text result, keep it (Generator regex parsers might use it)
+                // But usually we want the Actual Item if it exists.
+                const uuid = r.documentUuid || r.documentId || r.uuid;
+                console.log("LevelUpModal: Extracted UUID:", uuid);
+
                 if (uuid) {
                     const doc = await fetchDocument(uuid);
                     if (doc) {
+                        console.log(`LevelUpModal: Resolved ${uuid} to ${doc.name}. Effects: ${doc.effects?.length}`);
                         // Double check if the doc itself is a RollTable (if type check above failed)
                         if (doc.documentName === 'RollTable' || doc.type === 'RollTable') {
                             // Recursion similar to above
@@ -540,7 +544,9 @@ export const LevelUpModal = ({
 
 
 
-                <div className="p-6 overflow-y-auto space-y-8 flex-1">
+                {/* PENDING CHOICES REMOVED FROM GLOBAL SCOPE */}
+
+                <div className="p-6 overflow-y-auto space-y-8 flex-1 relative">
                     {/* Talents / Benefits Section */}
                     <div className="space-y-4">
                         <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
@@ -550,7 +556,8 @@ export const LevelUpModal = ({
 
                         {rolledTalents.length === 0 ? (
                             <div className="flex flex-col gap-2">
-                                {pendingChoices ? (
+                                {/* INLINE CHOICE: TALENT */}
+                                {pendingChoices && pendingChoices.context !== 'boon' ? (
                                     <div className="bg-neutral-800 p-6 rounded-lg border-2 border-amber-600 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
                                         <h3 className="text-xl font-bold text-amber-500 mb-4 font-serif border-b border-neutral-700 pb-2">
                                             <span className="fas fa-question-circle mr-2"></span>
@@ -561,7 +568,6 @@ export const LevelUpModal = ({
                                                 let imgSrc = choice.img || "icons/svg/d20-black.svg";
 
                                                 if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
-                                                    // Resolve relative Foundry paths
                                                     const baseUrl = foundryUrl.replace(/\/$/, '');
                                                     const path = imgSrc.replace(/^\//, '');
                                                     imgSrc = `${baseUrl}/${path}`;
@@ -573,23 +579,12 @@ export const LevelUpModal = ({
                                                         onClick={() => handleChoiceSelection(choice)}
                                                         className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-amber-500 rounded-lg text-left transition-all group"
                                                     >
-                                                        <img
-                                                            src={imgSrc}
-                                                            alt={choice.name}
-                                                            className="w-12 h-12 rounded border border-neutral-600 group-hover:border-amber-500 object-contain bg-neutral-950"
-                                                            onError={(e) => {
-                                                                // Fallback if 404
-                                                                (e.target as HTMLImageElement).src = '/icons/shield.svg';
-                                                            }}
-                                                        />
-                                                        <div>
-                                                            <div className="font-bold text-lg text-white group-hover:text-amber-500 transition-colors">{choice.name}</div>
-                                                            {choice.original?.description && (
-                                                                <p className="text-xs text-neutral-400 mt-1 line-clamp-2" dangerouslySetInnerHTML={{ __html: choice.original.description }}></p>
-                                                            )}
+                                                        <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-amber-500">
+                                                            <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
                                                         </div>
+                                                        <div className="font-bold text-amber-50 group-hover:text-amber-500">{choice.name}</div>
                                                     </button>
-                                                );
+                                                )
                                             })}
                                         </div>
                                     </div>
@@ -645,12 +640,48 @@ export const LevelUpModal = ({
                             </div>
 
                             {rolledBoons.length === 0 ? (
-                                <button
-                                    onClick={handleRollBoon}
-                                    className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                >
-                                    <span className="fas fa-dice-d20"></span> Roll Boon
-                                </button>
+                                <div className="flex flex-col gap-2">
+                                    {/* INLINE CHOICE: BOON */}
+                                    {pendingChoices && pendingChoices.context === 'boon' ? (
+                                        <div className="bg-neutral-800 p-6 rounded-lg border-2 border-purple-500 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
+                                            <h3 className="text-xl font-bold text-purple-400 mb-4 font-serif border-b border-neutral-700 pb-2">
+                                                <span className="fas fa-star mr-2"></span>
+                                                {pendingChoices.header}
+                                            </h3>
+                                            <div className="grid grid-cols-1 gap-3">
+                                                {pendingChoices.options.map((choice, idx) => {
+                                                    let imgSrc = choice.img || "icons/svg/d20-black.svg";
+
+                                                    if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
+                                                        const baseUrl = foundryUrl.replace(/\/$/, '');
+                                                        const path = imgSrc.replace(/^\//, '');
+                                                        imgSrc = `${baseUrl}/${path}`;
+                                                    }
+
+                                                    return (
+                                                        <button
+                                                            key={idx}
+                                                            onClick={() => handleChoiceSelection(choice)}
+                                                            className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-purple-500 rounded-lg text-left transition-all group"
+                                                        >
+                                                            <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-purple-500">
+                                                                <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
+                                                            </div>
+                                                            <div className="font-bold text-purple-100 group-hover:text-purple-400">{choice.name}</div>
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={handleRollBoon}
+                                            className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                        >
+                                            <span className="fas fa-dice-d20"></span> Roll Boon
+                                        </button>
+                                    )}
+                                </div>
                             ) : (
                                 <div className="space-y-2">
                                     {rolledBoons.map((b, idx) => (
