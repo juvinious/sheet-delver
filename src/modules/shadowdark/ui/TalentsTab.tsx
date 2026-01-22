@@ -42,11 +42,15 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
     };
 
     // Filter Logic
-    const allTalents = (actor.items?.filter((i: any) => i.type === 'Talent' || i.type === 'Feature') || [])
-        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const allTalents = (actor.items?.filter((i: any) =>
+        ['Talent', 'Feature', 'Patron', 'Boon'].includes(i.type)
+    ) || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     // Group: Ancestry & Class (talentClass === 'ancestry' || 'class') - Treat 'class' as catch-all if undefined for now
+    // Also include Patron and Boons here as requested
     const ancestryClassTalents = allTalents.filter((i: any) => {
+        if (i.type === 'Patron' || i.type === 'Boon') return true;
+
         const tc = i.system?.talentClass?.toLowerCase();
         return tc === 'ancestry' || tc === 'class' || !tc || tc === '';
     });
@@ -88,7 +92,11 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
                                         {item.name}
                                     </div>
                                     <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
-                                        {item.system?.talentClass ? item.system.talentClass : 'Trait'}
+                                        {item.system?.talentClass ? item.system.talentClass : (
+                                            item.type === 'Patron' ? 'Patron' :
+                                                item.type === 'Boon' ? 'Boon' :
+                                                    'Class'
+                                        )}
                                     </div>
                                 </div>
 

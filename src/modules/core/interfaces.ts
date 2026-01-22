@@ -36,6 +36,13 @@ export interface SystemAdapter {
     postCreate?(client: any, actorId: string, sourceData: any): Promise<void>;
 
     /**
+     * Fetch actor data from the system. 
+     * If not provided, the default client.getActor logic (if any) might be used, 
+     * but currently client relies on this for system-specific fetching.
+     */
+    getActor?(client: any, actorId: string): Promise<any>;
+
+    /**
      * Optional theme configuration for the client UI.
      */
     theme?: {

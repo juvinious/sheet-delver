@@ -42,9 +42,13 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
     // Helper to apply optimistic overrides to a list of items
     // This function is now provided by useOptimisticOverrides
 
-    const equippedItems = applyOverrides(actor.derived?.inventory?.equipped || []);
-    const carriedItems = applyOverrides(actor.derived?.inventory?.carried || []);
-    const stashedItems = applyOverrides(actor.derived?.inventory?.stashed || []);
+    // Exclude non-inventory types
+    const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language'];
+    const filterInventory = (list: any[]) => list.filter((i: any) => !NON_INVENTORY_TYPES.includes(i.type));
+
+    const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || []));
+    const carriedItems = applyOverrides(filterInventory(actor.derived?.inventory?.carried || []));
+    const stashedItems = applyOverrides(filterInventory(actor.derived?.inventory?.stashed || []));
 
     // We rely on the adapter for max slots, but we must re-calculate CURRENT usage based on optimistic updates
     // The adapter gives us 'slots.current', but that doesn't account for local optimistic changes.

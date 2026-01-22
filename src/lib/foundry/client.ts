@@ -594,7 +594,7 @@ export class FoundryClient {
     async createActor(data: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
-        return await this.page.evaluate(async (actorData) => {
+        const result: any = await this.page.evaluate(async (actorData) => {
             // @ts-ignore
             if (!window.Actor) return { error: 'Actor class not found' };
             try {
@@ -683,6 +683,9 @@ export class FoundryClient {
             adapter = await this.resolveAdapter();
         }
 
+        if (!adapter.getActor) {
+            throw new Error(`Adapter for system '${adapter.systemId}' does not support getActor`);
+        }
         return await adapter.getActor(this, id);
     }
 

@@ -46,7 +46,11 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const app = doc.app || {};
             const debug = doc.debug || {};
 
-            const foundryUrl = `${foundry.protocol || 'http'}://${foundry.host || 'localhost'}:${foundry.port || 30000}`;
+            const protocol = foundry.protocol || 'http';
+            const host = foundry.host || 'localhost';
+            const port = foundry.port || 30000;
+            const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
+            const foundryUrl = `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
 
             _cachedConfig = {
                 app: {

@@ -280,6 +280,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 languages: [] as any[],
                 deities: [] as any[],
                 patrons: [] as any[],
+                spells: [] as any[],
                 titles: {}
             };
 
@@ -287,9 +288,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // @ts-ignore
                 if (pack.documentName !== 'Item') continue;
                 // @ts-ignore
-                // Ensure we index the type field
+                // Ensure we index the type field and necessary system fields for filtering
                 // @ts-ignore
-                const index = await pack.getIndex({ fields: ['type'] });
+                const index = await pack.getIndex({ fields: ['type', 'system.tier', 'system.class', 'system.spellcasting', 'system.patron', 'system.alignment'] });
 
                 // Index Classes
                 const classIndex = index.filter((i: any) => i.type === 'Class');
@@ -373,10 +374,28 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         results.patrons.push({
                             name: doc.name,
                             uuid: `Compendium.${pack.collection}.Item.${p._id}`, // Force constructed UUID
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || ''
+                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || '',
+                            boonTable: doc.system?.boonTable || ''
                         });
                     }
                 }
+
+
+
+                // Index Spells
+                const spellIndex = index.filter((i: any) => i.type === 'Spell');
+                if (spellIndex.length > 0) console.log(`[ShadowdarkAdapter] Found ${spellIndex.length} spells in ${pack.collection}.`);
+
+                results.spells.push(...spellIndex.map((s: any) => ({
+                    name: s.name,
+                    uuid: `Compendium.${pack.collection}.Item.${s._id}`,
+                    tier: s.system?.tier || 0,
+                    class: s.system?.class || [],
+                    img: s.img,
+                    // We don't fetch description here to save massive time.
+                    // it will be fetched on demand if needed, or by the modal before confirming.
+                    description: ''
+                })));
 
                 // Deep Fetch for Titles
                 for (const c of classIndex) {
@@ -574,6 +593,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             updates[`system.abilities.${targetKey}.base`] = stat.value;
                         }
                     }
+                }
+            }
+
+            if (sourceData.system?.level?.value !== undefined) {
+                // @ts-ignore
+                if (actor.system.level?.value !== sourceData.system.level.value) {
+                    updates['system.level.value'] = sourceData.system.level.value;
                 }
             }
 

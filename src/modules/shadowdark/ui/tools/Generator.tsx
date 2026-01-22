@@ -2,12 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { Crimson_Pro, Inter } from 'next/font/google';
+import { LevelUpModal } from '../components/LevelUpModal';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export default function Generator() {
     const [loading, setLoading] = useState(true);
+    const [foundryUrl, setFoundryUrl] = useState<string>('');
+
+    // Stat Choice State
+    const [currentStatPrompt, setCurrentStatPrompt] = useState<{
+        resolve: (value: string) => void;
+        amount: number;
+    } | null>(null);
 
     const [systemData, setSystemData] = useState<any>(null);
     const [ancestryDetails, setAncestryDetails] = useState<any>(null);
@@ -46,6 +54,19 @@ export default function Generator() {
     const getMod = (score: number) => Math.floor((score - 10) / 2);
 
     // Helper: Fetch Foundry Document
+    const promptStatChoice = (amount: number): Promise<string> => {
+        return new Promise((resolve) => {
+            setCurrentStatPrompt({ resolve, amount });
+        });
+    };
+
+    const handleStatSelect = (stat: string) => {
+        if (currentStatPrompt) {
+            currentStatPrompt.resolve(stat);
+            setCurrentStatPrompt(null);
+        }
+    };
+
     const fetchDocument = async (uuid: string) => {
         try {
             const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
@@ -64,9 +85,17 @@ export default function Generator() {
                 const res = await fetch('/api/session/connect');
                 const data = await res.json();
 
+
+
                 // If not connected, system mismatch, or NOT LOGGED IN, redirect to home.
                 if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.system?.isLoggedIn) {
                     window.location.href = '/';
+                }
+                if (data.url) {
+
+                    setFoundryUrl(data.url);
+                } else {
+                    console.warn('Generator: No foundryUrl returned from connect');
                 }
             } catch {
                 window.location.href = '/';
@@ -81,7 +110,6 @@ export default function Generator() {
             .then(res => res.json())
             .then(data => {
                 setSystemData(data);
-                console.log("[Generator] System Data Loaded:", data);
                 setLoading(false);
             })
             .catch(err => console.error('Failed to load system data', err));
@@ -95,7 +123,9 @@ export default function Generator() {
         if (!formData.class) {
             return;
         }
-        fetchDocument(formData.class).then(data => setClassDetails(data));
+        fetchDocument(formData.class).then(data => {
+            setClassDetails(data);
+        });
     }, [formData.class]);
 
     // Fetch Patron Details on change
@@ -282,7 +312,6 @@ export default function Generator() {
         if (!tableUuid) return "";
         try {
             const table = await fetchDocument(tableUuid);
-            console.log("[Generator] Name Table Fetched:", tableUuid, table);
 
             if (!table?.results) return "";
 
@@ -339,8 +368,10 @@ export default function Generator() {
     };
 
     // Randomize All
+    const [isRandomizing, setIsRandomizing] = useState(false);
+
     const randomizeAll = async () => {
-        if (!systemData) return;
+        if (!systemData || isRandomizing) return;
 
         // Safety check
         if (!systemData.ancestries?.length || !systemData.backgrounds?.length || !systemData.classes?.length) {
@@ -348,71 +379,201 @@ export default function Generator() {
             return;
         }
 
-        setLoading(true); // Brief loading state for better UX
+        setIsRandomizing(true);
+        // Small delay to let the modal appear before heavy calculations freeze the thread (if any JS heavy work occurs)
+        await new Promise(r => setTimeout(r, 100));
 
-        const rand = (arr: any[]) => (arr && arr.length > 0) ? arr[Math.floor(Math.random() * arr.length)] : null;
+        try {
+            const rand = (arr: any[]) => (arr && arr.length > 0) ? arr[Math.floor(Math.random() * arr.length)] : null;
 
-        // 1. Pick Core Options
-        const anc = rand(systemData.ancestries);
-        const bg = rand(systemData.backgrounds);
-        const cls = !formData.level0 ? rand(systemData.classes) : null;
-        const deity = rand(systemData.deities);
+            // 1. Pick Core Options
+            const anc = rand(systemData.ancestries);
+            const bg = rand(systemData.backgrounds);
+            const cls = !formData.level0 ? rand(systemData.classes) : null;
+            const deity = rand(systemData.deities);
 
-        const newAncestry = anc?.uuid || '';
-        const newBackground = bg?.uuid || '';
-        // Only pick class if NOT level 0 (or if user wants to pre-select for L1)
-        const newClass = !formData.level0 ? (cls?.uuid || '') : '';
-        const newAlignment = rand(['lawful', 'neutral', 'chaotic']);
-        const newDeity = deity?.uuid || '';
+            const newAncestry = anc?.uuid || '';
+            const newBackground = bg?.uuid || '';
+            // Only pick class if NOT level 0 (or if user wants to pre-select for L1)
+            const newClass = !formData.level0 ? (cls?.uuid || '') : '';
+            const newAlignment = rand(['lawful', 'neutral', 'chaotic']);
+            const newDeity = deity?.uuid || '';
 
-        let newPatron = '';
-        if (cls && cls.uuid) {
-
-            // We need to check if class requires patron. The systemData summary might not have it.
-            // We might need to fetch the class doc, but we can't await inside this sync block easily for logic check.
-            // However, we know Warlock usually needs it.
-            // Let's assume if systemData.patrons exists and we picked a class, we *might* want one?
-            // Actually, `classDetails` updates async. `randomizeAll` updates `formData`.
-            // Ideally we check `systemData.classes` if it has extra metadata, but `ShadowdarkAdapter` only provides basic info.
-            // Workaround: If we pick a class, we can try to find if it's Warlock by name? Or just pick a random patron if available,
-            // and if the class doesn't need it, it just ignores it.
-            const isWarlock = cls.name?.toLowerCase().includes('warlock');
-            if (isWarlock && systemData.patrons?.length > 0) {
-                // @ts-ignore
-                newPatron = rand(systemData.patrons).uuid;
+            let newPatron = '';
+            if (cls && cls.uuid) {
+                const isWarlock = cls.name?.toLowerCase().includes('warlock');
+                if (isWarlock && systemData.patrons?.length > 0) {
+                    // @ts-ignore
+                    newPatron = rand(systemData.patrons).uuid;
+                }
             }
+
+            // 2. Roll Stats
+            rollStats();
+
+            // 3. Roll Gold (Initial calc)
+            calculateGold();
+
+            // 4. Update State (Base)
+            setFormData(prev => ({
+                ...prev,
+                ancestry: newAncestry,
+                background: newBackground,
+                class: newClass,
+                alignment: newAlignment,
+                deity: newDeity,
+                patron: newPatron,
+            }));
+
+            // 5. Fetch Details (Ancestry Name)
+            if (newAncestry) {
+                await randomizeName(newAncestry);
+
+                // Randomize Ancestry Talents
+                // We need to fetch the ancestry again or wait?
+                // `ancestryDetails` is updated via Effect `[formData.ancestry]`.
+                // Effect mimics async behavior. We can't rely on `ancestryDetails`/`ancestryTalents` being ready immediately.
+                // We have to wait for the Effect to run? 
+                // OR we fetch manually here for randomization.
+                try {
+                    const ancDoc = await fetchDocument(newAncestry);
+                    if (ancDoc?.system) {
+                        const choiceCount = ancDoc.system.talentChoiceCount || 0;
+                        if (choiceCount > 0 && ancDoc.system.talents?.length > 0) {
+                            // Fetch all talent docs to separate choice/fixed
+                            const talentDocs = await Promise.all(ancDoc.system.talents.map((u: string) => fetchDocument(u)));
+                            const allTalents = talentDocs.filter(d => d);
+
+                            // If more than choiceCount, we have choices
+                            if (allTalents.length > choiceCount) {
+                                // Logic: Fixed are likely first? Or we just pick N?
+                                // Shadowdark usually "Choose 1 from list". List is all talents.
+                                // If list > 1 and choice = 1, pick 1.
+                                // Actually, `loadAncestry` splits them. 
+                                // Let's just pick N random UUIDs from `system.talents`.
+                                // Wait, if we pick fixed ones, that's redundant but harmless if we handle duplicates (which creates duplicate items).
+                                // Correct logic: 
+                                // `ancestryTalents` effect splits them.
+                                // If we want to be accurate without waiting for effect, we replicate logic:
+                                // "If available > choiceCount, these are choices."
+                                // Wait, `loadAncestry` in Generator says: if length <= choiceCount, all fixed. Else all choice.
+                                if (allTalents.length > choiceCount) {
+                                    // Pick N random
+                                    const shuffled = [...ancDoc.system.talents].sort(() => 0.5 - Math.random());
+                                    const chosen = shuffled.slice(0, choiceCount);
+                                    setSelectedAncestryTalents(chosen);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) { console.error("Ancestry Rand Error", e); }
+            }
+
+            // 6. Randomize Languages
+            // Calculate Total Points (Approximate without full details load, or fetch)
+            // We need to fetch and bucketize.
+            let fixedLangs = new Set<string>();
+            let commonCount = 0;
+            let rareCount = 0;
+            const ankPool = { count: 0, options: [] as string[] }; // Ancestry
+            const clsPool = { count: 0, options: [] as string[] }; // Class
+
+            try {
+                // Ancestry
+                if (newAncestry) {
+                    const anc = await fetchDocument(newAncestry);
+                    if (anc?.system?.languages) {
+                        commonCount += (anc.system.languages.common || 0);
+                        rareCount += (anc.system.languages.rare || 0);
+                        anc.system.languages.fixed?.forEach((u: string) => fixedLangs.add(u));
+                        ankPool.count = anc.system.languages.select || 0;
+                        if (anc.system.languages.selectOptions?.length > 0) {
+                            ankPool.options = anc.system.languages.selectOptions;
+                        }
+                    }
+                }
+                // Class
+                if (newClass) {
+                    const c = await fetchDocument(newClass);
+                    if (c?.system?.languages) {
+                        commonCount += (c.system.languages.common || 0);
+                        rareCount += (c.system.languages.rare || 0);
+                        c.system.languages.fixed?.forEach((u: string) => fixedLangs.add(u));
+                        clsPool.count = c.system.languages.select || 0;
+                        if (c.system.languages.selectOptions?.length > 0) {
+                            clsPool.options = c.system.languages.selectOptions;
+                        }
+                    }
+                }
+            } catch (e) { }
+
+            // Populate Pools
+            const selections: { common: string[], rare: string[], ancestry: string[], class: string[] } = {
+                common: [],
+                rare: [],
+                ancestry: [],
+                class: []
+            };
+
+            const pickN = (pool: string[], n: number, exclude: Set<string>) => {
+                const available = pool.filter(id => !exclude.has(id));
+                const shuffled = available.sort(() => 0.5 - Math.random());
+                const picked = shuffled.slice(0, n);
+                picked.forEach(id => exclude.add(id));
+                return picked;
+            };
+
+            const usedUUIDs = new Set<string>([...fixedLangs]);
+
+            // 1. Ancestry (Restricted? or Any)
+            if (ankPool.count > 0 && systemData?.languages) {
+                // If options provided, pick from them. Else pick from ALL.
+                // @ts-ignore
+                const source = ankPool.options.length > 0 ? ankPool.options : systemData.languages.map((l: any) => l.uuid);
+                selections.ancestry = pickN(source, ankPool.count, usedUUIDs);
+            }
+
+            // 2. Class (Restricted? or Any)
+            if (clsPool.count > 0 && systemData?.languages) {
+                // @ts-ignore
+                const source = clsPool.options.length > 0 ? clsPool.options : systemData.languages.map((l: any) => l.uuid);
+                selections.class = pickN(source, clsPool.count, usedUUIDs);
+            }
+
+            // 3. Common
+            if (commonCount > 0 && systemData?.languages) {
+                // @ts-ignore
+                const commonUuids = systemData.languages.filter((l: any) => !l.rarity || l.rarity === 'common').map((l: any) => l.uuid);
+                selections.common = pickN(commonUuids, commonCount, usedUUIDs);
+            }
+
+            // 4. Rare
+            if (rareCount > 0 && systemData?.languages) {
+                // @ts-ignore
+                const rareUuids = systemData.languages.filter((l: any) => l.rarity === 'rare').map((l: any) => l.uuid);
+                selections.rare = pickN(rareUuids, rareCount, usedUUIDs);
+            }
+
+            setKnownLanguages(prev => ({
+                ...prev,
+                selected: selections
+            }));
+
+            // 7. Gold & Gear
+            calculateGold();
+            if (formData.level0) {
+                await randomizeGear();
+            } else {
+                setGearSelected([]);
+            }
+        } catch (e) {
+            console.error("Randomization failed", e);
+        } finally {
+            // Keep the modal up for at least a minimum time to avoid flicker
+            setTimeout(() => {
+                setIsRandomizing(false);
+            }, 500);
         }
-
-        // 2. Roll Stats
-        rollStats();
-
-        // 3. Roll Gold
-        calculateGold();
-
-        // 4. Update State (Base)
-        setFormData(prev => ({
-            ...prev,
-            ancestry: newAncestry,
-            background: newBackground,
-            class: newClass,
-            alignment: newAlignment,
-            deity: newDeity,
-            patron: newPatron,
-        }));
-
-        if (newAncestry) {
-            await randomizeName(newAncestry);
-        }
-
-        // 6. Gold & Gear
-        calculateGold();
-        if (formData.level0) {
-            await randomizeGear();
-        } else {
-            setGearSelected([]);
-        }
-
-        setLoading(false);
     };
 
     // Effect: React to Level Toggle
@@ -434,7 +595,7 @@ export default function Generator() {
     useEffect(() => {
         // Always reset selections when ancestry changes
         setSelectedAncestryTalents([]);
-        setKnownLanguages(prev => ({ ...prev, fixed: [], selected: [] })); // Reset languages
+        setKnownLanguages(prev => ({ ...prev, fixed: [], selected: { common: [], rare: [], ancestry: [], class: [] } })); // Reset languages
 
         if (!formData.ancestry) {
             setAncestryDetails(null);
@@ -445,24 +606,14 @@ export default function Generator() {
         const loadAncestry = async () => {
             try {
                 const details = await fetchDocument(formData.ancestry);
-                console.log('[Generator] Ancestry Details:', details);
                 setAncestryDetails(details);
-
-                // Load Fixed Languages from Ancestry
-                if (details.system.languages?.fixed?.length > 0) {
-                    const langDocs = await Promise.all(details.system.languages.fixed.map((u: string) => fetchDocument(u)));
-                    const resolvedLangs = langDocs.map((d, i) => d ? {
-                        uuid: details.system.languages.fixed[i],
-                        name: d.name
-                    } : null).filter(d => d);
-                    setKnownLanguages(prev => ({ ...prev, fixed: resolvedLangs }));
-                }
 
                 if (!details?.system) return;
 
                 const fixed: any[] = [];
                 const choice: any[] = [];
                 const choiceCount = details.system.talentChoiceCount || 0;
+                let effectiveChoiceCount = choiceCount;
 
                 if (details.system.talents?.length > 0) {
                     const docs = await Promise.all(details.system.talents.map((u: string) => fetchDocument(u)));
@@ -476,12 +627,15 @@ export default function Generator() {
                     // Otherwise, they are choices.
                     if (loaded.length <= choiceCount) {
                         fixed.push(...loaded);
+                        effectiveChoiceCount = 0; // All turned into fixed, no choices left
                     } else {
                         choice.push(...loaded);
                     }
+                } else {
+                    // No talents found?
                 }
 
-                setAncestryTalents({ fixed, choice, choiceCount });
+                setAncestryTalents({ fixed, choice, choiceCount: effectiveChoiceCount || 0 });
 
             } catch (e) {
                 console.error("Ancestry load error", e);
@@ -497,34 +651,52 @@ export default function Generator() {
     const [gearSelected, setGearSelected] = useState<any[]>([]);
 
     // Language State
-    const [knownLanguages, setKnownLanguages] = useState<{ fixed: any[], selected: string[] }>({ fixed: [], selected: [] });
-    const [languageConfig, setLanguageConfig] = useState<{ common: number, rare: number, fixed: string[] }>({ common: 0, rare: 0, fixed: [] });
+    // Language State
+    const [knownLanguages, setKnownLanguages] = useState<{
+        fixed: any[],
+        selected: {
+            common: string[],
+            rare: string[],
+            ancestry: string[],
+            class: string[]
+        }
+    }>({
+        fixed: [],
+        selected: { common: [], rare: [], ancestry: [], class: [] }
+    });
+
+    // Config now tracks pools
+    const [languageConfig, setLanguageConfig] = useState<{
+        common: number,
+        rare: number,
+        ancestry: { count: number, options: string[] },
+        class: { count: number, options: string[] },
+        fixed: string[]
+    }>({
+        common: 0,
+        rare: 0,
+        ancestry: { count: 0, options: [] },
+        class: { count: 0, options: [] },
+        fixed: []
+    });
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const [weaponNames, setWeaponNames] = useState<string[]>([]);
     const [armorNames, setArmorNames] = useState<string[]>([]);
+
+    // Level Up State
+    const [showLevelUp, setShowLevelUp] = useState(false);
 
     useEffect(() => {
         if (!classDetails?.system || formData.level0) {
             setClassTalents({ fixed: [], choice: [], choiceCount: 0 });
             setWeaponNames([]);
             setArmorNames([]);
-            setLanguageConfig({ common: 0, rare: 0, fixed: [] });
-            setKnownLanguages(prev => ({ ...prev, selected: [] }));
+            setLanguageConfig({ common: 0, rare: 0, ancestry: { count: 0, options: [] }, class: { count: 0, options: [] }, fixed: [] });
+            setKnownLanguages(prev => ({ ...prev, selected: { common: [], rare: [], ancestry: [], class: [] } }));
             return;
         }
 
         const loadDetails = async () => {
-            // Configure Languages from Class
-            if (classDetails.system.languages) {
-                setLanguageConfig({
-                    common: classDetails.system.languages.common || 0,
-                    rare: classDetails.system.languages.rare || 0,
-                    fixed: classDetails.system.languages.fixed || []
-                });
-            } else {
-                setLanguageConfig({ common: 0, rare: 0, fixed: [] });
-            }
-
             // 1. Talents
             const fixed: any[] = [];
             const choice: any[] = [];
@@ -591,11 +763,130 @@ export default function Generator() {
         loadDetails();
     }, [classDetails, formData.level0]);
 
+    // Combined Language Effect
+    useEffect(() => {
+        const loadLanguages = async () => {
+            let common = 0;
+            let rare = 0;
+            let fixedUuids: string[] = [];
+
+            const ancestryPool = { count: 0, options: [] as string[] };
+            const classPool = { count: 0, options: [] as string[] };
+
+            // Ancestry
+            if (ancestryDetails?.system?.languages) {
+                common += (ancestryDetails.system.languages.common || 0);
+                rare += (ancestryDetails.system.languages.rare || 0);
+                if (ancestryDetails.system.languages.fixed) {
+                    fixedUuids.push(...ancestryDetails.system.languages.fixed);
+                }
+
+                // Select / Restricted
+                if (ancestryDetails.system.languages.select > 0) {
+                    ancestryPool.count = ancestryDetails.system.languages.select;
+                    // If selectOptions exists and has items, use it. Else empty (implies Any? or None?)
+                    // In CharacterGeneratorSD.mjs, filter iterates selectOptions. If undefined it throws.
+                    // So we assume it exists if select > 0, OR we treat empty as "Any".
+                    // Given USER feedback "list is offering too much", implying restrictions exist.
+                    // We will assume: If selectOptions provided > Use it. If not > Any.
+                    if (ancestryDetails.system.languages.selectOptions?.length > 0) {
+                        ancestryPool.options = ancestryDetails.system.languages.selectOptions;
+                    }
+                    // If selectOptions is missing/empty, we leave options [] which we will interpret as "Any" (fallback).
+                    // Wait, if it's RESTRICTED, empty might mean "None available".
+                    // But standard "Any" usually doesn't list all languages in selectOptions.
+                    // Let's verify data later. For now, treat [] as "Any" BUT if user complains about "too much", maybe the issue is that I didn't check selectOptions at all.
+                    // If I check it and it's there, I restrict.
+                }
+            }
+
+            // Class (only if not Level 0)
+            if (!formData.level0 && classDetails?.system?.languages) {
+                common += (classDetails.system.languages.common || 0);
+                rare += (classDetails.system.languages.rare || 0);
+                if (classDetails.system.languages.fixed) {
+                    fixedUuids.push(...classDetails.system.languages.fixed);
+                }
+
+                if (classDetails.system.languages.select > 0) {
+                    classPool.count = classDetails.system.languages.select;
+                    if (classDetails.system.languages.selectOptions?.length > 0) {
+                        classPool.options = classDetails.system.languages.selectOptions;
+                    }
+                }
+            }
+
+            // Deduplicate Fixed
+            fixedUuids = [...new Set(fixedUuids)];
+
+            // Resolve Fixed Names
+            let fixedResolved: any[] = [];
+            if (fixedUuids.length > 0) {
+                const docs = await Promise.all(fixedUuids.map(u => fetchDocument(u)));
+                fixedResolved = docs.map((d, i) => d ? { uuid: fixedUuids[i], name: d.name } : null).filter(d => d);
+            }
+
+            setLanguageConfig({ common, rare, ancestry: ancestryPool, class: classPool, fixed: fixedUuids });
+            setKnownLanguages(prev => ({
+                ...prev,
+                fixed: fixedResolved,
+                selected: { common: [], rare: [], ancestry: [], class: [] } // Reset selections on reload
+            }));
+        };
+
+        loadLanguages();
+    }, [ancestryDetails, classDetails, formData.level0]);
+
+
+    const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
+    const [creationError, setCreationError] = useState<string | null>(null);
 
     // Create Character
-    const createCharacter = async () => {
-        if (!formData.name) {
-            alert('Please enter a name');
+    const createCharacter = async (extraItems: any[] = []) => {
+        setCreationError(null);
+        setFormErrors({});
+
+        // Validation
+        const errors: Record<string, boolean> = {};
+        if (!formData.name) errors.name = true;
+        if (!formData.ancestry) errors.ancestry = true;
+        if (!formData.background) errors.background = true;
+        if (!formData.level0 && !formData.class) errors.class = true;
+
+        // Details Validation
+        if (ancestryTalents.choiceCount > 0 && selectedAncestryTalents.length < ancestryTalents.choiceCount) {
+            errors.ancestryTalents = true;
+        }
+
+        // Language Validation
+        // User must select enough languages to meet Common + Rare Points
+        // Ideally we track common/rare spending. Current simple UI (which we assume exists or will be verified)
+        // just collects 'selected'. If we don't differentiate in UI, we just check total count?
+        // Shadowdark rules are loose, usually "Common + 2 others".
+        // Let's check total count vs total points.
+        const totalPoints = languageConfig.common + languageConfig.rare + languageConfig.ancestry.count + languageConfig.class.count;
+        const totalSelected = knownLanguages.selected.common.length + knownLanguages.selected.rare.length + knownLanguages.selected.ancestry.length + knownLanguages.selected.class.length;
+
+        if (totalSelected < totalPoints) {
+            errors.languages = true;
+        }
+
+        // Patron Validation
+        if (classDetails?.system?.patron?.required && !formData.patron) {
+            errors.patron = true;
+        }
+
+        if (Object.keys(errors).length > 0) {
+            setFormErrors(errors);
+            setCreationError(`Please check the following fields: ${Object.keys(errors).join(", ")}`);
+            // Scroll to top or first error
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+        }
+
+        // Level 1 Intercept
+        if (!formData.level0 && extraItems.length === 0) {
+            setShowLevelUp(true);
             return;
         }
 
@@ -632,6 +923,12 @@ export default function Generator() {
                     if (!itemData.flags.core) itemData.flags.core = {};
                     itemData.flags.core.sourceId = uuid;
 
+                    // FORCE LEVEL 1 for Level 1 Characters
+                    // Unless it's Level 0 mode, all added items should be active (Level 1)
+                    if (!formData.level0 && itemData.system && typeof itemData.system.level !== 'undefined') {
+                        itemData.system.level = 1;
+                    }
+
                     items.push(itemData);
                     return itemData;
                 }
@@ -657,7 +954,14 @@ export default function Generator() {
                     await addItem(uuid);
                 }
             }
-            for (const uuid of knownLanguages.selected) {
+            // Fix: Iterate flattened selected languages
+            const selectedLanguageUuids = [
+                ...knownLanguages.selected.common,
+                ...knownLanguages.selected.rare,
+                ...knownLanguages.selected.ancestry,
+                ...knownLanguages.selected.class
+            ];
+            for (const uuid of selectedLanguageUuids) {
                 await addItem(uuid);
             }
 
@@ -679,6 +983,108 @@ export default function Generator() {
                 patronItem = await addItem(formData.patron);
             }
 
+
+
+            // Add Level Up Items (Talents, Boons, Spells)
+            // DEBUG: Inspect extraItems
+            console.log(`[Antigravity Debug] Processing ${extraItems.length} extraItems:`, extraItems);
+
+            for (const item of extraItems) {
+                // These are likely fully formed objects from the modal or just data?
+                // Modal returns objects with `type`, `name`, `img`, `system`.
+                // We should probably sanitize them or ensure they have IDs.
+                // If they are from `fetchTableResult`, they effectively have no ID yet.
+                // Let's create a clean item.
+                const cleanItem = JSON.parse(JSON.stringify(item));
+                cleanItem._id = randomID();
+                delete cleanItem.ownership;
+
+                // Assign Level 1
+                // Ensure flags exist
+                if (!cleanItem.flags) cleanItem.flags = {};
+                if (!cleanItem.flags.core) cleanItem.flags.core = {};
+                // If the original item had a UUID, preserve it as sourceId
+                if (item.uuid) cleanItem.flags.core.sourceId = item.uuid;
+
+                if (!formData.level0) {
+                    if (!cleanItem.system) cleanItem.system = {};
+                    cleanItem.system.level = 1;
+                }
+
+                // Stat Boost Parsing
+                // Matches "+1 STR", "STR +1", "+2 Strength", etc.
+                const name = cleanItem.name || "";
+                const statRegex = /(?:\+(\d+)\s+(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma))|(?:(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+\+(\d+))/i;
+                const match = name.match(statRegex);
+
+                if (match) {
+                    // Group 1/2 or Group 3/4
+                    const amount = parseInt(match[1] || match[4]);
+                    const statRaw = (match[2] || match[3]).toLowerCase().slice(0, 3); // 'str', 'dex', etc.
+
+                    console.log(`Generator: Creating Active Effect for ${name}: +${amount} ${statRaw}`);
+
+                    const effect = {
+                        label: name,
+                        icon: cleanItem.img || "icons/svg/upgrade.svg",
+                        origin: cleanItem.uuid,
+                        disabled: false,
+                        transfer: true,
+                        changes: [
+                            {
+                                key: `system.abilities.${statRaw}.bonus`,
+                                value: amount,
+                                mode: 2, // ADD
+                                priority: null
+                            }
+                        ]
+                    };
+
+                    if (!cleanItem.effects) cleanItem.effects = [];
+                    cleanItem.effects.push(effect);
+                }
+
+                // CHECK FOR "ANY STAT" choice
+                // e.g. "+1 to any stat", "+1 to one stat"
+                const choiceRegex = /(?:\+(\d+)\s+to\s+(?:any|one)\s+stat)|(?:increase\s+(?:any|one)\s+stat\s+by\s+(\d+))/i;
+                const choiceMatch = name.match(choiceRegex);
+                if (choiceMatch) {
+                    const amount = parseInt(choiceMatch[1] || choiceMatch[2]);
+                    console.log(`Generator: Detected 'Any Stat' choice for ${name}. Prompting user...`);
+
+                    // Prompt User
+                    const selectedStat = await promptStatChoice(amount);
+
+                    if (selectedStat) {
+                        const statRaw = selectedStat.toLowerCase();
+                        console.log(`Generator: User chose ${statRaw}`);
+
+                        const effect = {
+                            label: `${name} (${selectedStat.toUpperCase()})`,
+                            icon: cleanItem.img || "icons/svg/upgrade.svg",
+                            origin: cleanItem.uuid,
+                            disabled: false,
+                            transfer: true,
+                            changes: [
+                                {
+                                    key: `system.abilities.${statRaw}.bonus`,
+                                    value: amount,
+                                    mode: 2, // ADD
+                                    priority: null
+                                }
+                            ]
+                        };
+
+                        // Update name to reflect choice
+                        cleanItem.name = `${name} (${selectedStat.toUpperCase()})`;
+                        if (!cleanItem.effects) cleanItem.effects = [];
+                        cleanItem.effects.push(effect);
+                    }
+                }
+
+                items.push(cleanItem);
+            }
+
             let classItem = null;
             if (!formData.level0) {
                 classItem = await addItem(formData.class);
@@ -687,10 +1093,18 @@ export default function Generator() {
             // Collect Language UUIDs for system.languages array
             const languageUuids: string[] = [];
             for (const l of knownLanguages.fixed) languageUuids.push(l.uuid);
+
+            // Add flattened selections
+            languageUuids.push(
+                ...knownLanguages.selected.common,
+                ...knownLanguages.selected.rare,
+                ...knownLanguages.selected.ancestry,
+                ...knownLanguages.selected.class
+            );
+
             if (languageConfig.fixed?.length > 0) {
                 for (const uuid of languageConfig.fixed) languageUuids.push(uuid);
             }
-            for (const uuid of knownLanguages.selected) languageUuids.push(uuid);
 
 
             // 2. Prepare Actor Data
@@ -742,12 +1156,12 @@ export default function Generator() {
                 // Redirect to sheet
                 window.location.href = `/actors/${result.id}`;
             } else {
-                alert('Creation Failed: ' + result.error);
+                setCreationError('Creation Failed: ' + result.error);
                 setLoading(false);
             }
         } catch (e: any) {
             console.error(e);
-            alert('Error: ' + e.message);
+            setCreationError('Error: ' + e.message);
             setLoading(false);
         }
     };
@@ -824,14 +1238,14 @@ export default function Generator() {
                     {/* Column 1: Type, Stats, HP, Gold */}
                     <div className="space-y-6">
                         {/* Name (Moved to top) */}
-                        <div className="bg-white p-6 border-2 border-black shadow-sm">
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
-                                <span>Name</span>
+                        <div className={`bg-white p-6 border-2 shadow-sm ${formErrors.name ? 'border-red-600' : 'border-black'}`}>
+                            <h2 className={`text-black font-black font-serif text-xl border-b-2 mb-4 pb-1 flex justify-between items-center ${formErrors.name ? 'border-red-600 text-red-600' : 'border-black'}`}>
+                                <span>Name {formErrors.name && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <div>
                                 <input
                                     type="text"
-                                    className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg font-bold placeholder:text-neutral-300"
+                                    className={`w-full bg-transparent border-b-2 focus:border-black outline-none py-1 font-serif text-lg font-bold placeholder:text-neutral-300 ${formErrors.name ? 'border-red-600' : 'border-neutral-300'}`}
                                     value={formData.name}
                                     onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                                     placeholder="Character Name"
@@ -945,9 +1359,9 @@ export default function Generator() {
                     {/* Column 2: Identity & Choices */}
                     <div className="space-y-6">
                         {/* Class */}
-                        <div className={`bg-white p-6 border-2 border-black shadow-sm transition-opacity ${formData.level0 ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
-                                <span>Class</span>
+                        <div className={`bg-white p-6 border-2 shadow-sm transition-opacity ${formData.level0 ? 'opacity-50 pointer-events-none grayscale border-black' : (formErrors.class ? 'border-red-600' : 'border-black')}`}>
+                            <h2 className={`text-black font-black font-serif text-xl border-b-2 mb-4 pb-1 flex justify-between items-center ${formErrors.class ? 'border-red-600 text-red-600' : 'border-black'}`}>
+                                <span>Class {formErrors.class && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <select
                                 className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
@@ -966,9 +1380,9 @@ export default function Generator() {
                         </div>
 
                         {/* Ancestry */}
-                        <div className="bg-white p-6 border-2 border-black shadow-sm">
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
-                                <span>Ancestry</span>
+                        <div className={`bg-white p-6 border-2 shadow-sm ${formErrors.ancestry ? 'border-red-600' : 'border-black'}`}>
+                            <h2 className={`text-black font-black font-serif text-xl border-b-2 mb-4 pb-1 flex justify-between items-center ${formErrors.ancestry ? 'border-red-600 text-red-600' : 'border-black'}`}>
+                                <span>Ancestry {formErrors.ancestry && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <select
                                 className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
@@ -983,9 +1397,9 @@ export default function Generator() {
                         </div>
 
                         {/* Background */}
-                        <div className="bg-white p-6 border-2 border-black shadow-sm">
-                            <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1 flex justify-between items-center">
-                                <span>Background</span>
+                        <div className={`bg-white p-6 border-2 shadow-sm ${formErrors.background ? 'border-red-600' : 'border-black'}`}>
+                            <h2 className={`text-black font-black font-serif text-xl border-b-2 mb-4 pb-1 flex justify-between items-center ${formErrors.background ? 'border-red-600 text-red-600' : 'border-black'}`}>
+                                <span>Background {formErrors.background && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <select
                                 className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
@@ -1085,8 +1499,9 @@ export default function Generator() {
                                             Choose {ancestryTalents.choiceCount}:
                                         </span>
                                         <div className="mt-2">
-                                            <span className="font-bold text-neutral-600 block mb-1">
+                                            <span className={`font-bold block mb-1 ${formErrors.ancestryTalents ? 'text-red-600' : 'text-neutral-600'}`}>
                                                 Ancestry Choice ({selectedAncestryTalents.length}/{ancestryTalents.choiceCount}):
+                                                {formErrors.ancestryTalents && <span className="ml-2 text-xs uppercase font-bold text-red-600">Required</span>}
                                             </span>
 
                                             {/* Show selected talents */}
@@ -1241,25 +1656,38 @@ export default function Generator() {
                         {/* 5. Languages */}
                         {/* 5. Languages */}
                         <div>
-                            <span className="font-bold">Languages: </span>
+                            <span className={`font-bold ${formErrors.languages ? 'text-red-600' : ''}`}>
+                                Languages:
+                                {formErrors.languages && <span className="ml-2 text-xs uppercase font-bold text-red-600">Required</span>}
+                            </span>
                             <span>
                                 {[
                                     ...knownLanguages.fixed.map(l => l.name),
-                                    ...(knownLanguages.selected.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)?.name).filter(Boolean))
+                                    ...([
+                                        ...knownLanguages.selected.common,
+                                        ...knownLanguages.selected.rare,
+                                        ...knownLanguages.selected.ancestry,
+                                        ...knownLanguages.selected.class
+                                    ].map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)?.name).filter(Boolean))
                                 ].join(", ") || "Common"}
                             </span>
 
-                            {(languageConfig.common > 0 || languageConfig.rare > 0) && (
-                                <button
-                                    onClick={() => setShowLanguageModal(true)}
-                                    className={`ml-2 text-xs px-2 py-1 rounded border ${knownLanguages.selected.length === (languageConfig.common + languageConfig.rare)
-                                        ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
-                                        : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
-                                        }`}
-                                >
-                                    Select Languages ({knownLanguages.selected.length}/{languageConfig.common + languageConfig.rare})
-                                </button>
-                            )}
+                            {(languageConfig.common > 0 || languageConfig.rare > 0 || languageConfig.ancestry.count > 0 || languageConfig.class.count > 0) && (() => {
+                                const totalSelected = knownLanguages.selected.common.length + knownLanguages.selected.rare.length + knownLanguages.selected.ancestry.length + knownLanguages.selected.class.length;
+                                const totalAllowed = languageConfig.common + languageConfig.rare + languageConfig.ancestry.count + languageConfig.class.count;
+
+                                return (
+                                    <button
+                                        onClick={() => setShowLanguageModal(true)}
+                                        className={`ml-2 text-xs px-2 py-1 rounded border transition-colors ${totalSelected === totalAllowed
+                                            ? 'bg-green-100 hover:bg-green-200 text-green-800 border-green-300'
+                                            : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
+                                            }`}
+                                    >
+                                        {totalSelected === totalAllowed ? 'Edit Languages (Full)' : `Select Languages (${totalSelected}/${totalAllowed})`}
+                                    </button>
+                                );
+                            })()}
                         </div>
 
                         {/* 6. Patron */}
@@ -1348,48 +1776,106 @@ export default function Generator() {
                                         <h3 className="font-bold font-serif text-lg">Select Languages</h3>
                                         <button onClick={() => setShowLanguageModal(false)} className="text-neutral-500 hover:text-black">✕</button>
                                     </div>
-                                    <div className="p-4 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        {['common', 'rare'].map(rarity => {
-                                            const allowed = rarity === 'common' ? languageConfig.common : languageConfig.rare;
-                                            if (allowed <= 0) return null;
+                                    <div className="p-4 overflow-y-auto space-y-4">
+                                        {[
+                                            { key: 'ancestry', label: 'Ancestry Languages', config: languageConfig.ancestry },
+                                            { key: 'class', label: 'Class Languages', config: languageConfig.class },
+                                            { key: 'common', label: 'Common Languages', config: { count: languageConfig.common, options: [] } },
+                                            { key: 'rare', label: 'Rare Languages', config: { count: languageConfig.rare, options: [] } }
+                                        ].map(section => {
+                                            if (section.config.count <= 0) return null;
 
-                                            // @ts-ignore
-                                            const options = systemData?.languages?.filter((l: any) => l.rarity === rarity || (rarity === 'common' && !l.rarity));
-                                            const selectedInBucket = knownLanguages.selected.filter(uuid => {
+                                            const bucketKey = section.key as keyof typeof knownLanguages.selected;
+                                            const selectedIds = knownLanguages.selected[bucketKey] || [];
+
+                                            // Determine Options
+                                            let options: any[] = [];
+                                            if (section.key === 'common') {
+                                                // All Common
                                                 // @ts-ignore
-                                                const l = systemData?.languages?.find((x: any) => x.uuid === uuid);
-                                                return (l?.rarity || 'common') === rarity;
-                                            });
+                                                options = systemData?.languages?.filter((l: any) => !l.rarity || l.rarity === 'common') || [];
+                                            } else if (section.key === 'rare') {
+                                                // All Rare
+                                                // @ts-ignore
+                                                options = systemData?.languages?.filter((l: any) => l.rarity === 'rare') || [];
+                                            } else {
+                                                // Restricted Pool (Ancestry/Class)
+                                                // If options provided, use them. Else ALL.
+                                                // @ts-ignore
+                                                const allowedIds = section.config.options;
+                                                if (allowedIds && allowedIds.length > 0) {
+                                                    // @ts-ignore
+                                                    options = allowedIds.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)).filter(Boolean);
+                                                } else {
+                                                    // Fallback to ALL languages if no restriction list (Any)
+                                                    // @ts-ignore
+                                                    options = systemData?.languages || [];
+                                                }
+                                            }
+
+                                            // Sort options
+                                            options.sort((a, b) => a.name.localeCompare(b.name));
 
                                             return (
-                                                <div key={rarity}>
+                                                <div key={section.key}>
                                                     <h4 className="font-bold text-sm uppercase text-neutral-500 mb-2 border-b border-neutral-200 flex justify-between">
-                                                        <span className="capitalize">{rarity} Languages</span>
-                                                        <span>{selectedInBucket.length} / {allowed}</span>
+                                                        <span>{section.label}</span>
+                                                        <span>{selectedIds.length} / {section.config.count}</span>
                                                     </h4>
-                                                    <div className="space-y-1">
+                                                    <div className="grid grid-cols-2 gap-2">
                                                         {options.map((l: any) => {
-                                                            const isFixed = knownLanguages.fixed.some(f => f.uuid === l.uuid);
+                                                            // Check if fixed
+                                                            const isFixed = knownLanguages.fixed.some(f => f.uuid === l.uuid) || languageConfig.fixed.includes(l.uuid);
                                                             if (isFixed) return null;
 
-                                                            const isSelected = knownLanguages.selected.includes(l.uuid);
-                                                            const canSelect = isSelected || selectedInBucket.length < allowed;
+                                                            // Check if selected in THIS bucket
+                                                            const isSelectedInBucket = selectedIds.includes(l.uuid);
+
+                                                            // Check if selected in ANY OTHER bucket
+                                                            const isSelectedElsewhere = Object.entries(knownLanguages.selected).some(([k, ids]) => k !== section.key && ids.includes(l.uuid));
+
+                                                            // Can select?
+                                                            const canSelect = isSelectedInBucket || (selectedIds.length < section.config.count && !isSelectedElsewhere);
+
+                                                            // Style
+                                                            let validStyle = 'hover:bg-neutral-50 border-neutral-200';
+                                                            if (isSelectedInBucket) validStyle = 'bg-indigo-50 border-indigo-500 font-bold';
+                                                            if (isSelectedElsewhere) validStyle = 'opacity-50 cursor-not-allowed border-neutral-100 bg-neutral-100 text-neutral-400';
+                                                            if (!canSelect && !isSelectedElsewhere && !isSelectedInBucket) validStyle = 'opacity-50 cursor-not-allowed border-neutral-100';
 
                                                             return (
                                                                 <div
                                                                     key={l.uuid}
                                                                     onClick={() => {
-                                                                        if (isSelected) {
-                                                                            setKnownLanguages(prev => ({ ...prev, selected: prev.selected.filter(id => id !== l.uuid) }));
+                                                                        if (isSelectedElsewhere) return; // Cannot pick
+
+                                                                        if (isSelectedInBucket) {
+                                                                            // Deselect
+                                                                            setKnownLanguages(prev => ({
+                                                                                ...prev,
+                                                                                selected: {
+                                                                                    ...prev.selected,
+                                                                                    [bucketKey]: prev.selected[bucketKey].filter(id => id !== l.uuid)
+                                                                                }
+                                                                            }));
                                                                         } else if (canSelect) {
-                                                                            setKnownLanguages(prev => ({ ...prev, selected: [...prev.selected, l.uuid] }));
+                                                                            // Select
+                                                                            setKnownLanguages(prev => ({
+                                                                                ...prev,
+                                                                                selected: {
+                                                                                    ...prev.selected,
+                                                                                    [bucketKey]: [...prev.selected[bucketKey], l.uuid]
+                                                                                }
+                                                                            }));
                                                                         }
                                                                     }}
-                                                                    className={`p-2 border rounded cursor-pointer text-sm ${isSelected ? 'bg-indigo-50 border-indigo-500 font-bold' :
-                                                                        canSelect ? 'hover:bg-neutral-50 border-neutral-200' : 'opacity-50 cursor-not-allowed border-neutral-100'
-                                                                        }`}
+                                                                    className={`p-2 border rounded cursor-pointer text-sm transition-all ${validStyle}`}
                                                                 >
-                                                                    {l.name}
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span>{l.name}</span>
+                                                                        {isSelectedInBucket && <span className="fas fa-check text-indigo-600">✓</span>}
+                                                                        {isSelectedElsewhere && <span className="text-[10px] uppercase font-bold">Picked</span>}
+                                                                    </div>
                                                                 </div>
                                                             );
                                                         })}
@@ -1474,8 +1960,13 @@ export default function Generator() {
                 {/* Create Character CTA Button (Full Width Bottom) */}
                 <div className="bg-neutral-900 text-white p-8 border-2 border-black shadow-lg flex flex-col items-center justify-center gap-4">
                     <p className="text-neutral-400 font-serif italic text-lg opacity-80">&quot;The darkness holds its breath...&quot;</p>
+                    {creationError && (
+                        <div className="w-full max-w-md bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded text-center text-sm font-bold animate-pulse">
+                            {creationError}
+                        </div>
+                    )}
                     <button
-                        onClick={createCharacter}
+                        onClick={() => createCharacter([])}
                         disabled={loading}
                         className="w-full max-w-md bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded shadow-lg uppercase tracking-widest text-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-105"
                     >
@@ -1483,7 +1974,66 @@ export default function Generator() {
                     </button>
                     <p className="text-xs text-neutral-500">Creates a new actor in Foundry VTT</p>
                 </div>
+
+                {/* Stat Selection Modal */}
+                {currentStatPrompt && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                        <div className="bg-neutral-900 border border-amber-600/50 p-6 rounded-lg max-w-md w-full shadow-2xl">
+                            <h3 className="text-xl font-bold text-amber-500 mb-4">Choose Stat to Increase</h3>
+                            <p className="text-gray-300 mb-6">
+                                This talent grants <strong>+{currentStatPrompt.amount}</strong> to one stat of your choice.
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                                {['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(stat => (
+                                    <button
+                                        key={stat}
+                                        onClick={() => handleStatSelect(stat)}
+                                        className="p-3 bg-neutral-800 hover:bg-amber-700 hover:text-white border border-neutral-600 rounded flex flex-col items-center transition-colors"
+                                    >
+                                        <span className="font-bold text-lg">{stat}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+
+                {/* Level Up Modal */}
+                {showLevelUp && !formData.level0 && classDetails && (
+                    <LevelUpModal
+                        ancestry={ancestryDetails}
+                        classObj={classDetails}
+                        classUuid={formData.class}
+                        patron={formData.patron ? { uuid: formData.patron, system: systemData.patrons.find((p: any) => p.uuid === formData.patron) } : null}
+                        abilities={formData.stats}
+                        foundryUrl={foundryUrl}
+                        spells={systemData?.spells || []}
+                        onComplete={(items) => {
+                            setShowLevelUp(false);
+                            createCharacter(items);
+                        }}
+                        onCancel={() => {
+                            setShowLevelUp(false);
+                            setLoading(false);
+                        }}
+                    />
+                )}
+
+                {/* Randomization Overlay */}
+                {isRandomizing && (
+                    <div className="fixed inset-0 z-[100] bg-neutral-900/80 backdrop-blur-sm flex items-center justify-center">
+                        <div className="bg-neutral-800 p-8 rounded-lg border-2 border-amber-600 shadow-2xl flex flex-col items-center gap-4 max-w-sm text-center">
+                            <div className="w-12 h-12 border-4 border-neutral-600 border-t-amber-500 rounded-full animate-spin"></div>
+                            <div>
+                                <h3 className="text-xl font-bold text-amber-500 font-serif">Divining Fate...</h3>
+                                <p className="text-neutral-300 mt-2">Consulting the oracles for your destiny.</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
-        </div >
+        </div>
     );
-}
+
+};
