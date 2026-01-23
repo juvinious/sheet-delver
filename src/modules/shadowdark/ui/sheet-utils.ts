@@ -15,6 +15,26 @@ export const resolveImage = (path: string, foundryUrl?: string) => {
     return path;
 };
 
+export const processHtmlContent = (html: string, foundryUrl?: string) => {
+    if (!html) return '';
+    let processed = html;
+
+    // Fix relative image src
+    if (foundryUrl) {
+        processed = processed.replace(/src="([^"]+)"/g, (match, src) => {
+            // Skip absolute URLs or data URIs
+            if (src.startsWith('http') || src.startsWith('data:')) return match;
+
+            // Clean paths
+            const cleanPath = src.startsWith('/') ? src.slice(1) : src;
+            const cleanBase = foundryUrl.endsWith('/') ? foundryUrl : `${foundryUrl}/`;
+            return `src="${cleanBase}${cleanPath}"`;
+        });
+    }
+
+    return processed;
+};
+
 export const getSafeDescription = (system: any) => {
     if (!system) return '';
     // 1. Try explicit .value property (common for rich text objects)

@@ -226,6 +226,8 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             actor={actor}
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
+                            onRoll={onRoll}
+                            foundryUrl={foundryUrl}
                         />
                     )
                 }

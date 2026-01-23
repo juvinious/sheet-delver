@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ShadowdarkImportModal from './components/ShadowdarkImportModal';
 
 interface ShadowdarkDashboardToolsProps {
     setLoading: (loading: boolean) => void;
@@ -7,6 +8,13 @@ interface ShadowdarkDashboardToolsProps {
 }
 
 export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, theme }: ShadowdarkDashboardToolsProps) {
+    const [showImport, setShowImport] = useState(false);
+
+    const handleImportSuccess = (id: string) => {
+        setShowImport(false);
+        // Maybe redirect to the new actor?
+        window.location.href = `/actors/${id}`;
+    };
 
     return (
         <div className={`p-4 rounded-lg bg-black/20 border border-white/5`}>
@@ -27,7 +35,24 @@ export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, 
                     </svg>
                     Character Generator
                 </button>
+
+                <button
+                    onClick={() => setShowImport(true)}
+                    className={`px-4 py-2 rounded font-bold bg-neutral-700 hover:bg-neutral-600 border border-neutral-600 text-white shadow-lg hover:brightness-110 flex items-center gap-2 transition-all`}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                        <path fillRule="evenodd" d="M12 2.25a.75.75 0 01.75.75v11.69l3.22-3.22a.75.75 0 111.06 1.06l-4.5 4.5a.75.75 0 01-1.06 0l-4.5-4.5a.75.75 0 111.06-1.06l3.22 3.22V3a.75.75 0 01.75-.75zm-9 13.5a.75.75 0 01.75.75v2.25a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5V16.5a.75.75 0 011.5 0v2.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V16.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
+                    </svg>
+                    Import From Shadowdarklings.net
+                </button>
             </div>
+
+            {showImport && (
+                <ShadowdarkImportModal
+                    onClose={() => setShowImport(false)}
+                    onImportSuccess={handleImportSuccess}
+                />
+            )}
         </div>
     );
 }

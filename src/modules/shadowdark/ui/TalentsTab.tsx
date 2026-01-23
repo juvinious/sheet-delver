@@ -43,7 +43,7 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
 
     // Filter Logic
     const allTalents = (actor.items?.filter((i: any) =>
-        ['Talent', 'Feature', 'Patron', 'Boon'].includes(i.type)
+        ['Talent', 'Feature', 'Patron', 'Boon', 'Class Ability'].includes(i.type)
     ) || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     // Group: Ancestry & Class (talentClass === 'ancestry' || 'class') - Treat 'class' as catch-all if undefined for now

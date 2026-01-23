@@ -35,7 +35,8 @@ export class FoundryClient {
         // We can just trust the adapter.
 
         // Log what we found
-        console.log(`Resolved adapter for '${systemId}': ${this.adapter.systemId}`);
+        // Log what we found
+        // console.log(`Resolved adapter for '${systemId}': ${this.adapter.systemId}`);
 
         return this.adapter;
     }
@@ -598,15 +599,8 @@ export class FoundryClient {
             // @ts-ignore
             if (!window.Actor) return { error: 'Actor class not found' };
             try {
-                // Debug Stats Payload
-                if (actorData.system?.abilities) {
-                    console.log('[Antigravity] Stats Payload:', JSON.stringify(actorData.system.abilities));
-                }
-
                 // @ts-ignore
                 const actor = await window.Actor.create(actorData);
-                console.log('[Antigravity] Actor Created:', actor);
-                console.log('[Antigravity] Actor System Stats:', JSON.stringify(actor.system.abilities));
 
                 // Post-Creation Linking (Delegated to System Adapter)
                 try {
@@ -642,7 +636,7 @@ export class FoundryClient {
                     return { success: true, id: actor.id, name: actor.name, warning: "Post-create failed" };
                 }
             } catch (e: any) {
-                console.error("[Antigravity] Create Error:", e);
+                console.error("Create actor error:", e);
                 return { error: e.message };
             }
         }, data);
@@ -673,6 +667,18 @@ export class FoundryClient {
 
         return result;
     }
+    async deleteActor(id: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async (actorId) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            await actor.delete();
+            return true;
+        }, id);
+    }
+
     async getActor(id: string, forceSystemId?: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
@@ -703,6 +709,91 @@ export class FoundryClient {
                 type: 1 // CONST.CHAT_MESSAGE_TYPES.OTHER (IC/OOC depends, generic is safer)
             });
         }, content);
+    }
+
+    async useItem(actorId: string, itemId: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        const baseUrl = this.url;
+        return await this.page.evaluate(async ({ actorId, itemId, baseUrl }: any) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // @ts-ignore
+            const item = actor.items.get(itemId);
+            if (!item) throw new Error('Item not found');
+
+            let result = null;
+            let usedMethod = '';
+
+            // 1. Attempt execution
+            // @ts-ignore
+            if (typeof item.displayCard === 'function') {
+                // @ts-ignore
+                try {
+                    result = await item.displayCard();
+                    usedMethod = 'displayCard';
+                } catch (e) { console.error('displayCard failed', e); }
+            }
+
+            // Fallback to use() if displayCard didn't run or returned nothing useful (unlikely for SD, but generic handling)
+            // Actually, in SD, displayCard usually returns the chat message.
+            if (!result) {
+                // @ts-ignore
+                if (typeof item.use === 'function') {
+                    // @ts-ignore
+                    result = await item.use();
+                    usedMethod = 'use';
+                }
+                // @ts-ignore 
+                else if (typeof item.roll === 'function') {
+                    // @ts-ignore
+                    result = await item.roll();
+                    usedMethod = 'roll';
+                }
+            }
+
+            if (!result && !usedMethod) {
+                throw new Error(`Item '${item.name}' does not have a recognizable use/roll method.`);
+            }
+
+            // 2. Extract HTML content
+            let html = '';
+            if (result && result.content) {
+                html = result.content;
+            } else if (result && typeof result === 'object' && result.data && result.data.content) {
+                html = result.data.content; // Some older Foundry versions or specific system structures
+            } else if (typeof result === 'string') {
+                html = result;
+            }
+
+            // 3. Resolve relative URLs in HTML
+            if (html) {
+                const div = document.createElement('div');
+                div.innerHTML = html;
+                const images = div.querySelectorAll('img');
+
+                // Ensure baseUrl does not end in slash for consistency
+                // @ts-ignore 
+                const cleanBase = baseUrl && baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+                // @ts-ignore
+                images.forEach(img => {
+                    // @ts-ignore
+                    const src = img.getAttribute('src');
+                    if (src && !src.startsWith('http') && !src.startsWith('data:') && cleanBase) {
+                        const cleanPath = src.startsWith('/') ? src.slice(1) : src;
+                        const newSrc = `${cleanBase}/${cleanPath}`;
+
+                        img.setAttribute('src', newSrc);
+                    }
+                });
+                html = div.innerHTML;
+            }
+
+            return { success: true, method: usedMethod, html, result }; // Return result too for debugging hooks if needed
+        }, { actorId, itemId, baseUrl });
     }
 
     async roll(formula: string) {

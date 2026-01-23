@@ -1,5 +1,7 @@
 'use client';
 
+
+import { useEffect } from 'react';
 import { resolveImage, resolveEntityName } from './sheet-utils';
 
 interface DetailsTabProps {
@@ -11,9 +13,36 @@ interface DetailsTabProps {
 
 export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl }: DetailsTabProps) {
 
-    // Common container style for standard sheet feel
     const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-sm relative";
     const cardStyleWithoutPadding = "bg-white border-2 border-black text-black shadow-sm relative";
+
+    // Auto-resolve UUIDs to Names (Deity, Patron)
+    useEffect(() => {
+        const resolveField = async (path: string, value: string) => {
+            if (typeof value === 'string' && (value.startsWith('Compendium.') || value.includes('Item.')) && !value.includes(' ')) {
+                try {
+                    const res = await fetch(`/api/foundry/document?uuid=${value}`);
+                    if (res.ok) {
+                        const doc = await res.json();
+                        if (doc && doc.name) {
+                            onUpdate(path, doc.name);
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Failed to resolve ${path}`, e);
+                }
+            }
+        };
+
+        if (actor.system?.deity) resolveField('system.deity', actor.system.deity);
+
+        // Only resolve Patron if we don't have an embedded item (which takes precedence in display)
+        const hasPatronItem = (actor.items || []).some((i: any) => i.type?.toLowerCase() === 'patron');
+        if (!hasPatronItem && actor.system?.patron) {
+            resolveField('system.patron', actor.system.patron);
+        }
+
+    }, [actor.system?.deity, actor.system?.patron, actor.items]);
 
     return (
         <div className="flex flex-col gap-6 h-full overflow-hidden">

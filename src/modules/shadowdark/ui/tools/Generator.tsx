@@ -958,9 +958,22 @@ export default function Generator() {
             const ancestryItem = await addItem(formData.ancestry);
 
             // Add Ancestry Fixed Talents & Choices
-            for (const t of ancestryTalents.fixed) {
-                await addItem(t.uuid);
+            if (ancestryItem && ancestryItem.system) {
+                const addFromList = async (list: any[]) => {
+                    if (!Array.isArray(list)) return;
+                    for (const ref of list) {
+                        const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
+                        if (uuid) {
+                            try { await addItem(uuid); } catch (e) { console.error(`Generator: Failed to add ancestry ref ${uuid}`, e); }
+                        }
+                    }
+                };
+                await addFromList(ancestryItem.system.talents);
+                await addFromList(ancestryItem.system.features);
+                await addFromList(ancestryItem.system.abilities);
             }
+
+            // Add user-selected ancestry choices
             for (const uuid of selectedAncestryTalents) {
                 await addItem(uuid);
             }
@@ -1003,12 +1016,38 @@ export default function Generator() {
                 patronItem = await addItem(formData.patron);
             }
 
+            // Add Class (if not Level 0)
+            if (!formData.level0 && formData.class) {
+                const classItem = await addItem(formData.class);
+
+                // Add Class Fixed Talents / Features / Abilities
+                // Shadowdark System: Class items commonly have 'talents' array (UUIDs or Objects)
+                if (classItem && classItem.system) {
+                    const addFromList = async (list: any[]) => {
+                        if (!Array.isArray(list)) return;
+                        for (const ref of list) {
+                            // Handle both direct UUID strings and objects with uuid property
+                            const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
+                            if (uuid) {
+                                try {
+                                    await addItem(uuid);
+                                } catch (e) {
+                                    console.error(`Generator: Failed to add class ref ${uuid}`, e);
+                                }
+                            }
+                        }
+                    };
+
+                    await addFromList(classItem.system.talents);
+                    await addFromList(classItem.system.features);
+                    await addFromList(classItem.system.abilities);
+                }
+            }
+
 
 
             // Add Level Up Items (Talents, Boons, Spells)
-            // DEBUG: Inspect extraItems
-            // DEBUG: Inspect extraItems (Names only to reduce noise)
-            console.log(`[Antigravity Debug] Processing ${extraItems.length} extraItems:`, extraItems.map(i => i.name));
+
 
             for (const item of extraItems) {
                 // These are likely fully formed objects from the modal or just data?
@@ -1036,15 +1075,13 @@ export default function Generator() {
                 // Matches "+1 STR", "STR +1", "+2 Strength", etc.
                 const name = cleanItem.name || "";
                 const statRegex = /(?:\+(\d+)\s+(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma))|(?:(STR|DEX|CON|INT|WIS|CHA|Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+\+(\d+))/i;
+
                 const match = name.match(statRegex);
-                console.log(`Generator: Item "${name}" regex match: ${!!match}`, cleanItem.effects);
 
                 if (match) {
                     // Group 1/2 or Group 3/4
                     const amount = parseInt(match[1] || match[4]);
                     const statRaw = (match[2] || match[3]).toLowerCase().slice(0, 3); // 'str', 'dex', etc.
-
-                    console.log(`Generator: Creating Active Effect for ${name}: +${amount} ${statRaw}`);
 
                     const effect = {
                         label: name,

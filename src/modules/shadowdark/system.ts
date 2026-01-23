@@ -20,7 +20,21 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getActor(client: any, actorId: string): Promise<any> {
-        const actorData = await client.evaluate(async (id: any) => {
+        const baseUrl = client.url;
+
+        const actorData = await client.evaluate(async ({ actorId, baseUrl }: any) => {
+
+            // Helper for URL resolution
+            const resolveUrl = (url: string) => {
+                if (!url) return url;
+                if (url.startsWith('http') || url.startsWith('https') || url.startsWith('data:')) return url;
+                // Remove leading slash if present
+                const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+                // Remove trailing slash from base
+                const cleanBase = baseUrl && baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+                return `${cleanBase}/${cleanPath}`;
+            };
+
             try {
                 // @ts-ignore
                 if (!window.game) return { error: "window.game is undefined", state: document.readyState };
@@ -30,7 +44,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 if (!window.game.actors) return { error: "window.game.actors is undefined", state: "missing-actors" };
 
                 // @ts-ignore
-                const actor = window.game.actors.get(id);
+                const actor = window.game.actors.get(actorId);
                 if (!actor) return null;
 
                 // --- SHADOWDARK ITEM PROCESSING ---
@@ -42,9 +56,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         id: i.id,
                         name: i.name,
                         type: i.type,
-                        img: i.img,
-                        system: i.system || {},
-                        uuid: `Actor.${id}.Item.${i.id}`
+                        img: resolveUrl(i.img),
+                        system: (typeof i.system?.toObject === 'function' ? i.system.toObject() : i.system) || {},
+                        uuid: `Actor.${actorId}.Item.${i.id}`
                     };
 
                     // Calculate slot usage for physical items
@@ -97,12 +111,6 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
                     return itemData;
                 }).filter((i: any) => i !== null);
-
-                console.error(`[Antigravity Debug Read] Actor: ${actor.name} (${id})`);
-                console.error(`[Antigravity Debug Read] System Class:`, actor.system?.class);
-                console.error(`[Antigravity Debug Read] System Ancestry:`, actor.system?.ancestry);
-                console.error(`[Antigravity Debug Read] Items found:`, items.map((i: any) => `${i.name} (${i.id})`).join(', '));
-
                 // --- SHADOWDARK EFFECTS PROCESSING ---
                 let effects = [];
                 try {
@@ -112,7 +120,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
                             _id: e.id,
                             name: e.name,
-                            img: e.img,
+                            img: resolveUrl(e.img),
                             disabled: e.disabled,
                             duration: {
                                 type: e.duration?.type,
@@ -134,7 +142,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         effects = actor.effects.contents.map((e: any) => ({
                             _id: e.id,
                             name: e.name,
-                            img: e.img,
+                            img: resolveUrl(e.img),
                             disabled: e.disabled,
                             changes: e.changes
                         }));
@@ -241,7 +249,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     id: actor.id,
                     name: actor.name,
                     type: actor.type,
-                    img: actor.img,
+                    img: resolveUrl(actor.img),
                     systemId: 'shadowdark',
                     system: actor.system,
                     items: items,
@@ -255,7 +263,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             } catch (err: any) {
                 return { error: err.message, stack: err.stack, state: document.readyState };
             }
-        }, actorId);
+        }, { actorId, baseUrl });
 
         if (actorData && actorData.system) {
             const abilities = actorData.system.abilities || actorData.system.stats || {};

@@ -2,9 +2,11 @@
 
 import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import SheetRouter from '@/components/SheetRouter';
 import GlobalChat from '@/components/GlobalChat';
 import PlayerList from '@/components/PlayerList';
+import { resolveImage, processHtmlContent } from '@/modules/shadowdark/ui/sheet-utils';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -12,31 +14,38 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [actor, setActor] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const currentUserRef = useRef<string | null>(null);
+    const foundryUrlRef = useRef<string | undefined>(undefined);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
 
     // Chat State
     const [messages, setMessages] = useState<any[]>([]);
     const [notifications, setNotifications] = useState<{ id: number, message: string, type: 'info' | 'success' | 'error' }[]>([]);
 
-
-
     const fetchActor = useCallback(async (id: string, silent = false) => {
         if (!silent) setLoading(true);
         try {
             const res = await fetch(`/api/actors/${id}`);
+
+            // Handle Disconnected State (503)
+            if (res.status === 503) {
+                router.push('/');
+                return;
+            }
+
+            // Handle Not Found (404) - Deleted
+            if (res.status === 404) {
+                setShowDeleteModal(true);
+                return;
+            }
+
             const data = await res.json();
-            // API now returns the actor object directly (mixed with debug info)
             if (data && !data.error) {
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
+                if (data.foundryUrl) foundryUrlRef.current = data.foundryUrl;
             } else {
-                if (!silent) {
-                    setShowDeleteModal(true);
-                } else {
-                    // If silent update fails (e.g. background polling), also check if it really is gone 
-                    // or just a network blip. For now, if API says error/null, assume deleted.
-                    setShowDeleteModal(true);
-                }
+                if (!silent) setShowDeleteModal(true);
+                else setShowDeleteModal(true);
             }
         } catch (e) {
             console.error(e);
@@ -53,8 +62,11 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const notificationIdRef = useRef(0);
 
     const addNotification = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
+        // Ensure images in the toast are absolute URLs
+        const content = processHtmlContent(message, foundryUrlRef.current);
+
         const id = ++notificationIdRef.current;
-        setNotifications(prev => [...prev, { id, message, type }]);
+        setNotifications(prev => [...prev, { id, message: content, type }]);
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
         }, 20000); // 20 seconds as requested
@@ -154,7 +166,13 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             });
             const data = await res.json();
             if (data.success) {
-                addNotification(`Rolled ${data.label}: ${data.result.total}`, 'success');
+                if (data.html) {
+                    addNotification(data.html, 'success');
+                } else if (data.result?.total !== undefined) {
+                    addNotification(`Rolled ${data.label || 'Result'}: ${data.result.total}`, 'success');
+                } else {
+                    addNotification(`${data.label || 'Item'} used`, 'success');
+                }
                 fetchChat(); // Update chat immediately
             } else {
                 addNotification('Roll failed: ' + data.error, 'error');
@@ -299,7 +317,8 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         );
     }
     // If not loading and no actor, we are likely redirecting, so render specific fallback or null
-    if (!actor) return null;
+    // If not loading and no actor, check if we need to show the delete modal
+    if (!actor && !showDeleteModal) return null;
 
 
 
@@ -321,34 +340,38 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             </nav>
 
             {/* Main Content */}
-            <div className="w-full max-w-5xl mx-auto p-4 pt-20">
-                <SheetRouter
-                    systemId={actor.systemId || 'generic'}
-                    actor={actor}
-                    foundryUrl={actor?.foundryUrl}
-                    isOwner={actor?.isOwner ?? true}
-                    onRoll={handleRoll}
-                    onUpdate={handleUpdate}
-                    onToggleEffect={handleToggleEffect}
-                    onDeleteEffect={handleDeleteEffect}
-                    onDeleteItem={handleDeleteItem}
-                    onToggleDiceTray={toggleDiceTray}
-                />
-            </div>
+            {actor && (
+                <>
+                    <div className="w-full max-w-5xl mx-auto p-4 pt-20">
+                        <SheetRouter
+                            systemId={actor.systemId || 'generic'}
+                            actor={actor}
+                            foundryUrl={actor?.foundryUrl}
+                            isOwner={actor?.isOwner ?? true}
+                            onRoll={handleRoll}
+                            onUpdate={handleUpdate}
+                            onToggleEffect={handleToggleEffect}
+                            onDeleteEffect={handleDeleteEffect}
+                            onDeleteItem={handleDeleteItem}
+                            onToggleDiceTray={toggleDiceTray}
+                        />
+                    </div>
 
-            {/* Global Chat Overlay */}
-            <GlobalChat
-                messages={messages}
-                onSend={handleChatSend}
-                onRoll={handleRoll}
-                foundryUrl={actor?.foundryUrl}
-                variant={actor.systemId || 'default'}
-                isDiceTrayOpen={isDiceTrayOpen}
-                onToggleDiceTray={toggleDiceTray}
-            />
+                    {/* Global Chat Overlay */}
+                    <GlobalChat
+                        messages={messages}
+                        onSend={handleChatSend}
+                        onRoll={handleRoll}
+                        foundryUrl={actor?.foundryUrl}
+                        variant={actor.systemId || 'default'}
+                        isDiceTrayOpen={isDiceTrayOpen}
+                        onToggleDiceTray={toggleDiceTray}
+                    />
 
-            {/* Player List */}
-            <PlayerList />
+                    {/* Player List */}
+                    <PlayerList />
+                </>
+            )}
 
             {/* Notifications Container */}
             <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
@@ -369,7 +392,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                         >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
-                        <p className="font-medium text-sm pr-6">{n.message}</p>
+                        <div
+                            className="text-sm pr-6 [&_img]:max-h-16 [&_img]:w-auto [&_img]:object-contain [&_img]:rounded [&_img]:inline-block [&_img]:mr-2 [&_img]:align-middle [&_header]:font-bold [&_header]:mb-1 [&_header]:border-b [&_header]:border-white/20 [&_h3]:inline [&_h3]:m-0 [&_p]:m-0"
+                            dangerouslySetInnerHTML={{
+                                __html: n.message
+                            }}
+                        />
                     </div>
                 ))}
             </div>

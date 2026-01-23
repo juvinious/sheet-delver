@@ -43,7 +43,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
     // This function is now provided by useOptimisticOverrides
 
     // Exclude non-inventory types
-    const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language'];
+    const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language', 'Class Ability'];
     const filterInventory = (list: any[]) => list.filter((i: any) => !NON_INVENTORY_TYPES.includes(i.type));
 
     const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || []));

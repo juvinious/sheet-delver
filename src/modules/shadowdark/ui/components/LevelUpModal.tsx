@@ -14,6 +14,32 @@ interface Props {
     foundryUrl?: string;
 }
 
+const simpleRoll = (formula: string): number => {
+    try {
+        // Basic support for XdY+Z
+        const match = formula.match(/(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/);
+        if (!match) {
+            const num = parseInt(formula);
+            return isNaN(num) ? 0 : num;
+        }
+        const [_, countStr, dieStr, op, modStr] = match;
+        const count = parseInt(countStr);
+        const die = parseInt(dieStr);
+        let total = 0;
+        for (let i = 0; i < count; i++) {
+            total += Math.floor(Math.random() * die) + 1;
+        }
+        if (op && modStr) {
+            const mod = parseInt(modStr);
+            total = op === '+' ? total + mod : total - mod;
+        }
+        return total;
+    } catch (e) {
+        console.error("SimpleRoll Error", e);
+        return 0;
+    }
+};
+
 export const LevelUpModal = ({
     ancestry,
     classObj,
@@ -69,9 +95,6 @@ export const LevelUpModal = ({
         return talentMet && boonMet && spellsMet;
     };
 
-    // Spellcasting
-    const isSpellcaster = Boolean(classObj?.system?.spellcasting?.class || classObj?.system?.spellcasting?.ability);
-
     // Helper to fetch keys
     const fetchDocument = async (uuid: string) => {
         try {
@@ -91,21 +114,20 @@ export const LevelUpModal = ({
         // If table is a string (UUID), fetch it first
         let tableObj = table;
         if (typeof table === 'string') {
-            console.log("LevelUpModal: Fetching table by UUID:", table);
-            tableObj = await fetchDocument(table);
+            if (typeof table === 'string') {
+                tableObj = await fetchDocument(table);
+            }
         }
 
         if (!tableObj) {
             console.error('LevelUpModal: Failed to fetch table document', table);
             return null; // Should return null to propagate error state
         }
-        console.log("LevelUpModal: Table Object Loaded", tableObj.name, tableObj._id);
 
 
 
         // Handle both EmbeddedCollection (common in Foundry) and Array
         const rawResults = tableObj.results || tableObj.system?.results;
-        console.log("LevelUpModal: Raw Table Results:", rawResults);
 
         // If it's a Collection/Map, convert to array
         let results: any[] = [];
@@ -126,7 +148,6 @@ export const LevelUpModal = ({
         // --- NEW LOGIC: Roll and Filter ---
         const formula = tableObj.formula || "1d1";
         const roll = simpleRoll(formula);
-        console.log(`LevelUpModal: Rolling ${formula} on table ${tableObj.name} => ${roll}`);
 
 
         let matchingResults = results.filter(r => {
@@ -194,7 +215,6 @@ export const LevelUpModal = ({
     };
 
     const processSingleResult = async (result: any): Promise<any[] | null> => {
-        console.log("LevelUpModal: processSingleResult Input:", result);
         let finalResult = {
             name: result.text || result.name || "Unknown Talent",
             type: 'Talent',
@@ -213,15 +233,13 @@ export const LevelUpModal = ({
                 ? `Compendium.${result.documentCollection}.${result.documentId}`
                 : `${result.documentCollection}.${result.documentId}`;
 
-            console.log('LevelUpModal: Fetching Linked Doc:', uuid, 'from result:', result);
+
 
             const doc = await fetchDocument(uuid);
-            console.log('LevelUpModal: Linked Doc Fetched:', doc);
 
             if (doc) {
                 // RECURSION CHECK: If the result is ANOTHER RollTable, roll on it!
                 if (doc.type === 'RollTable') {
-                    console.log('LevelUpModal: Recursive RollTable found:', doc.name);
                     return await fetchTableResult(doc, 'talent'); // Recursion context? Usually standard talent/choice flow.
                 }
 
@@ -318,7 +336,6 @@ export const LevelUpModal = ({
                     try {
                         const fullPatron = await fetchDocument(patron.uuid);
                         if (fullPatron?.system?.boonTable) {
-                            console.log("LevelUpModal: Found boon table on fetched patron", fullPatron.name);
                             setBoonTable(fullPatron.system.boonTable);
                         } else {
                             console.warn("LevelUpModal: Fetched patron has no boon table", fullPatron);
@@ -410,7 +427,6 @@ export const LevelUpModal = ({
 
         setLoading(true);
         const res = await fetchTableResult(table, 'boon');
-        console.log("LevelUpModal: Boon Roll Result", res);
         if (res) setRolledBoons(res);
         setLoading(false);
     };
@@ -441,14 +457,12 @@ export const LevelUpModal = ({
         if (!isComplete()) return; // Blocked
 
         setLoading(true);
-        const items = [];
+        const items: any[] = [];
 
         // Helper to resolve results to documents
         const resolveToDocs = async (results: any[]): Promise<any[]> => {
-            console.log("LevelUpModal: Resolving results to docs...", results);
             const resolved: any[] = [];
             for (const r of results) {
-                console.log("LevelUpModal: Processing result:", r);
                 // Check if result is a RollTable itself (recursive roll needed)
                 if (r.type === 'document' && r.documentCollection === 'RollTable') {
                     // Need to roll on this table!
@@ -476,24 +490,21 @@ export const LevelUpModal = ({
                 // If it's a structural/text result, keep it (Generator regex parsers might use it)
                 // But usually we want the Actual Item if it exists.
                 // If it's a structural/text result, keep it (Generator regex parsers might use it)
+                // If it's a structural/text result, keep it (Generator regex parsers might use it)
                 // But usually we want the Actual Item if it exists.
                 const uuid = r.documentUuid || r.documentId || r.uuid;
-                console.log("LevelUpModal: Extracted UUID:", uuid);
 
                 if (uuid) {
                     const doc = await fetchDocument(uuid);
                     if (doc) {
-                        console.log(`LevelUpModal: Resolved ${uuid} to ${doc.name}. Effects: ${doc.effects?.length}`);
-                        // Double check if the doc itself is a RollTable (if type check above failed)
+                        // Double check if the doc itself is a RollTable
                         if (doc.documentName === 'RollTable' || doc.type === 'RollTable') {
-                            // Recursion similar to above
                             const subResults = await fetchTableResult(doc, 'talent');
                             if (subResults && subResults.length > 0) {
                                 const subResolved = await resolveToDocs(subResults);
                                 resolved.push(...subResolved);
                             }
                         } else {
-                            console.log("LevelUpModal: Resolved Item:", doc.name, "Effects:", doc.effects?.length);
                             resolved.push(doc);
                         }
                     } else {
