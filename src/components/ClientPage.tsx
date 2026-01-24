@@ -398,7 +398,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                       className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
                     >
                       {users.map(u => (
-                        <option key={u.id} value={u.name}>{u.name}</option>
+                        <option key={u.id} value={u.name} className="bg-neutral-900 text-white">
+                          {u.name}
+                        </option>
                       ))}
                     </select>
                   </div>

@@ -11,7 +11,6 @@ export class ShadowdarkAdapter implements SystemAdapter {
         accent: 'text-amber-500',
         button: 'bg-amber-700 hover:bg-amber-600',
         headerFont: 'font-serif tracking-widest',
-        input: 'bg-neutral-950 border-neutral-700 focus:border-amber-600',
         success: 'bg-green-800 hover:bg-green-700'
     };
 
