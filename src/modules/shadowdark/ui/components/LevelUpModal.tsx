@@ -22,7 +22,7 @@ const simpleRoll = (formula: string): number => {
             const num = parseInt(formula);
             return isNaN(num) ? 0 : num;
         }
-        const [_, countStr, dieStr, op, modStr] = match;
+        const [_, countStr, dieStr, op, modStr] = match; // eslint-disable-line @typescript-eslint/no-unused-vars
         const count = parseInt(countStr);
         const die = parseInt(dieStr);
         let total = 0;
@@ -40,18 +40,20 @@ const simpleRoll = (formula: string): number => {
     }
 };
 
+
+
 export const LevelUpModal = ({
-    ancestry,
+    ancestry: _ancestry,
     classObj,
     classUuid,
     patron,
-    abilities,
+    abilities: _abilities,
     spells,
     onComplete,
     onCancel,
     foundryUrl = ""
 }: Props) => {
-    const [step, setStep] = useState<'talents' | 'spells'>('talents');
+    // const [step, setStep] = useState<'talents' | 'spells'>('talents'); // Unused
     const [loading, setLoading] = useState(false);
 
     // Data
@@ -70,17 +72,9 @@ export const LevelUpModal = ({
     const isSpellcaster = Boolean(classObj?.system?.spellcasting?.class || classObj?.system?.spellcasting?.ability);
 
     // Computed Requirements
-    const needsTalent = true; // Level 1 always odd
-    // Valid logic for boolean: class has valid patron value AND patron is required in valid patron value
+    // const needsTalent = true; // Unused
     const needsBoon = classObj?.system?.patron?.required;
-    const canChooseBoon = needsBoon && patron; // If class requires patron, we can substitute talent for boon? Or do we get both?
-    // Shadowdark rules: "Benefit: ... Roll a random boon..."
-    // If you have a patron, you usually roll a boon INSTEAD of a talent? Or AS a talent?
-    // Looking at LevelUpSD.mjs: "humans get extra talent... if targetLevel > 1 rolls.boon = true; rolls.talent = true"
-    // It seems they satisfy the "talent gained" requirement.
-    // For Level 1 Warlock: "Warlocks ... choose a patron... Gain a boon from their patron." (This is their "talent" slot effectively, or just a feature).
-    // Let's assume for Level 1, we offer choice or force boon if warlock?
-    // Template says: "Roll Talent" ... "Roll Boon" (if canRollBoons).
+    // const canChooseBoon = needsBoon && patron; // Unused
 
     // Requirements Check
     const isComplete = () => {
@@ -755,6 +749,5 @@ export const LevelUpModal = ({
                 </div>
             </div>
         </div>
-
     );
 };

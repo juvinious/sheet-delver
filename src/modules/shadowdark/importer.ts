@@ -84,7 +84,7 @@ export class ShadowdarkImporter {
                 // 2. Scan packs (Exact match)
                 log(`[findItem] Scanning packs for exact match...`);
                 // @ts-ignore
-                for (let pack of game.packs) {
+                for (const pack of game.packs) {
                     if (pack.metadata.type !== 'Item') continue;
                     // @ts-ignore
                     const itemIndex = pack.index.find((i: any) =>
@@ -105,7 +105,7 @@ export class ShadowdarkImporter {
                 if (cleanName && cleanName !== itemName) {
                     log(`[findItem] Trying fallback search with: '${cleanName}'`);
                     // @ts-ignore
-                    for (let pack of game.packs) {
+                    for (const pack of game.packs) {
                         if (pack.metadata.type !== 'Item') continue;
                         // @ts-ignore
                         const itemIndex = pack.index.find((i: any) =>
@@ -129,7 +129,7 @@ export class ShadowdarkImporter {
             const findSpell = async (spellData: any, classList: any[]) => {
                 log(`[findSpell] Searching for '${spellData.bonusName}' (Source: ${spellData.sourceName})`);
                 // @ts-ignore
-                for (let pack of game.packs) {
+                for (const pack of game.packs) {
                     if (pack.metadata.type !== 'Item') continue;
 
                     const classObj = classList.find(c => c.name.toLowerCase() === spellData.sourceName.toLowerCase());
@@ -352,7 +352,7 @@ export class ShadowdarkImporter {
                 // 3. Gear
                 if (json.gear) {
                     for (const g of json.gear) {
-                        let type = g.type === 'sundry' ? 'basic' : g.type;
+                        const type = g.type === 'sundry' ? 'basic' : g.type;
                         if (g.name === "Coins") continue;
 
                         log(`Processing Gear: ${g.name} (Type: ${type})`);

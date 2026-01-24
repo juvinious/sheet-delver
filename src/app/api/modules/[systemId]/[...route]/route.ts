@@ -8,20 +8,20 @@ async function handler(request: Request, { params }: { params: Promise<{ systemI
     const routePath = route.join('/');
 
     // 1. Resolve Server Module
-    const module = serverModules[systemId];
+    const sysModule = serverModules[systemId];
 
-    if (!module) {
+    if (!sysModule) {
         return NextResponse.json({ error: `System '${systemId}' not found or not loaded` }, { status: 404 });
     }
 
     // 2. Resolve Route Handler
-    if (!module.apiRoutes || !module.apiRoutes[routePath]) {
+    if (!sysModule.apiRoutes || !sysModule.apiRoutes[routePath]) {
         return NextResponse.json({ error: `Route '${routePath}' not found in system '${systemId}'` }, { status: 404 });
     }
 
     // 3. Execute Handler
     try {
-        const handlerFn = module.apiRoutes[routePath];
+        const handlerFn = sysModule.apiRoutes[routePath];
         return await handlerFn(request, { params });
     } catch (e: any) {
         console.error(`[API] Module Error (${systemId}/${routePath}):`, e);
