@@ -106,20 +106,7 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
 ## Module API & Server-Side Logic
 
 Modules can define server-side API handlers that are automatically routed via `/api/modules/<systemId>/<route>`.
-
-1.  **Create `server.ts`** in your module root.
-2.  **Export `apiRoutes`**:
-    ```typescript
-    import { NextResponse } from 'next/server';
-
-    export const apiRoutes = {
-        'my-custom-route': async (req: Request) => {
-             return NextResponse.json({ success: true });
-        }
-    };
-    ```
-3.  **Accessing**: The route will be available at `/api/modules/<systemId>/my-custom-route`.
-4.  **Registering**: You must also register the server module in `src/modules/core/server-modules.ts` manually, as server-side imports cannot be dynamic in the same way.
+For details on implementing module APIs, see [docs/API.md](docs/API.md).
 
 ## Development Workflow
 
@@ -130,52 +117,8 @@ Modules can define server-side API handlers that are automatically routed via `/
 
 ## Reusable UI Components
 
-We provide several core components to ensure a consistent UI across different system sheets.
-
-### RichTextEditor
-A wrapper around Tiptap for editing HTML content (biographies, notes).
-**Path**: `@/components/RichTextEditor`
-```tsx
-<RichTextEditor 
-    content={actor.system.notes} 
-    onChange={(html) => onUpdate('system.notes', html)} 
-/>
-```
-
-### ConfirmationModal
-A standard modal for destructive actions. Uses React Portal.
-**Path**: `@/components/ui/ConfirmationModal`
-```tsx
-<ConfirmationModal
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onConfirm={handleDelete}
-    title="Delete Item?"
-    message="Are you sure you want to delete this content?"
-    confirmLabel="Delete"
-    isDanger={true}
-/>
-```
-
-### RollDialog
-A unified dialog for configuring dice rolls (Ability checks, Attacks, Spells). Supports generic options or system-specific extensions.
-**Path**: `@/components/RollDialog`
-```tsx
-<RollDialog
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onRoll={(options) => onRoll('attack', 'dager', options)}
-    title="Dagger Attack"
-    config={{
-        modes: ['normal', 'advantage', 'disadvantage'],
-        bonuses: ['ability', 'item', 'talent']
-    }}
-/>
-```
-
-### DiceTray
-A persistent tray for manual dice rolling. Generally handled by the layout but accessible if needed.
-**Path**: `@/components/DiceTray`
+We provide several core UI components (RichTextEditor, Toast, Modal, DiceTray) to ensure a consistent UI.
+For detailed documentation and usage examples, see [docs/UI.md](docs/UI.md).
 
 ## License
 

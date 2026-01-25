@@ -1,64 +1,66 @@
-# SheetDelver API Documentation
+# API Documentation
 
-SheetDelver provides a REST API to interface with a running Foundry VTT instance via `playwright`.
+SheetDelver acts as a bridge between the Frontend (Next.js) and the Foundry VTT instance (via Playwright). It exposes several RESTful endpoints.
 
-## Core Concept
-The API uses a singleton `FoundryClient` (wrapping a headless browser) to automate actions on the Foundry VTT "board". It allows retrieving actor data, updating attributes, rolling dice, and sending chat messages.
+## Core API Routes
 
-## Endpoints
+These routes handle standard operations like fetching actors, rolling dice, and managing chat.
 
 ### Actors
 
-#### `GET /api/actors/[id]`
-Retrieves normalized data for a specific actor.
-- **Params**: `id` (Foundry Actor ID)
-- **Response**: JSON object containing actor data (`name`, `img`, `system`, `items`, etc.) with UUIDs resolved to names where possible.
-
-#### `POST /api/actors/[id]/update`
-Updates one or more fields on an actor or its embedded items.
-- **Params**: `id` (Foundry Actor ID)
-- **Body**: JSON object with dot-notation paths.
-  - Actor update: `{ "system.attributes.hp.value": 15 }`
-  - Item update: `{ "items.ITEM_ID.system.equipped": true }`
-- **Response**: `{ "success": true }` or error.
-
-#### `POST /api/actors/[id]/roll`
-Triggers a dice roll for a specific ability or item.
-- **Params**: `id` (Foundry Actor ID)
-- **Body**:
-  ```json
-  {
-    "type": "ability" | "item",
-    "key": "STR" | "ITEM_ID",
-    "options": { "abilityBonus": 2, "itemBonus": 1 }
-  }
-  ```
-- **Response**: Result object containing `total`, `formula`, and `label`.
+-   **GET** `/api/actors/:id`
+    Fetch normalized actor data. Automatically detects the system and uses the appropriate `SystemAdapter`.
+-   **DELETE** `/api/actors/:id`
+    Delete an actor from Foundry.
+-   **POST** `/api/actors/:id/update`
+    Update detailed actor data (e.g. `system.hp.value`).
+-   **POST** `/api/actors/:id/roll`
+    Perform a system-specific roll.
+    Body: `{ type: string, key: string, options: any }`
+-   **POST** `/api/actors/:id/items`
+    Create or Delete items. (Method needs verification, usually DELETE is separate or via query param).
+-   **POST** `/api/actors/:id/effects`
+    Toggle or manage active effects.
 
 ### Chat
 
-#### `GET /api/chat`
-Retrieves the recent chat log.
-- **Query Params**: None (default limit 25).
-- **Response**: `{ "messages": [...] }`.
-  - Messages include `id`, `user`, `content`, `timestamp`, and roll data (`rollTotal`, `isCritical`, etc.) if applicable.
+-   **GET** `/api/chat`
+    Fetch recent chat messages.
+-   **POST** `/api/chat/send`
+    Send a message to the Foundry chat log.
 
-#### `POST /api/chat/send`
-Sends a message to the chat.
-- **Body**: `{ "message": "Hello World" }`
-- **Response**: `{ "success": true }`.
+### Foundry
 
-### System Data
+-   **GET** `/api/foundry/document?uuid=...`
+    Fetch a raw document from Foundry by UUID (e.g. an Item from a Compendium).
 
-#### `GET /api/system/data`
-Retrieves static system data indexed from Compendiums.
-- **Response**:
-  ```json
-  {
-    "classes": [...],
-    "ancestries": [...],
-    "languages": [...],
-    "titles": { "Class Name": [...] }
-  }
-  ```
-- **Usage**: Used to resolve class names, localized titles, and language descriptions.
+## Module API Architecture
+
+Ref: [CONTRIBUTING.md](../CONTRIBUTING.md)
+
+Modules can define their own server-side API handlers to extend functionality without modifying the core.
+
+### Route Structure
+`/api/modules/:systemId/:route*`
+
+### Implementation
+To add an API route to your system module (e.g., `mysystem`):
+
+1.  Create `src/modules/mysystem/server.ts`.
+2.  Export an `apiRoutes` object mapping route names to handlers.
+
+```typescript
+// src/modules/mysystem/server.ts
+import { NextResponse } from 'next/server';
+
+export const apiRoutes = {
+    'import-character': async (req: Request) => {
+        const body = await req.json();
+        // logic...
+        return NextResponse.json({ success: true });
+    }
+};
+```
+
+3.  Register in `src/modules/core/server-modules.ts`.
+4.  Call it via `fetch('/api/modules/mysystem/import-character', ...)`.
