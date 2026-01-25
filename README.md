@@ -34,8 +34,11 @@ src/modules/<system>/
 ├── index.ts           # Manifest
 ├── info.json          # Metadata
 ├── adapter.ts         # Logic & Data Fetching
+├── server.ts          # Server-Side API Handlers (Optional)
 └── ui/                # React Components
 ```
+
+5.  **Module API** (`api/modules/[systemId]/...`): Automatically routes requests to the module's `server.ts` handlers, allowing system-specific backend logic (e.g. importers).
 
 For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 

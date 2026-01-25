@@ -104,6 +104,24 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
 6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
 7.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
 
+## Module API & Server-Side Logic
+
+Modules can define server-side API handlers that are automatically routed via `/api/modules/<systemId>/<route>`.
+
+1.  **Create `server.ts`** in your module root.
+2.  **Export `apiRoutes`**:
+    ```typescript
+    import { NextResponse } from 'next/server';
+
+    export const apiRoutes = {
+        'my-custom-route': async (req: Request) => {
+             return NextResponse.json({ success: true });
+        }
+    };
+    ```
+3.  **Accessing**: The route will be available at `/api/modules/<systemId>/my-custom-route`.
+4.  **Registering**: You must also register the server module in `src/modules/core/server-modules.ts` manually, as server-side imports cannot be dynamic in the same way.
+
 ## Development Workflow
 
 1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files within your module's directory.
