@@ -1,10 +1,9 @@
-'use client';
-
 import { useState, useRef, useEffect } from 'react';
 import ChatTab from './ChatTab';
 import DiceTray from './DiceTray';
 import { Inter } from 'next/font/google';
 import { Dices, MessageSquare } from 'lucide-react';
+import { SystemAdapter } from '../modules/core/interfaces';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -13,7 +12,7 @@ interface GlobalChatProps {
     onSend: (msg: string) => void;
     onRoll?: (type: string, key: string) => void;
     foundryUrl?: string;
-    variant?: 'default' | 'shadowdark';
+    adapter?: SystemAdapter;
     hideDice?: boolean;
     // Controlled props for Dice Tray
     isDiceTrayOpen?: boolean;
@@ -66,7 +65,7 @@ export default function GlobalChat(props: GlobalChatProps) {
 
     return (
         <div ref={containerRef} className={`fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-none ${inter.className}`}>
-            {/* ... rest of component ... */}
+
             {/* --- WINDOWS --- */}
             <div className="absolute bottom-20 right-0 flex gap-4 pointer-events-none">
 
@@ -83,7 +82,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                             <button onClick={toggleDice} className="text-zinc-500 hover:text-white px-2">✕</button>
                         </div>
                         <div>
-                            <DiceTray onSend={(msg) => { props.onSend(msg); toggleDice(); }} variant={props.variant} />
+                            <DiceTray onSend={(msg) => { props.onSend(msg); toggleDice(); }} adapter={props.adapter} />
                         </div>
                     </div>
                 )}
@@ -103,7 +102,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                     </div>
                     <div className="flex-1 min-h-0 pb-2">
                         {/* Hide Dice Tray inside ChatTab since we have a separate window OR if globally hidden */}
-                        <ChatTab {...props} hideDiceTray={true} />
+                        <ChatTab {...props} adapter={props.adapter} hideDiceTray={true} />
                     </div>
                 </div>
 

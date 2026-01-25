@@ -6,7 +6,8 @@ import Link from 'next/link';
 import SheetRouter from '@/components/SheetRouter';
 import GlobalChat from '@/components/GlobalChat';
 import PlayerList from '@/components/PlayerList';
-import { resolveImage, processHtmlContent } from '@/modules/shadowdark/ui/sheet-utils';
+import { processHtmlContent } from '@/modules/core/utils';
+import { getMatchingAdapter } from '@/modules/core/registry';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -363,7 +364,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                         onSend={handleChatSend}
                         onRoll={handleRoll}
                         foundryUrl={actor?.foundryUrl}
-                        variant={actor.systemId || 'default'}
+                        adapter={getMatchingAdapter(actor)}
                         isDiceTrayOpen={isDiceTrayOpen}
                         onToggleDiceTray={toggleDiceTray}
                     />

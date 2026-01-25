@@ -630,7 +630,7 @@ export class FoundryClient {
                     // The Application (Node) calls 'adapter.postCreate(client, actorId, sourceData)'.
                     // The Adapter then calls 'client.evaluate(...)' with its specific logic.
 
-                    return { success: true, id: actor.id, name: actor.name, systemId: actor.system?.id || 'shadowdark' }; // Assume systemId for now or fetch it
+                    return { success: true, id: actor.id, name: actor.name, systemId: actor.system?.id };
                 } catch (err) {
                     console.error("Post-create error", err);
                     return { success: true, id: actor.id, name: actor.name, warning: "Post-create failed" };

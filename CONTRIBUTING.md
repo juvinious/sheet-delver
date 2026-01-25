@@ -73,7 +73,7 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     *   **Data Fetching**: `getActor(client, id)` (running in browser context via Playwright).
     *   **Normalization**: `normalizeActorData(actor)` (converting raw Foundry data to a UI-friendly shape).
     *   **Rolling**: `getRollData(...)` (handling system-specific dice logic).
-    *   **Theming**: `theme` (optional configuration for system-specific colors/fonts).
+    *   **Theming**: `theme` (colors/fonts) and `componentStyles` (granular overrides for `ChatTab`, `DiceTray`, etc.).
 *   **Isolation**: Do not import code from other system modules. Shared UI components (like `RichTextEditor`, `DiceTray`) are available in `@/components`.
 *   **Registry**: Frontend components that need valid server-side rendering or dynamic imports (like Dashboard Tools) are registered in `src/modules/core/component-registry.tsx`.
 
@@ -109,6 +109,7 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
 1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files within your module's directory.
 2.  **Styling**: Use Tailwind CSS for styling.
 3.  **Testing**: Verify your changes against a live Foundry instance running the target system.
+4.  **Common Utilities**: Use `src/modules/core/utils.ts` for common helpers like `resolveImage` and `processHtmlContent` to ensure consistency.
 
 ## Reusable UI Components
 

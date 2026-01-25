@@ -11,6 +11,8 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 - **Inventory Management**: Drag-and-drop equipment, slot tracking, and toggleable states (Equipped/Stashed/Light).
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
+- **Character Import**: Import characters via JSON from Shadowdarklings (including Gear, Spells, and Magic Items).
+- **System Agnostic UI**: Core components adapt to system themes via configuration.
 - **Mobile Friendly**: optimized touch targets and layout.
 
 ## Supported Systems

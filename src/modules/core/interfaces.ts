@@ -55,6 +55,44 @@ export interface SystemAdapter {
         input?: string;
         success?: string;
     };
+
+    /**
+     * Optional component-specific style overrides.
+     * Used by core components like ChatTab and DiceTray to match system aesthetics.
+     */
+    componentStyles?: {
+        chat?: {
+            container?: string;
+            header?: string;
+            msgContainer?: (isRoll: boolean) => string;
+            user?: string;
+            time?: string;
+            flavor?: string;
+            content?: string;
+            rollResult?: string;
+            rollFormula?: string;
+            rollTotal?: string;
+            button?: string;
+            buttonText?: string;
+            buttonValue?: string;
+        };
+        diceTray?: {
+            container?: string;
+            header?: string;
+            textarea?: string;
+            clearBtn?: string;
+            diceRow?: string;
+            diceBtn?: string;
+            modGroup?: string;
+            modBtn?: string;
+            advGroup?: string;
+            advBtn?: (active: boolean, type: 'normal' | 'adv' | 'dis') => string;
+            sendBtn?: string;
+            helpText?: string;
+            button?: string;
+            input?: string;
+        };
+    };
 }
 
 export interface ModuleManifest {
