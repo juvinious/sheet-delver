@@ -100,7 +100,6 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     };
     export default manifest;
     ```
-100:     ```
 6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
 7.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
 
