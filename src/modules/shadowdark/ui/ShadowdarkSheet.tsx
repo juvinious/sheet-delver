@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import RollDialog from '@/components/RollDialog';
+import LoadingModal from '@/components/LoadingModal';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveImage, resolveEntityName } from './sheet-utils';
 
@@ -36,6 +37,7 @@ interface ShadowdarkSheetProps {
 export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
+    const [loadingSystem, setLoadingSystem] = useState(true);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -106,10 +108,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     };
 
     useEffect(() => {
+        setLoadingSystem(true);
         fetch('/api/system/data')
             .then(res => res.json())
             .then(data => setSystemData(data))
-            .catch(err => console.error('Failed to fetch system data:', err));
+            .catch(err => console.error('Failed to fetch system data:', err))
+            .finally(() => setLoadingSystem(false));
     }, []);
 
 
@@ -117,6 +121,9 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
     return (
         <div className={`flex flex-col h-full relative pb-24 md:pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
+            {/* Loading Overlay */}
+            <LoadingModal message="Loading System Data..." visible={loadingSystem} />
+
             {/* Header / Top Nav */}
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex items-stretch justify-between mb-6 border-b-4 border-black h-24">
                 <div className="flex items-center gap-6">

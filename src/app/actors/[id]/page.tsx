@@ -9,6 +9,7 @@ import PlayerList from '@/components/PlayerList';
 import { processHtmlContent } from '@/modules/core/utils';
 import { getMatchingAdapter } from '@/modules/core/registry';
 import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
+import LoadingModal from '@/components/LoadingModal';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -352,15 +353,11 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     // ... (Keep existing loading/error checks)
     // ... (Keep existing loading/error checks)
+
+    // ...
+
     if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen bg-neutral-900 animate-in fade-in duration-300">
-                <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Loading Codex...</p>
-                </div>
-            </div>
-        );
+        return <LoadingModal message="Loading Codex..." />;
     }
     // If not loading and no actor, we are likely redirecting, so render specific fallback or null
     // If not loading and no actor, check if we need to show the delete modal

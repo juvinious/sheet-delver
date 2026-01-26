@@ -90,6 +90,21 @@ export default function PlayerList() {
                         </li>
                     ))}
                 </ul>
+                <div className="p-2 border-t border-white/5 mt-1">
+                    <button
+                        onClick={async () => {
+                            try {
+                                await fetch('/api/session/logout', { method: 'POST' });
+                                window.location.reload();
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        }}
+                        className="w-full text-xs bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 rounded py-1.5 transition-colors font-bold uppercase tracking-wider"
+                    >
+                        Logout
+                    </button>
+                </div>
             </div>
 
             {/* Toggle Button */}

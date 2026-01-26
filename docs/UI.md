@@ -108,3 +108,19 @@ The main chat interface, including the collapsible chat window and dice tray int
     foundryUrl={foundryUrl}
 />
 ```
+
+## LoadingModal
+
+A unified, full-screen loading overlay to be used whenever a blocking load state is required (e.g., initial connection, loading codex, fetching system data).
+
+**Path**: `@/components/LoadingModal`
+
+```tsx
+import LoadingModal from '@/components/LoadingModal';
+
+<LoadingModal 
+    message="Loading Codex..." 
+    visible={isLoading} 
+/>
+```
+
