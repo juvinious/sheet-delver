@@ -8,6 +8,8 @@ These routes handle standard operations like fetching actors, rolling dice, and 
 
 ### Actors
 
+-   **GET** `/api/actors`
+    List all accessible actors.
 -   **GET** `/api/actors/:id`
     Fetch normalized actor data. Automatically detects the system and uses the appropriate `SystemAdapter`.
 -   **DELETE** `/api/actors/:id`
@@ -18,9 +20,18 @@ These routes handle standard operations like fetching actors, rolling dice, and 
     Perform a system-specific roll.
     Body: `{ type: string, key: string, options: any }`
 -   **POST** `/api/actors/:id/items`
-    Create or Delete items. (Method needs verification, usually DELETE is separate or via query param).
+    Create a new item on the actor.
+    Body: `{ item: object }`
+-   **PUT** `/api/actors/:id/items`
+    Update an existing item on the actor.
+    Body: `{ itemId: string, updateData: object }`
+-   **DELETE** `/api/actors/:id/items`
+    Delete an item from the actor.
+    Query: `?itemId=...`
 -   **POST** `/api/actors/:id/effects`
     Toggle or manage active effects.
+-   **GET** `/api/actors/:id/predefined-effects`
+    Fetch system-specific predefined effects (e.g. conditions) available for this actor.
 
 ### Chat
 
@@ -28,6 +39,24 @@ These routes handle standard operations like fetching actors, rolling dice, and 
     Fetch recent chat messages.
 -   **POST** `/api/chat/send`
     Send a message to the Foundry chat log.
+
+### Session & Users
+
+-   **GET** `/api/session/connect`
+    Check connection status with Foundry.
+-   **POST** `/api/session/login`
+    Authenticate with Foundry using an access key.
+-   **POST** `/api/session/logout`
+    Terminate the current session.
+-   **GET** `/api/users`
+    Fetch list of available Foundry users.
+
+### System
+
+-   **GET** `/api/system`
+    Get system-wide configuration or status.
+-   **GET** `/api/system/data`
+    Get detailed system data (e.g. compendiums, world settings).
 
 ### Foundry
 
