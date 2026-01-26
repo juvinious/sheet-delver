@@ -40,6 +40,9 @@ export default function GlobalChat(props: GlobalChatProps) {
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+                // Ignore clicks on the toggle button itself to prevent double-toggling
+                if ((event.target as Element).closest('.dice-tray-toggle')) return;
+
                 // Only close if we are actually open
                 if (isChatOpen) setIsChatOpen(false);
 
@@ -74,8 +77,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                     <div className={`
                         pointer-events-auto
                         bg-zinc-950 border border-zinc-800 shadow-2xl rounded-lg overflow-hidden
-                        transition-all duration-300 origin-bottom-right
-                        ${isDiceOpen ? 'w-[400px] h-auto opacity-100 scale-100' : 'w-[0px] h-[0px] opacity-0 scale-90'}
+                        transition-all duration-300 origin-bottom sm:origin-bottom-right
+                        ${isDiceOpen
+                            ? 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] h-auto opacity-100 scale-100 pointer-events-auto sm:translate-x-0 sm:static sm:w-[400px]'
+                            : 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] opacity-0 scale-90 pointer-events-none sm:translate-x-0 sm:static sm:w-[0px] sm:h-[0px]'}
                     `}>
                         <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800">
                             <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">Dice Tray</span>
@@ -122,11 +127,15 @@ export default function GlobalChat(props: GlobalChatProps) {
                         className={`
                             h-12 w-12 rounded-full shadow-lg flex items-center justify-center
                             transition-all duration-300 hover:scale-110 active:scale-95
-                            ${isDiceOpen ? 'bg-zinc-700 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-500'}
+                            ${isDiceOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-indigo-600 text-white hover:bg-indigo-500'}
                         `}
                         title="Toggle Dice Tray"
                     >
-                        <Dices className="w-6 h-6" />
+                        {isDiceOpen ? (
+                            <svg className="w-6 h-6 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        ) : (
+                            <Dices className="w-6 h-6" />
+                        )}
                     </button>
                 )}
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { resolveImage, resolveEntityName } from './sheet-utils';
 import CustomBoonModal from './components/CustomBoonModal';
+import CompendiumSelectModal from './components/CompendiumSelectModal';
 import { Trash2, Power, Pencil } from 'lucide-react';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 
@@ -22,37 +23,113 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
 
+    // Selection Modal State
+    const [selectionModal, setSelectionModal] = useState<{
+        isOpen: boolean;
+        title: string;
+        options: any[];
+        currentValue: any;
+        multiSelect: boolean;
+        onSelect: (val: any) => void;
+    }>({
+        isOpen: false,
+        title: '',
+        options: [],
+        currentValue: '',
+        multiSelect: false,
+        onSelect: () => { }
+    });
+
+    const openSelection = (field: string, title: string, dataKey?: string, multiSelect = false) => {
+        // Resolve options from systemData
+        let options: any[] = [];
+        if (dataKey && systemData && (systemData as any)[dataKey]) {
+            options = (systemData as any)[dataKey];
+        }
+
+        // Current Value
+        let current: any = '';
+        if (field.includes('.')) {
+            const parts = field.split('.');
+            // simple traversal
+            current = actor;
+            for (const p of parts) {
+                if (current) current = (current as any)[p];
+            }
+        } else {
+            current = actor[field];
+        }
+
+
+        setSelectionModal({
+            isOpen: true,
+            title,
+            options: options.map((o: any) => ({
+                name: o.name,
+                uuid: o.uuid,
+                description: o.description || o.data?.description?.value || ''
+            })),
+            currentValue: current,
+            multiSelect,
+            onSelect: (option) => {
+                const valToStore = option.uuid || option.name;
+                const optName = option.name;
+
+                // Handle Multi-Select (Toggle)
+                if (multiSelect) {
+                    setSelectionModal(prev => {
+                        const currentVal = prev.currentValue;
+                        const modalOptions = prev.options;
+
+                        // Sanitize & Normalize to UUIDs
+                        // We map existing values (Names or UUIDs) to the authoritative UUIDs from options if available.
+                        const cleanArray = (Array.isArray(currentVal) ? currentVal : []).map((c: any) => {
+                            let val = typeof c === 'object' ? (c.uuid || c.name) : c;
+                            if (!val) return '';
+
+                            // Try to resolve to UUID from options
+                            // Value might be "Common" (Name) or "Item.xyz" (UUID)
+                            const match = modalOptions.find(o => o.uuid === val || o.name === val);
+                            if (match && match.uuid) return match.uuid;
+
+                            return val;
+                        }).filter((c: any) => c !== '');
+
+                        // Deduplicate
+                        let newArray = Array.from(new Set(cleanArray));
+
+                        // Determine the value to toggle (Prefer UUID)
+                        const targetVal = option.uuid || option.name;
+
+                        const existingIndex = newArray.findIndex((c: any) => c === targetVal);
+
+                        if (existingIndex >= 0) {
+                            newArray.splice(existingIndex, 1);
+                        } else {
+                            newArray.push(targetVal);
+                        }
+
+                        // Update Backend (Async)
+                        setTimeout(() => onUpdate(field, newArray), 0);
+
+                        return { ...prev, currentValue: newArray };
+                    });
+                } else {
+                    // Single Select - Replace
+                    onUpdate(field, valToStore);
+                    setSelectionModal(prev => ({ ...prev, isOpen: false }));
+                }
+            }
+        });
+    };
+
+
     // Common card style
     const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative";
     const cardStyleWithoutPadding = "bg-white border-2 border-black text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
 
-    // Auto-resolve UUIDs to Names (Deity, Patron)
-    useEffect(() => {
-        const resolveField = async (path: string, value: string) => {
-            if (typeof value === 'string' && (value.startsWith('Compendium.') || value.includes('Item.')) && !value.includes(' ')) {
-                try {
-                    const res = await fetch(`/api/foundry/document?uuid=${value}`);
-                    if (res.ok) {
-                        const doc = await res.json();
-                        if (doc && doc.name) {
-                            onUpdate(path, doc.name);
-                        }
-                    }
-                } catch (e) {
-                    console.error(`Failed to resolve ${path}`, e);
-                }
-            }
-        };
-
-        if (actor.system?.deity) resolveField('system.deity', actor.system.deity);
-
-        // Only resolve Patron if we don't have an embedded item (which takes precedence in display)
-        const hasPatronItem = (actor.items || []).some((i: any) => i.type?.toLowerCase() === 'patron');
-        if (!hasPatronItem && actor.system?.patron) {
-            resolveField('system.patron', actor.system.patron);
-        }
-
-    }, [actor.system?.deity, actor.system?.patron, actor.items]);
+    // REMOVED: resolveField effect. We now handle resolution at render time via resolveEntityName.
+    // This allows storing UUIDs properly without overwriting them with strings.
 
     return (
         <div className="flex flex-col gap-6 h-full overflow-hidden">
@@ -65,7 +142,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Level</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            {/* Level is not editable via modal usually, handled by XP? Or maybe direct edit if needed */}
+                            {/* Keeping level display-only or XP driven for now as per previous logic */}
+                            <div className="w-3" />
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
                             {actor.computed?.levelUp ? (
@@ -90,14 +169,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Title</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <div className="w-3" /> {/* Spacer instead of edit icon */}
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             {(() => {
                                 const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
                                 const lvl = actor.system?.level?.value ?? 1;
-                                // Debug Title Resolution
-                                // console.log('Title Debug:', { clsName, lvl, titles: systemData?.titles });
                                 const sysTitle = systemData?.titles?.[clsName]?.find((t: any) => lvl >= t.from && lvl <= t.to);
                                 const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
                                 return actor.system?.title || sysTitle?.[alignment] || '-';
@@ -109,19 +186,18 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Class</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <button
+                                onClick={() => openSelection('system.class', 'Class', 'classes')}
+                                className="text-white/50 hover:text-white transition-colors"
+                            >
+                                <Pencil size={14} />
+                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2">
                             <i className="fas fa-book text-neutral-400"></i>
-                            <input
-                                type="text"
-                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={(() => {
-                                    return resolveEntityName(actor.system?.class, actor, systemData, 'classes');
-                                })()}
-                                onChange={(e) => onUpdate('system.class', e.target.value)}
-                                placeholder="Class"
-                            />
+                            <span className="w-full">
+                                {resolveEntityName(actor.system?.class, actor, systemData, 'classes') || '-'}
+                            </span>
                         </div>
                     </div>
 
@@ -129,7 +205,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">XP</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <div className="w-3" />
                         </div>
                         <div className={`p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white min-h-[44px] ${(!actor.system?.level?.value || actor.system.level.value === 0) ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
                             <input
@@ -141,15 +217,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                 onBlur={(e) => {
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
-                                    // Constraint validation
                                     if (val < 0) val = 0;
                                     if (val > 10) val = 10;
-
-                                    // Update input if corrected
-                                    if (val.toString() !== e.target.value) {
-                                        e.target.value = val.toString();
-                                    }
-
+                                    if (val.toString() !== e.target.value) e.target.value = val.toString();
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
                                 className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent`}
@@ -163,18 +233,17 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Ancestry</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <button
+                                onClick={() => openSelection('system.ancestry', 'Ancestry', 'ancestries')}
+                                className="text-white/50 hover:text-white transition-colors"
+                            >
+                                <Pencil size={14} />
+                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            <input
-                                type="text"
-                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={(() => {
-                                    return resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries');
-                                })()}
-                                onChange={(e) => onUpdate('system.ancestry', e.target.value)}
-                                placeholder="Ancestry"
-                            />
+                            <span>
+                                {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries') || '-'}
+                            </span>
                         </div>
                     </div>
 
@@ -182,18 +251,17 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Background</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <button
+                                onClick={() => openSelection('system.background', 'Background', 'backgrounds')}
+                                className="text-white/50 hover:text-white transition-colors"
+                            >
+                                <Pencil size={14} />
+                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            <input
-                                type="text"
-                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={(() => {
-                                    return resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds');
-                                })()}
-                                onChange={(e) => onUpdate('system.background', e.target.value)}
-                                placeholder="Background"
-                            />
+                            <span>
+                                {resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds') || '-'}
+                            </span>
                         </div>
                     </div>
 
@@ -204,7 +272,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Alignment</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            {/* Kept as select for now as it makes more sense than a modal for 3 options */}
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             <select
@@ -226,16 +294,15 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Deity</span>
-                            <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                            <button
+                                onClick={() => openSelection('system.deity', 'Deity', 'deities')}
+                                className="text-white/50 hover:text-white transition-colors"
+                            >
+                                <Pencil size={14} />
+                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
-                            <input
-                                type="text"
-                                className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                value={actor.system?.deity || ''}
-                                onChange={(e) => onUpdate('system.deity', e.target.value)}
-                                placeholder="Deity"
-                            />
+                            <span>{resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}</span>
                         </div>
                     </div>
 
@@ -244,27 +311,22 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         <div className={`${cardStyleWithoutPadding} md:col-span-1 lg:col-span-1`}>
                             <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                                 <span className="font-serif font-bold text-lg uppercase">Patron</span>
-                                <img src="/icons/edit.svg" className="w-3 h-3 invert opacity-50" alt="" />
+                                <button
+                                    onClick={() => openSelection('system.patron', 'Patron', 'patrons')}
+                                    className="text-white/50 hover:text-white transition-colors"
+                                >
+                                    <Pencil size={14} />
+                                </button>
                             </div>
                             <div className="p-2 font-serif text-lg bg-white">
                                 {(() => {
-                                    // Try to resolve Patron Name
                                     const patronItem = (actor.items || []).find((i: any) => i.type?.toLowerCase() === 'patron');
-                                    const patronName = patronItem ? patronItem.name : (actor.system?.patron || '');
+                                    // Resolving Logic
+                                    const val = actor.system?.patron;
+                                    const resolvedName = resolveEntityName(val, actor, systemData, 'patrons');
+                                    const displayName = patronItem ? patronItem.name : (resolvedName || '-');
 
-                                    return (
-                                        <input
-                                            type="text"
-                                            className="w-full bg-transparent border-none focus:ring-0 p-0 text-lg font-serif"
-                                            value={patronName}
-                                            readOnly={!!patronItem} // If item exists, read only? Or allow text override?
-                                            onChange={(e) => {
-                                                // If no item, maybe we store string in system.patron?
-                                                if (!patronItem) onUpdate('system.patron', e.target.value);
-                                            }}
-                                            placeholder="Patron"
-                                        />
-                                    );
+                                    return <span>{displayName}</span>;
                                 })()}
                             </div>
                         </div>
@@ -274,8 +336,15 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
 
                 {/* Languages */}
                 <div className={cardStyle}>
-                    <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white">
+                    <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white flex justify-between items-center">
                         <span className="font-serif font-bold text-lg uppercase">Languages</span>
+                        <button
+                            onClick={() => openSelection('system.languages', 'Languages', 'languages', true)}
+                            className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+                            title="Edit Languages"
+                        >
+                            <Pencil size={14} />
+                        </button>
                     </div>
                     <div className="p-1 flex flex-wrap gap-2">
                         {(() => {
@@ -285,7 +354,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                 const val = isObj ? l.name : l;
                                 const match = systemData?.languages?.find((sl: any) => sl.uuid === val || sl.name === val);
                                 return {
-                                    raw: val,
+                                    raw: val, // Keep track of the actual specific value in the array to remove it correctly
+                                    original: l,
                                     name: match ? match.name : val,
                                     desc: match ? match.description : (isObj ? l.description : 'Description unavailable.'),
                                     rarity: match ? match.rarity : 'common',
@@ -293,7 +363,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                 };
                             });
 
-                            // Official system logic: Common = Purple, Others = Black
                             return resolvedLangs.sort((a: any, b: any) => a.name.localeCompare(b.name))
                                 .map((lang: any, i: number) => {
                                     const isCommon = lang.rarity?.toLowerCase() === 'common';
@@ -303,13 +372,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                     if (lang.rarity) tooltip += ` (${lang.rarity})`;
 
                                     return (
-                                        <span
+                                        <div
                                             key={i}
+                                            className={`group relative flex items-center font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${bgColor}`}
                                             title={tooltip}
-                                            className={`cursor-help font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${bgColor}`}
                                         >
-                                            {lang.name}
-                                        </span>
+                                            <span className="cursor-help">{lang.name}</span>
+                                        </div>
                                     );
                                 });
                         })()}
@@ -408,6 +477,16 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     setItemToDelete(null);
                 }}
                 onCancel={() => setItemToDelete(null)}
+            />
+
+            <CompendiumSelectModal
+                isOpen={selectionModal.isOpen}
+                onClose={() => setSelectionModal(prev => ({ ...prev, isOpen: false }))}
+                onSelect={selectionModal.onSelect}
+                title={selectionModal.title}
+                options={selectionModal.options}
+                currentValue={selectionModal.currentValue}
+                multiSelect={selectionModal.multiSelect}
             />
 
         </div >

@@ -246,53 +246,55 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     <span className="text-xs font-normal opacity-70 tracking-normal">(Scrolls & Wands)</span>
                 </div>
                 <div className="space-y-2">
-                    {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type)).map((item: any) => {
-                        const isExpanded = expandedItems.has(item.id);
-                        return (
-                            <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
-                                {/* Header */}
-                                <div
-                                    className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
-                                    onClick={() => toggleItem(item.id)}
-                                >
-                                    <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                        <img src={resolveImage(item.img, foundryUrl)} alt={item.name} className="w-full h-full object-cover" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="font-serif font-bold text-lg leading-none">{item.name}</div>
-                                        <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1">{item.type}</div>
-                                    </div>
-
-                                    <button
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            triggerRollDialog('item', item.id);
-                                        }}
-                                        className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center transition-all hover:scale-110 shadow-sm touch-manipulation"
-                                        title="Use Item"
+                    {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type))
+                        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                        .map((item: any) => {
+                            const isExpanded = expandedItems.has(item.id);
+                            return (
+                                <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                                    {/* Header */}
+                                    <div
+                                        className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
+                                        onClick={() => toggleItem(item.id)}
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                                            <path fillRule="evenodd" d="M12.9 2.2c-.4-.5-1.4-.5-1.8 0L2.8 12.8c-.4.5-.2 1.2.5 1.2h17.4c.7 0 .9-.7.5-1.2L12.9 2.2zM3.4 15c-.6 0-.9.7-.5 1.2l7.3 8c.4.4 1 .4 1.4 0l7.3-8c.4-.5.1-1.2-.5-1.2H3.4z" clipRule="evenodd" />
-                                        </svg>
-                                    </button>
-                                </div>
-
-                                {/* Expanded Content */}
-                                {isExpanded && (
-                                    <div className="p-3 pt-0 mt-2 border-t border-dashed border-neutral-300">
-                                        <div className="mt-2 text-sm font-serif leading-relaxed text-neutral-800">
-                                            <div
-                                                className="prose prose-sm max-w-none"
-                                                dangerouslySetInnerHTML={{ __html: formatDescription(getSafeDescription(item.system)) || '<span class="italic text-neutral-400">No description available.</span>' }}
-                                                onClick={handleDescriptionClick}
-                                            />
+                                        <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
+                                            <img src={resolveImage(item.img, foundryUrl)} alt={item.name} className="w-full h-full object-cover" />
                                         </div>
+                                        <div className="flex-1">
+                                            <div className="font-serif font-bold text-lg leading-none">{item.name}</div>
+                                            <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1">{item.type}</div>
+                                        </div>
+
+                                        <button
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                triggerRollDialog('item', item.id);
+                                            }}
+                                            className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center transition-all hover:scale-110 shadow-sm touch-manipulation"
+                                            title="Use Item"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                                <path fillRule="evenodd" d="M12.9 2.2c-.4-.5-1.4-.5-1.8 0L2.8 12.8c-.4.5-.2 1.2.5 1.2h17.4c.7 0 .9-.7.5-1.2L12.9 2.2zM3.4 15c-.6 0-.9.7-.5 1.2l7.3 8c.4.4 1 .4 1.4 0l7.3-8c.4-.5.1-1.2-.5-1.2H3.4z" clipRule="evenodd" />
+                                            </svg>
+                                        </button>
                                     </div>
-                                )}
-                            </div>
-                        );
-                    })}
+
+                                    {/* Expanded Content */}
+                                    {isExpanded && (
+                                        <div className="p-3 pt-0 mt-2 border-t border-dashed border-neutral-300">
+                                            <div className="mt-2 text-sm font-serif leading-relaxed text-neutral-800">
+                                                <div
+                                                    className="prose prose-sm max-w-none"
+                                                    dangerouslySetInnerHTML={{ __html: formatDescription(getSafeDescription(item.system)) || '<span class="italic text-neutral-400">No description available.</span>' }}
+                                                    onClick={handleDescriptionClick}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                 </div>
                 {(actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type)).length === 0) && (
                     <div className="text-center text-neutral-400 italic py-8 border-2 border-dashed border-neutral-200 rounded-lg">No magical items (Scrolls/Wands) found.</div>

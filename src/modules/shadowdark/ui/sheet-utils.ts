@@ -108,3 +108,15 @@ export const resolveEntityName = (value: string, actor: any, systemData: any, co
     // For now, return as-is to avoid data loss in UI, but hopefully 1 & 2 catch it.
     return value;
 };
+
+export const calculateSpellBonus = (actor: any): number => {
+    if (!actor || !actor.system) return 0;
+
+    let bonus = 0;
+
+    // Standard Shadowdark system key (from temp/shadowdark/system/src/config.mjs)
+    // The "spellCastingBonus" predefined effect maps to "system.bonuses.spellcastingCheckBonus"
+    bonus += Number(actor.system.bonuses?.spellcastingCheckBonus) || 0;
+
+    return bonus;
+};

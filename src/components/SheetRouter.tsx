@@ -11,6 +11,7 @@ interface SheetRouterProps {
     onDeleteItem: (itemId: string) => void;
     onCreateItem: (itemData: any) => Promise<void>;
     onToggleDiceTray?: () => void;
+    isDiceTrayOpen?: boolean;
     foundryUrl?: string;
     onRoll: (type: string, key: string, options?: any) => Promise<void>;
     onUpdate: (path: string, value: any) => Promise<void>;

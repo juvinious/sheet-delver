@@ -47,9 +47,9 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
     const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language', 'Class Ability'];
     const filterInventory = (list: any[]) => list.filter((i: any) => !NON_INVENTORY_TYPES.includes(i.type));
 
-    const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || []));
-    const carriedItems = applyOverrides(filterInventory(actor.derived?.inventory?.carried || []));
-    const stashedItems = applyOverrides(filterInventory(actor.derived?.inventory?.stashed || []));
+    const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const carriedItems = applyOverrides(filterInventory(actor.derived?.inventory?.carried || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const stashedItems = applyOverrides(filterInventory(actor.derived?.inventory?.stashed || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     // We rely on the adapter for max slots, but we must re-calculate CURRENT usage based on optimistic updates
     // The adapter gives us 'slots.current', but that doesn't account for local optimistic changes.

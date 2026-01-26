@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import RollDialog from '@/components/RollDialog';
 import LoadingModal from '@/components/LoadingModal';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage, resolveEntityName } from './sheet-utils';
+import { resolveImage, resolveEntityName, calculateSpellBonus } from './sheet-utils';
+import { Menu, X } from 'lucide-react';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -14,7 +15,6 @@ import AbilitiesTab from './AbilitiesTab';
 import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
-import BottomNavigation from './BottomNavigation';
 
 // Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
@@ -31,13 +31,17 @@ interface ShadowdarkSheetProps {
     onDeleteItem?: (itemId: string) => void;
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+
     onToggleDiceTray?: () => void;
+    isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [loadingSystem, setLoadingSystem] = useState(true);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -74,7 +78,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     const statKey = item.system?.ability || 'int';
                     const stat = actor.stats?.[statKey] || {};
                     defaults.abilityBonus = stat.mod || 0;
-                    defaults.talentBonus = 0; // TODO list
+                    defaults.talentBonus = calculateSpellBonus(actor);
                     defaults.showItemBonus = false; // Hide Item Bonus for known spells
                 } else {
                     dialogType = 'attack';
@@ -116,41 +120,135 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             .finally(() => setLoadingSystem(false));
     }, []);
 
+    // Dynamic Tabs Logic
+    const [tabsOrder, setTabsOrder] = useState([
+        { id: 'details', label: 'Details' },
+        { id: 'abilities', label: 'Abilities' },
+        { id: 'spells', label: 'Spells' },
+        { id: 'inventory', label: 'Inventory' },
+        { id: 'talents', label: 'Talents' },
+        { id: 'notes', label: 'Notes' },
+        { id: 'effects', label: 'Effects' },
+    ]);
 
-    const tabs = ['details', 'abilities', 'spells', 'inventory', 'talents', 'notes', 'effects'];
+    const [visibleTabs, setVisibleTabs] = useState<typeof tabsOrder>([]);
+    const [overflowTabs, setOverflowTabs] = useState<typeof tabsOrder>([]);
+
+    // Determine how many tabs fit based on width
+    const getVisibleCount = (width: number) => {
+        if (width < 640) return 3;
+        if (width < 1024) return 5;
+        return tabsOrder.length;
+    };
+
+    useEffect(() => {
+        const handleResize = () => {
+            const width = window.innerWidth;
+            const count = getVisibleCount(width);
+
+            setVisibleTabs(tabsOrder.slice(0, count));
+            setOverflowTabs(tabsOrder.slice(count));
+        };
+
+        // Initial check
+        handleResize();
+
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [tabsOrder]);
+
+    const handleTabSelect = (tabId: string) => {
+        setActiveTab(tabId);
+
+        // Check if tab is in overflow
+        const isOverflow = overflowTabs.some(t => t.id === tabId);
+        if (isOverflow) {
+            // Swap with last visible tab
+            const width = window.innerWidth;
+            const count = getVisibleCount(width);
+
+            // Should be at least 1 visible tab to swap with
+            if (count > 0) {
+                const newOrder = [...tabsOrder];
+                const lastVisibleIndex = count - 1;
+                const selectedIndex = newOrder.findIndex(t => t.id === tabId);
+
+                if (selectedIndex > -1) {
+                    // Swap
+                    const temp = newOrder[lastVisibleIndex];
+                    newOrder[lastVisibleIndex] = newOrder[selectedIndex];
+                    newOrder[selectedIndex] = temp;
+
+                    setTabsOrder(newOrder);
+                    // Resize effect will handle the slicing
+                }
+            }
+        }
+
+        setMenuOpen(false); // Close menu if open
+    };
+
+    // Click Outside for Menu
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setMenuOpen(false);
+            }
+        };
+
+        if (menuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [menuOpen]);
+
+    const primaryTabs = visibleTabs; // Use mapped state
+    const secondaryTabs = overflowTabs;
 
     return (
-        <div className={`flex flex-col h-full relative pb-24 md:pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
+        <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
             {/* Loading Overlay */}
             <LoadingModal message="Loading System Data..." visible={loadingSystem} />
 
             {/* Header / Top Nav */}
-            <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex items-stretch justify-between mb-6 border-b-4 border-black h-24">
-                <div className="flex items-center gap-6">
+            <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
+                <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
                     <img
                         src={resolveImage(actor.img, foundryUrl)}
                         alt={actor.name}
-                        className="h-full w-24 object-cover border-r-2 border-white/10 bg-neutral-800"
+                        className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
                     />
-                    <div className="py-2">
-                        <h1 className="text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
-                        <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {resolveEntityName(actor.system?.class, actor, systemData, 'classes')} {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
+                    <div className="py-2 flex-1 flex flex-row items-center justify-between md:block">
+                        <div>
+                            <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
+                            <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
+                                {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                            </p>
+                        </div>
+                        {/* Level displayed inline on mobile for space or block on desktop */}
+                        <div className="text-xl font-bold font-serif md:hidden">
+                            {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
+                        </div>
+                        <p className="hidden md:block text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
+                            {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
                         </p>
                     </div>
                 </div>
+
                 {/* Stats Summary */}
-                <div className="flex gap-6 items-center pr-6">
+                <div className="flex gap-4 md:gap-6 items-center px-4 md:pr-6 pb-2 md:pb-0 justify-around md:justify-end w-full md:w-auto bg-neutral-900 md:bg-transparent">
 
                     {actor.computed?.levelUp && (
-                        <span className="bg-amber-500 text-black px-3 py-1 text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50">
-                            LEVEL UP!
+                        <span className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50">
+                            LVL UP!
                         </span>
                     )}
                     {actor.system?.attributes?.hp && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
-                            <div className="flex items-center gap-1 font-serif font-bold text-2xl">
+                            <div className="flex items-center gap-1 font-serif font-bold text-xl md:text-2xl">
                                 <input
                                     key={actor.system.attributes.hp.value} // Force remount to sync when other tabs update it
                                     type="number"
@@ -170,7 +268,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                             e.currentTarget.blur();
                                         }
                                     }}
-                                    className="w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors"
+                                    className="w-10 md:w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors"
                                 />
                                 <span className="opacity-50">/</span>
                                 <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
@@ -180,40 +278,81 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     {(actor.computed?.ac !== undefined) && (
                         <div className="flex flex-col items-center">
                             <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
-                            <span className="font-serif font-bold text-2xl">{actor.computed.ac}</span>
+                            <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed.ac}</span>
                         </div>
                     )}
 
                     {/* Dice Tray Button */}
                     <button
                         onClick={() => onToggleDiceTray?.()}
-                        className="flex flex-col items-center group -mb-1"
-                        title="Open Dice Tray"
+                        className={`dice-tray-toggle flex flex-col items-center group -mb-1 transition-colors ${isDiceTrayOpen ? 'text-amber-500' : 'text-neutral-500'}`}
+                        title={isDiceTrayOpen ? "Close Dice Tray" : "Open Dice Tray"}
                     >
-                        <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest group-hover:text-amber-500 transition-colors">Roll</span>
-                        <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110">
-                            <svg viewBox="0 0 100 100" className="w-full h-full fill-current text-white group-hover:text-amber-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
-                                <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <text x="50" y="62" fontSize="35" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
-                            </svg>
+                        <span className={`text-[10px] uppercase font-bold tracking-widest transition-colors ${isDiceTrayOpen ? 'text-amber-500' : 'text-neutral-500 group-hover:text-amber-500'}`}>
+                            {isDiceTrayOpen ? 'Close' : 'Roll'}
+                        </span>
+                        <div className={`w-10 h-10 flex items-center justify-center transition-all duration-300 ${isDiceTrayOpen ? 'rotate-90 scale-110' : 'group-hover:scale-110'}`}>
+                            {isDiceTrayOpen ? (
+                                <X className="w-8 h-8 text-amber-500 -rotate-90" />
+                            ) : (
+                                <svg viewBox="0 0 100 100" className="w-full h-full fill-current text-white group-hover:text-amber-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
+                                    <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
+                                    <text x="50" y="62" fontSize="35" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
+                                </svg>
+                            )}
                         </div>
                     </button>
                 </div>
             </div>
 
-            {/* Tabs (Hidden on Mobile) */}
-            <div className="hidden md:flex border-b-2 border-black bg-white overflow-x-auto mb-6 mx-4">
-                {
-                    tabs.map(tab => (
+            {/* Navigation Tabs (Unified) */}
+            <div className="flex border-b-2 border-black bg-white mb-6 mx-0 md:mx-4 sticky top-24 z-20 shadow-sm md:shadow-none overflow-visible">
+                {/* Primary Tabs */}
+                {/* Use w-full and split evenly or just flex? User wanted tabs to show if large enough. */}
+                <div className="flex flex-1 overflow-hidden">
+                    {
+                        primaryTabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => handleTabSelect(tab.id)}
+                                className={`flex-1 py-3 md:py-2 text-xs md:text-sm font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-2 md:px-4 border-r border-black/10 md:border-black last:border-r-0 md:last:border-r-0
+                                ${activeTab === tab.id ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}
+                                `}
+                            >
+                                {tab.label}
+                            </button>
+                        ))
+                    }
+                </div>
+
+                {/* Overflow Menu */}
+                {secondaryTabs.length > 0 && (
+                    <div className="relative border-l-2 border-black flex-none" ref={menuRef}>
                         <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`min-w-[80px] shrink-0 py-2 text-sm font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 border-r border-black last:border-r-0 ${activeTab === tab ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}`}
+                            onClick={() => setMenuOpen(!menuOpen)}
+                            className={`h-full px-4 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs md:text-sm transition-colors
+                                ${menuOpen || secondaryTabs.some(t => t.id === activeTab) ? 'bg-black text-white' : 'hover:bg-neutral-200 text-neutral-600'}`}
                         >
-                            {tab}
+                            <span className="hidden sm:inline">More</span>
+                            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
                         </button>
-                    ))
-                }
+
+                        {menuOpen && (
+                            <div className="absolute top-full right-0 mt-0 w-48 bg-white border-2 border-black shadow-xl z-30 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {secondaryTabs.map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => handleTabSelect(tab.id)}
+                                        className={`w-full text-left px-4 py-3 text-sm font-bold uppercase tracking-widest transition-colors border-b border-neutral-100 last:border-0
+                                            ${activeTab === tab.id ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:bg-neutral-50 hover:text-black'}`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Content Area */}
@@ -321,13 +460,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 }}
                 onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
             />
-
-
-
-            {/* Mobile Bottom Navigation */}
-            <div className="md:hidden">
-                <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} />
-            </div>
         </div >
     );
 }

@@ -222,6 +222,31 @@ export class ShadowdarkImporter {
                 }
             };
 
+            const findGenericIcon = async (keyword: string, type: string = 'Basic'): Promise<string | null> => {
+                log(`[findGenericIcon] Searching for icon with keyword '${keyword}'`);
+                // @ts-ignore
+                for (const pack of game.packs) {
+                    if (pack.metadata.type !== 'Item') continue;
+                    // @ts-ignore
+                    // We can't trust index has img, so we find a match then fetch
+                    const matchIndex = pack.index.find((i: any) =>
+                        i.name.toLowerCase().includes(keyword.toLowerCase()) &&
+                        (!type || i.type.toLowerCase() === type.toLowerCase())
+                    );
+
+                    if (matchIndex) {
+                        try {
+                            const doc = await pack.getDocument(matchIndex._id);
+                            if (doc && doc.img) {
+                                log(`[findGenericIcon] Found icon: ${doc.img} from ${doc.name}`);
+                                return doc.img;
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                }
+                return null;
+            };
+
             const getClassList = async () => {
                 const classes = [];
                 // @ts-ignore
@@ -396,7 +421,66 @@ export class ShadowdarkImporter {
                             if (itemData.system) itemData.system.quantity = g.quantity;
                             gear.push(itemData);
                         } else {
-                            log(`Failed to find: ${g.name}`);
+                            // Manual Error push since we silenced findItem
+                            // FALLBACK: Create Custom Item (e.g. Scrolls)
+                            // If we have enough data, we can create a usable item instead of failing.
+                            if (type === 'basic' || type === 'sundry' || g.type === 'sundry') {
+                                log(`[Gear] Not found in packs. generating custom item: ${g.name}`);
+
+                                const isScroll = g.name.toLowerCase().includes('scroll');
+                                const isPotion = g.name.toLowerCase().includes('potion');
+                                const isWand = g.name.toLowerCase().includes('wand');
+
+                                let img = "icons/containers/beakers/jar-corked-brown.webp"; // Generic sundries backup
+
+                                // Dynamic Icon Lookup
+                                let dynamicIcon = null;
+                                if (isScroll) dynamicIcon = await findGenericIcon('Scroll', 'Basic');
+                                else if (isPotion) dynamicIcon = await findGenericIcon('Potion', 'Basic');
+                                else if (isWand) dynamicIcon = await findGenericIcon('Wand', 'Basic');
+
+                                // Fallback if no dynamic icon found, OR if strictly desired to attempt simple name match?
+                                // If simple name match failed earlier (findItem), we probably won't find it here by name.
+                                // But filtering by "Scroll" keyword generally works.
+
+                                if (dynamicIcon) img = dynamicIcon;
+                                else {
+                                    // Hardcoded modern fallbacks if dynamic fails
+                                    if (isScroll) img = "icons/consumables/scrolls/scroll-runed-blue.webp";
+                                    else if (isPotion) img = "icons/consumables/potions/potion-bottle-corked-blue.webp";
+                                    else if (isWand) img = "icons/tools/wands/wand-wood.webp";
+                                }
+
+                                let desc = `<strong>${g.name}</strong>`;
+                                // Check if we have extras on basic gear? Shadowdarkling basic gear usually doesn't have features unless it's a magic item disguised as sundry.
+                                // But 'g' here comes from json.gear which is sometimes limited.
+                                // If this was triggered from the Magic Items loop (below), we have more data 'm'.
+                                // Wait, this block is for GEAR.
+
+                                gear.push({
+                                    name: g.name,
+                                    type: "Basic",
+                                    img: img,
+                                    system: {
+                                        description: desc,
+                                        stored: false,
+                                        slots: {
+                                            slots_used: g.slots || (isScroll ? 0 : 1),
+                                            per_slot: 1,
+                                            free_carry: 0
+                                        },
+                                        quantity: g.quantity || 1,
+                                        cost: { gp: 0 },
+                                        treasure: false,
+                                        isPhysical: true,
+                                        light: { isSource: false }
+                                    }
+                                });
+                                warnings.push(`Created Custom Gear Item: '${g.name}'`);
+                            } else {
+                                log(`Failed to find: ${g.name}`);
+                                errors.push({ type, name: g.name, error: 'Not found' });
+                            }
                         }
                     }
                 }
@@ -469,8 +553,62 @@ export class ShadowdarkImporter {
                             gear.push(itemData);
                         } else {
                             // Manual Error push since we silenced findItem
-                            log(`Failed to find Magic Item: ${m.name}`);
-                            errors.push({ type, name: m.name, error: 'Not found' });
+                            // FALLBACK: Create Custom Item (e.g. Scrolls)
+                            // If we have enough data, we can create a usable item instead of failing.
+                            if (type === 'basic' || type === 'sundry' || m.itemType === 'sundry') {
+                                log(`[MagicItem] Not found in packs. generating custom item: ${m.name}`);
+
+                                const isScroll = m.name.toLowerCase().includes('scroll');
+                                const isPotion = m.name.toLowerCase().includes('potion');
+                                const isWand = m.name.toLowerCase().includes('wand');
+
+                                let img = "icons/containers/beakers/jar-corked-brown.webp"; // Generic sundries backup
+
+                                // Dynamic Icon Lookup
+                                let dynamicIcon = null;
+                                if (isScroll) dynamicIcon = await findGenericIcon('Scroll', 'Basic');
+                                else if (isPotion) dynamicIcon = await findGenericIcon('Potion', 'Basic');
+                                else if (isWand) dynamicIcon = await findGenericIcon('Wand', 'Basic');
+
+                                if (dynamicIcon) img = dynamicIcon;
+                                else {
+                                    // Hardcoded modern fallbacks if dynamic fails
+                                    if (isScroll) img = "icons/consumables/scrolls/scroll-runed-blue.webp";
+                                    else if (isPotion) img = "icons/consumables/potions/potion-bottle-corked-blue.webp";
+                                    else if (isWand) img = "icons/tools/wands/wand-wood.webp";
+                                }
+
+                                let desc = `<strong>${m.name}</strong>`;
+                                if (m.features) desc += `<br><p>${m.features}</p>`;
+                                if (m.spellDesc) desc += `<br><p><strong>Spell Effect:</strong> ${m.spellDesc}</p>`;
+                                if (m.benefits) desc += `<br><p><strong>Benefits:</strong> ${m.benefits}</p>`;
+                                if (m.curses) desc += `<br><p><strong>Curse:</strong> ${m.curses}</p>`;
+
+                                gear.push({
+                                    name: m.name,
+                                    type: "Basic",
+                                    img: img,
+                                    system: {
+                                        description: desc,
+                                        stored: false,
+                                        slots: {
+                                            slots_used: m.slots || (isScroll ? 0 : 1),
+                                            per_slot: 1,
+                                            free_carry: 0
+                                        },
+                                        quantity: 1,
+                                        cost: { gp: 0 },
+                                        treasure: false,
+                                        isPhysical: true,
+                                        light: { isSource: false }
+                                    }
+                                });
+                                // Don't push error if we successfully handled it
+                                warnings.push(`Created Custom Magic Item: '${m.name}'`);
+                            } else {
+                                log(`Failed to find Magic Item: ${m.name}`);
+                                errors.push({ type, name: m.name, error: 'Not found' });
+                            }
                         }
                     }
                 }

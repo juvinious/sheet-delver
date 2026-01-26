@@ -399,6 +399,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                             onCreateItem={handleCreateItem}
                             onUpdateItem={handleUpdateItem}
                             onToggleDiceTray={toggleDiceTray}
+                            isDiceTrayOpen={isDiceTrayOpen}
                         />
                     </div>
 
