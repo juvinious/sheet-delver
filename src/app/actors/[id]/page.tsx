@@ -256,6 +256,55 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
     };
 
+    const handleCreateItem = async (itemData: any) => {
+        if (!actor) return;
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification(`Created ${itemData.name}`, 'success');
+            } else {
+                addNotification('Failed to create item: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleUpdateItem = async (itemData: any, deletedEffectIds: string[] = []) => {
+        if (!actor) return;
+        try {
+            // 1. Handle Deleted Effects first (if any)
+            if (deletedEffectIds && deletedEffectIds.length > 0) {
+                await Promise.all(deletedEffectIds.map(effId =>
+                    fetch(`/api/actors/${actor.id}/effects?effectId=${effId}`, { method: 'DELETE' })
+                ));
+            }
+
+            // 2. Update Item
+            const res = await fetch(`/api/actors/${actor.id}/items`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification(`Updated ${itemData.name}`, 'success');
+            } else {
+                addNotification('Failed to update item: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
     const handleDeleteEffect = async (effectId: string) => {
         if (!actor) return;
         // Confirmation is handled by UI component now
@@ -350,6 +399,8 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                             onToggleEffect={handleToggleEffect}
                             onDeleteEffect={handleDeleteEffect}
                             onDeleteItem={handleDeleteItem}
+                            onCreateItem={handleCreateItem}
+                            onUpdateItem={handleUpdateItem}
                             onToggleDiceTray={toggleDiceTray}
                         />
                     </div>

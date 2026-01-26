@@ -49,9 +49,16 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
     // Group: Ancestry & Class (talentClass === 'ancestry' || 'class') - Treat 'class' as catch-all if undefined for now
     // Also include Patron and Boons here as requested
     const ancestryClassTalents = allTalents.filter((i: any) => {
-        if (i.type === 'Patron' || i.type === 'Boon') return true;
+        if (i.type === 'Patron') return true;
 
         const tc = i.system?.talentClass?.toLowerCase();
+
+        // Boons must be explicitly linked to Ancestry or Class to appear here
+        // (Generic/Custom Boons appear in Details Tab)
+        if (i.type === 'Boon') {
+            return tc === 'ancestry' || tc === 'class';
+        }
+
         return tc === 'ancestry' || tc === 'class' || !tc || tc === '';
     });
 
@@ -70,8 +77,9 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
             <div className="space-y-2">
                 {items.map((item: any) => {
                     const isExpanded = expandedItems.has(item.id);
+                    const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
                     return (
-                        <div key={item.id} className="bg-white border-black border-2 p-1 shadow-sm group">
+                        <div key={item.id} className={cardStyle}>
                             {/* Header */}
                             <div
                                 className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
@@ -101,8 +109,8 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
                                 </div>
 
                                 {/* Toggle Icon */}
-                                <div className="pr-2">
-                                    <button className="text-neutral-400 hover:text-black transition-colors">
+                                <div className="">
+                                    <button className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-black transition-colors touch-manipulation">
                                         {isExpanded ? (
                                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                                                 <path fillRule="evenodd" d="M14.77 12.79a.75.75 0 01-1.06-.02L10 8.832 6.29 12.77a.75.75 0 11-1.08-1.04l4.25-4.5a.75.75 0 011.08 0l4.25 4.5a.75.75 0 01-.02 1.06z" clipRule="evenodd" />

@@ -564,6 +564,18 @@ export class FoundryClient {
         }, { actorId, effectId });
     }
 
+    async createActorItem(actorId: string, itemData: any) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async ({ actorId, itemData }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            const items = await actor.createEmbeddedDocuments('Item', [itemData]);
+            return items[0] ? items[0].id : null;
+        }, { actorId, itemData });
+    }
+
     async deleteActorItem(actorId: string, itemId: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
@@ -578,6 +590,32 @@ export class FoundryClient {
     }
 
 
+
+    async updateActorItem(actorId: string, itemData: any) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async ({ actorId, itemData }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // @ts-ignore
+            const item = actor.items.get(itemData._id || itemData.id);
+            if (!item) throw new Error('Item not found');
+
+            // Sanitize: Do not update _id
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { _id, id, ...updates } = itemData;
+
+            // Handle Effects Update if embedded in itemData (creating/editing item effects)
+            // If itemData contains 'effects', Foundry's Item update might handle it if it's diffObject?
+            // Usually we need to use `effects: [ ... ]` to strictly set them if replacing.
+            // If `updates` has `effects` array, Foundry will try to update those embedded documents.
+
+            await item.update(updates);
+            return item.id;
+        }, { actorId, itemData });
+    }
 
     async toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay = false) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');

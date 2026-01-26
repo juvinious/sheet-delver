@@ -119,6 +119,8 @@ export class ShadowdarkImporter {
                     }
                 }
 
+
+
                 if (!silent) {
                     log(`[findItem] FAILED to find '${itemName}'`);
                     errors.push({ type, name: itemName, error: 'Not found' });
@@ -175,8 +177,22 @@ export class ShadowdarkImporter {
                     foundTalent = await fromUuid(mBonus[patternStr]);
                 }
 
+                // Fallback: Search by name if mapping failed
+                if (!foundTalent) {
+                    let searchName = bonus.name;
+
+                    // Special Handling: Kobold Knacks
+                    if (searchName === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
+                        searchName = 'Knack (Luck)';
+                    }
+
+                    log(`[findTalent] Mapping failed for '${bonus.name}', trying dynamic search for '${searchName}'...`);
+                    // Try Talent, then Feature (some systems use Feature for racial abilities)
+                    foundTalent = await findItem(searchName, 'Talent', true) || await findItem(searchName, 'Feature', true);
+                }
+
                 if (foundTalent) {
-                    log(`[findTalent] Found mapped talent: ${foundTalent.name}`);
+                    log(`[findTalent] Found talent: ${foundTalent.name}`);
                     foundTalent = foundTalent.toObject();
                     // Customize
                     if (foundTalent.system.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
@@ -278,8 +294,16 @@ export class ShadowdarkImporter {
                 if (deity) actorData.system.deity = deity.uuid;
 
                 // Patron (For Warlocks etc)
-                if (json.patron) {
-                    const patron = await findItem(json.patron, "Patron");
+                let patronName = json.patron;
+                if (!patronName && json.bonuses) {
+                    const patronBonus = json.bonuses.find((b: any) => b.sourceCategory === 'Patron' && b.name === 'Patron');
+                    if (patronBonus) {
+                        patronName = patronBonus.bonusTo;
+                    }
+                }
+
+                if (patronName) {
+                    const patron = await findItem(patronName, "Patron");
                     if (patron) actorData.system.patron = patron.uuid;
                 }
 
@@ -300,6 +324,9 @@ export class ShadowdarkImporter {
                     actorData.system.class = classObj.uuid;
 
                     // Class Abilities
+                    // NOTE: Disabled explicit expansion because 'bonuses' array usually contains these,
+                    // and duplications occur if we add them here.
+                    /*
                     if (classObj.system?.classAbilities) {
                         for (const uuid of classObj.system.classAbilities) {
                             // @ts-ignore
@@ -307,6 +334,7 @@ export class ShadowdarkImporter {
                             if (item) classAbilities.push(item.toObject());
                         }
                     }
+                    */
 
                     // Starting Spells
                     if (classObj.system?.startingSpells) {
@@ -318,6 +346,7 @@ export class ShadowdarkImporter {
                     }
 
                     // Fixed Class Talents
+                    /*
                     if (classObj.system?.talents) {
                         for (const uuid of classObj.system.talents) {
                             // @ts-ignore
@@ -332,9 +361,11 @@ export class ShadowdarkImporter {
                             }
                         }
                     }
+                    */
                 }
 
                 // Fixed Ancestry Talents
+                /*
                 if (ancestry && ancestry.system?.talents) {
                     for (const uuid of ancestry.system.talents) {
                         // @ts-ignore
@@ -347,6 +378,7 @@ export class ShadowdarkImporter {
                         }
                     }
                 }
+                */
 
 
                 // 3. Gear
@@ -450,6 +482,7 @@ export class ShadowdarkImporter {
                         if (/^ExtraLanguage:/.test(bonus.name)) continue;
                         if (/^ExtraLanguageManual:/.test(bonus.name)) continue;
                         if (/^GrantSpecialTalent:/.test(bonus.name)) continue;
+                        if (bonus.sourceCategory === 'Patron' && bonus.name === 'Patron') continue; // Handled in Actor Setup
                         // @ts-ignore
                         if (mapping.ignoreTalents?.includes(bonus.name)) continue;
 

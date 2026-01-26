@@ -104,7 +104,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                     const lost = isLost(spell);
 
                                     return (
-                                        <div key={spell.id} className="bg-white border-black border-2 p-1 shadow-sm group">
+                                        <div key={spell.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
                                             {/* Header */}
                                             <div
                                                 className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
@@ -151,7 +151,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                     <span className="text-sm font-serif w-20 text-center truncate">{spell.system?.range || 'Close'}</span>
 
                                                     {/* Actions */}
-                                                    <div className="flex gap-2 pl-2 items-center justify-end w-16">
+                                                    <div className="flex gap-2 pl-2 items-center justify-end w-24">
                                                         {/* Cast Button */}
                                                         <button
                                                             onClick={(e) => {
@@ -162,11 +162,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                                 }
                                                             }}
                                                             disabled={lost}
-                                                            className={`w-7 h-7 flex items-center justify-center rounded-full transition-all shadow-sm ${lost ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed opacity-50' : 'bg-black text-white hover:bg-neutral-800 hover:scale-110'}`}
+                                                            className={`w-10 h-10 flex items-center justify-center rounded-full transition-all shadow-sm touch-manipulation ${lost ? 'bg-neutral-300 text-neutral-500 cursor-not-allowed opacity-50' : 'bg-black text-white hover:bg-neutral-800 hover:scale-110'}`}
                                                             title={lost ? "Spell Lost" : "Cast Spell"}
                                                         >
                                                             {/* Magical Sparkles Icon */}
-                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                                                                 <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5zM6.375 18a.75.75 0 01.721.544l.279.91a1.5 1.5 0 00.957.957l.91.279a.75.75 0 010 1.425l-.91.279a1.5 1.5 0 00-.957.957l-.279.91a.75.75 0 01-1.425 0l-.279-.91a1.5 1.5 0 00-.957-.957l-.91-.279a.75.75 0 010-1.425l.91-.279a1.5 1.5 0 00.957-.957l.279-.91A.75.75 0 016.375 18zm13.5-4.5a.75.75 0 01.721.544l.279.91a1.5 1.5 0 00.957.957l.91.279a.75.75 0 010 1.425l-.91.279a1.5 1.5 0 00-.957.957l-.279.91a.75.75 0 01-1.425 0l-.279-.91a1.5 1.5 0 00-.957-.957l-.91-.279a.75.75 0 010-1.425l.91-.279a1.5 1.5 0 00.957-.957l.279-.91a.75.75 0 01.721-.544z" clipRule="evenodd" />
                                                             </svg>
                                                         </button>
@@ -178,15 +178,15 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                                 e.stopPropagation();
                                                                 handleLostToggle(spell.id, !!lost);
                                                             }}
-                                                            className={`w-7 h-7 flex items-center justify-center rounded-full border transition-all hover:scale-110 shadow-sm ${lost ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black'}`}
+                                                            className={`w-10 h-10 flex items-center justify-center rounded-full border transition-all hover:scale-110 shadow-sm touch-manipulation ${lost ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black'}`}
                                                             title={lost ? "Restore Spell" : "Mark as Lost"}
                                                         >
                                                             {lost ? (
-                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
                                                                 </svg>
                                                             ) : (
-                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                                                                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                                                                 </svg>
                                                             )}
@@ -249,7 +249,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type)).map((item: any) => {
                         const isExpanded = expandedItems.has(item.id);
                         return (
-                            <div key={item.id} className="bg-white border-black border-2 p-1 shadow-sm group">
+                            <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
                                 {/* Header */}
                                 <div
                                     className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
@@ -269,7 +269,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                             e.stopPropagation();
                                             triggerRollDialog('item', item.id);
                                         }}
-                                        className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center transition-all hover:scale-110 shadow-sm"
+                                        className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center transition-all hover:scale-110 shadow-sm touch-manipulation"
                                         title="Use Item"
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">

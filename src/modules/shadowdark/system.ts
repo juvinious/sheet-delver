@@ -80,7 +80,14 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         type: i.type,
                         img: resolveUrl(i.img),
                         system: (typeof i.system?.toObject === 'function' ? i.system.toObject() : i.system) || {},
-                        uuid: `Actor.${actorId}.Item.${i.id}`
+                        uuid: `Actor.${actorId}.Item.${i.id}`,
+                        effects: i.effects ? Array.from(i.effects).map((e: any) => ({
+                            _id: e.id,
+                            name: e.name,
+                            changes: e.changes,
+                            disabled: e.disabled,
+                            icon: e.icon
+                        })) : []
                     };
 
                     // Calculate slot usage for physical items
@@ -280,7 +287,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     // @ts-ignore
                     currentUser: window.game.user ? window.game.user.name : 'Unknown',
                     // @ts-ignore
-                    systemConfig: window.game.shadowdark?.config || {}
+                    systemConfig: window.game.shadowdark?.config || window.game.system?.config || {}
                 };
             } catch (err: any) {
                 return { error: err.message, stack: err.stack, state: document.readyState };
@@ -311,8 +318,19 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 deities: [] as any[],
                 patrons: [] as any[],
                 spells: [] as any[],
-                titles: {}
+                titles: {},
+                PREDEFINED_EFFECTS: {}
             };
+
+            // @ts-ignore
+            const sdConfig = (typeof CONFIG !== 'undefined' ? CONFIG.SHADOWDARK : null) || window.game?.shadowdark?.config;
+
+            console.log('[DEBUG] SD Config found:', !!sdConfig);
+
+            if (sdConfig?.PREDEFINED_EFFECTS) {
+                // @ts-ignore
+                results.PREDEFINED_EFFECTS = sdConfig.PREDEFINED_EFFECTS;
+            }
 
             for (const pack of packs) {
                 // @ts-ignore
@@ -456,8 +474,127 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     // ... existing normalizeActorData below ...
 
+    // --- Active Effect Application ---
+    private applyEffects(actor: any, systemData: any) {
+        const effects = actor.effects || [];
+        if (!effects.length) return;
+
+        // Constants for Effect Modes
+        const MODES = {
+            CUSTOM: 0,
+            MULTIPLY: 1,
+            ADD: 2,
+            DOWNGRADE: 3,
+            UPGRADE: 4,
+            OVERRIDE: 5
+        };
+
+        // Helper to get nested property
+        const getProperty = (obj: any, path: string) => {
+            return path.split('.').reduce((prev, curr) => prev ? prev[curr] : undefined, obj);
+        };
+
+        // Helper to set nested property
+        const setProperty = (obj: any, path: string, value: any) => {
+            const parts = path.split('.');
+            let current = obj;
+            for (let i = 0; i < parts.length - 1; i++) {
+                if (!current[parts[i]]) current[parts[i]] = {};
+                current = current[parts[i]];
+            }
+            current[parts[parts.length - 1]] = value;
+        };
+
+        // Sort effects? Usually unnecessary for simple stats unless priority matters.
+        // Apply effects
+        for (const effect of effects) {
+            if (effect.disabled) continue;
+
+            const changes = effect.changes || [];
+            for (const change of changes) {
+                const { key, value, mode } = change;
+                if (!key) continue;
+
+                // Handle "system." prefix being optional or distinct based on how the sheet treats it.
+                // In Foundry, "system.abilities.str" is common. 
+                // Our `systemData` IS the `system` object, so we strip "system." from the key if present.
+                let path = key;
+                if (path.startsWith('system.')) {
+                    path = path.substring(7);
+                }
+
+                // Handle Shorthands (Shadowdark Specific)
+                const SHORTHANDS: Record<string, string> = {
+                    'str.bonus': 'abilities.str.bonus',
+                    'dex.bonus': 'abilities.dex.bonus',
+                    'con.bonus': 'abilities.con.bonus',
+                    'int.bonus': 'abilities.int.bonus',
+                    'wis.bonus': 'abilities.wis.bonus',
+                    'cha.bonus': 'abilities.cha.bonus',
+                    'str.value': 'abilities.str.value',
+                    'dex.value': 'abilities.dex.value',
+                    'con.value': 'abilities.con.value',
+                    'int.value': 'abilities.int.value',
+                    'wis.value': 'abilities.wis.value',
+                    'cha.value': 'abilities.cha.value',
+                    'hp.max': 'attributes.hp.max',
+                    'hp.bonus': 'attributes.hp.bonus'
+                };
+
+                if (SHORTHANDS[path]) {
+                    path = SHORTHANDS[path];
+                }
+
+                const currentVal = Number(getProperty(systemData, path)) || 0;
+                let changeVal = Number(value) || 0;
+                // NOTE: `value` could be a formula in Foundry (e.g. "@abilities.str.mod").
+                // Evaluating strings is dangerous/complex without a full parser. 
+                // For now, we support numeric literals. If NaN, we skip (or try strict string for Override).
+
+                if (isNaN(changeVal) && mode !== MODES.OVERRIDE) {
+                    // Try to parse basic string? Or just simple check?
+                    // If value is "1", Number("1") works. 
+                    // If value is "@something", Number is NaN.
+                    // We will safely ignore complex formulas for now to prevent crashes.
+                    continue;
+                }
+
+                let finalVal = currentVal;
+
+                switch (Number(mode)) {
+                    case MODES.ADD:
+                        finalVal = currentVal + changeVal;
+                        break;
+                    case MODES.MULTIPLY:
+                        finalVal = currentVal * changeVal;
+                        break;
+                    case MODES.OVERRIDE:
+                        // Allow string overrides
+                        finalVal = isNaN(changeVal) ? value : changeVal;
+                        break;
+                    case MODES.UPGRADE:
+                        finalVal = Math.max(currentVal, changeVal);
+                        break;
+                    case MODES.DOWNGRADE:
+                        finalVal = Math.min(currentVal, changeVal);
+                        break;
+                }
+
+                console.log(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
+                setProperty(systemData, path, finalVal);
+            }
+        }
+    }
+
     normalizeActorData(actor: any): ActorSheetData {
-        const s = actor.system;
+        // Clone system data to apply effects without mutating raw data
+        const s = typeof structuredClone === 'function'
+            ? structuredClone(actor.system)
+            : JSON.parse(JSON.stringify(actor.system));
+
+        // Apply Active Effects to the cloned system data
+        // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true
+
         const classItem = (actor.items || []).find((i: any) => i.type === 'Class');
 
         // Shadowdark Schema:
@@ -470,10 +607,18 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
         // Helper to ensure modifiers are calculated
         const ensureMod = (stat: any) => {
-            if (!stat) return { value: 10, mod: 0, base: 10 };
-            const val = Number(stat.value ?? stat.base ?? 10);
+            if (!stat) return { value: 10, mod: 0, base: 10, bonus: 0 };
+
+            // Recalculate value from base + bonus to ensure effects are applied
+            // If value is present (from Foundry prep), trust it. Otherwise calc from base + bonus.
+            let val = Number(stat.value);
+            if (isNaN(val)) {
+                val = Number(stat.base || 10) + Number(stat.bonus || 0);
+            }
+
             const mod = Math.floor((val - 10) / 2);
-            return { ...stat, value: val, mod, base: val };
+            // Return raw props but ensure value/mod are synced
+            return { ...stat, value: val, mod };
         };
 
         const abilities: any = {};

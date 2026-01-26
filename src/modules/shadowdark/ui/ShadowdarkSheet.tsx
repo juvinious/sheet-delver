@@ -28,10 +28,12 @@ interface ShadowdarkSheetProps {
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem?: (itemId: string) => void;
+    onCreateItem?: (itemData: any) => Promise<void>;
+    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
     onToggleDiceTray?: () => void;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onToggleDiceTray }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray }: ShadowdarkSheetProps) {
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
 
@@ -216,6 +218,10 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                         systemData={systemData}
                         onUpdate={onUpdate}
                         foundryUrl={foundryUrl}
+                        onCreateItem={onCreateItem}
+                        onUpdateItem={onUpdateItem}
+                        onDeleteItem={onDeleteItem}
+                        onToggleEffect={onToggleEffect}
                     />
                 )
                 }

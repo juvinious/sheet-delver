@@ -14,7 +14,7 @@ interface AbilitiesTabProps {
 export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: AbilitiesTabProps) {
 
     // Common container style for standard sheet feel
-    const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-sm relative";
+    const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
 
     // Optimistic Logic
     const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
@@ -137,7 +137,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         <button className="text-neutral-400 hover:text-white"><i className="fas fa-pen text-xs"></i></button>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                        {Object.entries(actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
+                        {Object.entries(actor.attributes || actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
                             <div key={key}
                                 className="flex flex-col items-center bg-neutral-100 border-2 border-neutral-300 rounded cursor-pointer transition-all hover:border-black hover:bg-white hover:scale-105 active:scale-95 group overflow-hidden"
                                 onClick={() => triggerRollDialog('ability', key)}>
@@ -145,7 +145,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                     <span className="font-bold text-xs uppercase tracking-widest text-neutral-600 group-hover:text-white transition-colors">{key}</span>
                                 </div>
                                 <div className="flex flex-col items-center py-2">
-                                    <span className="font-serif text-2xl font-bold leading-none mb-1 text-black">{stat.base}</span>
+                                    <span className="font-serif text-2xl font-bold leading-none mb-1 text-black">{stat.value}</span>
                                     <span className="text-neutral-500 text-xs font-serif font-bold">
                                         ({stat.mod >= 0 ? '+' : ''}{stat.mod})
                                     </span>
