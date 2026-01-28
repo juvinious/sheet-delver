@@ -409,13 +409,18 @@ export default function Generator() {
             // 1. Pick Core Options
             const anc = rand(systemData.ancestries);
             const bg = rand(systemData.backgrounds);
-            const cls = !formData.level0 ? rand(systemData.classes) : null;
+            let cls = null;
+            if (!formData.level0) {
+                cls = rand(systemData.classes);
+            } else {
+                cls = systemData.classes?.find((c: any) => c.name === "Level 0") || null;
+            }
+
             const deity = rand(systemData.deities);
 
             const newAncestry = anc?.uuid || '';
             const newBackground = bg?.uuid || '';
-            // Only pick class if NOT level 0 (or if user wants to pre-select for L1)
-            const newClass = !formData.level0 ? (cls?.uuid || '') : '';
+            const newClass = cls?.uuid || '';
             const newAlignment = rand(['lawful', 'neutral', 'chaotic']);
             const newDeity = deity?.uuid || '';
 
@@ -605,8 +610,11 @@ export default function Generator() {
             // Let's leave it blank to force choice, OR pick random if they hit random.
         }
         // If switching TO Level 0, clear class?
-        if (formData.level0 && formData.class) {
-            setFormData(prev => ({ ...prev, class: '' }));
+        if (formData.level0 && systemData?.classes) {
+            const level0Class = systemData.classes.find((c: any) => c.name === "Level 0");
+            if (level0Class && formData.class !== level0Class.uuid) {
+                setFormData(prev => ({ ...prev, class: level0Class.uuid }));
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData.level0, systemData]);
@@ -2066,6 +2074,9 @@ export default function Generator() {
                 {/* Level Up Modal */}
                 {showLevelUp && !formData.level0 && classDetails && (
                     <LevelUpModal
+                        actorId=""
+                        currentLevel={0}
+                        targetLevel={1}
                         ancestry={ancestryDetails}
                         classObj={classDetails}
                         classUuid={formData.class}
@@ -2073,9 +2084,16 @@ export default function Generator() {
                         abilities={formData.stats}
                         foundryUrl={foundryUrl}
                         spells={systemData?.spells || []}
-                        onComplete={(items) => {
+                        onComplete={(data) => {
                             setShowLevelUp(false);
-                            createCharacter(items);
+                            // Merge the modal's HP roll if valid, otherwise keep generator's
+                            // Actually Generator calculated HP already, but Modal might re-roll it? 
+                            // If modal returns hpRoll, we should probably prefer it? 
+                            // But CreateCharacter takes items. We store HP in formData.
+                            // We need to update formData.hp? 
+                            // Or just accept items.
+                            // For now, simple fix for type error:
+                            createCharacter(data.items);
                         }}
                         onCancel={() => {
                             setShowLevelUp(false);

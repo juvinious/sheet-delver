@@ -15,13 +15,42 @@ async function handler(request: Request, { params }: { params: Promise<{ systemI
     }
 
     // 2. Resolve Route Handler
-    if (!sysModule.apiRoutes || !sysModule.apiRoutes[routePath]) {
+    // Helper to match route pattern (e.g. "actors/[id]/level-up/roll-hp") against actual path segments
+    const matchRoute = (pattern: string, actualSegments: string[]) => {
+        const patternSegments = pattern.split('/');
+        if (patternSegments.length !== actualSegments.length) return false;
+
+        for (let i = 0; i < patternSegments.length; i++) {
+            const p = patternSegments[i];
+            const a = actualSegments[i];
+            if (p.startsWith('[') && p.endsWith(']')) continue; // Wildcard
+            if (p !== a) return false;
+        }
+        return true;
+    };
+
+    let matchedPattern: string | null = null;
+
+    // Direct match check first
+    if (sysModule.apiRoutes && sysModule.apiRoutes[routePath]) {
+        matchedPattern = routePath;
+    } else if (sysModule.apiRoutes) {
+        // Iterate to find dynamic match
+        for (const pattern of Object.keys(sysModule.apiRoutes)) {
+            if (matchRoute(pattern, route)) {
+                matchedPattern = pattern;
+                break;
+            }
+        }
+    }
+
+    if (!matchedPattern || !sysModule.apiRoutes || !sysModule.apiRoutes[matchedPattern]) {
         return NextResponse.json({ error: `Route '${routePath}' not found in system '${systemId}'` }, { status: 404 });
     }
 
     // 3. Execute Handler
     try {
-        const handlerFn = sysModule.apiRoutes[routePath];
+        const handlerFn = sysModule.apiRoutes[matchedPattern];
         return await handlerFn(request, { params });
     } catch (e: any) {
         console.error(`[API] Module Error (${systemId}/${routePath}):`, e);

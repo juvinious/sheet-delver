@@ -212,20 +212,21 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                 type="number"
                                 defaultValue={actor.system?.level?.xp || 0}
                                 min={0}
-                                max={10}
+                                max={(actor.system?.level?.value || 1) * 10}
                                 disabled={!actor.system?.level?.value || actor.system.level.value === 0}
                                 onBlur={(e) => {
+                                    const nextXP = (actor.system?.level?.value || 1) * 10;
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
                                     if (val < 0) val = 0;
-                                    if (val > 10) val = 10;
+                                    if (val > nextXP) val = nextXP;
                                     if (val.toString() !== e.target.value) e.target.value = val.toString();
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
                                 className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent`}
                             />
                             <span className="text-neutral-400">/</span>
-                            <span>{actor.system?.level?.next ?? 10}</span>
+                            <span>{(actor.system?.level?.value || 1) * 10}</span>
                         </div>
                     </div>
 

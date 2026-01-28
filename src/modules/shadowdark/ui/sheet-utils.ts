@@ -109,6 +109,27 @@ export const resolveEntityName = (value: string, actor: any, systemData: any, co
     return value;
 };
 
+/**
+ * Resolves a value (Name or UUID) to a Canonical UUID from the system data.
+ * Used for fetching the full Compendium Item when all we have is a Name.
+ */
+export const resolveEntityUuid = (value: string, systemData: any, collectionName: string): string => {
+    if (!value) return '';
+
+    // 1. If it looks like a Uuid (contains dot and is long), return it.
+    // Shadowdark UUIDs are often "Compendium.system.pack.ID".
+    if (value.includes('.') && value.length > 16) return value;
+
+    // 2. Look it up in system Data by name
+    if (systemData && systemData[collectionName]) {
+        // Try exact match on name, or match on ID
+        const sysObj = systemData[collectionName].find((c: any) => c.name === value || c.uuid === value || c._id === value);
+        if (sysObj) return sysObj.uuid;
+    }
+
+    return value;
+};
+
 export const calculateSpellBonus = (actor: any): number => {
     if (!actor || !actor.system) return 0;
 
@@ -119,4 +140,29 @@ export const calculateSpellBonus = (actor: any): number => {
     bonus += Number(actor.system.bonuses?.spellcastingCheckBonus) || 0;
 
     return bonus;
+};
+
+/**
+ * Calculate XP required to reach a given level.
+ * Formula: level * 10
+ */
+export const calculateXPForLevel = (level: number): number => {
+    return level * 10;
+};
+
+/**
+ * Calculate XP carryover after leveling up.
+ * Excess XP carries over to next level (except from level 0).
+ */
+export const calculateXPCarryover = (currentXP: number, currentLevel: number): number => {
+    if (currentLevel === 0) return 0;
+    return currentXP - (currentLevel * 10);
+};
+
+/**
+ * Determine if a character gains a talent at the target level.
+ * Talents are gained on odd levels (1, 3, 5, 7, 9).
+ */
+export const shouldGainTalent = (targetLevel: number): boolean => {
+    return targetLevel % 2 !== 0;
 };

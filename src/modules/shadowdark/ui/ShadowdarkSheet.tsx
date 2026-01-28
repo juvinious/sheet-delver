@@ -3,8 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import RollDialog from '@/components/RollDialog';
 import LoadingModal from '@/components/LoadingModal';
+import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage, resolveEntityName, calculateSpellBonus } from './sheet-utils';
+import { resolveImage, resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { Menu, X } from 'lucide-react';
 
 // Sub-components
@@ -15,6 +16,7 @@ import AbilitiesTab from './AbilitiesTab';
 import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
+import { LevelUpModal } from './components/LevelUpModal';
 
 // Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
@@ -41,7 +43,9 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const [systemData, setSystemData] = useState<any>(null);
     const [loadingSystem, setLoadingSystem] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const { notifications, addNotification, removeNotification } = useNotifications();
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -241,9 +245,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 <div className="flex gap-4 md:gap-6 items-center px-4 md:pr-6 pb-2 md:pb-0 justify-around md:justify-end w-full md:w-auto bg-neutral-900 md:bg-transparent">
 
                     {actor.computed?.levelUp && (
-                        <span className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50">
+                        <button
+                            onClick={() => setShowLevelUpModal(true)}
+                            className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
+                        >
                             LVL UP!
-                        </span>
+                        </button>
                     )}
                     {actor.system?.attributes?.hp && (
                         <div className="flex flex-col items-center">
@@ -460,6 +467,54 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                 }}
                 onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
             />
+
+            {/* Level-Up Modal */}
+            {showLevelUpModal && actor.computed?.levelUp && (
+                <LevelUpModal
+                    actorId={actor._id || actor.id}
+                    currentLevel={actor.system?.level?.value || 0}
+                    targetLevel={(actor.system?.level?.value || 0) + 1}
+                    ancestry={actor.system?.ancestry}
+                    classObj={actor.classDetails}
+                    classUuid={resolveEntityUuid(actor.system?.class || '', systemData, 'classes')}
+                    patron={actor.patronDetails}
+                    abilities={actor.system?.abilities}
+                    spells={actor.items?.filter((i: any) => i.type === 'Spell') || []}
+                    availableClasses={systemData?.classes || []}
+                    foundryUrl={foundryUrl}
+                    onComplete={async (data) => {
+                        try {
+                            // Update Gold if rerolled (Level 0)
+                            if (typeof data.gold === 'number' && data.gold >= 0) {
+                                await onUpdate('system.coins.gp', data.gold);
+                            }
+
+                            const id = actor._id || actor.id;
+                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    hpRoll: data.hpRoll,
+                                    items: data.items
+                                })
+                            });
+                            const result = await res.json();
+                            if (result.success) {
+                                setShowLevelUpModal(false);
+                                addNotification('Level Up Successful! Refreshing...', 'success');
+                                setTimeout(() => window.location.reload(), 1500);
+                            } else {
+                                addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
+                            }
+                        } catch (e: any) {
+                            console.error('Level-up error:', e);
+                            addNotification('Level-up failed: ' + e.message, 'error');
+                        }
+                    }}
+                    onCancel={() => setShowLevelUpModal(false)}
+                />
+            )}
+            <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
         </div >
     );
 }
