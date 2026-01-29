@@ -487,6 +487,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     abilities={actor.system?.abilities}
                     spells={actor.items?.filter((i: any) => i.type === 'Spell') || []}
                     availableClasses={systemData?.classes || []}
+                    availableLanguages={systemData?.languages || []}
                     foundryUrl={foundryUrl}
                     onComplete={async (data) => {
                         try {

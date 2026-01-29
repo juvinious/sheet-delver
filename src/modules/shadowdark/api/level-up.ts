@@ -290,9 +290,26 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                 newXP = currentXP - (currentLevel * 10);
             }
 
+            let createdItems: any[] = [];
+
             // Add items first (they may include HP/CON bonuses)
             if (items && items.length > 0) {
-                await actor.createEmbeddedDocuments('Item', items);
+                console.log('[API] Finalize Items:', items.map((i: any) => `${i.name} (${i.type})`));
+
+                // If we are adding a Class, remove any existing Class items first (e.g. replacing Level 0)
+                const newClassItem = items.find((i: any) => i.type?.toLowerCase() === 'class');
+                if (newClassItem) {
+                    console.log('[API] New Class detected, removing existing classes...');
+                    const existingClasses = actor.items.filter((i: any) => i.type?.toLowerCase() === 'class');
+                    console.log('[API] Existing Classes found:', existingClasses.map((i: any) => i.name));
+
+                    if (existingClasses.length > 0) {
+                        const idsToDelete = existingClasses.map((i: any) => i.id);
+                        await actor.deleteEmbeddedDocuments('Item', idsToDelete);
+                    }
+                }
+
+                createdItems = await actor.createEmbeddedDocuments('Item', items);
             }
 
             // Calculate new HP
@@ -318,15 +335,32 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                 itemsGained: itemNames,
             };
 
-            // Update actor
-            await actor.update({
+            // Update system links (Class, Patron) to point to the new items
+            const newClass = createdItems.find((i: any) => i.type?.toLowerCase() === 'class');
+            const newPatron = createdItems.find((i: any) => i.type?.toLowerCase() === 'patron');
+
+            const updates: any = {
                 'system.attributes.hp.base': newBaseHP,
                 'system.attributes.hp.max': newMaxHP,
                 'system.attributes.hp.value': newValueHP,
                 'system.auditLog': auditLog,
                 'system.level.value': targetLevel,
                 'system.level.xp': newXP,
-            });
+            };
+
+            if (newClass) {
+                // Ensure we have a valid UUID for the link
+                const classUuid = newClass.uuid || `Actor.${actor.id}.Item.${newClass.id || newClass._id}`;
+                console.log('[API] Linking new Class:', newClass.name, classUuid);
+                updates['system.class'] = classUuid;
+            }
+            if (newPatron) {
+                const patronUuid = newPatron.uuid || `Actor.${actor.id}.Item.${newPatron.id || newPatron._id}`;
+                console.log('[API] Linking new Patron:', newPatron.name, patronUuid);
+                updates['system.patron'] = patronUuid;
+            }
+
+            await actor.update(updates);
 
             return {
                 success: true,

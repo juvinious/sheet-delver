@@ -13,6 +13,7 @@ interface Props {
     abilities: any;
     spells: any[];
     availableClasses?: any[];
+    availableLanguages?: any[];
     onComplete: (data: { items: any[], hpRoll: number, gold?: number }) => void;
     onCancel: () => void;
     foundryUrl?: string;
@@ -57,6 +58,7 @@ export const LevelUpModal = ({
     abilities: _abilities,
     spells,
     availableClasses = [],
+    availableLanguages = [],
     onComplete,
     onCancel,
     foundryUrl = ""
@@ -72,6 +74,20 @@ export const LevelUpModal = ({
     const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>("");
     const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
     const [loadingPatrons, setLoadingPatrons] = useState(false);
+
+    // Language Selection State
+    const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]); // UUIDs of selected
+    const [fixedLanguages, setFixedLanguages] = useState<string[]>([]); // UUIDs of fixed
+    const [knownLanguages, setKnownLanguages] = useState<any[]>([]); // Objects of existing languages
+
+
+    interface LanguageGroup {
+        id: string; // 'select' | 'common' | 'rare'
+        label: string;
+        count: number;
+        options?: string[]; // If restricted options
+    }
+    const [languageGroups, setLanguageGroups] = useState<LanguageGroup[]>([]);
 
     // Data
     const [talentTable, setTalentTable] = useState<any>(null);
@@ -124,6 +140,11 @@ export const LevelUpModal = ({
 
         // Let's stick to our `rolledTalents` array.
         // If `requiredTalents > 0`, we need that many.
+
+
+        // Check Languages
+        const totalRequired = languageGroups.reduce((a, b) => a + b.count, 0);
+        if (selectedLanguages.length < totalRequired) return false; // Simple count check for now
 
         let spellsMet = true;
         if (isSpellcaster && spellsToChooseTotal > 0) {
@@ -431,44 +452,94 @@ export const LevelUpModal = ({
         setLoading(false);
     };
 
-    // Initialize
+    // Parse Language Requirements when Class Changes
     useEffect(() => {
-        const fetchLevelUpData = async (classUuidOverride?: string) => {
-            if (!actorId && !classUuidOverride) {
-                return;
+        if (!activeClassObj) return;
+
+        console.log("LevelUpModal: Parsing Languages for", activeClassObj.name, activeClassObj);
+        const langData = activeClassObj.system?.languages || activeClassObj.languages || {};
+        const fixed = langData.fixed || [];
+        setFixedLanguages(fixed);
+
+        const groups: LanguageGroup[] = [];
+
+        // 1. Specific Select Options
+        if (langData.select > 0) {
+            groups.push({
+                id: 'select',
+                label: 'Languages', // Generic label, or "Select Languages"
+                count: langData.select,
+                options: langData.selectOptions || []
+            });
+        }
+
+        // 2. Common Languages
+        if (langData.common > 0) {
+            groups.push({
+                id: 'common',
+                label: 'Common Languages',
+                count: langData.common
+            });
+        }
+
+        // 3. Rare Languages
+        if (langData.rare > 0) {
+            groups.push({
+                id: 'rare',
+                label: 'Rare Languages',
+                count: langData.rare
+            });
+        }
+
+        setLanguageGroups(groups);
+        setSelectedLanguages([]); // Reset manual selections on class change
+
+    }, [activeClassObj]);
+
+
+
+    useEffect(() => {
+        fetchLevelUpData();
+    }, [actorId, targetLevel, classUuid]); // Re-fetch if fundamentals change
+
+    const fetchLevelUpData = async (classUuidOverride?: string) => {
+        if (!actorId && !classUuidOverride) {
+            return;
+        }
+
+        try {
+            let url = `/api/modules/shadowdark/actors/${actorId}/level-up/data`;
+            if (classUuidOverride) {
+                url += `?classId=${encodeURIComponent(classUuidOverride)}`;
+            }
+            if (!actorId) {
+                url = `/api/modules/shadowdark/actors/level-up/data?classId=${encodeURIComponent(classUuidOverride!)}`;
             }
 
-            try {
-                let url = `/api/modules/shadowdark/actors/${actorId}/level-up/data`;
-                if (classUuidOverride) {
-                    url += `?classId=${encodeURIComponent(classUuidOverride)}`;
-                }
-                if (!actorId) {
-                    url = `/api/modules/shadowdark/actors/level-up/data?classId=${encodeURIComponent(classUuidOverride!)}`;
-                }
+            const res = await fetch(url, { cache: 'no-store' });
+            const json = await res.json();
 
-                const res = await fetch(url, { cache: 'no-store' });
-                const json = await res.json();
-
-                if (json.success && json.data) {
-                    const apiData = json.data;
-                    if (apiData.isSpellcaster !== undefined) {
-                        setIsSpellcaster(apiData.isSpellcaster);
-                    }
-                    if (apiData.availableSpells) {
-                        setAvailableSpells(apiData.availableSpells);
-                    }
-                    if (apiData.spellsToChoose) {
-                        setSpellsToChoose(apiData.spellsToChoose);
-                        const total = Object.values(apiData.spellsToChoose as Record<number, number>).reduce((a, b) => a + b, 0);
-                        setSpellsToChooseTotal(total);
-                    }
+            if (json.success && json.data) {
+                const apiData = json.data;
+                if (apiData.isSpellcaster !== undefined) {
+                    setIsSpellcaster(apiData.isSpellcaster);
                 }
-            } catch (e) {
-                console.error("Failed to fetch level up data", e);
+                if (apiData.availableSpells) {
+                    setAvailableSpells(apiData.availableSpells);
+                }
+                if (apiData.spellsToChoose) {
+                    setSpellsToChoose(apiData.spellsToChoose);
+                    const total = Object.values(apiData.spellsToChoose as Record<number, number>).reduce((a, b) => a + b, 0);
+                    setSpellsToChooseTotal(total);
+                }
             }
-        };
+        } catch (e) {
+            console.error("Failed to fetch level up data", e);
+        }
+    };
 
+    // Initialize Class Data
+    useEffect(() => {
         const init = async () => {
             try {
                 // Don't run init if no class is selected yet
@@ -487,7 +558,15 @@ export const LevelUpModal = ({
                 if (targetClassUuid && targetClassUuid !== (activeClassObj?.uuid || classUuid)) {
                     effectiveClassUuid = targetClassUuid; // Optimistic assignment
                     try {
-                        const cls = await fetchDocument(targetClassUuid);
+                        let fetchUuid = targetClassUuid;
+                        // Check if it's a short ID and try to find it in availableClasses to get context
+                        const targetClassFromList = availableClasses.find((c: any) => (c.uuid === targetClassUuid) || (c._id === targetClassUuid));
+                        if (targetClassFromList) {
+                            if (targetClassFromList.pack) fetchUuid = `Compendium.${targetClassFromList.pack}.${targetClassFromList._id}`;
+                            else if (!targetClassFromList.uuid && targetClassFromList._id) fetchUuid = `Compendium.shadowdark.classes.${targetClassFromList._id}`;
+                        }
+
+                        const cls = await fetchDocument(fetchUuid);
                         if (cls) {
                             currentClass = cls;
                             setActiveClassObj(cls);
@@ -569,6 +648,17 @@ export const LevelUpModal = ({
                             console.error("Failed to fetch full patron", e);
                         }
                     }
+                }
+
+                // Fetch Current Languages (Ancestry, etc.)
+                if (actorId) {
+                    try {
+                        const actorDoc = await fetchDocument(`Actor.${actorId}`);
+                        if (actorDoc?.items) {
+                            const existingLangs = actorDoc.items.filter((i: any) => i.type === 'Language');
+                            setKnownLanguages(existingLangs);
+                        }
+                    } catch (e) { console.error("Failed to fetch actor languages", e); }
                 }
 
                 // 5. Requirements (Ambitious etc)
@@ -835,6 +925,39 @@ export const LevelUpModal = ({
         const resolvedTalents = await resolveToDocs(rolledTalents);
         const resolvedBoons = await resolveToDocs(rolledBoons);
 
+        // Resolve Languages
+        const resolvedLanguages: any[] = [];
+        if (availableLanguages) {
+            // Helper to find lang doc
+            const findLang = (uuidOrId: string) => availableLanguages.find((l: any) => l.uuid === uuidOrId || l._id === uuidOrId);
+
+            // 1. Fixed
+            for (const fid of fixedLanguages) {
+                const lang = findLang(fid);
+                if (lang) {
+                    // Fetch full doc if needed, but often compendium index is not enough for creation? 
+                    // Actually we need to create the item. If availableLanguages contains index data, we might need to fetch full doc.
+                    // Assuming availableLanguages has minimal data, let's fetch.
+                    const full = await fetchDocument(lang.uuid || fid); // Use uuid if available, else id (with fetch logic)
+                    if (full) resolvedLanguages.push({ ...full, type: 'Language' });
+                }
+            }
+            // 2. Selected
+            for (const sid of selectedLanguages) {
+                const lang = findLang(sid);
+                if (lang) {
+                    const full = await fetchDocument(lang.uuid || sid);
+                    if (full) resolvedLanguages.push({ ...full, type: 'Language' });
+                }
+            }
+        }
+
+        items.push(...resolvedLanguages.map(l => {
+            const copy = { ...l };
+            delete copy._id;
+            return copy;
+        }));
+
         items.push(...resolvedTalents);
         items.push(...resolvedBoons);
 
@@ -844,10 +967,42 @@ export const LevelUpModal = ({
             items.push(...fullSpells.filter(s => s));
         }
 
-        // Include New Class if switched
-        if (activeClassObj && activeClassObj.uuid !== classObj.uuid) {
-            const fullClass = await fetchDocument(activeClassObj.uuid);
-            if (fullClass) items.push(fullClass);
+        // Include New Class if switched OR if it's Level 0 (force update)
+        const isLvl0 = Number(currentLevel) === 0;
+        console.log("LevelUpModal Class Logic:", {
+            active: activeClassObj?.name,
+            activeUuid: activeClassObj?.uuid,
+            old: classObj?.name,
+            oldUuid: classObj?.uuid,
+            isLvl0
+        });
+
+        if ((activeClassObj && (activeClassObj.uuid || activeClassObj._id) !== (classObj?.uuid || classObj?._id)) || (activeClassObj && isLvl0)) {
+            console.log("LevelUpModal: Fetching new class to persist...");
+            let fetchUuid = activeClassObj.uuid;
+            if (!fetchUuid && activeClassObj._id) {
+                if (activeClassObj.pack) fetchUuid = `Compendium.${activeClassObj.pack}.${activeClassObj._id}`;
+                else fetchUuid = `Compendium.shadowdark.classes.${activeClassObj._id}`;
+            }
+            const fullClass = await fetchDocument(fetchUuid);
+
+            if (fullClass) {
+                console.log("LevelUpModal: Full Class result:", fullClass.name);
+                // Sanitize: Creating a NEW embedded item, so remove _id to avoid conflicts
+                // Also explicitly ensure type is 'Class'
+                const classItem = { ...fullClass, type: 'Class' };
+                delete classItem._id;
+                items.push(classItem);
+                console.log("LevelUpModal: Added sanitized class item for creation");
+            } else {
+                console.log("LevelUpModal: Full Class result: NULL");
+            }
+        }
+
+        // Include Patron if selected (and different)
+        if (selectedPatronUuid && selectedPatronUuid !== patron?.uuid) {
+            const fullPatron = await fetchDocument(selectedPatronUuid);
+            if (fullPatron) items.push(fullPatron);
         }
 
         const data: any = { items, hpRoll };
@@ -884,566 +1039,695 @@ export const LevelUpModal = ({
                     <h2 className="text-xl font-serif font-bold tracking-wider">Level Up: Level {targetLevel}</h2>
                 </div>
 
-                {/* Class Selection (Level 0 Only) */}
-                {currentLevel === 0 && availableClasses && availableClasses.length > 0 && (
-                    <div className="p-4 bg-neutral-200 border-b border-neutral-300 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 flex-1">
-                            <label className="font-bold text-neutral-700 whitespace-nowrap">Choose Class:</label>
-                            <select
-                                className="flex-1 p-2 border border-neutral-400 rounded"
-                                value={targetClassUuid}
-                                onChange={(e) => setTargetClassUuid(e.target.value)}
-                            >
-                                <option value="" disabled>Select a Class...</option>
-                                {availableClasses
-                                    .filter((c: any) => c.name !== "Level 0")
-                                    .sort((a, b) => a.name.localeCompare(b.name))
-                                    .map((c: any) => (
-                                        <option key={c.uuid} value={c.uuid}>{c.name}</option>
-                                    ))}
-                            </select>
-                        </div>
-                        <button
-                            onClick={() => {
-                                const candidates = availableClasses.filter((c: any) => c.name !== "Level 0");
-                                const rand = candidates[Math.floor(Math.random() * candidates.length)];
-                                if (rand) setTargetClassUuid(rand.uuid);
-                            }}
-                            className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
-                            title="Randomize Class"
-                        >
-                            Random
-                        </button>
-                    </div>
-                )}
 
-                {/* Patron Selection (for Warlock and other patron-requiring classes) */}
-                {needsBoon && currentLevel === 0 && availablePatrons.length > 0 && (
-                    <div className="p-4 bg-neutral-200 border-b border-neutral-300 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 flex-1">
-                            <label className="font-bold text-neutral-700 whitespace-nowrap">Choose Patron:</label>
-                            <select
-                                className="flex-1 p-2 border border-neutral-400 rounded"
-                                value={selectedPatronUuid}
-                                onChange={(e) => setSelectedPatronUuid(e.target.value)}
-                            >
-                                <option value="" disabled>Select a Patron...</option>
-                                {availablePatrons
-                                    .sort((a, b) => a.name.localeCompare(b.name))
-                                    .map((p: any) => (
-                                        <option key={p.uuid} value={p.uuid}>{p.name}</option>
-                                    ))}
-                            </select>
-                        </div>
-                        <button
-                            onClick={() => {
-                                const rand = availablePatrons[Math.floor(Math.random() * availablePatrons.length)];
-                                if (rand) setSelectedPatronUuid(rand.uuid);
-                            }}
-                            className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
-                            title="Randomize Patron"
-                        >
-                            Random
-                        </button>
-                    </div>
-                )}
 
-                {loading || loadingPatrons ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 space-y-4">
-                        <div className="w-12 h-12 border-4 border-neutral-300 border-t-amber-600 rounded-full animate-spin"></div>
-                        <p className="text-neutral-500 font-bold tracking-wide animate-pulse">Consulting the fates...</p>
-                    </div>
-                ) : (
-                    <div className="p-6 overflow-y-auto space-y-8 flex-1 relative">
-                        {/* HP Roll Section */}
-                        <div className="space-y-4">
-                            <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                <h3 className="font-bold text-lg font-serif">Hit Points</h3>
-                                {hpRoll > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+                <div className="flex-1 overflow-y-auto">
+                    {/* Class Selection (Level 0 Only) */}
+                    {currentLevel === 0 && availableClasses && availableClasses.length > 0 && (
+                        <div className="p-4 bg-neutral-200 border-b border-neutral-300 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-2 flex-1">
+                                <label className="font-bold text-neutral-700 whitespace-nowrap">Choose Class:</label>
+                                <select
+                                    className="flex-1 p-2 border border-neutral-400 rounded"
+                                    value={targetClassUuid}
+                                    onChange={(e) => setTargetClassUuid(e.target.value)}
+                                >
+                                    <option value="" disabled>Select a Class...</option>
+                                    {availableClasses
+                                        .filter((c: any) => c.name !== "Level 0")
+                                        .sort((a, b) => a.name.localeCompare(b.name))
+                                        .map((c: any) => (
+                                            <option key={c.uuid || c._id} value={c.uuid || c._id}>{c.name}</option>
+                                        ))}
+                                </select>
                             </div>
+                            <button
+                                onClick={() => {
+                                    const candidates = availableClasses.filter((c: any) => c.name !== "Level 0");
+                                    const rand = candidates[Math.floor(Math.random() * candidates.length)];
+                                    if (rand) setTargetClassUuid(rand.uuid || rand._id);
+                                }}
+                                className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
+                                title="Randomize Class"
+                            >
+                                Random
+                            </button>
+                        </div>
+                    )}
 
-                            {hpRoll === 0 ? (
-                                <div className="flex flex-col gap-2">
-                                    <div className="bg-neutral-50 p-4 rounded border border-neutral-200">
-                                        <p className="text-sm text-neutral-600 mb-2">
-                                            Roll <span className="font-bold text-black">{activeClassObj?.system?.hitPoints || '1d4'}</span> for hit points
-                                            {targetLevel === 1 && <span className="text-amber-600"> (+ CON modifier)</span>}
-                                        </p>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <button
-                                            onClick={() => handleRollHP(false)}
-                                            className="py-4 bg-red-900 text-red-100 font-bold uppercase tracking-widest hover:bg-red-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                        >
-                                            <span className="fas fa-dice-d20"></span> Roll HP
-                                        </button>
-                                        <button
-                                            onClick={() => { setHpRoll(1); setHpEditMode(true); }}
-                                            className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
-                                        >
-                                            <span className="fas fa-edit"></span> Manual Input
-                                        </button>
-                                    </div>
+
+
+                    {/* Patron Selection (for Warlock and other patron-requiring classes) */}
+                    {
+                        needsBoon && currentLevel === 0 && availablePatrons.length > 0 && (
+                            <div className="p-4 bg-neutral-200 border-b border-neutral-300 flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-2 flex-1">
+                                    <label className="font-bold text-neutral-700 whitespace-nowrap">Choose Patron:</label>
+                                    <select
+                                        className="flex-1 p-2 border border-neutral-400 rounded"
+                                        value={selectedPatronUuid}
+                                        onChange={(e) => setSelectedPatronUuid(e.target.value)}
+                                    >
+                                        <option value="" disabled>Select a Patron...</option>
+                                        {availablePatrons
+                                            .sort((a, b) => a.name.localeCompare(b.name))
+                                            .map((p: any) => (
+                                                <option key={p.uuid} value={p.uuid}>{p.name}</option>
+                                            ))}
+                                    </select>
                                 </div>
-                            ) : (
-                                <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
-                                    <div className="bg-red-900 text-white w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0">
-                                        {hpEditMode ? (
-                                            <input
-                                                type="number"
-                                                value={hpRoll}
-                                                onChange={(e) => setHpRoll(parseInt(e.target.value) || 0)}
-                                                className="w-full h-full text-center bg-transparent border-none outline-none text-white placeholder-white/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                min="1"
-                                                autoFocus
-                                            />
-                                        ) : (
-                                            hpRoll
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-lg truncate">
-                                            HP Rolled: {hpRoll}
-                                            {targetLevel === 1 && (
-                                                <span className="text-neutral-500 font-normal ml-1">
-                                                    + {(_abilities?.con?.mod || 0)} (CON) = <span className="text-black font-bold">{Math.max(1, hpRoll + (_abilities?.con?.mod || 0))}</span>
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-sm text-neutral-600 mt-1 truncate">
-                                            {activeClassObj?.system?.hitPoints || '1d4'}
-                                            {targetLevel === 1 && ` + CON modifier (minimum 1)`}
-                                        </p>
-                                    </div>
-                                    <div className="flex gap-2 flex-col sm:flex-row relative">
-                                        <button
-                                            onClick={() => setHpEditMode(!hpEditMode)}
-                                            className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
-                                        >
-                                            {hpEditMode ? 'Done' : 'Edit'}
-                                        </button>
+                                <button
+                                    onClick={() => {
+                                        const rand = availablePatrons[Math.floor(Math.random() * availablePatrons.length)];
+                                        if (rand) setSelectedPatronUuid(rand.uuid);
+                                    }}
+                                    className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
+                                    title="Randomize Patron"
+                                >
+                                    Random
+                                </button>
+                            </div>
+                        )
+                    }
 
-                                        {confirmReroll ? (
-                                            <div className="absolute top-full right-0 mt-2 bg-white border-2 border-red-500 rounded p-2 shadow-xl z-10 w-48 text-center animate-in zoom-in-95 duration-200">
-                                                <p className="text-xs font-bold text-red-600 mb-2">Re-roll HP?</p>
-                                                <div className="flex gap-2 justify-center">
-                                                    <button onClick={() => setConfirmReroll(false)} className="px-2 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded">No</button>
-                                                    <button onClick={() => handleRollHP(true)} className="px-2 py-1 text-xs bg-red-600 text-white hover:bg-red-700 rounded font-bold">Yes</button>
-                                                </div>
+                    {
+                        loading || loadingPatrons ? (
+                            <div className="flex-1 flex flex-col items-center justify-center p-12 space-y-4">
+                                <div className="w-12 h-12 border-4 border-neutral-300 border-t-amber-600 rounded-full animate-spin"></div>
+                                <p className="text-neutral-500 font-bold tracking-wide animate-pulse">Consulting the fates...</p>
+                            </div>
+                        ) : (
+                            <div className="p-6 overflow-y-auto space-y-8 flex-1 relative">
+                                {/* HP Roll Section */}
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                        <h3 className="font-bold text-lg font-serif">Hit Points</h3>
+                                        {hpRoll > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+                                    </div>
+
+                                    {hpRoll === 0 ? (
+                                        <div className="flex flex-col gap-2">
+                                            <div className="bg-neutral-50 p-4 rounded border border-neutral-200">
+                                                <p className="text-sm text-neutral-600 mb-2">
+                                                    Roll <span className="font-bold text-black">{activeClassObj?.system?.hitPoints || '1d4'}</span> for hit points
+                                                    {targetLevel === 1 && <span className="text-amber-600"> (+ CON modifier)</span>}
+                                                </p>
                                             </div>
-                                        ) : (
-                                            <>
+                                            <div className="grid grid-cols-2 gap-2">
                                                 <button
-                                                    onClick={() => handleRollHP(true)}
-                                                    className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
+                                                    onClick={() => handleRollHP(false)}
+                                                    className="py-4 bg-red-900 text-red-100 font-bold uppercase tracking-widest hover:bg-red-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
                                                 >
-                                                    Re-roll
+                                                    <span className="fas fa-dice-d20"></span> Roll HP
                                                 </button>
                                                 <button
-                                                    onClick={() => { setHpRoll(0); setHpEditMode(false); }}
+                                                    onClick={() => { setHpRoll(1); setHpEditMode(true); }}
+                                                    className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
+                                                >
+                                                    <span className="fas fa-edit"></span> Manual Input
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="bg-red-900 text-white w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0">
+                                                {hpEditMode ? (
+                                                    <input
+                                                        type="number"
+                                                        value={hpRoll}
+                                                        onChange={(e) => setHpRoll(parseInt(e.target.value) || 0)}
+                                                        className="w-full h-full text-center bg-transparent border-none outline-none text-white placeholder-white/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                        min="1"
+                                                        autoFocus
+                                                    />
+                                                ) : (
+                                                    hpRoll
+                                                )}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-lg truncate">
+                                                    HP Rolled: {hpRoll}
+                                                    {targetLevel === 1 && (
+                                                        <span className="text-neutral-500 font-normal ml-1">
+                                                            + {(_abilities?.con?.mod || 0)} (CON) = <span className="text-black font-bold">{Math.max(1, hpRoll + (_abilities?.con?.mod || 0))}</span>
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-sm text-neutral-600 mt-1 truncate">
+                                                    {activeClassObj?.system?.hitPoints || '1d4'}
+                                                    {targetLevel === 1 && ` + CON modifier (minimum 1)`}
+                                                </p>
+                                            </div>
+                                            <div className="flex gap-2 flex-col sm:flex-row relative">
+                                                <button
+                                                    onClick={() => setHpEditMode(!hpEditMode)}
                                                     className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
                                                 >
-                                                    Clear
+                                                    {hpEditMode ? 'Done' : 'Edit'}
                                                 </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
 
-
-                            {/* Inline Error Display */}
-                            {error && (
-                                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative animate-in fade-in slide-in-from-top-2" role="alert">
-                                    <strong className="font-bold">Error: </strong>
-                                    <span className="block sm:inline">{error}</span>
-                                    <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
-                                        <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z" /></svg>
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Gold Roll Section (Only for Level 1) */}
-                        {targetLevel === 1 && (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                    <h3 className="font-bold text-lg font-serif">Starting Gold</h3>
-                                    {goldRoll > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
-                                </div>
-
-                                {goldRoll === 0 ? (
-                                    <div className="flex flex-col gap-2">
-                                        <div className="bg-neutral-50 p-4 rounded border border-neutral-200">
-                                            <p className="text-sm text-neutral-600 mb-2">
-                                                Roll <span className="font-bold text-black">2d6 x 5</span> for starting gold.
-                                            </p>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button
-                                                onClick={handleRollGold}
-                                                className="py-4 bg-amber-600 text-white font-bold uppercase tracking-widest hover:bg-amber-700 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                            >
-                                                <span className="fas fa-coins"></span> Roll Gold
-                                            </button>
-                                            <button
-                                                onClick={() => { setGoldRoll(10); setGoldEditMode(true); }} // Default placeholder?
-                                                className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
-                                            >
-                                                <span className="fas fa-edit"></span> Manual Input
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
-                                        <div className="bg-amber-400 text-black w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0 ring-4 ring-amber-200">
-                                            {goldEditMode ? (
-                                                <input
-                                                    type="number"
-                                                    value={goldRoll}
-                                                    onChange={(e) => setGoldRoll(parseInt(e.target.value) || 0)}
-                                                    className="w-full h-full text-center bg-transparent border-none outline-none text-black placeholder-black/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                    min="0"
-                                                    autoFocus
-                                                />
-                                            ) : (
-                                                <span className="flex items-center gap-1">
-                                                    {goldRoll} <span className="text-[10px] uppercase font-bold text-amber-900/50">GP</span>
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-bold text-lg truncate flex items-center gap-2">
-                                                Starting Gold: {goldRoll} gp
-                                            </div>
-                                            <p className="text-sm text-neutral-600 mt-1 truncate">
-                                                Standard: 2d6 x 5
-                                            </p>
-                                        </div>
-                                        <div className="flex gap-2 flex-col sm:flex-row relative">
-                                            <button
-                                                onClick={() => setGoldEditMode(!goldEditMode)}
-                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
-                                            >
-                                                {goldEditMode ? 'Done' : 'Edit'}
-                                            </button>
-                                            <button
-                                                onClick={handleRollGold}
-                                                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
-                                            >
-                                                Re-roll
-                                            </button>
-                                            <button
-                                                onClick={() => { setGoldRoll(0); setGoldEditMode(false); }}
-                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
-                                            >
-                                                Clear
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Talents / Benefits Section */}
-                        {requiredTalents > 0 ? (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                    <h3 className="font-bold text-lg font-serif">Level Benefit</h3>
-                                    <div className="flex gap-2">
-                                        <span className="text-sm">Needed: {requiredTalents}</span>
-                                        {rolledTalents.length >= requiredTalents && <span className="text-green-600 font-bold text-sm">Selected!</span>}
-                                    </div>
-                                </div>
-
-
-                                {/* Show rolled talents if any */}
-                                {rolledTalents.length > 0 && (
-                                    <div className="space-y-2 mb-4">
-                                        {rolledTalents.map((t, idx) => (
-                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
-                                                <div className="bg-neutral-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">
-                                                    {t.type === 'Talent' ? 'T' : 'B'}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-bold text-lg truncate">{t.name}</div>
-                                                    <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: t.description }}></p>
-                                                </div>
-                                                <div className="flex gap-2 shrink-0">
-                                                    <button
-                                                        onClick={() => {
-                                                            const newTalents = [...rolledTalents];
-                                                            newTalents.splice(idx, 1);
-                                                            setRolledTalents(newTalents);
-                                                            handleRollTalent();
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
-                                                    >
-                                                        Re-roll
-                                                    </button>
-                                                    <button
-                                                        onClick={() => {
-                                                            const newTalents = [...rolledTalents];
-                                                            newTalents.splice(idx, 1);
-                                                            setRolledTalents(newTalents);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
-                                                    >
-                                                        Clear
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Show roll button if not all talents rolled yet */}
-                                {rolledTalents.length < requiredTalents && (
-                                    <div className="flex flex-col gap-2">
-                                        {/* INLINE CHOICE: TALENT */}
-                                        {pendingChoices && pendingChoices.context !== 'boon' ? (
-                                            <div className="bg-neutral-800 p-6 rounded-lg border-2 border-amber-600 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
-                                                <h3 className="text-xl font-bold text-amber-500 mb-4 font-serif border-b border-neutral-700 pb-2">
-                                                    <span className="fas fa-question-circle mr-2"></span>
-                                                    {pendingChoices.header}
-                                                </h3>
-                                                <div className="grid grid-cols-1 gap-3">
-                                                    {pendingChoices.options.map((choice, idx) => {
-                                                        let imgSrc = choice.img || "icons/svg/d20-black.svg";
-
-                                                        if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
-                                                            const baseUrl = foundryUrl.replace(/\/$/, '');
-                                                            const path = imgSrc.replace(/^\//, '');
-                                                            imgSrc = `${baseUrl}/${path}`;
-                                                        }
-
-                                                        return (
-                                                            <button
-                                                                key={idx}
-                                                                onClick={() => handleChoiceSelection(choice)}
-                                                                className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-amber-500 rounded-lg text-left transition-all group"
-                                                            >
-                                                                <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-amber-500">
-                                                                    <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
-                                                                </div>
-                                                                <div className="font-bold text-amber-50 group-hover:text-amber-500">{choice.name}</div>
-                                                            </button>
-                                                        )
-                                                    })}
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <button
-                                                    onClick={handleRollTalent}
-                                                    className="w-full py-4 bg-neutral-800 text-amber-500 font-bold uppercase tracking-widest hover:bg-black transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                                >
-                                                    <span className="fas fa-dice-d20"></span> Roll Class Talent
-                                                </button>
-                                                {/* Only show OR choice for Level 2+ */}
-                                                {needsBoon && targetLevel > 1 && (
-                                                    <>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="h-px bg-neutral-300 flex-1"></div>
-                                                            <span className="text-neutral-500 text-xs uppercase font-bold">OR</span>
-                                                            <div className="h-px bg-neutral-300 flex-1"></div>
+                                                {confirmReroll ? (
+                                                    <div className="absolute top-full right-0 mt-2 bg-white border-2 border-red-500 rounded p-2 shadow-xl z-10 w-48 text-center animate-in zoom-in-95 duration-200">
+                                                        <p className="text-xs font-bold text-red-600 mb-2">Re-roll HP?</p>
+                                                        <div className="flex gap-2 justify-center">
+                                                            <button onClick={() => setConfirmReroll(false)} className="px-2 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded">No</button>
+                                                            <button onClick={() => handleRollHP(true)} className="px-2 py-1 text-xs bg-red-600 text-white hover:bg-red-700 rounded font-bold">Yes</button>
                                                         </div>
+                                                    </div>
+                                                ) : (
+                                                    <>
                                                         <button
-                                                            onClick={handleRollExtraBoon}
-                                                            className="w-full py-3 bg-purple-100 text-purple-900 border-2 border-purple-200 font-bold uppercase tracking-widest hover:bg-purple-200 transition-colors rounded shadow flex items-center justify-center gap-2"
+                                                            onClick={() => handleRollHP(true)}
+                                                            className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
                                                         >
-                                                            <span className="fas fa-star"></span> Choose Patron Boon
+                                                            Re-roll
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { setHpRoll(0); setHpEditMode(false); }}
+                                                            className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
+                                                        >
+                                                            Clear
                                                         </button>
                                                     </>
                                                 )}
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                    <h3 className="font-bold text-lg font-serif text-neutral-400">Level Benefit</h3>
-                                </div>
-                                <div className="p-4 bg-neutral-100 border border-neutral-200 rounded text-neutral-500 italic text-center text-sm">
-                                    No Talent gained at Level {targetLevel}.
-                                </div>
-                            </div>
-                        )}
+                                            </div>
+                                        </div>
+                                    )}
 
-                        {/* Boons Section */}
-                        {needsBoon && (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                    <h3 className="font-bold text-lg font-serif">Patron Boon</h3>
-                                    {rolledBoons.length > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+
+                                    {/* Inline Error Display */}
+                                    {error && (
+                                        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative animate-in fade-in slide-in-from-top-2" role="alert">
+                                            <strong className="font-bold">Error: </strong>
+                                            <span className="block sm:inline">{error}</span>
+                                            <span className="absolute top-0 bottom-0 right-0 px-4 py-3" onClick={() => setError(null)}>
+                                                <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>Close</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z" /></svg>
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {rolledBoons.length === 0 ? (
-                                    <div className="flex flex-col gap-2">
-                                        {/* INLINE CHOICE: BOON */}
-                                        {pendingChoices && pendingChoices.context === 'boon' ? (
-                                            <div className="bg-neutral-800 p-6 rounded-lg border-2 border-purple-500 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
-                                                <h3 className="text-xl font-bold text-purple-400 mb-4 font-serif border-b border-neutral-700 pb-2">
-                                                    <span className="fas fa-star mr-2"></span>
-                                                    {pendingChoices.header}
-                                                </h3>
-                                                <div className="grid grid-cols-1 gap-3">
-                                                    {pendingChoices.options.map((choice, idx) => {
-                                                        let imgSrc = choice.img || "icons/svg/d20-black.svg";
+                                {/* Gold Roll Section (Only for Level 1) */}
+                                {targetLevel === 1 && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif">Starting Gold</h3>
+                                            {goldRoll > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+                                        </div>
 
-                                                        if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
-                                                            const baseUrl = foundryUrl.replace(/\/$/, '');
-                                                            const path = imgSrc.replace(/^\//, '');
-                                                            imgSrc = `${baseUrl}/${path}`;
-                                                        }
-
-                                                        return (
-                                                            <button
-                                                                key={idx}
-                                                                onClick={() => handleChoiceSelection(choice)}
-                                                                className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-purple-500 rounded-lg text-left transition-all group"
-                                                            >
-                                                                <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-purple-500">
-                                                                    <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
-                                                                </div>
-                                                                <div className="font-bold text-purple-100 group-hover:text-purple-400">{choice.name}</div>
-                                                            </button>
-                                                        )
-                                                    })}
+                                        {goldRoll === 0 ? (
+                                            <div className="flex flex-col gap-2">
+                                                <div className="bg-neutral-50 p-4 rounded border border-neutral-200">
+                                                    <p className="text-sm text-neutral-600 mb-2">
+                                                        Roll <span className="font-bold text-black">2d6 x 5</span> for starting gold.
+                                                    </p>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <button
+                                                        onClick={handleRollGold}
+                                                        className="py-4 bg-amber-600 text-white font-bold uppercase tracking-widest hover:bg-amber-700 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                                    >
+                                                        <span className="fas fa-coins"></span> Roll Gold
+                                                    </button>
+                                                    <button
+                                                        onClick={() => { setGoldRoll(10); setGoldEditMode(true); }} // Default placeholder?
+                                                        className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
+                                                    >
+                                                        <span className="fas fa-edit"></span> Manual Input
+                                                    </button>
                                                 </div>
                                             </div>
                                         ) : (
-                                            <>
-                                                {!selectedPatronUuid && !boonTable ? (
-                                                    <div className="bg-amber-50 border-2 border-amber-400 rounded p-4 text-center">
-                                                        <p className="text-amber-800 font-bold">
-                                                            <span className="fas fa-exclamation-triangle mr-2"></span>
-                                                            Select a patron above to roll boons
-                                                        </p>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={handleRollBoon}
-                                                        className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                                    >
-                                                        <span className="fas fa-dice-d20"></span> Roll Boon
-                                                    </button>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {rolledBoons.map((b, idx) => (
-                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
-                                                <div className="bg-purple-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">B</div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-bold text-lg truncate">{b.name}</div>
-                                                    <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: b.description }}></p>
+                                            <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                                <div className="bg-amber-400 text-black w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0 ring-4 ring-amber-200">
+                                                    {goldEditMode ? (
+                                                        <input
+                                                            type="number"
+                                                            value={goldRoll}
+                                                            onChange={(e) => setGoldRoll(parseInt(e.target.value) || 0)}
+                                                            className="w-full h-full text-center bg-transparent border-none outline-none text-black placeholder-black/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            min="0"
+                                                            autoFocus
+                                                        />
+                                                    ) : (
+                                                        <span className="flex items-center gap-1">
+                                                            {goldRoll} <span className="text-[10px] uppercase font-bold text-amber-900/50">GP</span>
+                                                        </span>
+                                                    )}
                                                 </div>
-                                                <div className="flex gap-2 shrink-0">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-bold text-lg truncate flex items-center gap-2">
+                                                        Starting Gold: {goldRoll} gp
+                                                    </div>
+                                                    <p className="text-sm text-neutral-600 mt-1 truncate">
+                                                        Standard: 2d6 x 5
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2 flex-col sm:flex-row relative">
                                                     <button
-                                                        onClick={() => handleRollBoon()}
-                                                        className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
+                                                        onClick={() => setGoldEditMode(!goldEditMode)}
+                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
+                                                    >
+                                                        {goldEditMode ? 'Done' : 'Edit'}
+                                                    </button>
+                                                    <button
+                                                        onClick={handleRollGold}
+                                                        className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
                                                     >
                                                         Re-roll
                                                     </button>
                                                     <button
-                                                        onClick={() => {
-                                                            const newBoons = [...rolledBoons];
-                                                            newBoons.splice(idx, 1);
-                                                            setRolledBoons(newBoons);
-                                                        }}
-                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
+                                                        onClick={() => { setGoldRoll(0); setGoldEditMode(false); }}
+                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
                                                     >
                                                         Clear
                                                     </button>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
                                 )}
-                            </div>
-                        )}
+
+                                {/* Talents / Benefits Section */}
+                                {requiredTalents > 0 ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif">Level Benefit</h3>
+                                            <div className="flex gap-2">
+                                                <span className="text-sm">Needed: {requiredTalents}</span>
+                                                {rolledTalents.length >= requiredTalents && <span className="text-green-600 font-bold text-sm">Selected!</span>}
+                                            </div>
+                                        </div>
 
 
-
-
-                        {/* Spells Section */}
-                        {isSpellcaster && spellsToChooseTotal > 0 && (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
-                                    <h3 className="font-bold text-lg font-serif">Spells</h3>
-                                    <div className="flex gap-2">
-                                        {Object.entries(spellsToChoose).map(([tier, count]) => {
-                                            const currentCount = selectedSpells.filter(s => {
-                                                const t = s.tier ?? s.system?.tier ?? 0;
-                                                return Number(t) === Number(tier);
-                                            }).length;
-                                            return (
-                                                <span key={tier} className="text-xs bg-neutral-200 px-2 py-1 rounded">
-                                                    Tier {tier}: {currentCount}/{count}
-                                                </span>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    {Object.entries(spellsToChoose).map(([tierStr, count]) => {
-                                        const tier = Number(tierStr);
-                                        const spellsInTier = availableSpells.filter(s => {
-                                            const sTier = s.tier ?? s.system?.tier ?? 0;
-                                            return Number(sTier) === tier;
-                                        });
-
-                                        if (spellsInTier.length === 0) return null;
-
-                                        return (
-                                            <div key={tier} className="col-span-full">
-                                                <h4 className="text-xs font-bold uppercase text-neutral-500 mb-1">Tier {tier} Options (Choose {count})</h4>
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                    {spellsInTier.map(spell => {
-                                                        const spellId = spell.uuid || spell._id;
-                                                        const isSelected = !!selectedSpells.find(s => (s.uuid || s._id) === spellId);
-                                                        const isKnown = spells.some(s => s.name === spell.name);
-
-                                                        const selectedCountInTier = selectedSpells.filter(s => {
-                                                            const t = s.tier ?? s.system?.tier ?? 0;
-                                                            return Number(t) === tier;
-                                                        }).length;
-
-                                                        const disabled = isKnown || (!isSelected && selectedCountInTier >= count);
-
-                                                        return (
+                                        {/* Show rolled talents if any */}
+                                        {rolledTalents.length > 0 && (
+                                            <div className="space-y-2 mb-4">
+                                                {rolledTalents.map((t, idx) => (
+                                                    <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="bg-neutral-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">
+                                                            {t.type === 'Talent' ? 'T' : 'B'}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-bold text-lg truncate">{t.name}</div>
+                                                            <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: t.description }}></p>
+                                                        </div>
+                                                        <div className="flex gap-2 shrink-0">
                                                             <button
-                                                                key={spellId}
-                                                                onClick={() => !isKnown && toggleSpell(spell)}
-                                                                disabled={disabled}
-                                                                className={`p-3 rounded border text-left transition-all flex items-center justify-between ${isKnown ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed border-neutral-200' :
-                                                                    isSelected ? 'bg-amber-100 border-amber-600 shadow-md ring-1 ring-amber-500' :
-                                                                        'bg-white border-neutral-200 hover:border-black'
-                                                                    } ${!isKnown && disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                onClick={() => {
+                                                                    const newTalents = [...rolledTalents];
+                                                                    newTalents.splice(idx, 1);
+                                                                    setRolledTalents(newTalents);
+                                                                    handleRollTalent();
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
                                                             >
-                                                                <span className="font-bold text-sm flex items-center gap-2">
-                                                                    {spell.name}
-                                                                    {isKnown && <span className="text-[10px] uppercase bg-neutral-200 text-neutral-500 px-1 rounded">Known</span>}
-                                                                </span>
-                                                                {isSelected && <span className="fas fa-check text-amber-600"></span>}
+                                                                Re-roll
                                                             </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newTalents = [...rolledTalents];
+                                                                    newTalents.splice(idx, 1);
+                                                                    setRolledTalents(newTalents);
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Show roll button if not all talents rolled yet */}
+                                        {rolledTalents.length < requiredTalents && (
+                                            <div className="flex flex-col gap-2">
+                                                {/* INLINE CHOICE: TALENT */}
+                                                {pendingChoices && pendingChoices.context !== 'boon' ? (
+                                                    <div className="bg-neutral-800 p-6 rounded-lg border-2 border-amber-600 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
+                                                        <h3 className="text-xl font-bold text-amber-500 mb-4 font-serif border-b border-neutral-700 pb-2">
+                                                            <span className="fas fa-question-circle mr-2"></span>
+                                                            {pendingChoices.header}
+                                                        </h3>
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {pendingChoices.options.map((choice, idx) => {
+                                                                let imgSrc = choice.img || "icons/svg/d20-black.svg";
+
+                                                                if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
+                                                                    const baseUrl = foundryUrl.replace(/\/$/, '');
+                                                                    const path = imgSrc.replace(/^\//, '');
+                                                                    imgSrc = `${baseUrl}/${path}`;
+                                                                }
+
+                                                                return (
+                                                                    <button
+                                                                        key={idx}
+                                                                        onClick={() => handleChoiceSelection(choice)}
+                                                                        className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-amber-500 rounded-lg text-left transition-all group"
+                                                                    >
+                                                                        <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-amber-500">
+                                                                            <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
+                                                                        </div>
+                                                                        <div className="font-bold text-amber-50 group-hover:text-amber-500">{choice.name}</div>
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={handleRollTalent}
+                                                            className="w-full py-4 bg-neutral-800 text-amber-500 font-bold uppercase tracking-widest hover:bg-black transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                                        >
+                                                            <span className="fas fa-dice-d20"></span> Roll Class Talent
+                                                        </button>
+                                                        {/* Only show OR choice for Level 2+ */}
+                                                        {needsBoon && targetLevel > 1 && (
+                                                            <>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="h-px bg-neutral-300 flex-1"></div>
+                                                                    <span className="text-neutral-500 text-xs uppercase font-bold">OR</span>
+                                                                    <div className="h-px bg-neutral-300 flex-1"></div>
+                                                                </div>
+                                                                <button
+                                                                    onClick={handleRollExtraBoon}
+                                                                    className="w-full py-3 bg-purple-100 text-purple-900 border-2 border-purple-200 font-bold uppercase tracking-widest hover:bg-purple-200 transition-colors rounded shadow flex items-center justify-center gap-2"
+                                                                >
+                                                                    <span className="fas fa-star"></span> Choose Patron Boon
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif text-neutral-400">Level Benefit</h3>
+                                        </div>
+                                        <div className="p-4 bg-neutral-100 border border-neutral-200 rounded text-neutral-500 italic text-center text-sm">
+                                            No Talent gained at Level {targetLevel}.
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Boons Section */}
+                                {needsBoon && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif">Patron Boon</h3>
+                                            {rolledBoons.length > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+                                        </div>
+
+                                        {rolledBoons.length === 0 ? (
+                                            <div className="flex flex-col gap-2">
+                                                {/* INLINE CHOICE: BOON */}
+                                                {pendingChoices && pendingChoices.context === 'boon' ? (
+                                                    <div className="bg-neutral-800 p-6 rounded-lg border-2 border-purple-500 animate-in fade-in slide-in-from-bottom-4 shadow-xl">
+                                                        <h3 className="text-xl font-bold text-purple-400 mb-4 font-serif border-b border-neutral-700 pb-2">
+                                                            <span className="fas fa-star mr-2"></span>
+                                                            {pendingChoices.header}
+                                                        </h3>
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {pendingChoices.options.map((choice, idx) => {
+                                                                let imgSrc = choice.img || "icons/svg/d20-black.svg";
+
+                                                                if (imgSrc && !imgSrc.startsWith('http') && !imgSrc.startsWith('data:') && foundryUrl) {
+                                                                    const baseUrl = foundryUrl.replace(/\/$/, '');
+                                                                    const path = imgSrc.replace(/^\//, '');
+                                                                    imgSrc = `${baseUrl}/${path}`;
+                                                                }
+
+                                                                return (
+                                                                    <button
+                                                                        key={idx}
+                                                                        onClick={() => handleChoiceSelection(choice)}
+                                                                        className="flex items-center gap-4 p-4 bg-neutral-900 hover:bg-black border border-neutral-600 hover:border-purple-500 rounded-lg text-left transition-all group"
+                                                                    >
+                                                                        <div className="w-10 h-10 flex-shrink-0 bg-neutral-800 rounded border border-neutral-700 flex items-center justify-center group-hover:border-purple-500">
+                                                                            <img src={imgSrc} className="w-8 h-8 filter invert" alt="" />
+                                                                        </div>
+                                                                        <div className="font-bold text-purple-100 group-hover:text-purple-400">{choice.name}</div>
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        {!selectedPatronUuid && !boonTable ? (
+                                                            <div className="bg-amber-50 border-2 border-amber-400 rounded p-4 text-center">
+                                                                <p className="text-amber-800 font-bold">
+                                                                    <span className="fas fa-exclamation-triangle mr-2"></span>
+                                                                    Select a patron above to roll boons
+                                                                </p>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={handleRollBoon}
+                                                                className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                                            >
+                                                                <span className="fas fa-dice-d20"></span> Roll Boon
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                {rolledBoons.map((b, idx) => (
+                                                    <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="bg-purple-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">B</div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-bold text-lg truncate">{b.name}</div>
+                                                            <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: b.description }}></p>
+                                                        </div>
+                                                        <div className="flex gap-2 shrink-0">
+                                                            <button
+                                                                onClick={() => handleRollBoon()}
+                                                                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
+                                                            >
+                                                                Re-roll
+                                                            </button>
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newBoons = [...rolledBoons];
+                                                                    newBoons.splice(idx, 1);
+                                                                    setRolledBoons(newBoons);
+                                                                }}
+                                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+
+
+
+                                {/* Language Selection (Moved) */}
+                                {activeClassObj && (languageGroups.length > 0 || fixedLanguages.length > 0) && (
+                                    <div className="p-4 bg-white border border-neutral-300 rounded shadow-sm space-y-4">
+                                        <div className="flex justify-between items-center border-b pb-2">
+                                            <h3 className="font-bold text-neutral-800 flex items-center gap-2 text-lg font-serif">
+                                                <span className="fas fa-language"></span> Select Languages
+                                            </h3>
+                                            <button onClick={() => setSelectedLanguages([])} className="text-xs text-neutral-500 hover:text-red-600 underline">Clear All</button>
+                                        </div>
+
+                                        {/* Known Languages (Ancestry/Previous) */}
+                                        {knownLanguages.length > 0 && (
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Known Languages</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {knownLanguages.map((lang: any) => (
+                                                        <span key={lang._id || lang.uuid} className="px-3 py-1 bg-neutral-100 text-neutral-500 rounded text-sm font-bold border border-neutral-200 flex items-center gap-1 cursor-default" title="Already Known">
+                                                            {lang.name}
+                                                            <span className="fas fa-check text-xs text-neutral-400"></span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Fixed Languages */}
+                                        {fixedLanguages.length > 0 && (
+                                            <div className="flex flex-col gap-1">
+                                                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Fixed Languages</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {fixedLanguages.map(fid => {
+                                                        const lang = availableLanguages?.find((l: any) => l.uuid === fid || l._id === fid);
+                                                        return (
+                                                            <span key={fid} className="px-3 py-1 bg-neutral-200 text-neutral-700 rounded text-sm font-bold border border-neutral-300">
+                                                                {lang?.name || "Unknown Language"}
+                                                            </span>
                                                         );
                                                     })}
                                                 </div>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                        )}
+
+                                        {/* Rendering Groups */}
+                                        {languageGroups.map((group) => {
+                                            const currentCount = selectedLanguages.filter(lid => {
+                                                const lang = availableLanguages?.find((l: any) => l.uuid === lid || l._id === lid);
+                                                if (!lang) return false;
+                                                if (group.id === 'select') return group.options?.includes(lid);
+                                                if (group.id === 'common') return lang.system?.rarity === 'common' || lang.system?.rarity === undefined;
+                                                if (group.id === 'rare') return lang.system?.rarity === 'rare';
+                                                return false;
+                                            }).length;
+
+                                            const groupOptions = availableLanguages?.filter((l: any) => {
+                                                const id = l.uuid || l._id;
+                                                const name = l.name;
+                                                // Exclude if already fixed
+                                                if (fixedLanguages.includes(id)) return false;
+                                                // Exclude if already known (check by name as ID might differ if item vs compendium)
+                                                if (knownLanguages.some(k => k.name?.toLowerCase() === name?.toLowerCase())) return false;
+
+                                                if (group.id === 'select') return group.options?.includes(id);
+                                                if (group.id === 'common') return l.system?.rarity === 'common';
+                                                if (group.id === 'rare') return l.system?.rarity === 'rare';
+                                                return false;
+                                            }) || [];
+
+                                            const groupSelections = selectedLanguages.filter(lid => groupOptions.some((o: any) => (o.uuid || o._id) === lid));
+                                            const countSelected = groupSelections.length;
+
+                                            return (
+                                                <div key={group.id} className="space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-sm font-bold text-neutral-500 uppercase tracking-wider">
+                                                            {group.label}
+                                                        </span>
+                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${countSelected === group.count ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {countSelected} / {group.count}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border border-neutral-200 rounded bg-neutral-50">
+                                                        {groupOptions
+                                                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                                                            .map((l: any) => {
+                                                                const id = l.uuid || l._id;
+                                                                const isSelected = selectedLanguages.includes(id);
+                                                                const reachedLimit = countSelected >= group.count;
+                                                                const disabled = !isSelected && reachedLimit;
+
+                                                                return (
+                                                                    <label key={id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer hover:bg-white transition-colors ${isSelected ? 'bg-amber-100 border-amber-400' : 'bg-white border-neutral-200'}`}>
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isSelected}
+                                                                            disabled={disabled}
+                                                                            onChange={() => {
+                                                                                if (isSelected) {
+                                                                                    setSelectedLanguages(prev => prev.filter(x => x !== id));
+                                                                                } else {
+                                                                                    setSelectedLanguages(prev => [...prev, id]);
+                                                                                }
+                                                                            }}
+                                                                            className="accent-amber-600 w-4 h-4"
+                                                                        />
+                                                                        <span className={`text-sm ${isSelected ? 'font-bold text-black' : 'text-neutral-700'} ${disabled ? 'opacity-50' : ''}`}>{l.name}</span>
+                                                                    </label>
+                                                                )
+                                                            })
+                                                        }
+                                                        {groupOptions.length === 0 && <span className="col-span-2 text-sm text-neutral-400 italic p-2">No languages available for this category.</span>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {/* Spells Section */}
+                                {isSpellcaster && spellsToChooseTotal > 0 && (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif">Spells</h3>
+                                            <div className="flex gap-2">
+                                                {Object.entries(spellsToChoose).map(([tier, count]) => {
+                                                    const currentCount = selectedSpells.filter(s => {
+                                                        const t = s.tier ?? s.system?.tier ?? 0;
+                                                        return Number(t) === Number(tier);
+                                                    }).length;
+                                                    return (
+                                                        <span key={tier} className="text-xs bg-neutral-200 px-2 py-1 rounded">
+                                                            Tier {tier}: {currentCount}/{count}
+                                                        </span>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {Object.entries(spellsToChoose).map(([tierStr, count]) => {
+                                                const tier = Number(tierStr);
+                                                const spellsInTier = availableSpells.filter(s => {
+                                                    const sTier = s.tier ?? s.system?.tier ?? 0;
+                                                    return Number(sTier) === tier;
+                                                });
+
+                                                if (spellsInTier.length === 0) return null;
+
+                                                return (
+                                                    <div key={tier} className="col-span-full">
+                                                        <h4 className="text-xs font-bold uppercase text-neutral-500 mb-1">Tier {tier} Options (Choose {count})</h4>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                            {spellsInTier.map(spell => {
+                                                                const spellId = spell.uuid || spell._id;
+                                                                const isSelected = !!selectedSpells.find(s => (s.uuid || s._id) === spellId);
+                                                                const isKnown = spells.some(s => s.name === spell.name);
+
+                                                                const selectedCountInTier = selectedSpells.filter(s => {
+                                                                    const t = s.tier ?? s.system?.tier ?? 0;
+                                                                    return Number(t) === tier;
+                                                                }).length;
+
+                                                                const disabled = isKnown || (!isSelected && selectedCountInTier >= count);
+
+                                                                return (
+                                                                    <button
+                                                                        key={spellId}
+                                                                        onClick={() => !isKnown && toggleSpell(spell)}
+                                                                        disabled={disabled}
+                                                                        className={`p-3 rounded border text-left transition-all flex items-center justify-between ${isKnown ? 'bg-neutral-100 text-neutral-400 cursor-not-allowed border-neutral-200' :
+                                                                            isSelected ? 'bg-amber-100 border-amber-600 shadow-md ring-1 ring-amber-500' :
+                                                                                'bg-white border-neutral-200 hover:border-black'
+                                                                            } ${!isKnown && disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                    >
+                                                                        <span className="font-bold text-sm flex items-center gap-2">
+                                                                            {spell.name}
+                                                                            {isKnown && <span className="text-[10px] uppercase bg-neutral-200 text-neutral-500 px-1 rounded">Known</span>}
+                                                                        </span>
+                                                                        {isSelected && <span className="fas fa-check text-amber-600"></span>}
+                                                                    </button>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-                )}
+                        )
+                    }
+
+                </div>
 
                 <div className="p-4 bg-neutral-200 border-t border-neutral-300 flex justify-end gap-3">
                     <button onClick={onCancel} className="px-4 py-2 text-neutral-600 font-bold hover:text-black">Cancel</button>
@@ -1456,7 +1740,6 @@ export const LevelUpModal = ({
                     </button>
                 </div>
             </div>
-
         </div>
     );
 };
