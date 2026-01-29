@@ -186,12 +186,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Class</span>
-                            <button
-                                onClick={() => openSelection('system.class', 'Class', 'classes')}
-                                className="text-white/50 hover:text-white transition-colors"
-                            >
-                                <Pencil size={14} />
-                            </button>
+                            <div className="w-3" /> {/* Spacer instead of edit icon */}
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2">
                             <i className="fas fa-book text-neutral-400"></i>
@@ -234,12 +229,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Ancestry</span>
-                            <button
-                                onClick={() => openSelection('system.ancestry', 'Ancestry', 'ancestries')}
-                                className="text-white/50 hover:text-white transition-colors"
-                            >
-                                <Pencil size={14} />
-                            </button>
+                            <div className="w-3" /> {/* Spacer instead of edit icon */}
                         </div>
                         <div className="p-2 font-serif text-lg bg-white">
                             <span>

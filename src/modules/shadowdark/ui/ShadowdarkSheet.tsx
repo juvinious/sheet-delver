@@ -502,7 +502,8 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
                                     hpRoll: data.hpRoll,
-                                    items: data.items
+                                    items: data.items,
+                                    languages: data.languages
                                 })
                             });
                             const result = await res.json();

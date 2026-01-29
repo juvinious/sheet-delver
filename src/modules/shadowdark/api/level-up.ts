@@ -273,9 +273,9 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { hpRoll, items } = await request.json();
+        const { hpRoll, items, languages } = await request.json();
 
-        const result = await client.page!.evaluate(async ({ actorId, hpRoll, items }) => {
+        const result = await client.page!.evaluate(async ({ actorId, hpRoll, items, languages }) => {
             // @ts-ignore
             const actor = window.game.actors.get(actorId);
             if (!actor) return { error: 'Actor not found' };
@@ -360,6 +360,15 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                 updates['system.patron'] = patronUuid;
             }
 
+            // Sync Languages (Merge UUIDs/Names)
+            if (languages && Array.isArray(languages)) {
+                const currentLangs = actor.system?.languages || [];
+                // Merge and deduplicate
+                const updatedLangs = [...new Set([...currentLangs, ...languages])];
+                console.log('[API] Finalizing system.languages with UUIDs:', updatedLangs);
+                updates['system.languages'] = updatedLangs;
+            }
+
             await actor.update(updates);
 
             return {
@@ -372,7 +381,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                     value: newValueHP,
                 }
             };
-        }, { actorId, hpRoll, items });
+        }, { actorId, hpRoll, items, languages });
 
         if ('error' in result) {
             return NextResponse.json({ error: result.error }, { status: 404 });

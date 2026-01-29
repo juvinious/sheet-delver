@@ -14,7 +14,7 @@ interface Props {
     spells: any[];
     availableClasses?: any[];
     availableLanguages?: any[];
-    onComplete: (data: { items: any[], hpRoll: number, gold?: number }) => void;
+    onComplete: (data: { items: any[], hpRoll: number, gold?: number, languages?: string[] }) => void;
     onCancel: () => void;
     foundryUrl?: string;
 }
@@ -143,8 +143,28 @@ export const LevelUpModal = ({
 
 
         // Check Languages
-        const totalRequired = languageGroups.reduce((a, b) => a + b.count, 0);
-        if (selectedLanguages.length < totalRequired) return false; // Simple count check for now
+        for (const group of languageGroups) {
+            const groupOptions = availableLanguages?.filter((l: any) => {
+                const id = l.uuid || l._id;
+                // Exclude if already fixed
+                if (fixedLanguages.includes(id)) return false;
+
+                if (group.id === 'select') return group.options?.includes(id);
+                if (group.id === 'common') return !l.rarity || l.rarity === 'common';
+                if (group.id === 'rare') return l.rarity === 'rare';
+                return false;
+            }) || [];
+
+            const groupSelections = selectedLanguages.filter(lid => {
+                const opt = groupOptions.find((o: any) => (o.uuid || o._id) === lid);
+                if (!opt) return false;
+                // Don't count toward the limit if it's already known
+                const isKnown = knownLanguages.some(k => k.name?.toLowerCase() === opt.name?.toLowerCase());
+                return !isKnown;
+            });
+
+            if (groupSelections.length < group.count) return false;
+        }
 
         let spellsMet = true;
         if (isSpellcaster && spellsToChooseTotal > 0) {
@@ -456,7 +476,7 @@ export const LevelUpModal = ({
     useEffect(() => {
         if (!activeClassObj) return;
 
-        console.log("LevelUpModal: Parsing Languages for", activeClassObj.name, activeClassObj);
+        //console.log("LevelUpModal: Parsing Languages for", activeClassObj.name, activeClassObj);
         const langData = activeClassObj.system?.languages || activeClassObj.languages || {};
         const fixed = langData.fixed || [];
         setFixedLanguages(fixed);
@@ -654,9 +674,57 @@ export const LevelUpModal = ({
                 if (actorId) {
                     try {
                         const actorDoc = await fetchDocument(`Actor.${actorId}`);
-                        if (actorDoc?.items) {
-                            const existingLangs = actorDoc.items.filter((i: any) => i.type === 'Language');
-                            setKnownLanguages(existingLangs);
+                        if (actorDoc) {
+                            // 1. Languages as Items
+                            const existingLangsFromItems = actorDoc.items?.filter((i: any) => i.type === 'Language') || [];
+
+                            // 2. Languages as system data (strings/uuids in system.languages)
+                            const actorLangsRaw = actorDoc.system?.languages || [];
+
+                            //console.log("Existing languages from Items:", existingLangsFromItems.map((l: any) => l.name));
+                            //console.log("Existing languages from system data:", actorLangsRaw);
+
+                            // Collect all known names and IDs
+                            const knownIds: string[] = [];
+                            const knownDocs: any[] = [];
+
+                            // Process items
+                            existingLangsFromItems.forEach((item: any) => {
+                                knownDocs.push(item);
+                                if (availableLanguages) {
+                                    const match = availableLanguages.find((avail: any) =>
+                                        avail.name?.toLowerCase() === item.name?.toLowerCase()
+                                    );
+                                    if (match) {
+                                        const id = match.uuid || match._id;
+                                        if (id) knownIds.push(id);
+                                    }
+                                }
+                            });
+
+                            // Process system.languages (usually strings like "Common" or UUIDs)
+                            actorLangsRaw.forEach((langValue: string) => {
+                                if (availableLanguages) {
+                                    const match = availableLanguages.find((avail: any) =>
+                                        avail.uuid === langValue || avail._id === langValue || avail.name?.toLowerCase() === langValue?.toLowerCase()
+                                    );
+
+                                    if (match) {
+                                        const id = match.uuid || match._id;
+                                        if (id && !knownIds.includes(id)) {
+                                            knownIds.push(id);
+                                            knownDocs.push(match);
+                                        }
+                                    }
+                                }
+                            });
+
+                            setKnownLanguages(knownDocs);
+
+                            if (knownIds.length > 0) {
+                                //console.log("Pre-selecting internal IDs for known languages:", knownIds);
+                                setSelectedLanguages(prev => [...new Set([...prev, ...knownIds])]);
+                            }
                         }
                     } catch (e) { console.error("Failed to fetch actor languages", e); }
                 }
@@ -683,7 +751,7 @@ export const LevelUpModal = ({
         };
 
         init();
-    }, [classObj, patron, actorId, targetLevel, targetClassUuid, selectedPatronUuid]); // Added selectedPatronUuid dependency
+    }, [classObj, patron, actorId, targetLevel, targetClassUuid, selectedPatronUuid, availableLanguages]); // Added availableLanguages dependency
 
     // Fetch available patrons when needsBoon becomes true
     useEffect(() => {
@@ -925,8 +993,8 @@ export const LevelUpModal = ({
         const resolvedTalents = await resolveToDocs(rolledTalents);
         const resolvedBoons = await resolveToDocs(rolledBoons);
 
-        // Resolve Languages
-        const resolvedLanguages: any[] = [];
+        // Collect Languages to synchronize (UUIDs)
+        const finalLanguageUuids: string[] = [];
         if (availableLanguages) {
             // Helper to find lang doc
             const findLang = (uuidOrId: string) => availableLanguages.find((l: any) => l.uuid === uuidOrId || l._id === uuidOrId);
@@ -935,28 +1003,25 @@ export const LevelUpModal = ({
             for (const fid of fixedLanguages) {
                 const lang = findLang(fid);
                 if (lang) {
-                    // Fetch full doc if needed, but often compendium index is not enough for creation? 
-                    // Actually we need to create the item. If availableLanguages contains index data, we might need to fetch full doc.
-                    // Assuming availableLanguages has minimal data, let's fetch.
-                    const full = await fetchDocument(lang.uuid || fid); // Use uuid if available, else id (with fetch logic)
-                    if (full) resolvedLanguages.push({ ...full, type: 'Language' });
+                    const uuid = lang.uuid || fid;
+                    if (uuid && !finalLanguageUuids.includes(uuid)) {
+                        finalLanguageUuids.push(uuid);
+                    }
                 }
             }
-            // 2. Selected
+            // 2. Selected (New ones)
             for (const sid of selectedLanguages) {
                 const lang = findLang(sid);
                 if (lang) {
-                    const full = await fetchDocument(lang.uuid || sid);
-                    if (full) resolvedLanguages.push({ ...full, type: 'Language' });
+                    const uuid = lang.uuid || sid;
+                    if (uuid && !finalLanguageUuids.includes(uuid)) {
+                        finalLanguageUuids.push(uuid);
+                    }
                 }
             }
-        }
 
-        items.push(...resolvedLanguages.map(l => {
-            const copy = { ...l };
-            delete copy._id;
-            return copy;
-        }));
+            //console.log("Final Language UUIDs for sync:", finalLanguageUuids);
+        }
 
         items.push(...resolvedTalents);
         items.push(...resolvedBoons);
@@ -969,16 +1034,16 @@ export const LevelUpModal = ({
 
         // Include New Class if switched OR if it's Level 0 (force update)
         const isLvl0 = Number(currentLevel) === 0;
-        console.log("LevelUpModal Class Logic:", {
+        /*console.log("LevelUpModal Class Logic:", {
             active: activeClassObj?.name,
             activeUuid: activeClassObj?.uuid,
             old: classObj?.name,
             oldUuid: classObj?.uuid,
             isLvl0
-        });
+        });*/
 
         if ((activeClassObj && (activeClassObj.uuid || activeClassObj._id) !== (classObj?.uuid || classObj?._id)) || (activeClassObj && isLvl0)) {
-            console.log("LevelUpModal: Fetching new class to persist...");
+            //console.log("LevelUpModal: Fetching new class to persist...");
             let fetchUuid = activeClassObj.uuid;
             if (!fetchUuid && activeClassObj._id) {
                 if (activeClassObj.pack) fetchUuid = `Compendium.${activeClassObj.pack}.${activeClassObj._id}`;
@@ -987,15 +1052,15 @@ export const LevelUpModal = ({
             const fullClass = await fetchDocument(fetchUuid);
 
             if (fullClass) {
-                console.log("LevelUpModal: Full Class result:", fullClass.name);
+                //console.log("LevelUpModal: Full Class result:", fullClass.name);
                 // Sanitize: Creating a NEW embedded item, so remove _id to avoid conflicts
                 // Also explicitly ensure type is 'Class'
                 const classItem = { ...fullClass, type: 'Class' };
                 delete classItem._id;
                 items.push(classItem);
-                console.log("LevelUpModal: Added sanitized class item for creation");
+                //console.log("LevelUpModal: Added sanitized class item for creation");
             } else {
-                console.log("LevelUpModal: Full Class result: NULL");
+                //console.log("LevelUpModal: Full Class result: NULL");
             }
         }
 
@@ -1005,8 +1070,12 @@ export const LevelUpModal = ({
             if (fullPatron) items.push(fullPatron);
         }
 
-        const data: any = { items, hpRoll };
+        const data: any = { items, hpRoll, languages: finalLanguageUuids };
         if (goldRoll >= 0) data.gold = goldRoll;
+
+        //console.log("Final items array being sent:", items.map(i => ({ type: i.type, name: i.name })));
+        //console.log("Final Language UUIDs being sent:", finalLanguageUuids);
+        //console.log("Total items count:", items.length);
 
         onComplete(data);
     };
@@ -1536,33 +1605,39 @@ export const LevelUpModal = ({
 
                                 {/* Language Selection (Moved) */}
                                 {activeClassObj && (languageGroups.length > 0 || fixedLanguages.length > 0) && (
-                                    <div className="p-4 bg-white border border-neutral-300 rounded shadow-sm space-y-4">
-                                        <div className="flex justify-between items-center border-b pb-2">
-                                            <h3 className="font-bold text-neutral-800 flex items-center gap-2 text-lg font-serif">
-                                                <span className="fas fa-language"></span> Select Languages
-                                            </h3>
-                                            <button onClick={() => setSelectedLanguages([])} className="text-xs text-neutral-500 hover:text-red-600 underline">Clear All</button>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center border-b-2 border-neutral-300 pb-2">
+                                            <h3 className="font-bold text-lg font-serif">Select Languages</h3>
+                                            <button
+                                                onClick={() => {
+                                                    // Keep known languages selected when clearing
+                                                    if (availableLanguages && knownLanguages.length > 0) {
+                                                        const knownIds: string[] = [];
+                                                        knownLanguages.forEach((known: any) => {
+                                                            const match = availableLanguages.find((avail: any) =>
+                                                                avail.name?.toLowerCase() === known.name?.toLowerCase()
+                                                            );
+                                                            if (match) {
+                                                                const id = match.uuid || match._id;
+                                                                if (id) knownIds.push(id);
+                                                            }
+                                                        });
+                                                        setSelectedLanguages(knownIds);
+                                                    } else {
+                                                        setSelectedLanguages([]);
+                                                    }
+                                                }}
+                                                className="text-xs bg-neutral-200 px-2 py-1 rounded hover:bg-neutral-300"
+                                            >
+                                                Clear All
+                                            </button>
                                         </div>
 
-                                        {/* Known Languages (Ancestry/Previous) */}
-                                        {knownLanguages.length > 0 && (
-                                            <div className="flex flex-col gap-1">
-                                                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Known Languages</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {knownLanguages.map((lang: any) => (
-                                                        <span key={lang._id || lang.uuid} className="px-3 py-1 bg-neutral-100 text-neutral-500 rounded text-sm font-bold border border-neutral-200 flex items-center gap-1 cursor-default" title="Already Known">
-                                                            {lang.name}
-                                                            <span className="fas fa-check text-xs text-neutral-400"></span>
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
 
                                         {/* Fixed Languages */}
                                         {fixedLanguages.length > 0 && (
                                             <div className="flex flex-col gap-1">
-                                                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">Fixed Languages</span>
+                                                <span className="text-xs font-bold uppercase text-neutral-500">Fixed Languages</span>
                                                 <div className="flex flex-wrap gap-2">
                                                     {fixedLanguages.map(fid => {
                                                         const lang = availableLanguages?.find((l: any) => l.uuid === fid || l._id === fid);
@@ -1578,69 +1653,63 @@ export const LevelUpModal = ({
 
                                         {/* Rendering Groups */}
                                         {languageGroups.map((group) => {
-                                            const currentCount = selectedLanguages.filter(lid => {
-                                                const lang = availableLanguages?.find((l: any) => l.uuid === lid || l._id === lid);
-                                                if (!lang) return false;
-                                                if (group.id === 'select') return group.options?.includes(lid);
-                                                if (group.id === 'common') return lang.system?.rarity === 'common' || lang.system?.rarity === undefined;
-                                                if (group.id === 'rare') return lang.system?.rarity === 'rare';
-                                                return false;
-                                            }).length;
-
                                             const groupOptions = availableLanguages?.filter((l: any) => {
                                                 const id = l.uuid || l._id;
-                                                const name = l.name;
                                                 // Exclude if already fixed
                                                 if (fixedLanguages.includes(id)) return false;
-                                                // Exclude if already known (check by name as ID might differ if item vs compendium)
-                                                if (knownLanguages.some(k => k.name?.toLowerCase() === name?.toLowerCase())) return false;
 
                                                 if (group.id === 'select') return group.options?.includes(id);
-                                                if (group.id === 'common') return l.system?.rarity === 'common';
-                                                if (group.id === 'rare') return l.system?.rarity === 'rare';
+                                                if (group.id === 'common') return !l.rarity || l.rarity === 'common';
+                                                if (group.id === 'rare') return l.rarity === 'rare';
                                                 return false;
                                             }) || [];
 
-                                            const groupSelections = selectedLanguages.filter(lid => groupOptions.some((o: any) => (o.uuid || o._id) === lid));
+                                            const groupSelections = selectedLanguages.filter(lid => {
+                                                const opt = groupOptions.find((o: any) => (o.uuid || o._id) === lid);
+                                                if (!opt) return false;
+                                                // Don't count toward the limit if it's already known
+                                                const isKnown = knownLanguages.some(k => k.name?.toLowerCase() === opt.name?.toLowerCase());
+                                                return !isKnown;
+                                            });
                                             const countSelected = groupSelections.length;
 
                                             return (
                                                 <div key={group.id} className="space-y-2">
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-sm font-bold text-neutral-500 uppercase tracking-wider">
-                                                            {group.label}
-                                                        </span>
-                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${countSelected === group.count ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                            {countSelected} / {group.count}
-                                                        </span>
-                                                    </div>
+                                                    <h4 className="text-xs font-bold uppercase text-neutral-500 mb-1">{group.label} ({countSelected} / {group.count})</h4>
 
-                                                    <div className="grid grid-cols-2 md:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 border border-neutral-200 rounded bg-neutral-50">
+                                                    <div className="grid grid-cols-2 md:grid-cols-2 gap-2">
                                                         {groupOptions
                                                             .sort((a: any, b: any) => a.name.localeCompare(b.name))
                                                             .map((l: any) => {
                                                                 const id = l.uuid || l._id;
+                                                                const name = l.name;
+                                                                const isKnown = knownLanguages.some(k => k.name?.toLowerCase() === name?.toLowerCase());
                                                                 const isSelected = selectedLanguages.includes(id);
                                                                 const reachedLimit = countSelected >= group.count;
-                                                                const disabled = !isSelected && reachedLimit;
+                                                                const disabled = isKnown || (!isSelected && reachedLimit);
 
                                                                 return (
-                                                                    <label key={id} className={`flex items-center gap-2 p-2 rounded border cursor-pointer hover:bg-white transition-colors ${isSelected ? 'bg-amber-100 border-amber-400' : 'bg-white border-neutral-200'}`}>
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={isSelected}
-                                                                            disabled={disabled}
-                                                                            onChange={() => {
-                                                                                if (isSelected) {
-                                                                                    setSelectedLanguages(prev => prev.filter(x => x !== id));
-                                                                                } else {
-                                                                                    setSelectedLanguages(prev => [...prev, id]);
-                                                                                }
-                                                                            }}
-                                                                            className="accent-amber-600 w-4 h-4"
-                                                                        />
-                                                                        <span className={`text-sm ${isSelected ? 'font-bold text-black' : 'text-neutral-700'} ${disabled ? 'opacity-50' : ''}`}>{l.name}</span>
-                                                                    </label>
+                                                                    <button
+                                                                        key={id}
+                                                                        onClick={() => {
+                                                                            if (isKnown) return; // Can't deselect known languages
+                                                                            if (isSelected) {
+                                                                                setSelectedLanguages(prev => prev.filter(x => x !== id));
+                                                                            } else if (!reachedLimit) {
+                                                                                setSelectedLanguages(prev => [...prev, id]);
+                                                                            }
+                                                                        }}
+                                                                        disabled={disabled}
+                                                                        className={`p-3 rounded border text-left transition-all flex items-center justify-between ${isKnown ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed border-neutral-300 opacity-60' :
+                                                                            isSelected ? 'bg-amber-100 border-amber-600 shadow-md ring-1 ring-amber-500' :
+                                                                                'bg-white border-neutral-200 hover:border-black'
+                                                                            } ${!isKnown && disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                    >
+                                                                        <span className="font-bold text-sm flex items-center gap-2">
+                                                                            {l.name}
+                                                                            {isKnown && <span className="fas fa-lock text-xs ml-2"></span>}
+                                                                        </span>
+                                                                    </button>
                                                                 )
                                                             })
                                                         }
@@ -1657,19 +1726,12 @@ export const LevelUpModal = ({
                                     <div className="space-y-4">
                                         <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
                                             <h3 className="font-bold text-lg font-serif">Spells</h3>
-                                            <div className="flex gap-2">
-                                                {Object.entries(spellsToChoose).map(([tier, count]) => {
-                                                    const currentCount = selectedSpells.filter(s => {
-                                                        const t = s.tier ?? s.system?.tier ?? 0;
-                                                        return Number(t) === Number(tier);
-                                                    }).length;
-                                                    return (
-                                                        <span key={tier} className="text-xs bg-neutral-200 px-2 py-1 rounded">
-                                                            Tier {tier}: {currentCount}/{count}
-                                                        </span>
-                                                    );
-                                                })}
-                                            </div>
+                                            <button
+                                                onClick={() => setSelectedSpells([])}
+                                                className="text-xs bg-neutral-200 px-2 py-1 rounded hover:bg-neutral-300"
+                                            >
+                                                Clear All
+                                            </button>
                                         </div>
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1682,9 +1744,15 @@ export const LevelUpModal = ({
 
                                                 if (spellsInTier.length === 0) return null;
 
+                                                // Calculate selected count for this tier
+                                                const selectedCountInTier = selectedSpells.filter(s => {
+                                                    const t = s.tier ?? s.system?.tier ?? 0;
+                                                    return Number(t) === tier;
+                                                }).length;
+
                                                 return (
                                                     <div key={tier} className="col-span-full">
-                                                        <h4 className="text-xs font-bold uppercase text-neutral-500 mb-1">Tier {tier} Options (Choose {count})</h4>
+                                                        <h4 className="text-xs font-bold uppercase text-neutral-500 mb-1">Tier {tier} Options ({selectedCountInTier} / {count})</h4>
                                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                                             {spellsInTier.map(spell => {
                                                                 const spellId = spell.uuid || spell._id;
