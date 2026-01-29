@@ -256,7 +256,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             onClick={() => setShowLevelUpModal(true)}
                             className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
                         >
-                            LVL UP!
+                            LEVEL UP!
                         </button>
                     )}
                     {actor.system?.attributes?.hp && (

@@ -2317,6 +2317,8 @@ export default function Generator() {
                         classUuid={formData.class}
                         patron={formData.patron ? { uuid: formData.patron, system: systemData.patrons.find((p: any) => p.uuid === formData.patron) } : null}
                         abilities={formData.stats}
+                        availableClasses={systemData.classes}
+                        availableLanguages={systemData.languages}
                         foundryUrl={foundryUrl}
                         spells={[]}
                         onComplete={(data) => {

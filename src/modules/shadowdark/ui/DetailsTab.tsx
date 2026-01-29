@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { resolveImage, resolveEntityName } from './sheet-utils';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
+import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { Trash2, Power, Pencil } from 'lucide-react';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
+import { LevelUpModal } from './components/LevelUpModal';
 
 interface DetailsTabProps {
     actor: any;
@@ -22,6 +24,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
+    const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
     // Selection Modal State
     const [selectionModal, setSelectionModal] = useState<{
@@ -69,7 +73,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                 uuid: o.uuid,
                 description: o.description || o.data?.description?.value || ''
             })),
-            currentValue: current,
+            currentValue: dataKey ? resolveEntityName(current, actor, systemData, dataKey) : current,
             multiSelect,
             onSelect: (option) => {
                 const valToStore = option.uuid || option.name;
@@ -148,17 +152,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
                             {actor.computed?.levelUp ? (
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    className="w-8 h-8 text-emerald-600 animate-bounce"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={3}
+                                <button
+                                    onClick={() => setShowLevelUpModal(true)}
+                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
                                 >
-                                    <title>Level Up Available!</title>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18" />
-                                </svg>
+                                    LEVEL UP!
+                                </button>
                             ) : (
                                 <span>{actor.system?.level?.value ?? 1}</span>
                             )}
@@ -330,7 +329,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white flex justify-between items-center">
                         <span className="font-serif font-bold text-lg uppercase">Languages</span>
                         <button
-                            onClick={() => openSelection('system.languages', 'Languages', 'languages', true)}
+                            onClick={() => setIsLanguageModalOpen(true)}
                             className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors"
                             title="Edit Languages"
                         >
@@ -479,6 +478,85 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                 currentValue={selectionModal.currentValue}
                 multiSelect={selectionModal.multiSelect}
             />
+
+            {isLanguageModalOpen && (
+                <LanguageSelectionModal
+                    isOpen={true}
+                    onClose={() => setIsLanguageModalOpen(false)}
+                    onSelect={(langs) => {
+                        onUpdate('system.languages', langs);
+                        setIsLanguageModalOpen(false);
+                    }}
+                    availableLanguages={systemData?.languages || []}
+                    currentLanguages={(actor.system?.languages || []).map((id: string) => {
+                        const found = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                        return found?.uuid || id;
+                    })}
+                    maxCommon={(() => {
+                        const findObj = (id: string, list: any[]) => {
+                            const embedded = actor.items?.find((i: any) =>
+                                i.id === id || i.uuid === id || (typeof id === 'string' && id.endsWith(i.id))
+                            );
+                            if (embedded) return embedded;
+                            return list?.find(i => i.uuid === id || i._id === id || i.name === id || (id?.includes('.') && id.endsWith(i._id)));
+                        };
+
+                        const classObj = findObj(actor.system?.class, systemData?.classes);
+                        const ancestryObj = findObj(actor.system?.ancestry, systemData?.ancestries);
+                        const backgroundObj = findObj(actor.system?.background, systemData?.backgrounds);
+
+                        const cl = classObj?.system?.languages || classObj?.languages || {};
+                        const al = ancestryObj?.system?.languages || ancestryObj?.languages || {};
+                        const bl = backgroundObj?.system?.languages || backgroundObj?.languages || {};
+
+                        const allFixed = Array.from(new Set([
+                            ...(cl.fixed || []),
+                            ...(al.fixed || []),
+                            ...(bl.fixed || [])
+                        ]));
+
+                        const fixedCommon = allFixed.filter(f => {
+                            const l = systemData?.languages?.find((lang: any) => lang.name === f || lang.uuid === f);
+                            return !l?.rarity || l.rarity === 'common';
+                        }).length;
+
+                        return (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
+                            (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || 0) +
+                            fixedCommon;
+                    })()}
+                    maxRare={(() => {
+                        const findObj = (id: string, list: any[]) => {
+                            const embedded = actor.items?.find((i: any) =>
+                                i.id === id || i.uuid === id || (typeof id === 'string' && id.endsWith(i.id))
+                            );
+                            if (embedded) return embedded;
+                            return list?.find(i => i.uuid === id || i._id === id || i.name === id || (id?.includes('.') && id.endsWith(i._id)));
+                        };
+
+                        const classObj = findObj(actor.system?.class, systemData?.classes);
+                        const ancestryObj = findObj(actor.system?.ancestry, systemData?.ancestries);
+                        const backgroundObj = findObj(actor.system?.background, systemData?.backgrounds);
+
+                        const cl = classObj?.system?.languages || classObj?.languages || {};
+                        const al = ancestryObj?.system?.languages || ancestryObj?.languages || {};
+                        const bl = backgroundObj?.system?.languages || backgroundObj?.languages || {};
+
+                        const allFixed = Array.from(new Set([
+                            ...(cl.fixed || []),
+                            ...(al.fixed || []),
+                            ...(bl.fixed || [])
+                        ]));
+
+                        const fixedRare = allFixed.filter(f => {
+                            const l = systemData?.languages?.find((lang: any) => lang.name === f || lang.uuid === f);
+                            return l?.rarity === 'rare';
+                        }).length;
+
+                        return (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || 0) +
+                            fixedRare;
+                    })()}
+                />
+            )}
 
         </div >
 
