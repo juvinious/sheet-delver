@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { LevelUpModal } from '../components/LevelUpModal';
 
@@ -10,6 +10,9 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 export default function Generator() {
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
+
+    // Randomize All
+    const skipLanguageReset = useRef(false);
 
     // Stat Choice State
     const [currentStatPrompt, setCurrentStatPrompt] = useState<{
@@ -169,6 +172,21 @@ export default function Generator() {
 
         setFormData(prev => ({ ...prev, stats: newStats }));
     };
+
+    // Roll a single stat
+    const rollSingleStat = (stat: string) => {
+        const roll3d6 = () => Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + 3;
+        const val = roll3d6();
+
+        setFormData(prev => ({
+            ...prev,
+            stats: {
+                ...prev.stats,
+                [stat]: { value: val, mod: getMod(val) }
+            }
+        }));
+    };
+
 
     // Calculate HP based on Level Rules
     const calculateHP = () => {
@@ -400,6 +418,7 @@ export default function Generator() {
         }
 
         setIsRandomizing(true);
+        skipLanguageReset.current = true;
         // Small delay to let the modal appear before heavy calculations freeze the thread (if any JS heavy work occurs)
         await new Promise(r => setTimeout(r, 100));
 
@@ -579,8 +598,18 @@ export default function Generator() {
                 selections.rare = pickN(rareUuids, rareCount, usedUUIDs);
             }
 
+            // Ensure "Common" is always known
+            if (systemData?.languages) {
+                // @ts-ignore
+                const commonLang = systemData.languages.find((l: any) => l.name === 'Common');
+                if (commonLang) {
+                    fixedLangs.add(commonLang.uuid);
+                }
+            }
+
             setKnownLanguages(prev => ({
                 ...prev,
+                fixed: Array.from(fixedLangs),
                 selected: selections
             }));
 
@@ -598,6 +627,7 @@ export default function Generator() {
             setTimeout(() => {
                 setIsRandomizing(false);
             }, 500);
+            skipLanguageReset.current = false;
         }
     };
 
@@ -619,11 +649,9 @@ export default function Generator() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [formData.level0, systemData]);
 
-    // Effect: Load Ancestry Details & Talents
+    // Effect: Load Ancestry Details & Talents & Languages
     useEffect(() => {
-        // Always reset selections when ancestry changes
         setSelectedAncestryTalents([]);
-        setKnownLanguages(prev => ({ ...prev, fixed: [], selected: { common: [], rare: [], ancestry: [], class: [] } })); // Reset languages
 
         if (!formData.ancestry) {
             setAncestryDetails(null);
@@ -638,8 +666,9 @@ export default function Generator() {
 
                 if (!details?.system) return;
 
-                const fixed: any[] = [];
-                const choice: any[] = [];
+                // 1. TALENTS
+                const fixedTalents: any[] = [];
+                const choiceTalents: any[] = [];
                 const choiceCount = details.system.talentChoiceCount || 0;
                 let effectiveChoiceCount = choiceCount;
 
@@ -651,26 +680,82 @@ export default function Generator() {
                         description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
                     } : null).filter(d => d);
 
-                    // Logic: If available talents <= choice count, they are all fixed (you get all of them).
-                    // Otherwise, they are choices.
                     if (loaded.length <= choiceCount) {
-                        fixed.push(...loaded);
-                        effectiveChoiceCount = 0; // All turned into fixed, no choices left
+                        fixedTalents.push(...loaded);
+                        effectiveChoiceCount = 0;
                     } else {
-                        choice.push(...loaded);
+                        choiceTalents.push(...loaded);
                     }
-                } else {
-                    // No talents found?
                 }
+                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
 
-                setAncestryTalents({ fixed, choice, choiceCount: effectiveChoiceCount || 0 });
+                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
 
             } catch (e) {
                 console.error("Ancestry load error", e);
             }
         };
         loadAncestry();
-    }, [formData.ancestry]);
+    }, [formData.ancestry, systemData]);
+
+
+
+    // Effect: Calculate Languages (Centralized)
+    useEffect(() => {
+        if (skipLanguageReset.current) return;
+
+        // If no ancestry loaded yet, and NOT level 1? 
+        // Level 0 relies on Ancestry. Level 1 relies on Ancestry + Class.
+        // We act whenever details change.
+
+        const fixedLangs = new Set<string>();
+
+        // 1. Common (Always?)
+        if (systemData?.languages) {
+            const common = systemData.languages.find((l: any) => l.name?.trim().toLowerCase() === 'common');
+            if (common) fixedLangs.add(common.uuid);
+        }
+
+        // 2. Ancestry Fixed
+        if (ancestryDetails?.system?.languages?.fixed) {
+            ancestryDetails.system.languages.fixed.forEach((u: string) => fixedLangs.add(u));
+        }
+
+        // 3. Class Fixed
+        if (classDetails?.system?.languages?.fixed) {
+            classDetails.system.languages.fixed.forEach((u: string) => fixedLangs.add(u));
+        }
+
+        // Language Pools (for manual selection)
+        // Ancestry
+        const ankPool = {
+            count: ancestryDetails?.system?.languages?.select || 0,
+            options: ancestryDetails?.system?.languages?.selectOptions || []
+        };
+
+        // Class
+        const clsPool = {
+            count: classDetails?.system?.languages?.select || 0,
+            options: classDetails?.system?.languages?.selectOptions || []
+        };
+
+        setKnownLanguages(prev => ({
+            ...prev,
+            fixed: Array.from(fixedLangs),
+            // Reset selected choices on context switch to avoid invalid states
+            selected: { common: [], rare: [], ancestry: [], class: [] }
+        }));
+
+        setLanguageConfig({
+            common: 0, // Shadowdark usually fixed common/rare by INT?
+            rare: 0,
+            ancestry: ankPool,
+            class: clsPool,
+            fixed: Array.from(fixedLangs)
+        });
+
+    }, [ancestryDetails, classDetails, systemData]);
+    // Effect: Calculate Languages (Centralized) defined above
 
     const [classTalents, setClassTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number, table?: boolean }>({ fixed: [], choice: [], choiceCount: 0 });
     const [ancestryTalents, setAncestryTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number }>({ fixed: [], choice: [], choiceCount: 0 });
@@ -797,7 +882,6 @@ export default function Generator() {
             let common = 0;
             let rare = 0;
             let fixedUuids: string[] = [];
-
             const ancestryPool = { count: 0, options: [] as string[] };
             const classPool = { count: 0, options: [] as string[] };
 
@@ -812,19 +896,9 @@ export default function Generator() {
                 // Select / Restricted
                 if (ancestryDetails.system.languages.select > 0) {
                     ancestryPool.count = ancestryDetails.system.languages.select;
-                    // If selectOptions exists and has items, use it. Else empty (implies Any? or None?)
-                    // In CharacterGeneratorSD.mjs, filter iterates selectOptions. If undefined it throws.
-                    // So we assume it exists if select > 0, OR we treat empty as "Any".
-                    // Given USER feedback "list is offering too much", implying restrictions exist.
-                    // We will assume: If selectOptions provided > Use it. If not > Any.
                     if (ancestryDetails.system.languages.selectOptions?.length > 0) {
                         ancestryPool.options = ancestryDetails.system.languages.selectOptions;
                     }
-                    // If selectOptions is missing/empty, we leave options [] which we will interpret as "Any" (fallback).
-                    // Wait, if it's RESTRICTED, empty might mean "None available".
-                    // But standard "Any" usually doesn't list all languages in selectOptions.
-                    // Let's verify data later. For now, treat [] as "Any" BUT if user complains about "too much", maybe the issue is that I didn't check selectOptions at all.
-                    // If I check it and it's there, I restrict.
                 }
             }
 
@@ -967,6 +1041,9 @@ export default function Generator() {
 
             // Add Ancestry Fixed Talents & Choices
             if (ancestryItem && ancestryItem.system) {
+                const choiceCount = ancestryItem.system.talentChoiceCount || 0;
+                const talentList = ancestryItem.system.talents || [];
+
                 const addFromList = async (list: any[]) => {
                     if (!Array.isArray(list)) return;
                     for (const ref of list) {
@@ -976,7 +1053,14 @@ export default function Generator() {
                         }
                     }
                 };
-                await addFromList(ancestryItem.system.talents);
+
+                // Only add talents automatically if they are FIXED (not choices)
+                // If list length > choiceCount, they are choices -> Do NOT add them (user selections will be added later)
+                // If list length <= choiceCount, they are fixed -> Add them
+                if (talentList.length <= choiceCount) {
+                    await addFromList(talentList);
+                }
+
                 await addFromList(ancestryItem.system.features);
                 await addFromList(ancestryItem.system.abilities);
             }
@@ -986,25 +1070,8 @@ export default function Generator() {
                 await addItem(uuid);
             }
 
-            // Languages
-            for (const l of knownLanguages.fixed) {
-                await addItem(l.uuid);
-            }
-            if (languageConfig.fixed?.length > 0) {
-                for (const uuid of languageConfig.fixed) {
-                    await addItem(uuid);
-                }
-            }
-            // Fix: Iterate flattened selected languages
-            const selectedLanguageUuids = [
-                ...knownLanguages.selected.common,
-                ...knownLanguages.selected.rare,
-                ...knownLanguages.selected.ancestry,
-                ...knownLanguages.selected.class
-            ];
-            for (const uuid of selectedLanguageUuids) {
-                await addItem(uuid);
-            }
+            // Languages are stored as UUIDs in system.languages, not as items
+            // They will be collected into languageUuids array below (lines 1240-1254)
 
             // Gear (Level 0)
             if (formData.level0 && gearSelected.length > 0) {
@@ -1159,9 +1226,17 @@ export default function Generator() {
 
             // Collect Language UUIDs for system.languages array
             const languageUuids: string[] = [];
-            for (const l of knownLanguages.fixed) languageUuids.push(l.uuid);
 
-            // Add flattened selections
+            // Fixed languages - handle both string UUIDs and objects with uuid property
+            for (const l of knownLanguages.fixed) {
+                if (typeof l === 'string') {
+                    languageUuids.push(l);
+                } else if (l && l.uuid) {
+                    languageUuids.push(l.uuid);
+                }
+            }
+
+            // Add flattened selections (these are already UUID strings)
             languageUuids.push(
                 ...knownLanguages.selected.common,
                 ...knownLanguages.selected.rare,
@@ -1169,8 +1244,13 @@ export default function Generator() {
                 ...knownLanguages.selected.class
             );
 
+            // Add any additional fixed languages from config
             if (languageConfig.fixed?.length > 0) {
-                for (const uuid of languageConfig.fixed) languageUuids.push(uuid);
+                for (const uuid of languageConfig.fixed) {
+                    if (typeof uuid === 'string' && !languageUuids.includes(uuid)) {
+                        languageUuids.push(uuid);
+                    }
+                }
             }
 
 
@@ -1186,7 +1266,7 @@ export default function Generator() {
                     patron: patronItem ? patronItem._id : formData.patron,         // Link to Pre-Gen ID
                     alignment: formData.alignment,
                     deity: formData.deity,
-                    languages: languageUuids,
+                    languages: languageUuids, // Populate with selected language UUIDs
                     level: {
                         value: formData.level0 ? 0 : 1,
                         xp: 0,
@@ -1287,10 +1367,7 @@ export default function Generator() {
                         title="Randomize All"
                     >
                         <div className="w-14 h-14 flex items-center justify-center transition-transform group-hover:scale-110 bg-neutral-800 rounded-full border-2 border-neutral-700 group-hover:border-amber-500 shadow-lg">
-                            <svg viewBox="0 0 100 100" className="w-8 h-8 fill-current text-white group-hover:text-amber-500">
-                                <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
-                                <text x="50" y="66" fontSize="30" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
-                            </svg>
+                            <img src="/icons/dice-d20.svg" alt="Randomize" className="w-12 h-12 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]" />
                         </div>
                     </button>
                 </div>
@@ -1353,9 +1430,14 @@ export default function Generator() {
                         <div className="bg-white p-6 border-2 border-black shadow-sm relative">
                             <div className="flex justify-between items-center mb-4 border-b-2 border-black pb-1">
                                 <h2 className="text-black font-black font-serif text-xl">Stats</h2>
-                                <button onClick={rollStats} className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 hover:text-black transition-colors">
-                                    <span className="fas fa-dice mr-1"></span>
-                                    Roll 3d6
+                                <button
+                                    onClick={rollStats}
+                                    className="group relative flex items-center justify-center"
+                                    title="Roll All Stats (3d6)"
+                                >
+                                    <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110 bg-indigo-600 group-hover:bg-indigo-500 rounded-lg shadow-md">
+                                        <img src="/icons/dice-d6.svg" alt="Roll dice" className="w-8 h-8 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.9)]" />
+                                    </div>
                                 </button>
                             </div>
 
@@ -1366,16 +1448,25 @@ export default function Generator() {
                                     return (
                                         <div key={stat} className="flex items-center justify-between">
                                             <span className="font-bold text-neutral-500 text-sm tracking-widest">{stat}</span>
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2">
                                                 <input
                                                     type="number"
                                                     value={st.value}
                                                     onChange={(e) => handleStatChange(stat, e.target.value)}
-                                                    className={`w-12 text-center bg-transparent border-b border-neutral-300 focus:border-black outline-none font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'}`}
+                                                    className={`w-12 text-center bg-transparent border-b border-neutral-300 focus:border-black outline-none font-serif text-2xl font-bold ${st.value >= 15 ? 'text-amber-600' : 'text-black'} [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                                                 />
                                                 <span className="text-xs font-bold bg-neutral-200 px-2 py-0.5 rounded-full text-neutral-600 min-w-[2rem] text-center">
                                                     {st.mod >= 0 ? '+' : ''}{st.mod}
                                                 </span>
+                                                <button
+                                                    onClick={() => rollSingleStat(stat)}
+                                                    className="group relative flex items-center justify-center ml-1"
+                                                    title={`Re-roll ${stat}`}
+                                                >
+                                                    <div className="w-7 h-7 flex items-center justify-center transition-all group-hover:scale-110 bg-indigo-600 group-hover:bg-indigo-500 rounded shadow-sm">
+                                                        <img src="/icons/dice-d6.svg" alt="Roll dice" className="w-6 h-6 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_4px_rgba(255,255,255,0.9)]" />
+                                                    </div>
+                                                </button>
                                             </div>
                                         </div>
                                     )
@@ -1386,26 +1477,30 @@ export default function Generator() {
                         {/* HP & Gold */}
                         <div className="grid grid-cols-2 gap-4">
                             {/* Hit Points */}
-                            <div className="bg-white p-4 border-2 border-black shadow-sm">
+                            <div className="bg-white p-4 border-2 border-black shadow-sm h-full flex flex-col justify-between">
                                 <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
                                     <span>HP</span>
-                                    <button onClick={calculateHP} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>
+                                    {formData.level0 && <button onClick={calculateHP} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>}
                                 </h2>
-                                <div className="text-center">
-                                    <span className="text-3xl font-black font-serif">{formData.hp}</span>
-                                    <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">
-                                        {(formData.level0 || !classDetails?.system?.hitPoints) ? "d4" : classDetails.system.hitPoints} + CON
-                                    </p>
+                                <div className="text-center flex-1 flex flex-col justify-center">
+                                    {formData.level0 ? (
+                                        <>
+                                            <span className="text-3xl font-black font-serif">{formData.hp}</span>
+                                            <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">1 + CON</p>
+                                        </>
+                                    ) : (
+                                        <span className="text-sm font-bold text-neutral-400 italic">To be determined upon creation</span>
+                                    )}
                                 </div>
                             </div>
 
                             {/* Gold */}
-                            <div className="bg-white p-4 border-2 border-black shadow-sm">
+                            <div className="bg-white p-4 border-2 border-black shadow-sm h-full flex flex-col justify-between">
                                 <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
                                     <span>Gold</span>
-                                    <button onClick={calculateGold} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>
+                                    {formData.level0 && <button onClick={calculateGold} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>}
                                 </h2>
-                                <div className="text-center">
+                                <div className="text-center flex-1 flex flex-col justify-center">
                                     {
                                         formData.level0 ? (
                                             <>
@@ -1413,11 +1508,7 @@ export default function Generator() {
                                                 <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">Starting Gear</p>
                                             </>
                                         ) : (
-                                            <>
-                                                <span className="text-3xl font-black font-serif">{formData.gold}</span>
-                                                <span className="text-xs font-bold text-neutral-400 ml-1">GP</span>
-                                                <p className="text-[10px] text-neutral-400 uppercase tracking-widest mt-1">2d6 x 5</p>
-                                            </>
+                                            <span className="text-sm font-bold text-neutral-400 italic">To be determined upon creation</span>
                                         )
                                     }
 
@@ -1444,7 +1535,7 @@ export default function Generator() {
                                 <option value="" disabled={!formData.level0 && formData.class !== ""}>
                                     {formData.level0 ? "Gauntlet (No Class)" : "Choose Class..."}
                                 </option>
-                                {systemData?.classes?.filter((c: any) => c.name !== "Level 0").map((a: any) => (
+                                {systemData?.classes?.filter((c: any) => c.name !== "Level 0").sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1462,7 +1553,7 @@ export default function Generator() {
                                 onChange={(e) => setFormData(prev => ({ ...prev, ancestry: e.target.value }))}
                             >
                                 <option value="">Select Ancestry...</option>
-                                {systemData?.ancestries?.map((a: any) => (
+                                {systemData?.ancestries?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1479,7 +1570,7 @@ export default function Generator() {
                                 onChange={(e) => setFormData(prev => ({ ...prev, background: e.target.value }))}
                             >
                                 <option value="">Select Background...</option>
-                                {systemData?.backgrounds?.map((a: any) => (
+                                {systemData?.backgrounds?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1509,7 +1600,7 @@ export default function Generator() {
                             >
                                 <option value="">None / Select...</option>
                                 {/* Populate from systemData if available, or fetch */}
-                                {systemData?.deities?.map((a: any) => (
+                                {systemData?.deities?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1734,7 +1825,7 @@ export default function Generator() {
                             </span>
                             <span>
                                 {[
-                                    ...knownLanguages.fixed.map(l => l.name),
+                                    ...knownLanguages.fixed.map((l: any) => l.name || systemData?.languages?.find((sl: any) => sl.uuid === l)?.name).filter(Boolean),
                                     ...([
                                         ...knownLanguages.selected.common,
                                         ...knownLanguages.selected.rare,
@@ -1751,16 +1842,160 @@ export default function Generator() {
                                 return (
                                     <button
                                         onClick={() => setShowLanguageModal(true)}
-                                        className={`ml-2 text-xs px-2 py-1 rounded border transition-colors ${totalSelected === totalAllowed
-                                            ? 'bg-green-100 hover:bg-green-200 text-green-800 border-green-300'
+                                        className={`ml-2 text-xs px-2 py-1 rounded border transition-colors ${totalSelected >= totalAllowed
+                                            ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
                                             : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
                                             }`}
                                     >
-                                        {totalSelected === totalAllowed ? 'Edit Languages (Full)' : `Select Languages (${totalSelected}/${totalAllowed})`}
+                                        {totalSelected >= totalAllowed ? 'Edit Languages' : `Select Languages (${totalSelected}/${totalAllowed})`}
                                     </button>
                                 );
                             })()}
                         </div>
+
+                        {/* Language Selection Modal */}
+                        {showLanguageModal && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                                <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
+                                        <h3 className="font-bold font-serif text-lg">Select Languages</h3>
+                                        <button
+                                            onClick={() => setShowLanguageModal(false)}
+                                            className="text-neutral-500 hover:text-black"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                    <div className="p-4 overflow-y-auto flex-1 text-sm">
+
+                                        {/* Ancestry Languages */}
+                                        {languageConfig.ancestry.count > 0 && (
+                                            <div className="mb-4">
+                                                <div className="font-bold mb-1 border-b border-neutral-200 pb-1">
+                                                    Ancestry Languages (Choose {languageConfig.ancestry.count})
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {(() => {
+                                                        // Determine the source pool: Explicit options OR all languages if no options
+                                                        // @ts-ignore
+                                                        const source = languageConfig.ancestry.options.length > 0
+                                                            ? languageConfig.ancestry.options
+                                                            // @ts-ignore
+                                                            : systemData.languages.map((l: any) => l.uuid);
+
+                                                        // Filter source to get full objects (name, uuid)
+                                                        // @ts-ignore
+                                                        const options = systemData?.languages?.filter((l: any) => source.includes(l.uuid)) || [];
+
+                                                        // Filter out any that are ALREADY fixed (e.g. Common)
+                                                        const available = options.filter((l: any) => !knownLanguages.fixed.some((f: any) => f.uuid === l.uuid));
+
+                                                        return available.map((l: any) => {
+                                                            const isSelected = knownLanguages.selected.ancestry.includes(l.uuid);
+                                                            const isFull = knownLanguages.selected.ancestry.length >= languageConfig.ancestry.count;
+                                                            const disabled = !isSelected && isFull;
+
+                                                            return (
+                                                                <label key={l.uuid} className={`flex items-center gap-2 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        disabled={disabled}
+                                                                        onChange={(e) => {
+                                                                            const checked = e.target.checked;
+                                                                            setKnownLanguages(prev => {
+                                                                                const current = prev.selected.ancestry;
+                                                                                let updated = [];
+                                                                                if (checked) {
+                                                                                    if (current.length < languageConfig.ancestry.count) {
+                                                                                        updated = [...current, l.uuid];
+                                                                                    } else {
+                                                                                        updated = current;
+                                                                                    }
+                                                                                } else {
+                                                                                    updated = current.filter(id => id !== l.uuid);
+                                                                                }
+                                                                                return {
+                                                                                    ...prev,
+                                                                                    selected: { ...prev.selected, ancestry: updated }
+                                                                                };
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                    <span>{l.name}</span>
+                                                                </label>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Class Languages */}
+                                        {languageConfig.class.count > 0 && (
+                                            <div className="mb-4">
+                                                <div className="font-bold mb-1 border-b border-neutral-200 pb-1">
+                                                    Class Languages (Choose {languageConfig.class.count})
+                                                </div>
+                                                <div className="space-y-1">
+                                                    {(() => {
+                                                        // @ts-ignore
+                                                        const source = languageConfig.class.options.length > 0 ? languageConfig.class.options : systemData.languages.map((l: any) => l.uuid);
+                                                        // @ts-ignore
+                                                        const options = systemData?.languages?.filter((l: any) => source.includes(l.uuid)) || [];
+                                                        const available = options.filter((l: any) => !knownLanguages.fixed.some((f: any) => f.uuid === l.uuid));
+
+                                                        return available.map((l: any) => {
+                                                            const isSelected = knownLanguages.selected.class.includes(l.uuid);
+                                                            const isFull = knownLanguages.selected.class.length >= languageConfig.class.count;
+                                                            const disabled = !isSelected && isFull;
+
+                                                            return (
+                                                                <label key={l.uuid} className={`flex items-center gap-2 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isSelected}
+                                                                        disabled={disabled}
+                                                                        onChange={(e) => {
+                                                                            const checked = e.target.checked;
+                                                                            setKnownLanguages(prev => {
+                                                                                const current = prev.selected.class;
+                                                                                let updated = [];
+                                                                                if (checked) {
+                                                                                    if (current.length < languageConfig.class.count) updated = [...current, l.uuid];
+                                                                                    else updated = current;
+                                                                                } else {
+                                                                                    updated = current.filter(id => id !== l.uuid);
+                                                                                }
+                                                                                return { ...prev, selected: { ...prev.selected, class: updated } };
+                                                                            });
+                                                                        }}
+                                                                    />
+                                                                    <span>{l.name}</span>
+                                                                </label>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Common / Rare Pools (if any left) */}
+                                        {/* NOTE: Shadowdark usually auto-assigns common/rare. But if user manually wants to swap? */}
+                                        {/* For now, adhering mainly to Ancestry/Class choices requested by user. */}
+
+                                    </div>
+                                    <div className="p-3 border-t border-neutral-200 bg-neutral-100 rounded-b flex justify-end">
+                                        <button
+                                            onClick={() => setShowLanguageModal(false)}
+                                            className="px-4 py-2 bg-black text-white rounded hover:bg-neutral-800 text-xs font-bold uppercase tracking-wide"
+                                        >
+                                            Done
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {/* 6. Patron */}
                         {classDetails?.system?.patron?.required && (
@@ -2083,7 +2318,7 @@ export default function Generator() {
                         patron={formData.patron ? { uuid: formData.patron, system: systemData.patrons.find((p: any) => p.uuid === formData.patron) } : null}
                         abilities={formData.stats}
                         foundryUrl={foundryUrl}
-                        spells={systemData?.spells || []}
+                        spells={[]}
                         onComplete={(data) => {
                             setShowLevelUp(false);
                             // Merge the modal's HP roll if valid, otherwise keep generator's

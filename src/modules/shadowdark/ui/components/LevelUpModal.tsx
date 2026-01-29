@@ -67,8 +67,11 @@ export const LevelUpModal = ({
     const [confirmReroll, setConfirmReroll] = useState(false);
 
     // Class Switching State (Level 0 -> 1)
-    const [targetClassUuid, setTargetClassUuid] = useState(classUuid);
+    const [targetClassUuid, setTargetClassUuid] = useState(""); // Start with no selection
     const [activeClassObj, setActiveClassObj] = useState<any>(classObj);
+    const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>("");
+    const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
+    const [loadingPatrons, setLoadingPatrons] = useState(false);
 
     // Data
     const [talentTable, setTalentTable] = useState<any>(null);
@@ -79,7 +82,8 @@ export const LevelUpModal = ({
     // State
     const [hpRoll, setHpRoll] = useState<number>(0);
     const [hpEditMode, setHpEditMode] = useState(false);
-    const [goldRoll, setGoldRoll] = useState<number>(-1); // -1 means not rolled
+    const [goldRoll, setGoldRoll] = useState<number>(0);
+    const [goldEditMode, setGoldEditMode] = useState(false);
     const [rolledTalents, setRolledTalents] = useState<any[]>([]);
     const [rolledBoons, setRolledBoons] = useState<any[]>([]);
     const [selectedSpells, setSelectedSpells] = useState<any[]>([]);
@@ -99,9 +103,8 @@ export const LevelUpModal = ({
 
 
     const [requiredTalents, setRequiredTalents] = useState(0);
-
-    const needsBoon = classObj?.system?.patron?.required;
-    const startingBoons = (targetLevel === 1 && needsBoon && classObj?.system?.patron?.startingBoons) || 0;
+    const [needsBoon, setNeedsBoon] = useState(Boolean(classObj?.system?.patron?.required));
+    const [startingBoons, setStartingBoons] = useState((targetLevel === 1 && classObj?.system?.patron?.required && classObj?.system?.patron?.startingBoons) || 0);
 
     // Requirements Check
     const isComplete = () => {
@@ -207,32 +210,39 @@ export const LevelUpModal = ({
         let headerText = "Choose One";
         let validOptions = matchingResults;
 
+        // Create cleaner list by filtering out structural elements
         if (matchingResults.length > 1) {
+            // Attempt to find a "Header" result to use for the title
             const headerResult = matchingResults.find(r =>
                 (r.type === 'text' || r.type === 0) &&
-                (r.name === "" || (r.description && !r.name)) && // Empty name usually implies it's a structural result
+                (r.text || r.name || r.description || "").toLowerCase().includes("choose") &&
                 r.drawn === false
             );
 
             if (headerResult) {
-                headerText = headerResult.description || "Choose One";
-
-
-                // Fix for "or" header text
-                if (headerText.trim().toLowerCase() === 'or') {
-                    headerText = "Choose One";
-                }
-
-                validOptions = matchingResults.filter(r => r._id !== headerResult._id);
-            } else {
-                // Fallback filtering if we didn't find a perfect "Header Result" but have "Choose" text
-                const meaningfulResults = matchingResults.filter(r => {
-                    if (r.documentId || r.documentUuid) return true;
-                    const text = (r.text || r.name || "").toLowerCase();
-                    return !text.includes("choose");
-                });
-                if (meaningfulResults.length > 0) validOptions = meaningfulResults;
+                const rawText = headerResult.description || headerResult.text || headerResult.name || "Choose One";
+                // Clean up header text "Choose 1" -> "Choose One"
+                headerText = (rawText.toLowerCase() === 'choose 1' || rawText.toLowerCase() === 'choose one')
+                    ? "Choose One"
+                    : rawText;
             }
+
+            // aggressive filtering to remove purely structural items from the OPTIONS list
+            validOptions = matchingResults.filter(r => {
+                // Always keep Documents (items, spells, etc)
+                if (r.documentId || r.documentUuid) return true;
+
+                const text = (r.text || r.name || r.description || "").trim().toLowerCase();
+
+                // Remove results that are just "choose 1", "choose one", or "or"
+                if (text === 'choose 1' || text === 'choose one' || text === 'or') return false;
+
+                // Remove empty results
+                if (!text) return false;
+
+                // Keep other text results (like "Distribute to Stats", "Roll two boons", etc)
+                return true;
+            });
         }
 
 
@@ -241,7 +251,7 @@ export const LevelUpModal = ({
         if (validOptions.length > 1) {
             // Need to present choice.
             const choices = validOptions.map(r => ({
-                name: r.text || r.name || "Unknown Option",
+                name: r.text || r.name || r.description || "Unknown Option",
                 img: r.img,
                 original: r
             }));
@@ -260,10 +270,61 @@ export const LevelUpModal = ({
     };
 
     const processSingleResult = async (result: any): Promise<any[] | null> => {
+        // SPECIAL HANDLING: Warlock "Roll two Patron Boons"
+        const textContent = (result.text || result.name || result.description || "").toLowerCase();
+        if (textContent.includes("roll two patron boons") && textContent.includes("choose one")) {
+            if (boonTable) {
+                setLoading(true);
+                // Roll twice on the boon table
+                const roll1 = await fetchTableResult(boonTable, 'boon');
+                const roll2 = await fetchTableResult(boonTable, 'boon');
+
+                const options: any[] = [];
+                if (roll1 && roll1[0]) options.push(roll1[0]);
+                if (roll2 && roll2[0]) options.push(roll2[0]);
+
+                if (options.length > 0) {
+                    setPendingChoices({
+                        header: "Choose One Boon",
+                        options: options.map(o => ({
+                            name: o.name,
+                            img: o.img,
+                            original: o // Pass the full object to be processed
+                        })),
+                        context: 'talent' // It fills the Talent slot
+                    });
+                    setLoading(false);
+                    return null; // Stop processing the "text" result, wait for user choice
+                }
+                setLoading(false);
+            } else {
+                console.warn("Warlock Double Boon: No boon table found.");
+            }
+        } else if (textContent.includes("roll a patron boon")) {
+            // SPECIAL HANDLING: Warlock "Roll a Patron Boon" (Single)
+            if (boonTable) {
+                setLoading(true);
+                const roll = await fetchTableResult(boonTable, 'boon');
+                if (roll && roll[0]) {
+                    setLoading(false);
+                    // Recursively process this boon result to ensure it's formatted/fetched correctly
+                    // But wait, fetchTableResult already returns processed results?
+                    // Yes, fetchTableResult returns an array of processed objects (from processSingleResult recursion if needed)
+                    // So we just return it!
+                    return roll;
+                }
+                setLoading(false);
+            }
+        }
+
+        if (!result.text && !result.name && !result.description) {
+            console.warn("LevelUpModal: Table result missing text/name/description", result);
+        }
+
         let finalResult = {
-            name: result.text || result.name || "Unknown Talent",
+            name: result.text || result.name || result.description || "Unknown Talent",
             type: 'Talent',
-            description: result.text || "",
+            description: result.description || result.text || "",
             img: result.img,
             uuid: result.uuid || result.documentUuid,
             documentUuid: result.documentUuid,
@@ -299,6 +360,10 @@ export const LevelUpModal = ({
                     documentCollection: result.documentCollection,
                     _id: doc._id || result._id
                 };
+            } else {
+                console.warn("LevelUpModal: Failed to find linked document for result", result);
+                finalResult.name = result.text || result.name || "Missing Item (Broken Link)";
+                finalResult.description = "The item linked to this result could not be found.";
             }
         } else if (result.documentUuid) {
             const doc = await fetchDocument(result.documentUuid);
@@ -318,6 +383,10 @@ export const LevelUpModal = ({
                     documentCollection: null,
                     _id: doc._id || result._id
                 };
+            } else {
+                console.warn("LevelUpModal: Failed to find linked document (UUID) for result", result);
+                finalResult.name = result.text || result.name || "Missing Item (Broken Link)";
+                finalResult.description = "The item linked to this result could not be found.";
             }
         } else if ((result.type === 0 || result.type === 'text') && result.text) {
             finalResult.name = result.text;
@@ -364,10 +433,21 @@ export const LevelUpModal = ({
 
     // Initialize
     useEffect(() => {
-        const fetchLevelUpData = async () => {
-            if (!actorId) return;
+        const fetchLevelUpData = async (classUuidOverride?: string) => {
+            if (!actorId && !classUuidOverride) {
+                return;
+            }
+
             try {
-                const res = await fetch(`/api/modules/shadowdark/actors/${actorId}/level-up/data`);
+                let url = `/api/modules/shadowdark/actors/${actorId}/level-up/data`;
+                if (classUuidOverride) {
+                    url += `?classId=${encodeURIComponent(classUuidOverride)}`;
+                }
+                if (!actorId) {
+                    url = `/api/modules/shadowdark/actors/level-up/data?classId=${encodeURIComponent(classUuidOverride!)}`;
+                }
+
+                const res = await fetch(url, { cache: 'no-store' });
                 const json = await res.json();
 
                 if (json.success && json.data) {
@@ -390,88 +470,168 @@ export const LevelUpModal = ({
         };
 
         const init = async () => {
-            setLoading(true);
-
-            // 1. Fetch API Data (Base)
-            if (actorId) await fetchLevelUpData();
-
-            // 2. Class Sync
-            let currentClass = activeClassObj;
-
-            // If target UUID differs from what we have, fetch it
-            if (targetClassUuid && targetClassUuid !== (activeClassObj?.uuid || classUuid)) {
-                try {
-                    const cls = await fetchDocument(targetClassUuid);
-                    if (cls) {
-                        currentClass = cls;
-                        setActiveClassObj(cls);
-                    }
-                } catch (e) { console.error("Failed to fetch target class", e); }
-            } else if (!activeClassObj && classObj) {
-                // Initial Fallback
-                currentClass = classObj;
-                setActiveClassObj(classObj);
-            }
-
-            // 3. Class Table Setup (using currentClass)
-            if (currentClass?.system?.classTalentTable) {
-                setTalentTable(currentClass.system.classTalentTable);
-            } else if (targetClassUuid) { // Fallback to UUID
-                try {
-                    // We might have just fetched it above, but ensure table
-                    if (!currentClass) {
-                        const cls = await fetchDocument(targetClassUuid);
-                        if (cls?.system?.classTalentTable) setTalentTable(cls.system.classTalentTable);
-                    }
-                } catch (e) {
-                    console.error("Failed to fetch class fallback", e);
+            try {
+                // Don't run init if no class is selected yet
+                if (!targetClassUuid && currentLevel === 0) {
+                    setLoading(false);
+                    return;
                 }
-            }
 
-            // 4. Update Spellcaster Status based on New Class
-            // API data might be stale if we switched class client-side
-            if (currentClass) {
-                const isCaster = Boolean(currentClass.system?.spellcasting?.class || currentClass.system?.spellcasting?.ability);
-                setIsSpellcaster(isCaster);
-                // Also update HP Dice for display
-            }
+                setLoading(true);
 
-            if (patron) {
-                // ... existing patron logic ...
-                if (patron.system?.boonTable) {
-                    setBoonTable(patron.system.boonTable);
-                } else if (patron.uuid) {
+                // 1. Resolve Class Document (Sync Logic)
+                let currentClass = activeClassObj;
+                let effectiveClassUuid: string | undefined = targetClassUuid || classUuid; // Use targetClassUuid if set, otherwise fall back to classUuid
+
+                // If target UUID differs from what we have (and is set), fetch it
+                if (targetClassUuid && targetClassUuid !== (activeClassObj?.uuid || classUuid)) {
+                    effectiveClassUuid = targetClassUuid; // Optimistic assignment
                     try {
-                        const fullPatron = await fetchDocument(patron.uuid);
-                        if (fullPatron?.system?.boonTable) {
-                            setBoonTable(fullPatron.system.boonTable);
+                        const cls = await fetchDocument(targetClassUuid);
+                        if (cls) {
+                            currentClass = cls;
+                            setActiveClassObj(cls);
+                            if (cls.uuid) effectiveClassUuid = cls.uuid;
+                        }
+                    } catch (e) { console.error("Failed to fetch target class", e); }
+                } else if (!activeClassObj && classObj) {
+                    // Initial Fallback (New Character)
+                    currentClass = classObj;
+                    setActiveClassObj(classObj);
+                    effectiveClassUuid = classObj.uuid || classUuid;
+                } else if (activeClassObj) {
+                    // Existing resolved class
+                    effectiveClassUuid = activeClassObj.uuid || classUuid;
+                }
+
+                // 2. Fetch API Data (Base)
+                // Call if we have an actor OR if we have a resolved class UUID
+                if (actorId || effectiveClassUuid) {
+                    await fetchLevelUpData(effectiveClassUuid);
+                }
+
+                // 3. Class Table Setup (using currentClass)
+                if (currentClass?.system?.classTalentTable) {
+                    setTalentTable(currentClass.system.classTalentTable);
+                } else if (effectiveClassUuid) {
+                    try {
+                        if (!currentClass) {
+                            const cls = await fetchDocument(effectiveClassUuid);
+                            if (cls?.system?.classTalentTable) setTalentTable(cls.system.classTalentTable);
                         }
                     } catch (e) {
-                        console.error("Failed to fetch full patron", e);
+                        console.error("Failed to fetch class fallback", e);
                     }
                 }
-            }
 
-            // 5. Requirements (Ambitious etc)
-            try {
-                const oddLevelTalent = targetLevel % 2 !== 0 ? 1 : 0;
-                let talentTotal = oddLevelTalent;
-                if (actorId && targetLevel === 1) {
-                    const actorDoc = await fetchDocument(`Actor.${actorId}`);
-                    if (actorDoc?.items?.find((i: any) => i.name === "Ambitious")) {
-                        talentTotal += 1;
+                // 4. Update Spellcaster Status and Boon Requirements based on New Class
+                if (currentClass) {
+                    const isCaster = Boolean(currentClass.system?.spellcasting?.class || currentClass.system?.spellcasting?.ability);
+
+                    // Update boon requirements based on the active class
+                    const requiresBoon = Boolean(currentClass.system?.patron?.required);
+                    setNeedsBoon(requiresBoon);
+                    if (targetLevel === 1 && requiresBoon) {
+                        setStartingBoons(currentClass.system?.patron?.startingBoons || 0);
+                    } else {
+                        setStartingBoons(0);
+                    }
+
+                    // Fetch boon table from the selected patron (for classes like Warlock)
+                    // or from the class's embedded patron UUID
+                    const patronUuidToFetch = selectedPatronUuid || currentClass.system?.patron?.uuid;
+                    if (requiresBoon && patronUuidToFetch) {
+                        try {
+                            const fullPatron = await fetchDocument(patronUuidToFetch);
+                            if (fullPatron?.system?.boonTable) {
+                                setBoonTable(fullPatron.system.boonTable);
+                            }
+                        } catch (e) {
+                            console.error("Failed to fetch patron for class", e);
+                        }
+                    } else if (requiresBoon && !patronUuidToFetch) {
+                        // Warlock needs a patron but none selected yet
+                        setBoonTable(null);
+                    } else {
+                        setBoonTable(null);
+                    }
+                } else if (patron) {
+                    // Fallback to prop-based patron (for existing characters)
+                    if (patron.system?.boonTable) {
+                        setBoonTable(patron.system.boonTable);
+                    } else if (patron.uuid) {
+                        try {
+                            const fullPatron = await fetchDocument(patron.uuid);
+                            if (fullPatron?.system?.boonTable) {
+                                setBoonTable(fullPatron.system.boonTable);
+                            }
+                        } catch (e) {
+                            console.error("Failed to fetch full patron", e);
+                        }
                     }
                 }
-                setRequiredTalents(talentTotal);
-            } catch (e) {
-                setRequiredTalents(targetLevel % 2 !== 0 ? 1 : 0);
-            }
 
-            setLoading(false);
+                // 5. Requirements (Ambitious etc)
+                try {
+                    const oddLevelTalent = targetLevel % 2 !== 0 ? 1 : 0;
+                    let talentTotal = oddLevelTalent;
+                    if (actorId && targetLevel === 1) {
+                        const actorDoc = await fetchDocument(`Actor.${actorId}`);
+                        if (actorDoc?.items?.find((i: any) => i.name === "Ambitious")) {
+                            talentTotal += 1;
+                        }
+                    }
+                    setRequiredTalents(talentTotal);
+                } catch (e) {
+                    setRequiredTalents(targetLevel % 2 !== 0 ? 1 : 0);
+                }
+            } catch (error) {
+                console.error("Error in LevelUpModal init:", error);
+            } finally {
+                setLoading(false);
+            }
         };
 
         init();
-    }, [classObj, patron, actorId, targetLevel, targetClassUuid]); // Added targetClassUuid dependency
+    }, [classObj, patron, actorId, targetLevel, targetClassUuid, selectedPatronUuid]); // Added selectedPatronUuid dependency
+
+    // Fetch available patrons when needsBoon becomes true
+    useEffect(() => {
+        const fetchPatrons = async () => {
+            if (needsBoon && availablePatrons.length === 0) {
+                try {
+                    setLoadingPatrons(true);
+                    const response = await fetch('/api/system/data');
+                    const data = await response.json();
+                    if (data.patrons) {
+                        setAvailablePatrons(data.patrons);
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch patrons", e);
+                } finally {
+                    setLoadingPatrons(false);
+                }
+            }
+        };
+        fetchPatrons();
+    }, [needsBoon, availablePatrons.length]);
+
+    // Reset all fields when class selection changes
+    useEffect(() => {
+        if (targetClassUuid && targetClassUuid !== classUuid) {
+            setHpRoll(0);
+            setHpEditMode(false);
+            setGoldRoll(0);
+            setGoldEditMode(false);
+            setRolledTalents([]);
+            setRolledBoons([]);
+            setSelectedSpells([]);
+            setPendingChoices(null);
+            setSelectedPatronUuid(""); // Reset patron selection when class changes
+        }
+    }, [targetClassUuid, classUuid]);
+
+
 
     const handleRollTalent = async () => {
         if (!talentTable) {
@@ -506,10 +666,23 @@ export const LevelUpModal = ({
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/modules/shadowdark/actors/${actorId}/level-up/roll-hp`, {
+            const url = actorId
+                ? `/api/modules/shadowdark/actors/${actorId}/level-up/roll-hp`
+                : `/api/modules/shadowdark/actors/level-up/roll-hp`;
+
+            // Use targetClassUuid if set (user selected a new class), otherwise use activeClassObj or fall back to classUuid
+            const classId = targetClassUuid || activeClassObj?.uuid || classUuid;
+
+
+            const body = {
+                isReroll,
+                classId
+            };
+
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ isReroll })
+                body: JSON.stringify(body)
             });
             const data = await res.json();
             if (data.success) {
@@ -520,6 +693,37 @@ export const LevelUpModal = ({
         } catch (e: any) {
             console.error('HP Roll Error:', e);
             setError('Failed to roll HP: ' + e.message);
+        }
+        setLoading(false);
+    };
+
+    const handleRollGold = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const url = actorId
+                ? `/api/modules/shadowdark/actors/${actorId}/level-up/roll-gold`
+                : `/api/modules/shadowdark/actors/level-up/roll-gold`;
+
+            const body = {
+                isReroll: true,
+                classId: activeClassObj?.uuid || classUuid
+            };
+
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                setGoldRoll(data.roll.total);
+            } else {
+                setError('Failed to roll Gold: ' + (data.error || 'Unknown error'));
+            }
+        } catch (e: any) {
+            console.error('Gold Roll Error:', e);
+            setError('Failed to roll Gold: ' + e.message);
         }
         setLoading(false);
     };
@@ -673,7 +877,6 @@ export const LevelUpModal = ({
             }
         }
     };
-
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-neutral-100 w-full max-w-2xl rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -706,39 +909,46 @@ export const LevelUpModal = ({
                                 const rand = candidates[Math.floor(Math.random() * candidates.length)];
                                 if (rand) setTargetClassUuid(rand.uuid);
                             }}
-                            className="p-2 bg-neutral-800 text-amber-500 hover:text-amber-400 rounded shadow"
+                            className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
                             title="Randomize Class"
                         >
-                            <span className="fas fa-dice"></span>
+                            Random
                         </button>
                     </div>
                 )}
 
-                {/* Gold Roll (Level 0 Only) */}
-                {currentLevel === 0 && (
-                    <div className="p-4 bg-neutral-100 border-b border-neutral-300 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                            <label className="font-bold text-neutral-700">Starting Gold:</label>
-                            {goldRoll >= 0 ? (
-                                <span className="font-bold text-lg text-amber-600 bg-white px-3 py-1 rounded border border-neutral-300">{goldRoll} gp</span>
-                            ) : (
-                                <span className="text-neutral-500 italic">Not rolled</span>
-                            )}
+                {/* Patron Selection (for Warlock and other patron-requiring classes) */}
+                {needsBoon && currentLevel === 0 && availablePatrons.length > 0 && (
+                    <div className="p-4 bg-neutral-200 border-b border-neutral-300 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 flex-1">
+                            <label className="font-bold text-neutral-700 whitespace-nowrap">Choose Patron:</label>
+                            <select
+                                className="flex-1 p-2 border border-neutral-400 rounded"
+                                value={selectedPatronUuid}
+                                onChange={(e) => setSelectedPatronUuid(e.target.value)}
+                            >
+                                <option value="" disabled>Select a Patron...</option>
+                                {availablePatrons
+                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                    .map((p: any) => (
+                                        <option key={p.uuid} value={p.uuid}>{p.name}</option>
+                                    ))}
+                            </select>
                         </div>
                         <button
                             onClick={() => {
-                                const d6 = () => Math.floor(Math.random() * 6) + 1;
-                                const roll = (d6() + d6()) * 5;
-                                setGoldRoll(roll);
+                                const rand = availablePatrons[Math.floor(Math.random() * availablePatrons.length)];
+                                if (rand) setSelectedPatronUuid(rand.uuid);
                             }}
-                            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded shadow uppercase tracking-wider text-sm flex items-center gap-2"
+                            className="px-3 py-2 bg-neutral-800 text-amber-500 hover:text-amber-400 hover:bg-neutral-700 rounded shadow font-bold text-sm transition-colors"
+                            title="Randomize Patron"
                         >
-                            <span className="fas fa-coins"></span> Roll (2d6 × 5)
+                            Random
                         </button>
                     </div>
                 )}
 
-                {loading ? (
+                {loading || loadingPatrons ? (
                     <div className="flex-1 flex flex-col items-center justify-center p-12 space-y-4">
                         <div className="w-12 h-12 border-4 border-neutral-300 border-t-amber-600 rounded-full animate-spin"></div>
                         <p className="text-neutral-500 font-bold tracking-wide animate-pulse">Consulting the fates...</p>
@@ -760,39 +970,55 @@ export const LevelUpModal = ({
                                             {targetLevel === 1 && <span className="text-amber-600"> (+ CON modifier)</span>}
                                         </p>
                                     </div>
-                                    <button
-                                        onClick={() => handleRollHP(false)}
-                                        className="w-full py-4 bg-red-900 text-red-100 font-bold uppercase tracking-widest hover:bg-red-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                    >
-                                        <span className="fas fa-dice-d20"></span> Roll Hit Points
-                                    </button>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button
+                                            onClick={() => handleRollHP(false)}
+                                            className="py-4 bg-red-900 text-red-100 font-bold uppercase tracking-widest hover:bg-red-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                        >
+                                            <span className="fas fa-dice-d20"></span> Roll HP
+                                        </button>
+                                        <button
+                                            onClick={() => { setHpRoll(1); setHpEditMode(true); }}
+                                            className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
+                                        >
+                                            <span className="fas fa-edit"></span> Manual Input
+                                        </button>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
-                                    <div className="bg-red-900 text-white w-16 h-16 flex items-center justify-center font-bold text-3xl rounded">
+                                    <div className="bg-red-900 text-white w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0">
                                         {hpEditMode ? (
                                             <input
                                                 type="number"
                                                 value={hpRoll}
                                                 onChange={(e) => setHpRoll(parseInt(e.target.value) || 0)}
-                                                className="w-full h-full text-center bg-transparent border-none outline-none"
+                                                className="w-full h-full text-center bg-transparent border-none outline-none text-white placeholder-white/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                                 min="1"
+                                                autoFocus
                                             />
                                         ) : (
                                             hpRoll
                                         )}
                                     </div>
-                                    <div className="flex-1">
-                                        <div className="font-bold text-lg">HP Rolled: {hpRoll}</div>
-                                        <p className="text-sm text-neutral-600 mt-1">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-lg truncate">
+                                            HP Rolled: {hpRoll}
+                                            {targetLevel === 1 && (
+                                                <span className="text-neutral-500 font-normal ml-1">
+                                                    + {(_abilities?.con?.mod || 0)} (CON) = <span className="text-black font-bold">{Math.max(1, hpRoll + (_abilities?.con?.mod || 0))}</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-sm text-neutral-600 mt-1 truncate">
                                             {activeClassObj?.system?.hitPoints || '1d4'}
-                                            {targetLevel === 1 && ` + CON modifier (minimum 1 HP)`}
+                                            {targetLevel === 1 && ` + CON modifier (minimum 1)`}
                                         </p>
                                     </div>
-                                    <div className="flex gap-2 relative">
+                                    <div className="flex gap-2 flex-col sm:flex-row relative">
                                         <button
                                             onClick={() => setHpEditMode(!hpEditMode)}
-                                            className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded"
+                                            className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
                                         >
                                             {hpEditMode ? 'Done' : 'Edit'}
                                         </button>
@@ -806,12 +1032,20 @@ export const LevelUpModal = ({
                                                 </div>
                                             </div>
                                         ) : (
-                                            <button
-                                                onClick={() => handleRollHP(true)}
-                                                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded"
-                                            >
-                                                Re-roll
-                                            </button>
+                                            <>
+                                                <button
+                                                    onClick={() => handleRollHP(true)}
+                                                    className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
+                                                >
+                                                    Re-roll
+                                                </button>
+                                                <button
+                                                    onClick={() => { setHpRoll(0); setHpEditMode(false); }}
+                                                    className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
+                                                >
+                                                    Clear
+                                                </button>
+                                            </>
                                         )}
                                     </div>
                                 </div>
@@ -830,6 +1064,87 @@ export const LevelUpModal = ({
                             )}
                         </div>
 
+                        {/* Gold Roll Section (Only for Level 1) */}
+                        {targetLevel === 1 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between border-b-2 border-neutral-300 pb-2">
+                                    <h3 className="font-bold text-lg font-serif">Starting Gold</h3>
+                                    {goldRoll > 0 && <span className="text-green-600 font-bold text-sm">Rolled!</span>}
+                                </div>
+
+                                {goldRoll === 0 ? (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="bg-neutral-50 p-4 rounded border border-neutral-200">
+                                            <p className="text-sm text-neutral-600 mb-2">
+                                                Roll <span className="font-bold text-black">2d6 x 5</span> for starting gold.
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                onClick={handleRollGold}
+                                                className="py-4 bg-amber-600 text-white font-bold uppercase tracking-widest hover:bg-amber-700 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                            >
+                                                <span className="fas fa-coins"></span> Roll Gold
+                                            </button>
+                                            <button
+                                                onClick={() => { setGoldRoll(10); setGoldEditMode(true); }} // Default placeholder?
+                                                className="py-4 bg-white text-neutral-700 border border-neutral-300 font-bold uppercase tracking-widest hover:bg-neutral-50 transition-colors rounded shadow-sm flex items-center justify-center gap-2"
+                                            >
+                                                <span className="fas fa-edit"></span> Manual Input
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                        <div className="bg-amber-400 text-black w-20 h-20 flex items-center justify-center font-bold text-3xl rounded shrink-0 ring-4 ring-amber-200">
+                                            {goldEditMode ? (
+                                                <input
+                                                    type="number"
+                                                    value={goldRoll}
+                                                    onChange={(e) => setGoldRoll(parseInt(e.target.value) || 0)}
+                                                    className="w-full h-full text-center bg-transparent border-none outline-none text-black placeholder-black/50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    min="0"
+                                                    autoFocus
+                                                />
+                                            ) : (
+                                                <span className="flex items-center gap-1">
+                                                    {goldRoll} <span className="text-[10px] uppercase font-bold text-amber-900/50">GP</span>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-bold text-lg truncate flex items-center gap-2">
+                                                Starting Gold: {goldRoll} gp
+                                            </div>
+                                            <p className="text-sm text-neutral-600 mt-1 truncate">
+                                                Standard: 2d6 x 5
+                                            </p>
+                                        </div>
+                                        <div className="flex gap-2 flex-col sm:flex-row relative">
+                                            <button
+                                                onClick={() => setGoldEditMode(!goldEditMode)}
+                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
+                                            >
+                                                {goldEditMode ? 'Done' : 'Edit'}
+                                            </button>
+                                            <button
+                                                onClick={handleRollGold}
+                                                className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold"
+                                            >
+                                                Re-roll
+                                            </button>
+                                            <button
+                                                onClick={() => { setGoldRoll(0); setGoldEditMode(false); }}
+                                                className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600"
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
                         {/* Talents / Benefits Section */}
                         {requiredTalents > 0 ? (
                             <div className="space-y-4">
@@ -841,7 +1156,49 @@ export const LevelUpModal = ({
                                     </div>
                                 </div>
 
-                                {rolledTalents.length === 0 ? (
+
+                                {/* Show rolled talents if any */}
+                                {rolledTalents.length > 0 && (
+                                    <div className="space-y-2 mb-4">
+                                        {rolledTalents.map((t, idx) => (
+                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                                <div className="bg-neutral-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">
+                                                    {t.type === 'Talent' ? 'T' : 'B'}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-bold text-lg truncate">{t.name}</div>
+                                                    <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: t.description }}></p>
+                                                </div>
+                                                <div className="flex gap-2 shrink-0">
+                                                    <button
+                                                        onClick={() => {
+                                                            const newTalents = [...rolledTalents];
+                                                            newTalents.splice(idx, 1);
+                                                            setRolledTalents(newTalents);
+                                                            handleRollTalent();
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
+                                                    >
+                                                        Re-roll
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newTalents = [...rolledTalents];
+                                                            newTalents.splice(idx, 1);
+                                                            setRolledTalents(newTalents);
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Show roll button if not all talents rolled yet */}
+                                {rolledTalents.length < requiredTalents && (
                                     <div className="flex flex-col gap-2">
                                         {/* INLINE CHOICE: TALENT */}
                                         {pendingChoices && pendingChoices.context !== 'boon' ? (
@@ -883,37 +1240,24 @@ export const LevelUpModal = ({
                                                 >
                                                     <span className="fas fa-dice-d20"></span> Roll Class Talent
                                                 </button>
-                                                {needsBoon && (
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="h-px bg-neutral-300 flex-1"></div>
-                                                        <span className="text-neutral-500 text-xs uppercase font-bold">OR</span>
-                                                        <div className="h-px bg-neutral-300 flex-1"></div>
-                                                    </div>
-                                                )}
-                                                {needsBoon && (
-                                                    <button
-                                                        onClick={handleRollExtraBoon}
-                                                        className="w-full py-3 bg-purple-100 text-purple-900 border-2 border-purple-200 font-bold uppercase tracking-widest hover:bg-purple-200 transition-colors rounded shadow flex items-center justify-center gap-2"
-                                                    >
-                                                        <span className="fas fa-star"></span> Choose Patron Boon
-                                                    </button>
+                                                {/* Only show OR choice for Level 2+ */}
+                                                {needsBoon && targetLevel > 1 && (
+                                                    <>
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="h-px bg-neutral-300 flex-1"></div>
+                                                            <span className="text-neutral-500 text-xs uppercase font-bold">OR</span>
+                                                            <div className="h-px bg-neutral-300 flex-1"></div>
+                                                        </div>
+                                                        <button
+                                                            onClick={handleRollExtraBoon}
+                                                            className="w-full py-3 bg-purple-100 text-purple-900 border-2 border-purple-200 font-bold uppercase tracking-widest hover:bg-purple-200 transition-colors rounded shadow flex items-center justify-center gap-2"
+                                                        >
+                                                            <span className="fas fa-star"></span> Choose Patron Boon
+                                                        </button>
+                                                    </>
                                                 )}
                                             </>
                                         )}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        {rolledTalents.map((t, idx) => (
-                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-bottom-2">
-                                                <div className="bg-neutral-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded">
-                                                    {t.type === 'Talent' ? 'T' : 'B'}
-                                                </div>
-                                                <div>
-                                                    <div className="font-bold text-lg">{t.name}</div>
-                                                    <p className="text-sm text-neutral-600 mt-1" dangerouslySetInnerHTML={{ __html: t.description }}></p>
-                                                </div>
-                                            </div>
-                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -971,22 +1315,51 @@ export const LevelUpModal = ({
                                                 </div>
                                             </div>
                                         ) : (
-                                            <button
-                                                onClick={handleRollBoon}
-                                                className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
-                                            >
-                                                <span className="fas fa-dice-d20"></span> Roll Boon
-                                            </button>
+                                            <>
+                                                {!selectedPatronUuid && !boonTable ? (
+                                                    <div className="bg-amber-50 border-2 border-amber-400 rounded p-4 text-center">
+                                                        <p className="text-amber-800 font-bold">
+                                                            <span className="fas fa-exclamation-triangle mr-2"></span>
+                                                            Select a patron above to roll boons
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={handleRollBoon}
+                                                        className="w-full py-4 bg-purple-900 text-purple-200 font-bold uppercase tracking-widest hover:bg-purple-950 transition-colors rounded shadow-lg flex items-center justify-center gap-2"
+                                                    >
+                                                        <span className="fas fa-dice-d20"></span> Roll Boon
+                                                    </button>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
                                         {rolledBoons.map((b, idx) => (
-                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-bottom-2">
-                                                <div className="bg-purple-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded">B</div>
-                                                <div>
-                                                    <div className="font-bold text-lg">{b.name}</div>
-                                                    <p className="text-sm text-neutral-600 mt-1" dangerouslySetInnerHTML={{ __html: b.description }}></p>
+                                            <div key={idx} className="bg-white p-4 border border-neutral-300 rounded shadow-sm flex gap-4 items-center animate-in fade-in slide-in-from-bottom-2">
+                                                <div className="bg-purple-900 text-white w-10 h-10 flex items-center justify-center font-bold text-xl rounded shrink-0">B</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="font-bold text-lg truncate">{b.name}</div>
+                                                    <p className="text-sm text-neutral-600 mt-1 truncate" dangerouslySetInnerHTML={{ __html: b.description }}></p>
+                                                </div>
+                                                <div className="flex gap-2 shrink-0">
+                                                    <button
+                                                        onClick={() => handleRollBoon()}
+                                                        className="px-3 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-900 rounded font-bold transition-colors"
+                                                    >
+                                                        Re-roll
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newBoons = [...rolledBoons];
+                                                            newBoons.splice(idx, 1);
+                                                            setRolledBoons(newBoons);
+                                                        }}
+                                                        className="px-3 py-1 text-xs bg-neutral-200 hover:bg-neutral-300 rounded font-bold text-neutral-600 transition-colors"
+                                                    >
+                                                        Clear
+                                                    </button>
                                                 </div>
                                             </div>
                                         ))}

@@ -267,7 +267,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                 type="number"
                                 value={level}
                                 onChange={e => setLevel(Number(e.target.value))}
-                                className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-mono"
+                                className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                     </div>

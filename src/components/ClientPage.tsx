@@ -22,6 +22,7 @@ interface SystemInfo {
   background?: string;
   isLoggedIn?: boolean;
   theme?: any;
+  config?: any;
 }
 
 interface ClientPageProps {
@@ -517,7 +518,21 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                         />
                         <div className="flex-1">
                           <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
-                          <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
+
+                          {/* Dynamic Subtext based on Module Config */}
+                          {system?.config?.actorCard?.subtext ? (
+                            <p className="opacity-60 text-sm mb-2 capitalize">
+                              {system.config.actorCard.subtext
+                                .map((path: string) => {
+                                  // Resolve dot notation
+                                  return path.split('.').reduce((obj, key) => obj?.[key], actor);
+                                })
+                                .filter(Boolean)
+                                .join(' • ') || actor.type}
+                            </p>
+                          ) : (
+                            <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
+                          )}
 
                           {/* Stats Grid */}
                           <div className="grid grid-cols-2 gap-2 text-sm">

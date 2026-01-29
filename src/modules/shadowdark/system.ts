@@ -257,21 +257,48 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     // Get spellcasting ability
                     let spellcastingAbility = "";
                     try {
-                        // Try to find the embedded Class item first
                         const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
                         if (characterClass) {
                             spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
-                        } else if (typeof actor.system.class === 'string' && actor.system.class.length > 0) {
+                        }
+                    } catch (err) { console.error('Error resolving spellcasting:', err); }
+                    computed.spellcastingAbility = spellcastingAbility;
+
+                    // Resolve UUIDs for Class/Ancestry/Background names if strict items missing
+                    // This ensures the dashboard displays names like "Wizard" instead of "Compendium..."
+                    try {
+                        const resolveName = async (field: any) => {
+                            if (typeof field === 'string' && (field.startsWith('Compendium') || field.startsWith('Actor') || field.startsWith('Item'))) {
+                                try {
+                                    // @ts-ignore
+                                    const item = await fromUuid(field);
+                                    return item?.name;
+                                } catch { }
+                            }
+                            return undefined;
+                        };
+
+                        computed.resolvedNames = {
+                            class: await resolveName(actor.system.class),
+                            ancestry: await resolveName(actor.system.ancestry),
+                            background: await resolveName(actor.system.background)
+                        };
+
+                        // Fallback: If we resolved a class UUID, maybe we can get spellcasting from it too if we missed it earlier
+                        if (!computed.spellcastingAbility && computed.resolvedNames.class && typeof actor.system.class === 'string') {
                             try {
                                 // @ts-ignore
                                 const classItem = await fromUuid(actor.system.class);
                                 if (classItem) {
-                                    spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                                    computed.spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
                                 }
                             } catch { }
                         }
-                    } catch (err) { console.error('Error resolving class/spellcasting:', err); }
-                    computed.spellcastingAbility = spellcastingAbility;
+
+                    } catch (e) {
+                        console.error('Error resolving UUID names:', e);
+                        computed.resolvedNames = {};
+                    }
                 }
 
                 return {
@@ -309,8 +336,21 @@ export class ShadowdarkAdapter implements SystemAdapter {
     async getSystemData(client: any): Promise<any> {
         return await client.evaluate(async () => {
             // @ts-ignore
+            if (!window.game || !window.game.system) return null;
+            // @ts-ignore
+            const s = window.game.system;
+            // @ts-ignore
             const packs = window.game.packs.contents;
+
             const results = {
+                id: s.id,
+                title: s.title,
+                version: s.version,
+                url: s.url,
+                manifest: s.manifest,
+                documentTypes: s.documentTypes,
+                template: s.template,
+
                 classes: [] as any[],
                 ancestries: [] as any[],
                 backgrounds: [] as any[],
@@ -318,6 +358,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 deities: [] as any[],
                 patrons: [] as any[],
                 spells: [] as any[],
+                talents: [] as any[],
                 titles: {},
                 PREDEFINED_EFFECTS: {}
             };
@@ -335,13 +376,16 @@ export class ShadowdarkAdapter implements SystemAdapter {
             for (const pack of packs) {
                 // @ts-ignore
                 if (pack.documentName !== 'Item') continue;
-                // @ts-ignore
-                // Ensure we index the type field and necessary system fields for filtering
+
+                // Index with robust fields
                 // @ts-ignore
                 const index = await pack.getIndex({ fields: ['type', 'system.tier', 'system.class', 'system.spellcasting', 'system.patron', 'system.alignment'] });
 
+                // Helper for case-insensitive check
+                const filterType = (type: string) => index.filter((i: any) => i.type && i.type.toLowerCase() === type.toLowerCase());
+
                 // Index Classes
-                const classIndex = index.filter((i: any) => i.type === 'Class');
+                const classIndex = filterType('class');
                 for (const c of classIndex) {
                     // @ts-ignore
                     const doc = await pack.getDocument(c._id);
@@ -349,7 +393,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         // @ts-ignore
                         results.classes.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${c._id}`, // Force constructed UUID
+                            uuid: `Compendium.${pack.collection}.Item.${c._id}`,
                             languages: doc.system?.languages || []
                         });
 
@@ -360,24 +404,31 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         }
                     }
                 }
+
                 // Index Ancestries
-                const ancestryIndex = index.filter((i: any) => i.type === 'Ancestry');
+                const ancestryIndex = filterType('ancestry');
                 for (const a of ancestryIndex) {
                     // @ts-ignore
                     const doc = await pack.getDocument(a._id);
                     if (doc) {
                         results.ancestries.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${a._id}`, // Force constructed UUID
+                            uuid: `Compendium.${pack.collection}.Item.${a._id}`,
                             languages: doc.system?.languages || []
                         });
                     }
                 }
+
+                // Backgrounds
                 // @ts-ignore
-                results.backgrounds.push(...index.filter(i => i.type === 'Background').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}` })));
+                results.backgrounds.push(...filterType('background').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}` })));
+
+                // Talents (Generic or specific)
+                // @ts-ignore
+                results.talents.push(...filterType('talent').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}`, img: i.img })));
 
                 // Index Languages
-                const langIndex = index.filter((i: any) => i.type === 'Language');
+                const langIndex = filterType('language');
                 for (const l of langIndex) {
                     // @ts-ignore
                     const doc = await pack.getDocument(l._id);
@@ -385,7 +436,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         // @ts-ignore
                         results.languages.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${l._id}`, // Force constructed UUID
+                            uuid: `Compendium.${pack.collection}.Item.${l._id}`,
                             description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
                             rarity: doc.system?.rarity || 'common'
                         });
@@ -393,67 +444,46 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 // Index Deities
-                const deityIndex = index.filter((i: any) => i.type === 'Deity');
-                console.log(`[ShadowdarkAdapter] Found ${deityIndex.length} deities in ${pack.collection}`);
+                const deityIndex = filterType('deity');
                 for (const d of deityIndex) {
                     // @ts-ignore
                     const doc = await pack.getDocument(d._id);
                     if (doc) {
                         // @ts-ignore
-                        results.deities = results.deities || [];
                         results.deities.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${d._id}`, // Force constructed UUID
+                            uuid: `Compendium.${pack.collection}.Item.${d._id}`,
                             alignment: doc.system?.alignment || 'neutral'
                         });
                     }
                 }
 
                 // Index Patrons
-                const patronIndex = index.filter((i: any) => i.type === 'Patron' || i.type === 'patron');
-                console.log(`[ShadowdarkAdapter] Found ${patronIndex.length} patrons in ${pack.collection}.`);
-
+                const patronIndex = filterType('patron');
                 for (const p of patronIndex) {
                     // @ts-ignore
                     const doc = await pack.getDocument(p._id);
                     if (doc) {
                         // @ts-ignore
-                        results.patrons = results.patrons || [];
                         results.patrons.push({
                             name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${p._id}`, // Force constructed UUID
+                            uuid: `Compendium.${pack.collection}.Item.${p._id}`,
                             description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || '',
                             boonTable: doc.system?.boonTable || ''
                         });
                     }
                 }
 
-
-
                 // Index Spells
-                const spellIndex = index.filter((i: any) => i.type === 'Spell');
-                if (spellIndex.length > 0) console.log(`[ShadowdarkAdapter] Found ${spellIndex.length} spells in ${pack.collection}.`);
-
+                const spellIndex = filterType('spell');
                 results.spells.push(...spellIndex.map((s: any) => ({
                     name: s.name,
                     uuid: `Compendium.${pack.collection}.Item.${s._id}`,
                     tier: s.system?.tier || 0,
                     class: s.system?.class || [],
                     img: s.img,
-                    // We don't fetch description here to save massive time.
-                    // it will be fetched on demand if needed, or by the modal before confirming.
                     description: ''
                 })));
-
-                // Deep Fetch for Titles
-                for (const c of classIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(c._id);
-                    if (doc && doc.system?.titles) {
-                        // @ts-ignore
-                        results.titles[doc.name] = doc.system.titles;
-                    }
-                }
             }
             return results;
         });
@@ -634,18 +664,33 @@ export class ShadowdarkAdapter implements SystemAdapter {
         }
 
         // Resolve helper for items
-        const findItemName = (type: string) => {
+        const findItemName = (type: string, uuidField?: string) => {
+            // 1. Try finding by Type (Case-Insensitive)
             // @ts-ignore
-            const item = (actor.items || []).find((i: any) => i.type === type);
-            return item ? item.name : null;
+            const itemByType = (actor.items || []).find((i: any) => i.type.toLowerCase() === type.toLowerCase());
+            if (itemByType) return itemByType.name;
+
+            // 2. If we have a UUID in the system field, look for an item with that UUID (or Source ID)
+            if (uuidField && typeof uuidField === 'string' && uuidField.length > 0) {
+                // @ts-ignore
+                const itemByUuid = (actor.items || []).find((i: any) => i.uuid === uuidField || i.flags?.core?.sourceId === uuidField || i.id === uuidField);
+                if (itemByUuid) return itemByUuid.name;
+            }
+
+            return null;
         };
 
         // Shadowdark stores class/ancestry sometimes as links in system, but we might prefer the Item name if it exists on the actor
         // We prioritize findItemName because s.class/s.ancestry might be IDs (from our new linking logic)
         // Ensure we match the Item Type casing (usually TitleCase)
-        const className = findItemName('Class') || s.class || s.details?.class || '';
-        const ancestryName = findItemName('Ancestry') || s.ancestry || s.details?.ancestry || '';
-        const backgroundName = findItemName('Background') || s.background || s.details?.background || '';
+        // We also check s.computed?.resolvedNames which were fetched async in getActor
+
+        // Fix: computed is on the root actor object, not inside 'system' (s)
+        const resolved = actor.computed?.resolvedNames || {};
+
+        const className = findItemName('Class', s.class || s.details?.class) || resolved.class || s.class || s.details?.class || '';
+        const ancestryName = findItemName('Ancestry', s.ancestry || s.details?.ancestry) || resolved.ancestry || s.ancestry || s.details?.ancestry || '';
+        const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
 
         const sheetData: ActorSheetData = {
             id: actor.id,
@@ -1003,5 +1048,40 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
         }
         return null;
+    }
+
+
+    public resolveActorNames(actor: any, cache: any): void {
+        // Ensure computed exists
+        if (!actor.computed) actor.computed = {};
+        if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
+
+        const resolve = (uuid: string, current: string) => {
+            if (current) return current; // Already resolved browser-side
+            if (!uuid || typeof uuid !== 'string') return undefined;
+
+            // 1. Try resolving from local items (Actor.ID.Item.ID)
+            if (uuid.startsWith('Actor.')) {
+                // Check if it's THIS actor's item
+                // UUID format: Actor.<ActorID>.Item.<ItemID>
+                const parts = uuid.split('.');
+                const itemId = parts[3]; // Actor, ID, Item, ID
+                if (itemId) {
+                    // We can try to find it in the actor's items list if available
+                    // The 'actor' object passed here usually has 'items' populated by getActors()
+                    const item = (actor.items || []).find((i: any) => i.id === itemId || i._id === itemId);
+                    if (item) return item.name;
+                }
+            }
+
+            // 2. Try Compendium Cache
+            return cache.getName(uuid);
+        };
+
+        if (actor.system) {
+            actor.computed.resolvedNames.class = resolve(actor.system.class, actor.computed.resolvedNames.class);
+            actor.computed.resolvedNames.ancestry = resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
+            actor.computed.resolvedNames.background = resolve(actor.system.background, actor.computed.resolvedNames.background);
+        }
     }
 }

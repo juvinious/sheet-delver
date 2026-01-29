@@ -43,6 +43,13 @@ export interface SystemAdapter {
     getActor?(client: any, actorId: string): Promise<any>;
 
     /**
+     * Optional hook to resolve system-specific names from UUIDs using the server-side CompendiumCache.
+     * This is useful when the browser-side resolution fails or is incomplete.
+     * The method should mutate the actor object (e.g. populate actor.computed.resolvedNames).
+     */
+    resolveActorNames?(actor: any, cache: any): void;
+
+    /**
      * Optional theme configuration for the client UI.
      */
     theme?: {

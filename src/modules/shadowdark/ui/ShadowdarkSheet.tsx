@@ -148,10 +148,17 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     useEffect(() => {
         const handleResize = () => {
             const width = window.innerWidth;
-            const count = getVisibleCount(width);
+            let currentTabs = [...tabsOrder];
 
-            setVisibleTabs(tabsOrder.slice(0, count));
-            setOverflowTabs(tabsOrder.slice(count));
+            // Filter out Spells tab if not applicable
+            if (!actor.computed?.showSpellsTab) {
+                currentTabs = currentTabs.filter(t => t.id !== 'spells');
+            }
+
+            const count = getVisibleCount(width); // This counts based on full list length usually, might need adjusting
+
+            setVisibleTabs(currentTabs.slice(0, count));
+            setOverflowTabs(currentTabs.slice(count));
         };
 
         // Initial check
@@ -159,7 +166,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder]);
+    }, [tabsOrder, actor.computed?.showSpellsTab]);
 
     const handleTabSelect = (tabId: string) => {
         setActiveTab(tabId);
@@ -275,7 +282,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                             e.currentTarget.blur();
                                         }
                                     }}
-                                    className="w-10 md:w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors"
+                                    className="w-10 md:w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 />
                                 <span className="opacity-50">/</span>
                                 <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
@@ -302,10 +309,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             {isDiceTrayOpen ? (
                                 <X className="w-8 h-8 text-amber-500 -rotate-90" />
                             ) : (
-                                <svg viewBox="0 0 100 100" className="w-full h-full fill-current text-white group-hover:text-amber-500 drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">
-                                    <path d="M50 5 L93 25 L93 75 L50 95 L7 75 L7 25 Z" stroke="currentColor" strokeWidth="4" fill="none" />
-                                    <text x="50" y="62" fontSize="35" fontWeight="bold" textAnchor="middle" fill="currentColor" stroke="none" style={{ fontFamily: 'var(--font-cinzel), serif' }}>20</text>
-                                </svg>
+                                <img src="/icons/dice-d20.svg" alt="Roll" className="w-full h-full brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(245,158,11,0.8)] drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
                             )}
                         </div>
                     </button>
@@ -395,10 +399,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     activeTab === 'spells' && (
                         <SpellsTab
                             actor={actor}
+                            systemData={systemData}
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
                             onRoll={onRoll}
                             foundryUrl={foundryUrl}
+                            onDeleteItem={onDeleteItem}
                         />
                     )
                 }

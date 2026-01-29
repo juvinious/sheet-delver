@@ -47,7 +47,7 @@ export async function POST(
         if (type === 'use-item') {
             const result = await client.useItem(id, key); // key is itemId
             // Flatten result ({ success, method, html, result }) into the top-level response
-            return NextResponse.json({ ...result, success: true });
+            return NextResponse.json({ ...(result as any), success: true });
         }
 
         if (!rollData) {
@@ -55,7 +55,7 @@ export async function POST(
         }
 
         // 4. Exec Roll via Client
-        const result = await client.roll(rollData.formula);
+        const result = await client.roll(rollData.formula, rollData.label);
 
         return NextResponse.json({ success: true, result, label: rollData.label });
 

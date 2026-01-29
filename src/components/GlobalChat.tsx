@@ -125,7 +125,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                             toggleDice();
                         }}
                         className={`
-                            h-12 w-12 rounded-full shadow-lg flex items-center justify-center
+                            group h-12 w-12 rounded-full shadow-lg flex items-center justify-center
                             transition-all duration-300 hover:scale-110 active:scale-95
                             ${isDiceOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-indigo-600 text-white hover:bg-indigo-500'}
                         `}
@@ -134,7 +134,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                         {isDiceOpen ? (
                             <svg className="w-6 h-6 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         ) : (
-                            <Dices className="w-6 h-6" />
+                            <img src="/icons/dice-d20.svg" alt="Dice" className="w-8 h-8 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
                         )}
                     </button>
                 )}

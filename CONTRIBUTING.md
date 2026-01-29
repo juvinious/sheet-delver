@@ -82,8 +82,15 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
 1.  **Create Directory**: Create `src/modules/<system-id>/`.
 2.  **Metadata**: Add `info.json`:
     ```json
-    { "id": "mysystem", "title": "My RPG System" }
+    { 
+        "id": "mysystem", 
+        "title": "My RPG System",
+        "actorCard": {
+            "subtext": ["details.class", "details.ancestry", "level.value"] 
+        }
+    }
     ```
+    *   `actorCard.subtext`: Optional. Array of dot-notation paths to display on the dashboard character card (e.g. "Wizard, Elf • Level 1"). If omitted, it defaults to the actor type.
 3.  **Implement Adapter**: Create `adapter.ts` and implement `SystemAdapter`.
 4.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
 5.  **Export Manifest**: Create `index.ts`:

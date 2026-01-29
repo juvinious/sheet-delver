@@ -61,3 +61,8 @@ export const getTool = (systemId: string, toolId: string) => {
     if (!manifest || !manifest.tools) return null;
     return manifest.tools[toolId];
 };
+
+export const getConfig = (systemId: string) => {
+    const manifest = moduleMap.get(systemId);
+    return manifest?.info;
+};

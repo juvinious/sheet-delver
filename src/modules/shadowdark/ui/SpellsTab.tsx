@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
     resolveImage,
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
+import SpellSelectionModal from './components/SpellSelectionModal';
+import { Pencil, Plus, Settings2 } from 'lucide-react';
 
 interface SpellsTabProps {
     actor: any;
@@ -13,10 +15,14 @@ interface SpellsTabProps {
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     onRoll: (type: string, key: string, options?: any) => void;
     foundryUrl?: string;
+    systemData?: any;
+    onDeleteItem?: (itemId: string) => void;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl, systemData, onDeleteItem }: SpellsTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [editingTier, setEditingTier] = useState<number | null>(null);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -69,6 +75,126 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         return spell.system?.lost;
     };
 
+    // Calculate Max Selections
+    const [maxSelections, setMaxSelections] = useState<number | undefined>(undefined);
+
+    useEffect(() => {
+        const calculateMax = async () => {
+            if (!editingTier) {
+                setMaxSelections(undefined);
+                return;
+            }
+
+            let classData = actor.items?.find((i: any) => i.type === 'Class');
+
+            // If class item not found in embedded items, try fetching by UUID from system.class
+            if (!classData && actor.system?.class) {
+                try {
+                    const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(actor.system.class)}`);
+                    if (res.ok) {
+                        classData = await res.json();
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch class data", e);
+                }
+            }
+
+            if (classData?.system?.spellcasting?.spellsknown) {
+                const currentLevel = actor.system?.level?.value || 0;
+                const table = classData.system.spellcasting.spellsknown;
+                const levelData = table[String(currentLevel)] || table[currentLevel];
+
+                console.log('DEBUG: Calculating Max Selections', {
+                    currentLevel,
+                    editingTier,
+                    levelData,
+                    table
+                });
+
+                if (levelData) {
+                    const max = levelData[String(editingTier)] || levelData[editingTier];
+                    // Ensure we have a number
+                    const finalMax = typeof max === 'number' ? max : parseInt(max || '0');
+                    console.log('DEBUG: Found Max', finalMax);
+                    setMaxSelections(finalMax);
+                    return;
+                }
+            } else {
+                console.log('DEBUG: No spellsknown table found', classData);
+            }
+            // Default to undefined if no table found (limits disabled)
+            setMaxSelections(undefined);
+        };
+
+        calculateMax();
+    }, [actor, editingTier]);
+
+    const handleManageSpells = async (selectedSpells: any[]) => {
+        if (!editingTier) return;
+
+        // Current spells in this Tier matching by name/source
+        const currentSpells = actor.items?.filter((i: any) => i.type === 'Spell' && i.system?.tier === editingTier) || [];
+        const currentNames = new Set(currentSpells.map((s: any) => s.name));
+        const selectedNames = new Set(selectedSpells.map(s => s.name));
+
+        // ADD: Selected but not currently known
+        const toAdd = selectedSpells.filter(s => !currentNames.has(s.name));
+
+        // REMOVE: Currently known but not selected
+        const toRemove = currentSpells.filter((s: any) => !selectedNames.has(s.name));
+
+        // Execute ADDs
+        for (const spell of toAdd) {
+            await handleAddSpell(spell);
+        }
+
+        // Execute REMOVEs
+        if (onDeleteItem && toRemove.length > 0) {
+            for (const spell of toRemove) {
+                onDeleteItem(spell.id || spell._id);
+            }
+        }
+
+        setIsAddModalOpen(false);
+    };
+
+    const handleAddSpell = async (spell: any) => {
+        try {
+            const res = await fetch(`/api/modules/shadowdark/actors/${actor._id || actor.id}/spells/learn`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ spellUuid: spell.uuid })
+            });
+            // We rely on optimistic updates or re-fetches triggered higher up
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const openManageModal = (tier: number) => {
+        setEditingTier(tier);
+        setIsAddModalOpen(true);
+    };
+
+    const spellOptions = useMemo(() => {
+        if (!systemData?.spells || !editingTier) return [];
+
+        const seen = new Set();
+        return systemData.spells.filter((s: any) => {
+            if (s.tier !== editingTier) return false;
+            if (seen.has(s.name)) return false;
+            seen.add(s.name);
+            return true;
+        });
+    }, [systemData?.spells, editingTier]);
+
+    const knownSpellsForModal = actor.items?.filter((i: any) => i.type === 'Spell' && i.system?.tier === editingTier).map((s: any) => ({
+        name: s.name,
+        uuid: s.flags?.core?.sourceId || s._id,
+        tier: editingTier,
+        img: s.img
+    })) || [];
+
     return (
         <div className="space-y-8 pb-20">
             {/* Spells Known */}
@@ -89,8 +215,18 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     if (spells.length === 0) return null;
                     return (
                         <div key={tier} className="">
-                            <div className="border-b-2 border-black mb-2 flex items-end justify-between px-2 pb-1">
-                                <span className="font-serif font-bold text-lg">Tier {tier}</span>
+                            <div className="border-b-2 border-black mb-2 flex items-end justify-between px-2 pb-1 group">
+                                <span className="font-serif font-bold text-lg flex items-center gap-2">
+                                    Tier {tier}
+                                    <button
+                                        onClick={() => openManageModal(tier)}
+                                        className="text-xs bg-neutral-200 hover:bg-neutral-300 text-neutral-600 px-2 py-1 rounded flex items-center gap-1 transition-colors"
+                                        title="Manage Spells"
+                                    >
+                                        <Settings2 className="w-3 h-3" />
+                                        Manage
+                                    </button>
+                                </span>
                                 <div className="flex gap-4 text-xs font-bold uppercase tracking-widest text-neutral-500 w-[300px] justify-between pr-2">
                                     <span className="w-32 text-center">Duration</span>
                                     <span className="w-20 text-center">Range</span>
@@ -300,6 +436,19 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     <div className="text-center text-neutral-400 italic py-8 border-2 border-dashed border-neutral-200 rounded-lg">No magical items (Scrolls/Wands) found.</div>
                 )}
             </div>
-        </div >
+            {/* Modal */}
+            {isAddModalOpen && (
+                <SpellSelectionModal
+                    isOpen={isAddModalOpen}
+                    title={`Manage Spells - Tier ${editingTier}`}
+                    availableSpells={spellOptions}
+                    knownSpells={knownSpellsForModal}
+                    onSave={handleManageSpells}
+                    onClose={() => setIsAddModalOpen(false)}
+                    foundryUrl={foundryUrl}
+                    maxSelections={maxSelections}
+                />
+            )}
+        </div>
     );
 }

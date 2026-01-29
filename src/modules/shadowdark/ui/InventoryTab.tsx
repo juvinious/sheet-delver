@@ -211,7 +211,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                                 type="number"
                                 defaultValue={actor.system?.coins?.gp || 0}
                                 onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value))}
-                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
+                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                         <div className="flex justify-between items-center">
@@ -220,7 +220,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                                 type="number"
                                 defaultValue={actor.system?.coins?.sp || 0}
                                 onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value))}
-                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
+                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                         <div className="flex justify-between items-center">
@@ -229,7 +229,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                                 type="number"
                                 defaultValue={actor.system?.coins?.cp || 0}
                                 onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value))}
-                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1"
+                                className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                     </div>

@@ -60,7 +60,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                     if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
                                 }}
                                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                                className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none"
+                                className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <span className="text-neutral-400 text-xl font-sans font-light">/</span>
                             <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>

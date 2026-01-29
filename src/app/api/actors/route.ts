@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
 import { getAdapter } from '@/modules/core/registry';
+import { CompendiumCache } from '@/lib/foundry/compendium-cache';
 
 export async function GET() {
     const client = getClient();
@@ -21,8 +22,29 @@ export async function GET() {
         // 2. Fetch raw actors
         const rawActors = await client.getActors(); // client actually returns a partial structure we defined, but let's assume it passes through 'system'
 
+        // DEBUG: Check first actor for computed data
+
+
+        // Use CompendiumCache as fallback/primary resolver
+        // Browser-side fromUuid can be flaky if packs aren't loaded in the view
+        const cache = CompendiumCache.getInstance();
+        if (!cache.hasLoaded()) {
+            await cache.initialize(client);
+        }
+
         // 3. Normalize
-        const actors = rawActors.map((actor: any) => adapter.normalizeActorData(actor));
+        const actors = await Promise.all(rawActors.map(async (actor: any) => {
+            // Ensure computed exists
+            if (!actor.computed) actor.computed = {};
+            if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
+
+            // Delegate system-specific name resolution to the adapter
+            if (adapter.resolveActorNames) {
+                adapter.resolveActorNames(actor, cache);
+            }
+
+            return adapter.normalizeActorData(actor);
+        }));
 
         return NextResponse.json({ actors, system: systemInfo.id });
 

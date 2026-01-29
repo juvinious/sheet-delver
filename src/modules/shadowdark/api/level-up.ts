@@ -6,24 +6,46 @@ import { getClient } from '@/lib/foundry/instance';
  * GET /api/shadowdark/actors/[id]/level-up/data
  * Fetch level-up data for the modal
  */
-export async function handleGetLevelUpData(actorId: string) {
+export async function handleGetLevelUpData(actorId: string | undefined, request?: Request) {
     try {
         const client = getClient();
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const data = await client.page!.evaluate(async ({ actorId }) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) return { error: 'Actor not found' };
+        // Get optional params from request URL
+        let queryClassUuid: string | undefined;
+        if (request) {
+            const url = new URL(request.url);
+            queryClassUuid = url.searchParams.get('classId') || undefined;
+        }
 
-            const currentLevel = actor.system?.level?.value || 0;
-            const targetLevel = currentLevel + 1;
-            const currentXP = actor.system?.level?.xp || 0;
+        const data = await client.page!.evaluate(async ({ actorId, queryClassUuid }) => {
+            let currentLevel = 0;
+            let targetLevel = 1;
+            let currentXP = 0;
+            let classUuid = queryClassUuid;
+            let patronUuid = null;
+            let actor = null;
+            let conMod = 0;
+
+            if (actorId) {
+                // @ts-ignore
+                actor = window.game.actors.get(actorId);
+                if (!actor) return { error: 'Actor not found' };
+                currentLevel = actor.system?.level?.value || 0;
+                targetLevel = currentLevel + 1;
+                currentXP = actor.system?.level?.xp || 0;
+                // Prefer queryClassUuid if provided (e.g. selecting class for Lvl 1), otherwise actor's class
+                classUuid = queryClassUuid || actor.system?.class;
+                patronUuid = actor.system?.patron;
+                conMod = actor.system?.abilities?.con?.mod || 0;
+            } else {
+                // New Character Mode
+                // Defaults: Level 0 -> 1
+            }
 
             // Get class document
-            const classUuid = actor.system?.class;
             // @ts-ignore
             const classDoc = classUuid ? await fromUuid(classUuid) : null;
 
@@ -31,7 +53,6 @@ export async function handleGetLevelUpData(actorId: string) {
             const talentGained = targetLevel % 2 !== 0;
 
             // Get patron if applicable
-            const patronUuid = actor.system?.patron;
             // @ts-ignore
             const patronDoc = patronUuid ? await fromUuid(patronUuid) : null;
 
@@ -40,6 +61,7 @@ export async function handleGetLevelUpData(actorId: string) {
                 classDoc?.system?.spellcasting?.class ||
                 classDoc?.system?.spellcasting?.ability
             );
+            console.log(`[LevelUpAPI] Class: ${classDoc?.name} (${classUuid}), isSpellcaster: ${isSpellcaster}, CurLvl: ${currentLevel}, TgtLvl: ${targetLevel}`);
 
             // Calculate spell slots to fill
             const spellsToChoose: Record<number, number> = {};
@@ -49,15 +71,26 @@ export async function handleGetLevelUpData(actorId: string) {
                 // Calculate slots
                 if (classDoc?.system?.spellcasting?.spellsknown) {
                     const skTable = classDoc.system.spellcasting.spellsknown;
-                    const currentSpells = skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-                    const targetSpells = skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                    // console.log(`[LevelUpAPI] SK Table:`, JSON.stringify(skTable));
+
+                    // Parse table effectively
+                    const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                    const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+                    console.log(`[LevelUpAPI] Spells Known Check - Current (${currentLevel}):`, currentSpells, "Target (" + targetLevel + "):", targetSpells);
 
                     for (let tier = 1; tier <= 5; tier++) {
-                        const diff = (targetSpells[tier] || 0) - (currentSpells[tier] || 0);
+                        const tStr = String(tier);
+                        const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
+                        const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
+                        const diff = targetVal - currentVal;
                         if (diff > 0) {
                             spellsToChoose[tier] = diff;
                         }
                     }
+                    console.log(`[LevelUpAPI] Calculated spellsToChoose:`, spellsToChoose);
+                } else {
+                    console.warn(`[LevelUpAPI] No spellsknown table found for ${classDoc?.name}`);
                 }
 
                 // Fetch available spells using official system method
@@ -65,11 +98,15 @@ export async function handleGetLevelUpData(actorId: string) {
                 if (window.shadowdark?.compendiums?.classSpellBook) {
                     // @ts-ignore
                     const spells = await window.shadowdark.compendiums.classSpellBook(classUuid);
+                    console.log(`[LevelUpAPI] classSpellBook returned ${spells?.length} spells`);
+
                     // Handle cases where spells might be plain objects or Documents
                     availableSpells = spells.map((s: any) => {
                         if (typeof s.toJSON === 'function') return s.toJSON();
                         return s;
                     });
+                } else {
+                    console.warn(`[LevelUpAPI] window.shadowdark.compendiums.classSpellBook missing`);
                 }
             }
 
@@ -88,9 +125,9 @@ export async function handleGetLevelUpData(actorId: string) {
                 isSpellcaster,
                 spellsToChoose,
                 availableSpells,
-                conMod: actor.system?.abilities?.con?.mod || 0,
+                conMod,
             };
-        }, { actorId });
+        }, { actorId, queryClassUuid });
 
         if ('error' in data) {
             return NextResponse.json({ error: data.error }, { status: 404 });
@@ -108,25 +145,42 @@ export async function handleGetLevelUpData(actorId: string) {
  * POST /api/shadowdark/actors/[id]/level-up/roll-hp
  * Roll HP for level-up
  */
-export async function handleRollHP(actorId: string, request: Request) {
+export async function handleRollHP(actorId: string | undefined, request: Request) {
     try {
         const client = getClient();
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { isReroll } = await request.json();
+        const { isReroll, classId } = await request.json();
 
-        const result = await client.page!.evaluate(async ({ actorId }) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) return { error: 'Actor not found' };
+        const result = await client.page!.evaluate(async ({ actorId, classId }) => {
+            let hitDie = '1d4';
+            let actor = null;
 
-            // Get class hit die
-            const classUuid = actor.system?.class;
-            // @ts-ignore
-            const classDoc = classUuid ? await fromUuid(classUuid) : null;
-            const hitDie = classDoc?.system?.hitPoints || '1d4';
+
+            // Prioritize classId if provided (for level-up scenarios where target class differs from current)
+            if (classId) {
+                // Get class hit die from class ID directly
+                // @ts-ignore
+                const classDoc = await fromUuid(classId);
+                if (classDoc?.system?.hitPoints) hitDie = classDoc.system.hitPoints;
+
+                // Get actor if provided (for chat message)
+                if (actorId) {
+                    // @ts-ignore
+                    actor = window.game.actors.get(actorId);
+                }
+            } else if (actorId) {
+                // Fallback: use actor's current class if no classId provided
+                // @ts-ignore
+                actor = window.game.actors.get(actorId);
+                const classUuid = actor?.system?.class;
+                // @ts-ignore
+                const classDoc = classUuid ? await fromUuid(classUuid) : null;
+                if (classDoc?.system?.hitPoints) hitDie = classDoc.system.hitPoints;
+            }
+
 
             // Roll HP using Foundry's Roll class
             // @ts-ignore
@@ -137,16 +191,16 @@ export async function handleRollHP(actorId: string, request: Request) {
             // @ts-ignore
             await roll.toMessage({
                 // @ts-ignore
-                speaker: window.game.actors.get(actorId) ? window.ChatMessage.getSpeaker({ actor: window.game.actors.get(actorId) }) : undefined,
+                speaker: actor ? window.ChatMessage.getSpeaker({ actor }) : window.ChatMessage.getSpeaker(),
                 flavor: `Hit Point Roll (Level Up)`
             });
 
             return {
                 success: true,
                 formula: hitDie,
-                total: roll.total,
+                total: roll.total
             };
-        }, { actorId });
+        }, { actorId, classId });
 
         if ('error' in result) {
             return NextResponse.json({ error: result.error }, { status: 404 });
@@ -164,6 +218,48 @@ export async function handleRollHP(actorId: string, request: Request) {
         console.error('[API] Roll HP Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to roll HP' }, { status: 500 });
     }
+}
+
+export async function handleRollGold(actorId: string | undefined, request: Request) {
+    const client = getClient();
+    if (!client || !client.isConnected) {
+        return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+    }
+
+    const { isReroll, classId } = await request.json();
+
+    const result = await client.page!.evaluate(async ({ actorId, classId }) => {
+        // Shadowdark Standard Gold: 2d6 * 5
+        let multiplier = 5;
+        let dice = "2d6";
+        let actor = null;
+
+        if (actorId) {
+            // @ts-ignore
+            actor = window.game.actors.get(actorId);
+        }
+
+        // @ts-ignore
+        const r = new Roll(dice);
+        await r.evaluate();
+        const total = r.total * multiplier;
+
+        // Create a chat message for the roll
+        // @ts-ignore
+        await r.toMessage({
+            // @ts-ignore
+            speaker: actor ? window.ChatMessage.getSpeaker({ actor }) : window.ChatMessage.getSpeaker(),
+            flavor: `Starting Gold Roll (Level 1) - ${r.total} × ${multiplier}`
+        });
+
+        return {
+            total: total,
+            formula: `${dice} x ${multiplier}`,
+            breakdown: `${r.total} x ${multiplier}`
+        };
+    }, { actorId, classId });
+
+    return NextResponse.json({ success: true, roll: result });
 }
 
 /**

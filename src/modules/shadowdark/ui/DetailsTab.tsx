@@ -83,7 +83,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
 
                         // Sanitize & Normalize to UUIDs
                         // We map existing values (Names or UUIDs) to the authoritative UUIDs from options if available.
-                        const cleanArray = (Array.isArray(currentVal) ? currentVal : []).map((c: any) => {
+                        const cleanArray = (Array.isArray(currentVal) ? currentVal : []).filter((c: any) => c != null).map((c: any) => {
                             let val = typeof c === 'object' ? (c.uuid || c.name) : c;
                             if (!val) return '';
 
@@ -223,7 +223,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                     if (val.toString() !== e.target.value) e.target.value = val.toString();
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
-                                className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent`}
+                                className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                             />
                             <span className="text-neutral-400">/</span>
                             <span>{(actor.system?.level?.value || 1) * 10}</span>
@@ -350,7 +350,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                     <div className="p-1 flex flex-wrap gap-2">
                         {(() => {
                             const actorLangsRaw = actor.system?.languages || [];
-                            const resolvedLangs = actorLangsRaw.map((l: any) => {
+                            const resolvedLangs = actorLangsRaw.filter((l: any) => l != null).map((l: any) => {
                                 const isObj = typeof l === 'object';
                                 const val = isObj ? l.name : l;
                                 const match = systemData?.languages?.find((sl: any) => sl.uuid === val || sl.name === val);
