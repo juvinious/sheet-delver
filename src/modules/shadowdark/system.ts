@@ -768,7 +768,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 const item = actor.items.find((i: any) => i.type === type || i.type === type.toLowerCase() || i.type === type.charAt(0).toUpperCase() + type.slice(1));
 
                 if (item) {
-                    updates[`system.${field}`] = item.uuid;
+                    // PREFER: Compendium Source ID if available, then Item UUID
+                    const linkUuid = item.flags?.core?.sourceId || item.uuid;
+                    updates[`system.${field}`] = linkUuid;
                 } else {
                     const sourceUuid = sourceData.system?.[field];
                     if (sourceUuid && typeof sourceUuid === 'string') {

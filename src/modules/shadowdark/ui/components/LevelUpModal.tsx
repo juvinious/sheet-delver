@@ -86,6 +86,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     onClassChange={actions.setTargetClassUuid}
                     onPatronChange={actions.setSelectedPatronUuid}
                     foundryUrl={props.foundryUrl}
+                    classLocked={!!props.classUuid}
                 />
 
                 {/* Main Scrollable Content */}
@@ -209,6 +210,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     onConfirm={actions.handleConfirm}
                     isComplete={actions.isComplete()}
                     loading={state.loading}
+                    targetLevel={props.targetLevel}
                 />
             </div>
         </div>

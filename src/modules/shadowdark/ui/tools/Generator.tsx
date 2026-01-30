@@ -1260,10 +1260,10 @@ export default function Generator() {
                 type: 'Player',
                 img: 'icons/svg/mystery-man.svg',
                 system: {
-                    ancestry: ancestryItem ? ancestryItem._id : formData.ancestry,   // Link to Pre-Gen ID
-                    background: backgroundItem ? backgroundItem._id : formData.background, // Link to Pre-Gen ID
-                    class: classItem ? classItem._id : (formData.class || ""),     // Link to Pre-Gen ID
-                    patron: patronItem ? patronItem._id : formData.patron,         // Link to Pre-Gen ID
+                    ancestry: formData.ancestry || "",      // Link to Compendium UUID
+                    background: formData.background || "",  // Link to Compendium UUID
+                    class: formData.class || "",      // Link to Compendium UUID (Correct for Shadowdark)
+                    patron: formData.patron || "",    // Link to Compendium UUID (Correct for Shadowdark)
                     alignment: formData.alignment,
                     deity: formData.deity,
                     languages: languageUuids, // Populate with selected language UUIDs
@@ -2319,6 +2319,14 @@ export default function Generator() {
                         abilities={formData.stats}
                         availableClasses={systemData.classes}
                         availableLanguages={systemData.languages}
+                        knownLanguages={[
+                            ...knownLanguages.fixed.map((l: any) => typeof l === 'string' ? { uuid: l, name: systemData.languages.find((s: any) => s.uuid === l)?.name || l } : l),
+                            ...[...knownLanguages.selected.common, ...knownLanguages.selected.rare, ...knownLanguages.selected.ancestry, ...knownLanguages.selected.class].map(uuid => {
+                                const l = systemData.languages.find((s: any) => s.uuid === uuid);
+                                return { uuid, name: l?.name || "Unknown" };
+                            })
+                        ]}
+                        skipLanguageSelection={true}
                         foundryUrl={foundryUrl}
                         spells={[]}
                         onComplete={(data) => {

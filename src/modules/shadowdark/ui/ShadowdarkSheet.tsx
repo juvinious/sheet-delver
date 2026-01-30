@@ -272,7 +272,8 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                     patron: actor.patronDetails,
                                     abilities: actor.system?.abilities,
                                     spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
-                                    classUuid: resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
+                                    // If Level 0, force empty classUuid so modal prompts for class selection
+                                    classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
                                     // Pass explicit UUIDs for class/patron in case objects are missing
                                     patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
                                 });

@@ -15,6 +15,8 @@ export interface LevelUpProps {
     spells: any[];
     availableClasses?: any[];
     availableLanguages?: any[];
+    knownLanguages?: any[]; // Passed for new characters (pre-gen selections)
+    skipLanguageSelection?: boolean; // For when languages are handled externally (Generator)
     onComplete: (data: { items: any[], hpRoll: number, gold?: number, languages?: string[] }) => void;
     onCancel: () => void;
     foundryUrl?: string;
@@ -38,6 +40,8 @@ export const useLevelUp = (props: LevelUpProps) => {
         abilities: _abilities,
         availableClasses = [],
         availableLanguages = [],
+        knownLanguages: initialKnownLanguages = [],
+        skipLanguageSelection = false,
         onComplete,
     } = props;
 
@@ -58,7 +62,7 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [error, setError] = useState<string | null>(null);
     const [confirmReroll, setConfirmReroll] = useState(false);
 
-    const [targetClassUuid, setTargetClassUuid] = useState("");
+    const [targetClassUuid, setTargetClassUuid] = useState(classUuid || "");
     const [activeClassObj, setActiveClassObj] = useState<any>(classObj);
     const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>("");
     const [fetchedPatron, setFetchedPatron] = useState<any>(null);
@@ -67,7 +71,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
     const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
     const [fixedLanguages, setFixedLanguages] = useState<string[]>([]);
-    const [knownLanguages, setKnownLanguages] = useState<any[]>([]);
+    const [knownLanguages, setKnownLanguages] = useState<any[]>(initialKnownLanguages);
     const [languageGroups, setLanguageGroups] = useState<any[]>([]);
 
     const [talentTable, setTalentTable] = useState<any>(null);
@@ -154,7 +158,17 @@ export const useLevelUp = (props: LevelUpProps) => {
                     setSpellsToChooseTotal(total);
                 }
 
-                if (apiData.availableSpells) setAvailableSpells(apiData.availableSpells);
+                if (apiData.availableSpells) {
+                    const unique = new Map();
+                    // Determine if apiData.availableSpells is an array
+                    if (Array.isArray(apiData.availableSpells)) {
+                        apiData.availableSpells.forEach((s: any) => {
+                            if (!unique.has(s.name)) unique.set(s.name, s);
+                        });
+                        setAvailableSpells(Array.from(unique.values()));
+                    }
+                }
+                if (apiData.knownLanguages) setKnownLanguages(apiData.knownLanguages);
 
                 setStatuses(prev => ({
                     ...prev,
@@ -577,13 +591,24 @@ export const useLevelUp = (props: LevelUpProps) => {
             if (activeClassObj && (activeClassObj.uuid !== classObj?.uuid || currentLevel === 0)) {
                 const classItem = { ...activeClassObj, type: 'Class' };
                 delete classItem._id;
+                // Ensure sourceId is preserved for system link
+                if (!classItem.flags) classItem.flags = {};
+                if (!classItem.flags.core) classItem.flags.core = {};
+                if (!classItem.flags.core.sourceId) classItem.flags.core.sourceId = activeClassObj.uuid;
                 items.push(classItem);
             }
 
             // Include Patron
             if (selectedPatronUuid && selectedPatronUuid !== patron?.uuid) {
                 const fullPatron = await fetchDocument(selectedPatronUuid);
-                if (fullPatron) items.push(fullPatron);
+                if (fullPatron) {
+                    const patronItem = { ...fullPatron };
+                    delete patronItem._id;
+                    if (!patronItem.flags) patronItem.flags = {};
+                    if (!patronItem.flags.core) patronItem.flags.core = {};
+                    if (!patronItem.flags.core.sourceId) patronItem.flags.core.sourceId = selectedPatronUuid;
+                    items.push(patronItem);
+                }
             }
 
             const finalLanguageUuids = selectedLanguages.filter(lid => {
@@ -781,6 +806,13 @@ export const useLevelUp = (props: LevelUpProps) => {
 
     useEffect(() => {
         if (activeClassObj) {
+            // Check skip first
+            if (skipLanguageSelection) {
+                setLanguageGroups([]);
+                setFixedLanguages([]);
+                return;
+            }
+
             // Only allow language selection at Level 1 (or 0 -> 1)
             if (targetLevel === 1 || currentLevel === 0) {
                 const langData = activeClassObj.system?.languages || { common: 0, fixed: [], rare: 0, select: 0 };
@@ -797,7 +829,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 setFixedLanguages([]);
             }
         }
-    }, [activeClassObj, targetLevel, currentLevel]);
+    }, [activeClassObj, targetLevel, currentLevel, skipLanguageSelection]);
 
     // Clear LOADING status when selections update
     useEffect(() => {

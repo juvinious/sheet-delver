@@ -192,6 +192,45 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
                 }
             }
 
+            // Get current languages
+            // @ts-ignore
+            const languages = actor?.system?.languages || [];
+            // Resolve language names if possible
+            const knownLanguages = [];
+            for (const langId of languages) {
+                let name = "";
+                let uuid = "";
+
+                if (typeof langId === 'object' && langId.name) {
+                    name = langId.name;
+                } else if (typeof langId === 'string') {
+                    // Check if it looks like a UUID
+                    if (langId.includes('.') || langId.length > 20) {
+                        try {
+                            // @ts-ignore
+                            const langItem = await fromUuid(langId);
+                            if (langItem) {
+                                name = langItem.name;
+                                uuid = langId;
+                            }
+                        } catch (e) {
+                            // Fallback if UUID resolution fails
+                            name = langId;
+                        }
+                    } else {
+                        // Assume it's a name
+                        name = langId;
+                    }
+                }
+
+                if (name) {
+                    knownLanguages.push({
+                        uuid: uuid,
+                        name: name
+                    });
+                }
+            }
+
             return {
                 success: true,
                 actorId,
@@ -208,6 +247,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
                 spellsToChoose,
                 availableSpells,
                 conMod,
+                knownLanguages
             };
         }, { actorId, queryClassUuid });
 
@@ -376,8 +416,8 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                 console.log('[API] Finalize Items:', items.map((i: any) => `${i.name} (${i.type})`));
 
                 // If we are adding a Class, remove any existing Class items first (e.g. replacing Level 0)
-                const newClassItem = items.find((i: any) => i.type?.toLowerCase() === 'class');
-                if (newClassItem) {
+                const newClassItemData = items.find((i: any) => i.type?.toLowerCase() === 'class');
+                if (newClassItemData) {
                     console.log('[API] New Class detected, removing existing classes...');
                     const existingClasses = actor.items.filter((i: any) => i.type?.toLowerCase() === 'class');
                     console.log('[API] Existing Classes found:', existingClasses.map((i: any) => i.name));
@@ -389,6 +429,45 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
                 }
 
                 createdItems = await actor.createEmbeddedDocuments('Item', items);
+
+                // EXPLODING CLASS FEATURES: Recursively add class talents/features if a class was added
+                // This accounts for "Spellcasting", "Backstab", etc. which are linked in the Class Item but not in the 'items' payload explicitly.
+                const createdClass = createdItems.find((i: any) => i.type?.toLowerCase() === 'class');
+                if (createdClass && createdClass.system) {
+                    console.log('[API] Expanding Class Features for:', createdClass.name);
+                    const featuresToadd = [
+                        ...(createdClass.system.talents || []),
+                        ...(createdClass.system.features || []),
+                        ...(createdClass.system.abilities || [])
+                    ];
+
+                    const resolvedFeatures = [];
+                    for (const ref of featuresToadd) {
+                        // ref can be UUID string or object {uuid, ...}
+                        const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
+                        if (uuid) {
+                            try {
+                                // @ts-ignore
+                                const featureDoc = await fromUuid(uuid);
+                                if (featureDoc) {
+                                    const featureData = featureDoc.toObject();
+                                    // @ts-ignore
+                                    featureData._id = foundry.utils.randomID();
+                                    featureData.system.level = targetLevel; // Assign current level
+                                    resolvedFeatures.push(featureData);
+                                    console.log('[API] Resolved Class Feature:', featureData.name);
+                                }
+                            } catch (e) {
+                                console.error('[API] Failed to resolve feature:', uuid, e);
+                            }
+                        }
+                    }
+
+                    if (resolvedFeatures.length > 0) {
+                        const createdFeatures = await actor.createEmbeddedDocuments('Item', resolvedFeatures);
+                        createdItems.push(...createdFeatures);
+                    }
+                }
             }
 
             // Calculate new HP
@@ -407,8 +486,9 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
             }
 
             // Create audit log entry
-            const auditLog = actor.system?.auditlog || {};
-            const itemNames = items?.map((i: any) => i.name) || [];
+            // Check both cases as Foundry data structure might vary or be custom
+            const auditLog = actor.system?.auditLog || actor.system?.auditlog || {};
+            const itemNames = createdItems.map((i: any) => i.name) || [];
             auditLog[targetLevel] = {
                 baseHP: newBaseHP,
                 itemsGained: itemNames,
@@ -428,15 +508,30 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
             };
 
             if (newClass) {
-                // Ensure we have a valid UUID for the link
-                const classUuid = newClass.uuid || `Actor.${actor.id}.Item.${newClass.id || newClass._id}`;
-                console.log('[API] Linking new Class:', newClass.name, classUuid);
+                // Use the sourceId (Compendium UUID) if available, fallback to the embedded item UUID
+                const classUuid = newClass.flags?.core?.sourceId || newClass.uuid || `Actor.${actor.id}.Item.${newClass.id || newClass._id}`;
+                console.log('[API] Linking new Class (Compendium):', newClass.name, classUuid);
                 updates['system.class'] = classUuid;
             }
             if (newPatron) {
-                const patronUuid = newPatron.uuid || `Actor.${actor.id}.Item.${newPatron.id || newPatron._id}`;
-                console.log('[API] Linking new Patron:', newPatron.name, patronUuid);
+                const patronUuid = newPatron.flags?.core?.sourceId || newPatron.uuid || `Actor.${actor.id}.Item.${newPatron.id || newPatron._id}`;
+                console.log('[API] Linking new Patron (Compendium):', newPatron.name, patronUuid);
                 updates['system.patron'] = patronUuid;
+            }
+
+            // Also link Ancestry and Background if they were added (e.g. 0->1 transition from Generator)
+            const newAncestry = createdItems.find((i: any) => i.type?.toLowerCase() === 'ancestry');
+            const newBackground = createdItems.find((i: any) => i.type?.toLowerCase() === 'background');
+
+            if (newAncestry) {
+                const ancestryUuid = newAncestry.flags?.core?.sourceId || newAncestry.uuid || `Actor.${actor.id}.Item.${newAncestry.id || newAncestry._id}`;
+                console.log('[API] Linking new Ancestry (Compendium):', newAncestry.name, ancestryUuid);
+                updates['system.ancestry'] = ancestryUuid;
+            }
+            if (newBackground) {
+                const backgroundUuid = newBackground.flags?.core?.sourceId || newBackground.uuid || `Actor.${actor.id}.Item.${newBackground.id || newBackground._id}`;
+                console.log('[API] Linking new Background (Compendium):', newBackground.name, backgroundUuid);
+                updates['system.background'] = backgroundUuid;
             }
 
             // Sync Languages (Merge UUIDs/Names)

@@ -33,8 +33,9 @@ export const LevelUpHeader = ({
     selectedPatronUuid,
     loadingPatrons,
     onClassChange,
-    onPatronChange
-}: Props) => {
+    onPatronChange,
+    classLocked
+}: Props & { classLocked?: boolean }) => {
     return (
         <div className="bg-white border-b-4 border-black">
             <div className="bg-black p-6 flex justify-between items-center">
@@ -64,13 +65,15 @@ export const LevelUpHeader = ({
                         <select
                             value={targetClassUuid}
                             onChange={(e) => onClassChange(e.target.value)}
-                            className="w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] uppercase tracking-wide"
+                            disabled={classLocked}
+                            className={`w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] uppercase tracking-wide ${classLocked ? 'opacity-50 cursor-not-allowed bg-neutral-100' : 'cursor-pointer'}`}
                         >
                             <option value="">-- Choose Class --</option>
                             {[...availableClasses].sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
                                 <option key={c.uuid || c._id} value={c.uuid || c._id}>{c.name}</option>
                             ))}
                         </select>
+                        {classLocked && <p className="text-[10px] text-neutral-500 italic ml-1">* Class selected during creation</p>}
                     </div>
 
                     {needsBoon && (

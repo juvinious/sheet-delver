@@ -1,14 +1,16 @@
 
 import React from 'react';
 
+
 interface Props {
     onCancel: () => void;
     onConfirm: () => void;
     isComplete: boolean;
     loading: boolean;
+    targetLevel: number;
 }
 
-export const LevelUpFooter = ({ onCancel, onConfirm, isComplete, loading }: Props) => {
+export const LevelUpFooter = ({ onCancel, onConfirm, isComplete, loading, targetLevel }: Props) => {
     return (
         <div className="bg-neutral-100 border-t-4 border-black p-6 flex justify-between items-center">
             <button
@@ -29,8 +31,9 @@ export const LevelUpFooter = ({ onCancel, onConfirm, isComplete, loading }: Prop
                         : 'bg-neutral-200 text-neutral-400 border-2 border-neutral-300 pointer-events-none'}
                 `}
             >
-                Finalize Level Up
+                {targetLevel === 1 ? "Create Character" : "Finalize Level Up"}
             </button>
         </div>
     );
 };
+

@@ -124,7 +124,17 @@ export async function handleGetSpellsBySource(request: Request) {
             return NextResponse.json({ error: result.error }, { status: 404 });
         }
 
-        return NextResponse.json({ success: true, spells: result });
+        // Deduplicate spells by name
+        const uniqueSpells = new Map();
+        if (Array.isArray(result)) {
+            result.forEach((s: any) => {
+                if (s && s.name && !uniqueSpells.has(s.name)) {
+                    uniqueSpells.set(s.name, s);
+                }
+            });
+        }
+
+        return NextResponse.json({ success: true, spells: Array.from(uniqueSpells.values()) });
 
     } catch (error: any) {
         console.error('[API] Fetch Spells Error:', error);

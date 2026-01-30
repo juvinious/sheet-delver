@@ -150,6 +150,23 @@ export class ShadowdarkImporter {
                         return pack.getDocument(itemIndex._id);
                     }
                 }
+
+                // Fallback: Search by Name only (ignore Class restriction)
+                log(`[findSpell] Strict class match failed for '${spellData.bonusName}', trying loose name search...`);
+                // @ts-ignore
+                for (const pack of game.packs) {
+                    if (pack.metadata.type !== 'Item') continue;
+                    // @ts-ignore
+                    const itemIndex = pack.index.find((s: any) =>
+                        (s.name.toLowerCase() === spellData.bonusName.toLowerCase()) &&
+                        (s.type === 'Spell')
+                    );
+
+                    if (itemIndex) {
+                        log(`[findSpell] Fallback Match in pack ${pack.metadata.label}: ${itemIndex._id}`);
+                        return pack.getDocument(itemIndex._id);
+                    }
+                }
                 log(`[findSpell] FAILED to find '${spellData.bonusName}'`);
                 errors.push({ type: 'Spell', name: spellData.bonusName, error: 'Not found' });
                 return null;
@@ -371,22 +388,26 @@ export class ShadowdarkImporter {
                     }
 
                     // Fixed Class Talents
-                    /*
                     if (classObj.system?.talents) {
                         for (const uuid of classObj.system.talents) {
                             // @ts-ignore
                             const item = await fromUuid(uuid);
                             if (item) {
                                 const obj = item.toObject();
-                                // Exclude replacement choices for now or handle them?
-                                // Importer logic: exclude REPLACEME
+
+                                // Avoid duplicates if already added via bonuses
+                                const exists = talents.find(t => t.name === obj.name);
+                                if (exists) continue;
+
+                                // Exclude replacement choices (handled by Level 0 logic or manual selection usually)
+                                // but for Level 1 creation we want base talents.
+                                // If it has REPLACEME, strictly skip? Shadowdarkling might have provided the choice result.
                                 if (obj.effects?.[0]?.changes?.[0]?.value !== "REPLACEME") {
                                     talents.push(obj);
                                 }
                             }
                         }
                     }
-                    */
                 }
 
                 // Fixed Ancestry Talents
@@ -648,7 +669,9 @@ export class ShadowdarkImporter {
                 const newActor = await window.Actor.create(actorData);
 
                 // Embed Items
-                const allItems = [...gear, ...classAbilities, ...spells, ...talents];
+                // Ensure we don't accidentally add a Class item (since the System might have auto-created one, or we want to rely on system.class)
+                const allItems = [...gear, ...classAbilities, ...spells, ...talents].filter(i => i.type !== 'Class');
+
                 if (allItems.length > 0) {
                     // @ts-ignore
                     await newActor.createEmbeddedDocuments("Item", allItems);
