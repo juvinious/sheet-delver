@@ -41,7 +41,7 @@ export class ShadowdarkImporter {
         }
 
         // We run the complex logic inside the browser
-        return await client.evaluate(async ({ json, mapping }) => {
+        return await client.evaluate(async ({ json, mapping }: { json: any, mapping: any }) => {
             const debugLog: string[] = [];
             const log = (msg: string) => debugLog.push(msg);
 

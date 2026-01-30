@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     try {
         // Generic fetch for any Document (Item, Actor, RollTable, JournalEntry, etc.)
-        const data = await client.evaluate(async (uuid) => {
+        const data = await client.evaluate(async (uuid: any) => {
             // @ts-ignore
             const doc = await fromUuid(uuid);
             if (!doc) return null;
