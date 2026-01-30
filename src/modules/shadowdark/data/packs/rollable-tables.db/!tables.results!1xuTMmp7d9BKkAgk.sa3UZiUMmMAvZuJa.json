@@ -1,0 +1,14 @@
+{
+	"_id": "sa3UZiUMmMAvZuJa",
+	"_key": "!tables.results!1xuTMmp7d9BKkAgk.sa3UZiUMmMAvZuJa",
+	"description": "Betray",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		66,
+		66
+	],
+	"type": "text",
+	"weight": 1
+}

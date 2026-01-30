@@ -1,0 +1,14 @@
+{
+	"_id": "A205bYl0kOoEUxfy",
+	"_key": "!tables.results!OQWo5AQe0XOcVWjD.A205bYl0kOoEUxfy",
+	"description": "Tome",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		8,
+		8
+	],
+	"type": "text",
+	"weight": 1
+}

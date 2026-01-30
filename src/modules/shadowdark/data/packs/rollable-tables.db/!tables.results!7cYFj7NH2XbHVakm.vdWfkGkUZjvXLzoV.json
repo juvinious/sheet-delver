@@ -1,0 +1,14 @@
+{
+	"_id": "vdWfkGkUZjvXLzoV",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.vdWfkGkUZjvXLzoV",
+	"description": "Burden",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		7,
+		7
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "HUIf2HliSqC9skur",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.HUIf2HliSqC9skur",
+	"description": "Asylum",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		50,
+		53
+	],
+	"type": "text",
+	"weight": 4
+}

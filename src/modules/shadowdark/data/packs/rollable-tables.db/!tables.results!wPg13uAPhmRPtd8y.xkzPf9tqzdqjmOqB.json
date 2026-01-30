@@ -1,0 +1,14 @@
+{
+	"_id": "xkzPf9tqzdqjmOqB",
+	"_key": "!tables.results!wPg13uAPhmRPtd8y.xkzPf9tqzdqjmOqB",
+	"description": "Socializing/playing",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		9,
+		10
+	],
+	"type": "text",
+	"weight": 1
+}

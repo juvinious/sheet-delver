@@ -365,6 +365,23 @@ export const useLevelUp = (props: LevelUpProps) => {
         try {
             const resolved = await fetchTableResult(boonTable, 'boon');
             if (resolved) {
+                // Check for duplicate boons? (Allowing for now as per task)
+
+                // Check for Special Handlers
+                for (const item of resolved) {
+                    for (const handler of TALENT_HANDLERS) {
+                        if (handler.matches(item) && handler.onRoll) {
+                            console.log(`[LevelUp] Triggering Boon handler: ${handler.id}`);
+                            handler.onRoll({
+                                setStatSelection,
+                                setArmorMasterySelection,
+                                setExtraSpellSelection,
+                                targetLevel
+                            });
+                        }
+                    }
+                }
+
                 setRolledBoons(prev => [...prev, ...resolved]);
             }
         } catch (e: any) {
@@ -414,6 +431,22 @@ export const useLevelUp = (props: LevelUpProps) => {
                 return resolvedDocs;
             };
             const docs = await resolveDocs(raw);
+
+            // Trigger Handlers for manual selections too
+            for (const item of docs) {
+                for (const handler of TALENT_HANDLERS) {
+                    if (handler.matches(item) && handler.onRoll) {
+                        console.log(`[LevelUp] Triggering Selection handler: ${handler.id}`);
+                        handler.onRoll({
+                            setStatSelection,
+                            setArmorMasterySelection,
+                            setExtraSpellSelection,
+                            targetLevel
+                        });
+                    }
+                }
+            }
+
             if (context === 'boon') setRolledBoons(prev => [...prev, ...docs]);
             else setRolledTalents(prev => [...prev, ...docs]);
         } catch (e: any) {
@@ -502,6 +535,17 @@ export const useLevelUp = (props: LevelUpProps) => {
                     delete cleaned._id;
                     // Ensure it is learned? Shadowdark spells just exist on sheet.
                     items.push(cleaned);
+                }
+            }
+
+            // --- Mutate Items in place (e.g. Predefined Effects for Stats) ---
+            for (const item of items) {
+                for (const handler of TALENT_HANDLERS) {
+                    if (handler.matches(item)) {
+                        if (handler.mutateItem) {
+                            handler.mutateItem(item, { statSelection });
+                        }
+                    }
                 }
             }
 
@@ -849,7 +893,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         }
         return true;
-    }, [hpRoll, rolledTalents, requiredTalents, needsBoon, rolledBoons, startingBoons, choiceRolls, languageGroups, selectedLanguages, knownLanguages, selectedSpells, spellsToChooseTotal, isSpellcaster, spellsToChoose, availableLanguages, fixedLanguages, availableSpells, statuses]);
+    }, [hpRoll, rolledTalents, requiredTalents, needsBoon, rolledBoons, startingBoons, choiceRolls, languageGroups, selectedLanguages, knownLanguages, selectedSpells, spellsToChooseTotal, isSpellcaster, spellsToChoose, availableLanguages, fixedLanguages, availableSpells, statuses, statSelection, weaponMasterySelection, armorMasterySelection, extraSpellSelection]);
 
     const [hpFormula, hpMax] = useMemo(() => {
         const hitDieStr = activeClassObj?.system?.hitPoints || "1d6";

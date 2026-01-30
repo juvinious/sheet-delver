@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
+import { dataManager } from '../data/DataManager';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data
@@ -20,6 +21,110 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
             queryClassUuid = url.searchParams.get('classId') || undefined;
         }
 
+        // 1. Fetch Minimal Actor Data from Foundry
+        const actorData = await client.page!.evaluate(async ({ actorId, queryClassUuid }) => {
+            let currentLevel = 0;
+            let targetLevel = 1;
+            let currentXP = 0;
+            let classUuid = queryClassUuid;
+            let patronUuid = null;
+            let actor = null;
+            let conMod = 0;
+
+            if (actorId) {
+                // @ts-ignore
+                actor = window.game.actors.get(actorId);
+                if (!actor) return { error: 'Actor not found' };
+                currentLevel = actor.system?.level?.value || 0;
+                targetLevel = currentLevel + 1;
+                currentXP = actor.system?.level?.xp || 0;
+                // Prefer queryClassUuid if provided
+                classUuid = queryClassUuid || actor.system?.class;
+                patronUuid = actor.system?.patron;
+                conMod = actor.system?.abilities?.con?.mod || 0;
+            }
+
+            return {
+                actorId,
+                currentLevel,
+                targetLevel,
+                currentXP,
+                classUuid,
+                patronUuid,
+                conMod
+            };
+        }, { actorId, queryClassUuid });
+
+        if ('error' in actorData) {
+            return NextResponse.json({ error: actorData.error }, { status: 404 });
+        }
+
+        const { currentLevel, targetLevel, currentXP, classUuid, patronUuid, conMod } = actorData;
+
+        // 2. Try to resolve Data locally (Fast Path)
+        const classDoc = classUuid ? dataManager.getDocument(classUuid) : null;
+        const patronDoc = patronUuid ? dataManager.getDocument(patronUuid) : null;
+
+        // If we have the class doc (or don't need one), we can proceed locally
+        if (classDoc || !classUuid) {
+            // console.log('[API] Fast Path: Using cached data for', classDoc?.name);
+
+            const talentGained = targetLevel % 2 !== 0; // Odd levels
+
+            const isSpellcaster = Boolean(
+                classDoc?.system?.spellcasting?.class ||
+                classDoc?.system?.spellcasting?.ability
+            );
+
+            const spellsToChoose: Record<number, number> = {};
+            let availableSpells: any[] = [];
+
+            if (isSpellcaster) {
+                if (classDoc?.system?.spellcasting?.spellsknown) {
+                    const skTable = classDoc.system.spellcasting.spellsknown;
+                    const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                    const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+                    for (let tier = 1; tier <= 5; tier++) {
+                        const tStr = String(tier);
+                        const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
+                        const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
+                        const diff = targetVal - currentVal;
+                        if (diff > 0) {
+                            spellsToChoose[tier] = diff;
+                        }
+                    }
+                }
+
+                // Get Spells from Cache
+                if (classDoc?.name) {
+                    availableSpells = dataManager.getSpellsBySource(classDoc.name);
+                }
+            }
+
+            const data = {
+                success: true,
+                actorId,
+                currentLevel,
+                targetLevel,
+                currentXP,
+                talentGained,
+                classHitDie: classDoc?.system?.hitPoints || '1d4',
+                classTalentTable: classDoc?.system?.classTalentTable,
+                patronBoonTable: patronDoc?.system?.boonTable,
+                canRollBoons: classDoc?.system?.patron?.required || false,
+                startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
+                isSpellcaster,
+                spellsToChoose,
+                availableSpells,
+                conMod,
+            };
+            return NextResponse.json({ success: true, data });
+        }
+
+        // 3. Fallback to Foundry (Slow Path)
+        // Used if Class/Patron are custom items not in our cache
+        console.log('[API] Slow Path: Fetching full data from Foundry for', classUuid);
         const data = await client.page!.evaluate(async ({ actorId, queryClassUuid }) => {
             let currentLevel = 0;
             let targetLevel = 1;
@@ -36,48 +141,34 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
                 currentLevel = actor.system?.level?.value || 0;
                 targetLevel = currentLevel + 1;
                 currentXP = actor.system?.level?.xp || 0;
-                // Prefer queryClassUuid if provided (e.g. selecting class for Lvl 1), otherwise actor's class
                 classUuid = queryClassUuid || actor.system?.class;
                 patronUuid = actor.system?.patron;
                 conMod = actor.system?.abilities?.con?.mod || 0;
-            } else {
-                // New Character Mode
-                // Defaults: Level 0 -> 1
             }
 
             // Get class document
             // @ts-ignore
             const classDoc = classUuid ? await fromUuid(classUuid) : null;
 
-            // Determine if talent is gained (odd levels)
             const talentGained = targetLevel % 2 !== 0;
 
             // Get patron if applicable
             // @ts-ignore
             const patronDoc = patronUuid ? await fromUuid(patronUuid) : null;
 
-            // Check if spellcaster
             const isSpellcaster = Boolean(
                 classDoc?.system?.spellcasting?.class ||
                 classDoc?.system?.spellcasting?.ability
             );
-            console.log(`[LevelUpAPI] Class: ${classDoc?.name} (${classUuid}), isSpellcaster: ${isSpellcaster}, CurLvl: ${currentLevel}, TgtLvl: ${targetLevel}`);
 
-            // Calculate spell slots to fill
             const spellsToChoose: Record<number, number> = {};
             let availableSpells: any[] = [];
 
             if (isSpellcaster) {
-                // Calculate slots
                 if (classDoc?.system?.spellcasting?.spellsknown) {
                     const skTable = classDoc.system.spellcasting.spellsknown;
-                    // console.log(`[LevelUpAPI] SK Table:`, JSON.stringify(skTable));
-
-                    // Parse table effectively
                     const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
                     const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-
-                    console.log(`[LevelUpAPI] Spells Known Check - Current (${currentLevel}):`, currentSpells, "Target (" + targetLevel + "):", targetSpells);
 
                     for (let tier = 1; tier <= 5; tier++) {
                         const tStr = String(tier);
@@ -88,25 +179,16 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
                             spellsToChoose[tier] = diff;
                         }
                     }
-                    console.log(`[LevelUpAPI] Calculated spellsToChoose:`, spellsToChoose);
-                } else {
-                    console.warn(`[LevelUpAPI] No spellsknown table found for ${classDoc?.name}`);
                 }
 
-                // Fetch available spells using official system method
                 // @ts-ignore
                 if (window.shadowdark?.compendiums?.classSpellBook) {
                     // @ts-ignore
                     const spells = await window.shadowdark.compendiums.classSpellBook(classUuid);
-                    console.log(`[LevelUpAPI] classSpellBook returned ${spells?.length} spells`);
-
-                    // Handle cases where spells might be plain objects or Documents
                     availableSpells = spells.map((s: any) => {
                         if (typeof s.toJSON === 'function') return s.toJSON();
                         return s;
                     });
-                } else {
-                    console.warn(`[LevelUpAPI] window.shadowdark.compendiums.classSpellBook missing`);
                 }
             }
 

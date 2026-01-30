@@ -1,0 +1,25 @@
+{
+	"_id": "uqY92dyJsZDh3F0R",
+	"_key": "!journal.pages!I5d5ltGw4F3g15uG.uqY92dyJsZDh3F0R",
+	"category": null,
+	"image": {
+	},
+	"name": "Luck Tokens",
+	"src": null,
+	"system": {
+	},
+	"text": {
+		"content": "<p>Sometimes the GM awards a <strong>luck token</strong> to a player for exceptional roleplaying, heroism, or just plain coolness.</p><p>Big sacrifices, moving speeches, or incredibly daring maneuvers might be worthy of luck tokens, whether or not the characters'actions were successful.</p><p>Each player can only have one luck token at a time.</p><p>You can cash in a luck token to reroll any roll you just made. You must use the new result.</p><p>You can also give your luck token to a companion.</p><h2>How Many to Give?</h2><p>The GM might award 2-3 new luck tokens per player during the course of a session with a pulpy, heroic feel.</p><p>Alternatively, the GM might not give out any new luck tokens during a game session that is grim, difficult, and dark.</p>",
+		"format": 1,
+		"markdown": ""
+	},
+	"title": {
+		"level": 1,
+		"show": true
+	},
+	"type": "text",
+	"video": {
+		"controls": true,
+		"volume": 0.5
+	}
+}

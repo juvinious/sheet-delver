@@ -1,0 +1,14 @@
+{
+	"_id": "Znz6OaD8HRYD7ES8",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.Znz6OaD8HRYD7ES8",
+	"description": "Crypts",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		98,
+		99
+	],
+	"type": "text",
+	"weight": 2
+}

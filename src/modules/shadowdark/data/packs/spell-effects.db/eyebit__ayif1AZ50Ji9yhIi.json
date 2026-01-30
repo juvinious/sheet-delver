@@ -1,0 +1,27 @@
+{
+	"_id": "ayif1AZ50Ji9yhIi",
+	"_key": "!items.effects!0RrksUfAZkp4LpGe.ayif1AZ50Ji9yhIi",
+	"changes": [
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": 1,
+		"seconds": null,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/magic/perception/eye-ringed-glow-angry-teal.webp",
+	"name": "Eyebit",
+	"origin": "Item.jz1fW4KgYERtTtXC",
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

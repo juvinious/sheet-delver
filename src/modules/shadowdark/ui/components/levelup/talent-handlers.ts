@@ -1,4 +1,4 @@
-import { TALENT_EFFECTS_MAP } from '../../../data/talent-effects';
+import { TALENT_EFFECTS_MAP, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 
 export interface TalentHandler {
     id: string;
@@ -28,6 +28,11 @@ export interface TalentHandler {
      * Resolve final items/effects to add to the actor
      */
     resolveItems?: (state: any, targetLevel: number, fetchDocument?: (uuid: string) => Promise<any>) => Promise<any[]>;
+
+    /**
+     * modify the rolled item in place (e.g. adding predefinedEffects)
+     */
+    mutateItem?: (item: any, state: any) => void;
 }
 
 export const TALENT_HANDLERS: TalentHandler[] = [
@@ -66,62 +71,49 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             }
             return false;
         },
-        resolveItems: async (state: any, targetLevel: number, fetchDocument?: (uuid: string) => Promise<any>) => {
-            const items = [];
+        mutateItem: (item: any, state: any) => {
             if (state.statSelection && state.statSelection.selected.length > 0) {
-                for (const stat of state.statSelection.selected) {
-                    const label = stat.charAt(0).toUpperCase() + stat.slice(1);
-                    // Look up precise predefined effect first
-                    const key = `Ability Score Improvement (${label})`; // e.g. "Ability Score Improvement (Str)"
-                    const uuid = TALENT_EFFECTS_MAP[key];
+                const selectionMap: Record<string, string> = {
+                    'str': 'abilityImprovementStr',
+                    'dex': 'abilityImprovementDex',
+                    'con': 'abilityImprovementCon',
+                    'int': 'abilityImprovementInt',
+                    'wis': 'abilityImprovementWis',
+                    'cha': 'abilityImprovementCha'
+                };
 
-                    let added = false;
+                const effects = state.statSelection.selected
+                    .map((s: string) => selectionMap[s])
+                    .filter((s: string) => s)
+                    .join(',');
 
-                    if (uuid && fetchDocument) {
-                        try {
-                            const doc = await fetchDocument(uuid);
-                            if (doc) {
-                                // Important: We might need to ensure the level is set on the Item if it supports it, 
-                                // but for standard talents, they might not scale by level directly in the system data.
-                                // However, we should try to inject it if possible or just use the item as is.
-                                // Shadowdark items usually simple.
+                if (effects) {
+                    if (!item.system) item.system = {};
+                    item.system.predefinedEffects = effects;
 
-                                // Clean up ID
-                                const cleaned = { ...doc };
-                                delete cleaned._id;
-                                if (!cleaned.system) cleaned.system = {};
-                                cleaned.system.level = targetLevel;
+                    // Manually inject the Active Effect to ensure it works even if Foundry hooks don't fire
+                    if (!item.effects) item.effects = [];
 
-                                items.push(cleaned);
-                                added = true;
-                            }
-                        } catch (e) {
-                            console.warn(`[TalentHandler] Failed to fetch uuid ${uuid}`, e);
-                        }
-                    }
+                    state.statSelection.selected.forEach((stat: string) => {
+                        const effectConfig = SYSTEM_PREDEFINED_EFFECTS[selectionMap[stat]];
 
-                    if (!added) {
-                        // Fallback to manual creation
-                        items.push({
-                            name: `Ability Improvement: ${label}`,
-                            type: 'Effect',
-                            img: 'icons/svg/upgrade.svg',
-                            system: {
-                                level: targetLevel,
+                        if (effectConfig) {
+                            item.effects.push({
+                                name: `Ability Score Improvement (${effectConfig.label})`,
+                                icon: effectConfig.icon,
                                 changes: [
                                     {
-                                        key: `system.abilities.${stat}.value`,
-                                        mode: 2, // ADD
-                                        value: 1
+                                        key: effectConfig.key,
+                                        mode: effectConfig.mode,
+                                        value: String(effectConfig.value)
                                     }
                                 ],
                                 transfer: true
-                            }
-                        });
-                    }
+                            });
+                        }
+                    });
                 }
             }
-            return items;
         }
     },
     {
@@ -256,6 +248,36 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 }
             }
             return items;
+        }
+    },
+    {
+        id: 'wizard-spell-boon',
+        description: "Learn a wizard spell",
+        matches: (item: any) => {
+            const name = (item.name || item.text || item.description || "").toLowerCase();
+            return name.includes("learn a wizard spell");
+        },
+        onRoll: (actions: any) => {
+            // Determine max tier. 
+            // If targetLevel is passed in actions? Yes.
+            const level = actions.targetLevel || 1;
+            const maxTier = Math.ceil(level / 2);
+            // Cap at 5? usually.
+
+            if (actions.setExtraSpellSelection) {
+                actions.setExtraSpellSelection({
+                    active: true,
+                    source: 'Wizard',
+                    maxTier: Math.min(5, maxTier),
+                    selected: []
+                });
+            }
+        },
+        isBlocked: (state: any) => {
+            if (state.extraSpellSelection && state.extraSpellSelection.active) {
+                return state.extraSpellSelection.selected.length < 1;
+            }
+            return false;
         }
     }
 ];

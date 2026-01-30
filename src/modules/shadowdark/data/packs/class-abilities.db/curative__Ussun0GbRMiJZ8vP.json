@@ -1,0 +1,27 @@
+{
+	"_id": "Ussun0GbRMiJZ8vP",
+	"_key": "!items!Ussun0GbRMiJZ8vP",
+	"effects": [
+	],
+	"folder": "Agdcg0ystOpP8kcL",
+	"img": "icons/consumables/potions/bottle-round-corked-orante-red.webp",
+	"name": "Curative",
+	"system": {
+		"ability": "int",
+		"dc": 15,
+		"description": "<p><strong>Curative.</strong> Equivalent to a @UUID[Compendium.shadowdark.magic-items.Item.jucTGEjsqJ1znHdf]{Potion of Healing}</p>",
+		"group": "Herbalism",
+		"limitedUses": false,
+		"loseOnFailure": true,
+		"lost": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "bard-and-ranger"
+		},
+		"uses": {
+			"available": 0,
+			"max": 0
+		}
+	},
+	"type": "Class Ability"
+}

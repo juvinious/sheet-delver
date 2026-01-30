@@ -100,4 +100,14 @@ To deploy on a dedicated server:
 ## Development
 For developers interested in contributing to **SheetDelver**, please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions, architecture overview, and guidelines.
 
+## License
 
+This project is licensed under the MIT License.
+
+### Third-Party Licenses
+
+**Shadowdark RPG**
+This product is an independent product published under the Shadowdark RPG Third-Party License and is not affiliated with The Arcane Library, LLC. Shadowdark RPG © 2023 The Arcane Library, LLC.
+
+**foundryvtt-shadowdark**
+Partial code and data utilized from the [foundryvtt-shadowdark](https://github.com/Muttley/foundryvtt-shadowdark) system, licensed under the MIT License. Copyright (c) 2023 Paul Maskelyne.

@@ -1,0 +1,14 @@
+{
+	"_id": "jKPpRJADx67vnWmH",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.jKPpRJADx67vnWmH",
+	"description": "Knowledge",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		66,
+		66
+	],
+	"type": "text",
+	"weight": 1
+}

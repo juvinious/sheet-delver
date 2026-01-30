@@ -1,0 +1,14 @@
+{
+	"_id": "VrbjTaoFpVcD4VB5",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.VrbjTaoFpVcD4VB5",
+	"description": "Sorcery",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		52,
+		52
+	],
+	"type": "text",
+	"weight": 1
+}

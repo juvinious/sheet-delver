@@ -1,0 +1,14 @@
+{
+	"_id": "RRWpYDOPKoWPt5qZ",
+	"_key": "!tables.results!MlSMyJcXaJWuZ56O.RRWpYDOPKoWPt5qZ",
+	"description": "Fire will not light or burn within sight of the Lion Fountain",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		36,
+		37
+	],
+	"type": "text",
+	"weight": 2
+}

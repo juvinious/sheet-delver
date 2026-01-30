@@ -1,0 +1,14 @@
+{
+	"_id": "NLBs5DZrQoomQih5",
+	"_key": "!tables.results!MlSMyJcXaJWuZ56O.NLBs5DZrQoomQih5",
+	"description": "The Red Owl tavern has a trapdoor to the Shadowdark",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		42,
+		43
+	],
+	"type": "text",
+	"weight": 2
+}

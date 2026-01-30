@@ -1,0 +1,27 @@
+{
+	"_id": "jg2sUC3nIAI8sT18",
+	"_key": "!items!jg2sUC3nIAI8sT18",
+	"effects": [
+	],
+	"folder": "ouQFWSadiw9Jxy42",
+	"img": "icons/magic/symbols/star-solid-gold.webp",
+	"name": "Inspire",
+	"system": {
+		"ability": "cha",
+		"dc": 12,
+		"description": "<p>One target in near gains a luck token.</p>",
+		"group": "Presence",
+		"limitedUses": false,
+		"loseOnFailure": true,
+		"lost": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "bard-and-ranger"
+		},
+		"uses": {
+			"available": 0,
+			"max": 0
+		}
+	},
+	"type": "Class Ability"
+}

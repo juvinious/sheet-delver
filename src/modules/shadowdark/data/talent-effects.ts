@@ -63,12 +63,12 @@ export const TALENT_EFFECTS_MAP: Record<string, string> = {
     'Ambush': 'Compendium.shadowdark.talents.pOuKrF2CMkxt7EQG', // trained_assassin
 
     // Generic Ability Improvements (likely from Boons or other sources)
-    'Ability Score Improvement (Str)': 'Compendium.shadowdark.talents.jzxgJvPfazpI6udq',
-    'Ability Score Improvement (Dex)': 'Compendium.shadowdark.talents.sx2uVw9MzQNA7mnd',
-    'Ability Score Improvement (Con)': 'Compendium.shadowdark.talents.CUwCZOHDW1XRT1ce',
-    'Ability Score Improvement (Int)': 'Compendium.shadowdark.talents.7ADLFBANMORl70Nm',
-    'Ability Score Improvement (Wis)': 'Compendium.shadowdark.talents.isMVMARzqqQVLmZ4',
-    'Ability Score Improvement (Cha)': 'Compendium.shadowdark.talents.hkfq4SGF4mkDjQmt',
+    'Ability Score Improvement (Str)': 'Compendium.shadowdark.talents.IDGFaxKnYJWWuWQ7',
+    'Ability Score Improvement (Dex)': 'Compendium.shadowdark.talents.eJHwfYQZ9LmLQeSn',
+    'Ability Score Improvement (Con)': 'Compendium.shadowdark.talents.8SXPsiWvG2UcXGgW',
+    'Ability Score Improvement (Int)': 'Compendium.shadowdark.talents.LDJCx5syOcenLMZf',
+    'Ability Score Improvement (Wis)': 'Compendium.shadowdark.talents.vRW8GSIKWXyOAKbw',
+    'Ability Score Improvement (Cha)': 'Compendium.shadowdark.talents.5INkcbMVFxK6cW5Z',
 };
 
 // Helper to find partial matches
@@ -80,4 +80,49 @@ export const findEffectUuid = (text: string): string | null => {
         }
     }
     return null;
+};
+
+// Mapping of System Predefined Keys to their configuration (transcoded from system/config.mjs)
+export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key: string, mode: number, value: string | number, icon: string }> = {
+    abilityImprovementCha: { label: 'Ability Improvement (Cha)', key: "system.abilities.cha.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    abilityImprovementCon: { label: 'Ability Improvement (Con)', key: "system.abilities.con.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    abilityImprovementDex: { label: 'Ability Improvement (Dex)', key: "system.abilities.dex.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    abilityImprovementInt: { label: 'Ability Improvement (Int)', key: "system.abilities.int.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    abilityImprovementStr: { label: 'Ability Improvement (Str)', key: "system.abilities.str.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    abilityImprovementWis: { label: 'Ability Improvement (Wis)', key: "system.abilities.wis.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    acBonus: { label: 'AC Bonus', key: "system.bonuses.acBonus", mode: 2, value: 1, icon: "icons/skills/melee/shield-block-gray-orange.webp" },
+    acBonusFromAttribute: { label: 'AC Bonus from Attribute', key: "system.bonuses.acBonusFromAttribute", mode: 2, value: "REPLACEME", icon: "icons/skills/melee/shield-block-gray-orange.webp" },
+    additionalGearSlots: { label: 'Additional Gear Slots', key: "system.bonuses.gearSlots", mode: 2, value: 1, icon: "icons/magic/defensive/shield-barrier-deflect-teal.webp" },
+    armorMastery: { label: 'Armor Mastery', key: "system.bonuses.armorMastery", mode: 2, value: "REPLACEME", icon: "icons/magic/defensive/shield-barrier-deflect-teal.webp" },
+    backstabDie: { label: 'Backstab Die', key: "system.bonuses.backstabDie", mode: 2, value: 1, icon: "icons/skills/melee/strike-dagger-white-orange.webp" },
+    criticalFailureThreshold: { label: 'Critical Failure Threshold', key: "system.bonuses.critical.failureThreshold", mode: 5, value: 3, icon: "icons/magic/life/cross-area-circle-green-white.webp" },
+    criticalSuccessThreshold: { label: 'Critical Success Threshold', key: "system.bonuses.critical.successThreshold", mode: 5, value: 18, icon: "icons/magic/fire/flame-burning-fist-strike.webp" },
+    critMultiplier: { label: 'Critical Multiplier', key: "system.bonuses.critical.multiplier", mode: 5, value: 4, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    damageMultiplier: { label: 'Damage Multiplier', key: "system.bonuses.damageMultiplier", mode: 5, value: 2, icon: "icons/skills/melee/strike-hammer-destructive-orange.webp" },
+    hpAdvantage: { label: 'HP Advantage', key: "system.bonuses.advantage", mode: 2, value: "hp", icon: "icons/magic/life/cross-area-circle-green-white.webp" },
+    initAdvantage: { label: 'Initiative Advantage', key: "system.bonuses.advantage", mode: 2, value: "initiative", icon: "icons/skills/movement/feet-winged-boots-glowing-yellow.webp" },
+    lightSource: { label: 'Light Source', key: "system.light.template", mode: 5, value: "REPLACEME", icon: "icons/magic/light/torch-fire-orange.webp" },
+    meleeAttackBonus: { label: 'Melee Attack Bonus', key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },
+    meleeDamageBonus: { label: 'Melee Damage Bonus', key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityCha: { label: 'Permanent Cha', key: "system.abilities.cha.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityCon: { label: 'Permanent Con', key: "system.abilities.con.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityDex: { label: 'Permanent Dex', key: "system.abilities.dex.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityInt: { label: 'Permanent Int', key: "system.abilities.int.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityStr: { label: 'Permanent Str', key: "system.abilities.str.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    permanentAbilityWis: { label: 'Permanent Wis', key: "system.abilities.wis.base", mode: 5, value: 18, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    rangedAttackBonus: { label: 'Ranged Attack Bonus', key: "system.bonuses.rangedAttackBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" },
+    rangedDamageBonus: { label: 'Ranged Damage Bonus', key: "system.bonuses.rangedDamageBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    spellAdvantage: { label: 'Spell Advantage', key: "system.bonuses.advantage", mode: 2, value: "REPLACEME", icon: "icons/magic/air/air-smoke-casting.webp" },
+    spellCastingBonus: { label: 'Spellcasting Bonus', key: "system.bonuses.spellcastingCheckBonus", mode: 2, value: 1, icon: "icons/magic/fire/flame-burning-fist-strike.webp" },
+    spellcastingClasses: { label: 'Spellcasting Classes', key: "system.bonuses.spellcastingClasses", mode: 2, value: "REPLACEME", icon: "icons/sundries/documents/document-sealed-brown-red.webp" },
+    stoneSkinTalent: { label: 'Stone Skin', key: "system.bonuses.stoneSkinTalent", mode: 5, value: 1, icon: "icons/magic/earth/strike-fist-stone-gray.webp" },
+    unarmoredAcBonus: { label: 'Unarmored AC Bonus', key: "system.bonuses.unarmoredAcBonus", mode: 2, value: 1, icon: "icons/skills/melee/shield-block-gray-orange.webp" },
+    weaponAttackBonus: { label: 'Weapon Attack Bonus', key: "system.bonuses.attackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },
+    weaponDamageBonus: { label: 'Weapon Damage Bonus', key: "system.bonuses.damageBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" },
+    weaponDamageDieD12: { label: 'Weapon Damage Die D12', key: "system.bonuses.weaponDamageDieD12", mode: 2, value: "REPLACEME", icon: "icons/skills/ranged/arrows-flying-salvo-blue-light.webp" },
+    weaponDamageDieImprovementByProperty: { label: 'Damage Die Improvement (Property)', key: "system.bonuses.weaponDamageDieImprovementByProperty", mode: 2, value: "REPLACEME", icon: "icons/skills/ranged/arrows-flying-salvo-blue-light.webp" },
+    weaponDamageExtraDieByProperty: { label: 'Extra Damage Die (Property)', key: "system.bonuses.weaponDamageExtraDieByProperty", mode: 2, value: "REPLACEME", icon: "icons/skills/ranged/arrows-flying-salvo-blue-light.webp" },
+    weaponDamageExtraDieImprovementByProperty: { label: 'Extra Damage Die Improvement (Property)', key: "system.bonuses.weaponDamageExtraDieImprovementByProperty", mode: 2, value: "REPLACEME", icon: "icons/skills/ranged/arrows-flying-salvo-blue-light.webp" },
+    weaponDamageMultiplier: { label: 'Weapon Damage Multiplier', key: "system.bonuses.damageMultiplier", mode: 5, value: 2, icon: "icons/skills/melee/strike-hammer-destructive-orange.webp" },
+    weaponMastery: { label: 'Weapon Mastery', key: "system.bonuses.weaponMastery", mode: 2, value: "REPLACEME", icon: "icons/skills/melee/weapons-crossed-swords-white-blue.webp" }
 };

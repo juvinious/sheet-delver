@@ -1,0 +1,14 @@
+{
+	"_id": "myKg44TJxNhvZNgr",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.myKg44TJxNhvZNgr",
+	"description": "God",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		8,
+		9
+	],
+	"type": "text",
+	"weight": 2
+}

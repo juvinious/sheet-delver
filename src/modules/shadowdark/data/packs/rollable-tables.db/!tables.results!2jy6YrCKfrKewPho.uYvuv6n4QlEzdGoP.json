@@ -1,0 +1,14 @@
+{
+	"_id": "uYvuv6n4QlEzdGoP",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.uYvuv6n4QlEzdGoP",
+	"description": "Wreck",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		2,
+		3
+	],
+	"type": "text",
+	"weight": 2
+}

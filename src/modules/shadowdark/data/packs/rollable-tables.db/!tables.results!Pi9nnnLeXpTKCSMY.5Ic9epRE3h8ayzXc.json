@@ -1,0 +1,14 @@
+{
+	"_id": "5Ic9epRE3h8ayzXc",
+	"_key": "!tables.results!Pi9nnnLeXpTKCSMY.5Ic9epRE3h8ayzXc",
+	"description": "Undersized pearl (20 gp)",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		44,
+		45
+	],
+	"type": "text",
+	"weight": 2
+}

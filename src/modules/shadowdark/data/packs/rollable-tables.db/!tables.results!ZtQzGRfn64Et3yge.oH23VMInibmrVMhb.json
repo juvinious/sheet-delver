@@ -1,0 +1,14 @@
+{
+	"_id": "oH23VMInibmrVMhb",
+	"_key": "!tables.results!ZtQzGRfn64Et3yge.oH23VMInibmrVMhb",
+	"description": "Neutral",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		9,
+		9
+	],
+	"type": "text",
+	"weight": 1
+}

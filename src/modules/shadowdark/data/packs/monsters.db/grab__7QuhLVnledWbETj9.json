@@ -1,0 +1,17 @@
+{
+	"_id": "7QuhLVnledWbETj9",
+	"_key": "!actors.items!4v8PY6yOUcQOTWWo.7QuhLVnledWbETj9",
+	"effects": [
+	],
+	"folder": null,
+	"img": "icons/creatures/abilities/dragon-breath-purple.webp",
+	"name": "Grab",
+	"system": {
+		"description": "<p>[[check 15 str]] or held in pincer. [[check 15 str]] on turn to break free.</p>",
+		"predefinedEffects": "",
+		"source": {
+			"title": ""
+		}
+	},
+	"type": "NPC Feature"
+}

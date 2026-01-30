@@ -1,0 +1,14 @@
+{
+	"_id": "UcbJZedrl1FInkva",
+	"_key": "!tables.results!MlSMyJcXaJWuZ56O.UcbJZedrl1FInkva",
+	"description": "Armored skeletons are roaming the misty graveyard",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		12,
+		13
+	],
+	"type": "text",
+	"weight": 2
+}

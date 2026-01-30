@@ -1,0 +1,27 @@
+{
+	"_id": "gbIJz5HZymMEOrpU",
+	"_key": "!items.effects!IzCONbtholryomxC.gbIJz5HZymMEOrpU",
+	"changes": [
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": 5,
+		"seconds": null,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/skills/movement/feet-winged-sandals-tan.webp",
+	"name": "Flying",
+	"origin": "Item.NzzijebUPYIGcakX",
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

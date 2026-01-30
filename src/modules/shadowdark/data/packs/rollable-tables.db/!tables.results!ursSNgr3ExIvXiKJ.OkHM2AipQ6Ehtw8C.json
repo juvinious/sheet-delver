@@ -1,0 +1,14 @@
+{
+	"_id": "OkHM2AipQ6Ehtw8C",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.OkHM2AipQ6Ehtw8C",
+	"description": "Cult",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		10,
+		11
+	],
+	"type": "text",
+	"weight": 2
+}

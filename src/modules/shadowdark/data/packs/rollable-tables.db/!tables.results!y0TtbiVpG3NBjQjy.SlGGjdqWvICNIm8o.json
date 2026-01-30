@@ -1,0 +1,14 @@
+{
+	"_id": "SlGGjdqWvICNIm8o",
+	"_key": "!tables.results!y0TtbiVpG3NBjQjy.SlGGjdqWvICNIm8o",
+	"description": "Slippery ice",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		7,
+		7
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "jdYU9XotB3hunXQb",
+	"_key": "!tables.results!1xuTMmp7d9BKkAgk.jdYU9XotB3hunXQb",
+	"description": "Give",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		62,
+		62
+	],
+	"type": "text",
+	"weight": 1
+}

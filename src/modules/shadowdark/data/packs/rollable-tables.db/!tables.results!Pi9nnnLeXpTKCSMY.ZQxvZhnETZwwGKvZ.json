@@ -1,0 +1,14 @@
+{
+	"_id": "ZQxvZhnETZwwGKvZ",
+	"_key": "!tables.results!Pi9nnnLeXpTKCSMY.ZQxvZhnETZwwGKvZ",
+	"description": "Chipped greataxe (9 gp)",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		20,
+		21
+	],
+	"type": "text",
+	"weight": 2
+}

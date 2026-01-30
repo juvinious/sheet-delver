@@ -1,0 +1,33 @@
+{
+	"_id": "b7lXcLAavPlpMhqp",
+	"_key": "!items.effects!w3UsdCcYKnwcAgbH.b7lXcLAavPlpMhqp",
+	"changes": [
+		{
+			"key": "system.bonuses.critical.successThreshold",
+			"mode": 5,
+			"priority": null,
+			"value": "18"
+		}
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": null,
+		"seconds": null,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/magic/fire/flame-burning-fist-strike.webp",
+	"name": "Critical Success Threshold",
+	"origin": null,
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

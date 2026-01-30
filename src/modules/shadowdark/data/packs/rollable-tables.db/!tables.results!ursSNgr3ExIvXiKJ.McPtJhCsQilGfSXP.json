@@ -1,0 +1,14 @@
+{
+	"_id": "McPtJhCsQilGfSXP",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.McPtJhCsQilGfSXP",
+	"description": "Idol",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		1,
+		1
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,25 @@
+{
+	"_id": "0O523lTJRaoxnDai",
+	"_key": "!journal.pages!sxBiNC5Ee4iMIP23.0O523lTJRaoxnDai",
+	"category": null,
+	"image": {
+	},
+	"name": "Magic Items",
+	"src": null,
+	"system": {
+	},
+	"text": {
+		"content": "<p>Magic Items can be found in the <em><strong>Shadowdark System &gt; Magic Items</strong></em> compendium.</p>",
+		"format": 1,
+		"markdown": ""
+	},
+	"title": {
+		"level": 1,
+		"show": true
+	},
+	"type": "text",
+	"video": {
+		"controls": true,
+		"volume": 0.5
+	}
+}

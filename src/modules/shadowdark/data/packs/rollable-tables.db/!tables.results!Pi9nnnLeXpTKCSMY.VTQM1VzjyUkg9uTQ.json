@@ -1,0 +1,14 @@
+{
+	"_id": "VTQM1VzjyUkg9uTQ",
+	"_key": "!tables.results!Pi9nnnLeXpTKCSMY.VTQM1VzjyUkg9uTQ",
+	"description": "12 gp in the pocket of a ripped cloak",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		34,
+		35
+	],
+	"type": "text",
+	"weight": 2
+}

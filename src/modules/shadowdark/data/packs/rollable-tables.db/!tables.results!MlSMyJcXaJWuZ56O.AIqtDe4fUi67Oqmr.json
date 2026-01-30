@@ -1,0 +1,14 @@
+{
+	"_id": "AIqtDe4fUi67Oqmr",
+	"_key": "!tables.results!MlSMyJcXaJWuZ56O.AIqtDe4fUi67Oqmr",
+	"description": "Harpies keep watch from the cliffs around Diridia's Tomb",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		48,
+		49
+	],
+	"type": "text",
+	"weight": 2
+}

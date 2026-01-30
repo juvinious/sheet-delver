@@ -1,0 +1,16 @@
+{
+	"_id": "4QQNmFHKVIY6aOpW",
+	"_key": "!items!4QQNmFHKVIY6aOpW",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Sailor",
+	"system": {
+		"description": "<p>Pirate, privateer, or merchant — the seas are yours</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

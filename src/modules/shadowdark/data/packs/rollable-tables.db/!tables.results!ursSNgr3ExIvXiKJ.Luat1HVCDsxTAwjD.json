@@ -1,0 +1,14 @@
+{
+	"_id": "Luat1HVCDsxTAwjD",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.Luat1HVCDsxTAwjD",
+	"description": "Ritual",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		98,
+		99
+	],
+	"type": "text",
+	"weight": 2
+}

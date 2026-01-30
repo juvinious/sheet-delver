@@ -1,0 +1,14 @@
+{
+	"_id": "auvlshGIQDLaZ9yw",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.auvlshGIQDLaZ9yw",
+	"description": "Queen",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		72,
+		73
+	],
+	"type": "text",
+	"weight": 2
+}

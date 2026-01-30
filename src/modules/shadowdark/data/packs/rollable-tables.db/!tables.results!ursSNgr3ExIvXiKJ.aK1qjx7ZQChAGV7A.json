@@ -1,0 +1,14 @@
+{
+	"_id": "aK1qjx7ZQChAGV7A",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.aK1qjx7ZQChAGV7A",
+	"description": "Blessing",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		96,
+		97
+	],
+	"type": "text",
+	"weight": 2
+}

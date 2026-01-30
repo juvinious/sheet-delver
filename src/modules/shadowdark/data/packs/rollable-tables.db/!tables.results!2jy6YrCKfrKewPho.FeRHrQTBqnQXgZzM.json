@@ -1,0 +1,14 @@
+{
+	"_id": "FeRHrQTBqnQXgZzM",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.FeRHrQTBqnQXgZzM",
+	"description": "Observatory",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		48,
+		49
+	],
+	"type": "text",
+	"weight": 2
+}

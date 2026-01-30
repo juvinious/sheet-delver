@@ -1,0 +1,16 @@
+{
+	"_id": "Ca3oriMsfAdfg7kL",
+	"_key": "!items!Ca3oriMsfAdfg7kL",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Orphaned",
+	"system": {
+		"description": "<p>An unusual guardian rescued and raised you</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

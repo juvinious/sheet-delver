@@ -1,0 +1,14 @@
+{
+	"_id": "Foh9VNGQlBhBnnRu",
+	"_key": "!tables.results!yC1cHYZvhs05Rm1N.Foh9VNGQlBhBnnRu",
+	"description": "of Power",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		6,
+		6
+	],
+	"type": "text",
+	"weight": 1
+}

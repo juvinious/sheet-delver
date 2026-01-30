@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getClient } from '@/lib/foundry/instance';
+import { dataManager } from '../data/DataManager';
 
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn
@@ -57,11 +58,6 @@ export async function handleLearnSpell(actorId: string, request: Request) {
  */
 export async function handleGetSpellsBySource(request: Request) {
     try {
-        const client = getClient();
-        if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
-        }
-
         const { searchParams } = new URL(request.url);
         const source = searchParams.get('source'); // e.g. "Wizard", "Priest"
 
@@ -69,11 +65,28 @@ export async function handleGetSpellsBySource(request: Request) {
             return NextResponse.json({ error: 'Source parameter is required (e.g. Wizard)' }, { status: 400 });
         }
 
+        // 1. Try Local Cache (Offline Capable)
+        // @ts-ignore
+        const spells = dataManager.getSpellsBySource(source);
+        if (spells && spells.length > 0) {
+            return NextResponse.json({ success: true, spells });
+        }
+
+        // 2. Fallback to Foundry (Requires Connection)
+        const client = getClient();
+        if (!client || !client.isConnected) {
+            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+        }
+
+        // Fallback to Foundry if local data missing (e.g. custom class)
         const result = await client.page!.evaluate(async ({ source }) => {
             // @ts-ignore
             if (!window.shadowdark?.compendiums?.classSpellBook) {
                 return { error: 'System method shadowdark.compendiums.classSpellBook not found' };
             }
+            // ... (rest of old logic for fallback)
+            // We can simplify this or keep it as backup.
+            // keeping it as backup is safer.
 
             // We need to find the Class UUID for the given name
             // @ts-ignore

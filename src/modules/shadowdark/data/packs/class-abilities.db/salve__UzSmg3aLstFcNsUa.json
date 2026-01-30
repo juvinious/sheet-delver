@@ -1,0 +1,27 @@
+{
+	"_id": "UzSmg3aLstFcNsUa",
+	"_key": "!items!UzSmg3aLstFcNsUa",
+	"effects": [
+	],
+	"folder": "Agdcg0ystOpP8kcL",
+	"img": "icons/consumables/potions/potion-tube-corked-orange.webp",
+	"name": "Salve",
+	"system": {
+		"ability": "int",
+		"dc": 11,
+		"description": "<p>@UUID[Compendium.shadowdark.gear.Item.m857P6MI00wAONTp]{Salve} Heals 1 HP</p>",
+		"group": "Herbalism",
+		"limitedUses": false,
+		"loseOnFailure": true,
+		"lost": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "bard-and-ranger"
+		},
+		"uses": {
+			"available": 0,
+			"max": 0
+		}
+	},
+	"type": "Class Ability"
+}

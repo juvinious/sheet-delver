@@ -2,6 +2,10 @@
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource } from './api/spells';
+import { dataManager } from './data/DataManager';
+
+// Initialize data cache
+dataManager.initialize();
 
 export const apiRoutes = {
     'import': handleImport,

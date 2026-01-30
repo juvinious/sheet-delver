@@ -1,0 +1,14 @@
+{
+	"_id": "QiSkup4wYDNc4whI",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.QiSkup4wYDNc4whI",
+	"description": "Pits",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		84,
+		85
+	],
+	"type": "text",
+	"weight": 2
+}

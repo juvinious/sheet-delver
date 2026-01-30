@@ -1,0 +1,14 @@
+{
+	"_id": "m4ifkL3b7gDzkeCb",
+	"_key": "!tables.results!Pi9nnnLeXpTKCSMY.m4ifkL3b7gDzkeCb",
+	"description": "Light, warm cloak woven of spidersilk (25 gp)",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		62,
+		63
+	],
+	"type": "text",
+	"weight": 2
+}

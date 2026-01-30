@@ -23,7 +23,7 @@ export class ShadowdarkImporter {
     private async loadMapping() {
         if (this.mapping) return;
         try {
-            const mappingPath = path.join(process.cwd(), 'src/modules/shadowdark/assets/map-shadowdarkling.json');
+            const mappingPath = path.join(process.cwd(), 'src/modules/shadowdark/data/shadowdarkling/map-shadowdarkling.json');
             const fileContent = await fs.promises.readFile(mappingPath, 'utf-8');
             this.mapping = JSON.parse(fileContent);
         } catch (e) {
