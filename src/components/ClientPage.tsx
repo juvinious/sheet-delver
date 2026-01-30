@@ -160,7 +160,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               return;
             }
           }
-          if (data.users.length > 0) setSelectedUser(data.users[0].name);
+
 
 
           // Check if session is already active (User logged in previously)
@@ -244,9 +244,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             return;
           }
         }
-        if (data.users.length > 0) {
-          setSelectedUser(data.users[0].name);
-        }
+
         setStep('login');
       } else {
         addNotification('Connection failed: ' + data.error, 'error');
@@ -379,15 +377,21 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                 <div className="space-y-4">
                   {users.length > 0 ? (
                     <div>
-                      <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
+                      <label className="block text-sm font-medium mb-1 opacity-70">Player</label>
                       <select
                         value={selectedUser}
                         onChange={(e) => setSelectedUser(e.target.value)}
                         className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
                       >
+                        <option value="" disabled>-- Select Player --</option>
                         {users.map(u => (
-                          <option key={u.id} value={u.name} className="bg-neutral-900 text-white">
-                            {u.name}
+                          <option
+                            key={u.id}
+                            value={u.name}
+                            disabled={(u as any).active}
+                            className={`bg-neutral-900 text-white ${(u as any).active ? 'text-white/50 bg-neutral-800' : ''}`}
+                          >
+                            {u.name} {(u as any).active ? ' (Logged In)' : ''}
                           </option>
                         ))}
                       </select>
@@ -417,7 +421,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                   </div>
                   <button
                     onClick={handleLogin}
-                    disabled={loading}
+                    disabled={loading || !selectedUser}
                     className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
                   >
                     {loading ? 'Logging in...' : 'Login'}

@@ -284,11 +284,8 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
             const targetLevel = currentLevel + 1;
             const currentXP = actor.system?.level?.xp || 0;
 
-            // Calculate new XP (carryover)
+            // Reset XP to 0
             let newXP = 0;
-            if (currentLevel > 0) {
-                newXP = currentXP - (currentLevel * 10);
-            }
 
             let createdItems: any[] = [];
 

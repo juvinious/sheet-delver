@@ -64,7 +64,8 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
 
     // Group: Level (talentClass === 'level')
     const levelTalents = allTalents.filter((i: any) => {
-        return i.system?.talentClass?.toLowerCase() === 'level';
+        //console.log(allTalents);
+        return i.system?.talentClass?.toLowerCase() === 'level' || i.system?.talentClass?.toLowerCase() === 'patronboon';
     });
 
     const renderTalentGroup = (title: string, items: any[], icon?: string) => (

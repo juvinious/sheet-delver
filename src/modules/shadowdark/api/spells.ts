@@ -50,3 +50,71 @@ export async function handleLearnSpell(actorId: string, request: Request) {
         return NextResponse.json({ error: error.message || 'Failed to learn spell' }, { status: 500 });
     }
 }
+
+/**
+ * GET /api/modules/shadowdark/spells/list?source=...
+ * Fetch spells filtered by class source (e.g. "Wizard")
+ */
+export async function handleGetSpellsBySource(request: Request) {
+    try {
+        const client = getClient();
+        if (!client || !client.isConnected) {
+            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const source = searchParams.get('source'); // e.g. "Wizard", "Priest"
+
+        if (!source) {
+            return NextResponse.json({ error: 'Source parameter is required (e.g. Wizard)' }, { status: 400 });
+        }
+
+        const result = await client.page!.evaluate(async ({ source }) => {
+            // @ts-ignore
+            if (!window.shadowdark?.compendiums?.classSpellBook) {
+                return { error: 'System method shadowdark.compendiums.classSpellBook not found' };
+            }
+
+            // We need to find the Class UUID for the given name
+            // @ts-ignore
+            const classItem = game.items.find(i => i.type === 'Class' && i.name.toLowerCase() === source.toLowerCase());
+            // Also check packs if not in world
+            let classUuid = classItem?.uuid;
+
+            if (!classUuid) {
+                // Try finding in packs
+                // @ts-ignore
+                for (const pack of game.packs) {
+                    if (pack.metadata.type !== 'Item') continue;
+                    // @ts-ignore
+                    const index = pack.index.find(i => i.type === 'Class' && i.name.toLowerCase() === source.toLowerCase());
+                    if (index) {
+                        classUuid = `Compendium.${pack.collection}.${index._id}`;
+                        break;
+                    }
+                }
+            }
+
+            if (!classUuid) return { error: `Class ${source} not found` };
+
+            // @ts-ignore
+            const spells = await window.shadowdark.compendiums.classSpellBook(classUuid);
+
+            return spells.map((s: any) => {
+                if (typeof s.toJSON === 'function') return s.toJSON();
+                return s;
+            });
+
+        }, { source });
+
+        if (result && result.error) {
+            return NextResponse.json({ error: result.error }, { status: 404 });
+        }
+
+        return NextResponse.json({ success: true, spells: result });
+
+    } catch (error: any) {
+        console.error('[API] Fetch Spells Error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}

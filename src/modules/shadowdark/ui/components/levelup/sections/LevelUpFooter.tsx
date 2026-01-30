@@ -13,7 +13,7 @@ export const LevelUpFooter = ({ onCancel, onConfirm, isComplete, loading }: Prop
         <div className="bg-neutral-100 border-t-4 border-black p-6 flex justify-between items-center">
             <button
                 onClick={onCancel}
-                className="text-black hover:text-red-700 font-black uppercase tracking-widest text-xs px-4 py-2 hover:bg-red-50 transition-colors border-2 border-transparent hover:border-black"
+                className="bg-white text-black font-serif font-black text-lg uppercase tracking-[0.2em] px-8 py-3 border-4 border-black hover:bg-neutral-100 hover:text-red-700 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
             >
                 Cancel
             </button>
@@ -29,11 +29,7 @@ export const LevelUpFooter = ({ onCancel, onConfirm, isComplete, loading }: Prop
                         : 'bg-neutral-200 text-neutral-400 border-2 border-neutral-300 pointer-events-none'}
                 `}
             >
-                {loading ? (
-                    'Invoking...'
-                ) : (
-                    'Finalize Level Up'
-                )}
+                Finalize Level Up
             </button>
         </div>
     );

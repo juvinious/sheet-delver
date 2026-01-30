@@ -7,7 +7,6 @@ import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { Trash2, Power, Pencil } from 'lucide-react';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
-import { LevelUpModal } from './components/LevelUpModal';
 
 interface DetailsTabProps {
     actor: any;
@@ -25,7 +24,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
-    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
     // Selection Modal State
     const [selectionModal, setSelectionModal] = useState<{
@@ -152,12 +150,11 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
                             {actor.computed?.levelUp ? (
-                                <button
-                                    onClick={() => setShowLevelUpModal(true)}
-                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
+                                <i
+                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors"
                                 >
                                     LEVEL UP!
-                                </button>
+                                </i>
                             ) : (
                                 <span>{actor.system?.level?.value ?? 1}</span>
                             )}
@@ -203,6 +200,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         </div>
                         <div className={`p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white min-h-[44px] ${(!actor.system?.level?.value || actor.system.level.value === 0) ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
                             <input
+                                key={actor.system?.level?.xp}
                                 type="number"
                                 defaultValue={actor.system?.level?.xp || 0}
                                 min={0}

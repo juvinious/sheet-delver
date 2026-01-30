@@ -16,10 +16,12 @@ interface Props {
     onClassChange: (uuid: string) => void;
     onPatronChange: (uuid: string) => void;
     foundryUrl?: string;
+    actorName?: string;
 }
 
 export const LevelUpHeader = ({
     actorId,
+    actorName,
     currentLevel,
     targetLevel,
     targetClassUuid,
@@ -38,17 +40,12 @@ export const LevelUpHeader = ({
             <div className="bg-black p-6 flex justify-between items-center">
                 <div>
                     <h2 className="text-3xl font-black text-white uppercase tracking-wider font-serif">
-                        Level Up <span className="text-white border-b-2 border-white">{targetLevel}</span>
+                        {actorName ? `${actorName} ` : ''}Level Up
                     </h2>
                     <p className="text-neutral-400 text-xs font-bold uppercase tracking-widest mt-1">
-                        Increasing from level {currentLevel}
+                        Level {currentLevel} <span className="text-neutral-600 px-1">-&gt;</span> {targetLevel}
                     </p>
                 </div>
-                {loading && (
-                    <div className="bg-white/10 border border-white/20 p-2 rounded animate-pulse">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                )}
             </div>
 
             {error && (
@@ -63,14 +60,14 @@ export const LevelUpHeader = ({
             {currentLevel === 0 && (
                 <div className="p-6 bg-neutral-100 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                        <label className="text-[10px] font-black text-black uppercase tracking-widest ml-1">Select Character Class</label>
+                        <label className="text-xs font-black text-black uppercase tracking-widest ml-1">Select Character Class</label>
                         <select
                             value={targetClassUuid}
                             onChange={(e) => onClassChange(e.target.value)}
-                            className="w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            className="w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] uppercase tracking-wide"
                         >
                             <option value="">-- Choose Class --</option>
-                            {availableClasses.map((c: any) => (
+                            {[...availableClasses].sort((a, b) => a.name.localeCompare(b.name)).map((c: any) => (
                                 <option key={c.uuid || c._id} value={c.uuid || c._id}>{c.name}</option>
                             ))}
                         </select>
@@ -78,23 +75,17 @@ export const LevelUpHeader = ({
 
                     {needsBoon && (
                         <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-500">
-                            <label className="text-[10px] font-black text-black uppercase tracking-widest ml-1">Choose Divine Patron</label>
-                            {loadingPatrons ? (
-                                <div className="w-full bg-neutral-200 border-2 border-neutral-300 text-neutral-500 p-3 text-sm italic">
-                                    Seeking patrons...
-                                </div>
-                            ) : (
-                                <select
-                                    value={selectedPatronUuid}
-                                    onChange={(e) => onPatronChange(e.target.value)}
-                                    className="w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                >
-                                    <option value="">-- Choose Patron --</option>
-                                    {availablePatrons.map((p: any) => (
-                                        <option key={p.uuid || p._id} value={p.uuid || p._id}>{p.name}</option>
-                                    ))}
-                                </select>
-                            )}
+                            <label className="text-xs font-black text-black uppercase tracking-widest ml-1">Choose Divine Patron</label>
+                            <select
+                                value={selectedPatronUuid}
+                                onChange={(e) => onPatronChange(e.target.value)}
+                                className="w-full bg-white border-2 border-black text-black p-3 font-bold font-serif outline-none focus:bg-neutral-50 cursor-pointer shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                                <option value="">-- Choose Patron --</option>
+                                {availablePatrons.map((p: any) => (
+                                    <option key={p.uuid || p._id} value={p.uuid || p._id}>{p.name}</option>
+                                ))}
+                            </select>
                         </div>
                     )}
                 </div>

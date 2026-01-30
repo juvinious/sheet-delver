@@ -1,4 +1,6 @@
 
+import { SectionStatus } from '../useLevelUp';
+
 import React from 'react';
 
 interface Props {
@@ -7,6 +9,7 @@ interface Props {
     fixedLanguages: string[];
     knownLanguages: any[];
     availableLanguages: any[];
+    status: SectionStatus;
     onSelectedLanguagesChange: (langs: string[]) => void;
 }
 
@@ -16,9 +19,14 @@ export const LanguageSelectionSection = ({
     fixedLanguages,
     knownLanguages,
     availableLanguages,
+    status,
     onSelectedLanguagesChange
 }: Props) => {
-    if (languageGroups.length === 0) return null;
+    if (status === 'DISABLED' || languageGroups.length === 0) return null;
+
+    if (status === 'LOADING') {
+        return <div className="p-4 text-center">Loading Languages...</div>;
+    }
 
     return (
         <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden p-4">
@@ -75,8 +83,8 @@ export const LanguageSelectionSection = ({
                                                 }
                                             }}
                                             className={`px-4 py-2 text-left text-xs font-bold uppercase tracking-wide transition-all border-2 ${isSelected
-                                                    ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                                                    : 'bg-white text-black border-black hover:bg-neutral-100 disabled:opacity-30 disabled:border-neutral-200 disabled:text-neutral-400'
+                                                ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                                : 'bg-white text-black border-black hover:bg-neutral-100 disabled:opacity-30 disabled:border-neutral-200 disabled:text-neutral-400'
                                                 }`}
                                         >
                                             {lang.name}

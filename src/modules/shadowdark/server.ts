@@ -1,7 +1,7 @@
 
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
-import { handleLearnSpell } from './api/spells';
+import { handleLearnSpell, handleGetSpellsBySource } from './api/spells';
 
 export const apiRoutes = {
     'import': handleImport,
@@ -39,4 +39,7 @@ export const apiRoutes = {
         const actorId = route[1];
         return handleLearnSpell(actorId, request);
     },
+    'spells/list': async (request: Request) => {
+        return handleGetSpellsBySource(request);
+    }
 };

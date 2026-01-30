@@ -44,6 +44,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const [loadingSystem, setLoadingSystem] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+    const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
 
@@ -168,6 +169,15 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
         return () => window.removeEventListener('resize', handleResize);
     }, [tabsOrder, actor.computed?.showSpellsTab]);
 
+    // Auto-close Level Up Modal when level effectively changes
+    useEffect(() => {
+        if (showLevelUpModal && levelUpData && actor.system?.level?.value === levelUpData.targetLevel) {
+            setShowLevelUpModal(false);
+            setLevelUpData(null);
+            addNotification('Level Up Complete!', 'success');
+        }
+    }, [actor.system?.level?.value, showLevelUpModal, levelUpData, addNotification]);
+
     const handleTabSelect = (tabId: string) => {
         setActiveTab(tabId);
 
@@ -253,7 +263,21 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
                     {actor.computed?.levelUp && (
                         <button
-                            onClick={() => setShowLevelUpModal(true)}
+                            onClick={() => {
+                                setLevelUpData({
+                                    currentLevel: actor.system?.level?.value || 0,
+                                    targetLevel: (actor.system?.level?.value || 0) + 1,
+                                    classObj: actor.classDetails, // May be missing if not populated by parent
+                                    ancestry: actor.system?.ancestry,
+                                    patron: actor.patronDetails,
+                                    abilities: actor.system?.abilities,
+                                    spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
+                                    classUuid: resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
+                                    // Pass explicit UUIDs for class/patron in case objects are missing
+                                    patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
+                                });
+                                setShowLevelUpModal(true);
+                            }}
                             className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
                         >
                             LEVEL UP!
@@ -475,17 +499,19 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             />
 
             {/* Level-Up Modal */}
-            {showLevelUpModal && actor.computed?.levelUp && (
+            {showLevelUpModal && levelUpData && (
                 <LevelUpModal
                     actorId={actor._id || actor.id}
-                    currentLevel={actor.system?.level?.value || 0}
-                    targetLevel={(actor.system?.level?.value || 0) + 1}
-                    ancestry={actor.system?.ancestry}
-                    classObj={actor.classDetails}
-                    classUuid={resolveEntityUuid(actor.system?.class || '', systemData, 'classes')}
-                    patron={actor.patronDetails}
-                    abilities={actor.system?.abilities}
-                    spells={actor.items?.filter((i: any) => i.type === 'Spell') || []}
+                    actorName={actor.name}
+                    currentLevel={levelUpData.currentLevel}
+                    targetLevel={levelUpData.targetLevel}
+                    ancestry={levelUpData.ancestry}
+                    classObj={levelUpData.classObj}
+                    classUuid={levelUpData.classUuid}
+                    patron={levelUpData.patron}
+                    patronUuid={levelUpData.patronUuid}
+                    abilities={levelUpData.abilities}
+                    spells={levelUpData.spells}
                     availableClasses={systemData?.classes || []}
                     availableLanguages={systemData?.languages || []}
                     foundryUrl={foundryUrl}
@@ -508,9 +534,17 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             });
                             const result = await res.json();
                             if (result.success) {
+                                // Show success message and wait for data to stabilize
+                                addNotification('Level Up Successful! Updating sheet...', 'success');
+
+                                // Wait for a moment to let the backend process and the UI to acknowledge
+                                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                                // Close modal manually after delay, assuming parent will update via polling/socket
                                 setShowLevelUpModal(false);
-                                addNotification('Level Up Successful! Refreshing...', 'success');
-                                setTimeout(() => window.location.reload(), 1500);
+                                setLevelUpData(null);
+
+                                // Trigger a soft data refresh if possible (parent handles polling)
                             } else {
                                 addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
                             }
@@ -519,7 +553,10 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             addNotification('Level-up failed: ' + e.message, 'error');
                         }
                     }}
-                    onCancel={() => setShowLevelUpModal(false)}
+                    onCancel={() => {
+                        setShowLevelUpModal(false);
+                        setLevelUpData(null);
+                    }}
                 />
             )}
             <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
