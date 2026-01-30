@@ -33,7 +33,9 @@ Each module follows a consistent structure:
 src/modules/<system>/
 ├── index.ts           # Manifest
 ├── info.json          # Metadata
-├── adapter.ts         # Logic & Data Fetching
+├── system.ts          # Data Migration & Adapter Logic
+├── rules.ts           # Core System Rules
+├── importer.ts        # Character Importers (Optional)
 ├── server.ts          # Server-Side API Handlers (Optional)
 └── ui/                # React Components
 ```
@@ -83,6 +85,8 @@ To run the application locally for personal use:
 
 1.  Current directory:
     ```bash
+    npm install
+    npx playwright install --with-deps
     npm run build
     npm start
     ```
@@ -93,8 +97,9 @@ To deploy on a dedicated server:
 
 1.  Clone the repository.
 2.  Install dependencies: `npm install`
-3.  Build the application: `npm run build`
-4.  Start the server: `npm start`
+3.  Install browser binaries: `npx playwright install --with-deps`
+4.  Build the application: `npm run build`
+5.  Start the server: `npm start`
     - *Note: You may want to use a process manager like PM2 to keep it running.*
 
 ## Development

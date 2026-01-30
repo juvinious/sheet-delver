@@ -22,6 +22,11 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
     npm install
     ```
 
+3.  **Install Playwright browser binaries:**
+    ```bash
+    npx playwright install --with-deps
+    ```
+
 3.  **Configure connection:**
     Create a `settings.yaml` file in the root directory. This file is ignored by git.
     ```yaml
@@ -60,7 +65,9 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
   - `<system_id>/`: Self-contained system module.
     - `index.ts`: Module manifest export.
     - `info.json`: Metadata.
-    - `adapter.ts`: System logic and data implementation.
+    - `system.ts`: System adapter logic and data migrations.
+    - `rules.ts`: Core system rules and calculations.
+    - `importer.ts`: System-specific character importers (optional).
     - `ui/`: React components for the sheet.
 - `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
 
@@ -91,13 +98,14 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     }
     ```
     *   `actorCard.subtext`: Optional. Array of dot-notation paths to display on the dashboard character card (e.g. "Wizard, Elf • Level 1"). If omitted, it defaults to the actor type.
-3.  **Implement Adapter**: Create `adapter.ts` and implement `SystemAdapter`.
-4.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
-5.  **Export Manifest**: Create `index.ts`:
+3.  **Implement Adapter**: Create `system.ts` and implement `SystemAdapter`.
+4.  **Implement Rules (Optional)**: Create `rules.ts` for calculations.
+5.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
+6.  **Export Manifest**: Create `index.ts`:
     ```typescript
     import React from 'react';
     import { ModuleManifest } from '../core/interfaces';
-    import { MySystemAdapter } from './adapter';
+    import { MySystemAdapter } from './system';
     import info from './info.json';
 
     const manifest: ModuleManifest = {
@@ -107,8 +115,8 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     };
     export default manifest;
     ```
-6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
-7.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
+7.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
+8.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
 
 ## Module API & Server-Side Logic
 
