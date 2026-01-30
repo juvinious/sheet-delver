@@ -1,7 +1,7 @@
 
 // Re-export shared logic from lib
-import { calculateItemSlots, calculateMaxSlots } from '../rules';
-export { calculateItemSlots, calculateMaxSlots };
+import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from '../rules';
+export { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots };
 
 export const resolveImage = (path: string, foundryUrl?: string) => {
     if (!path) return '/placeholder.png';

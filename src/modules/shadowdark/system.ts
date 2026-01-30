@@ -1,5 +1,5 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
-import { calculateItemSlots, calculateMaxSlots } from './rules';
+import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from './rules';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
@@ -952,29 +952,31 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             const slots = calculateItemSlots(item);
 
-            if (system.equipped) {
+            if (system.equipped && type !== 'Gem') {
                 equipped.push({ ...item, derived: { ...item.derived, slots } });
-                // Equipped items usually don't take slots in some games, but Shadowdark?
-                // Rules: "Items you wear or carry count". Equipped Armor usually takes slots. 
-                // Let's verify existing sheet logic. Sheet sums slots for ALL items where !stashed.
-                // So Equipped DOES count.
                 if (!system.stashed) totalSlots += slots;
-            } else if (system.stashed) {
+            } else if (system.stashed && type !== 'Gem') {
                 stashed.push({ ...item, derived: { ...item.derived, slots } });
-                // Stashed items do NOT count towards slots.
             } else {
-                // Carried (Not Equipped, Not Stashed)
-                // Filter out non-tangible items explicitly
-                const excludedTypes = ['Class', 'Ancestry', 'Background', 'Language', 'Talent', 'Spell', 'Effect', 'Deity', 'Title', 'Feature', 'Boon'];
-                // Check if type is excluded (case-insensitive just in case)
+                // Carried (Not Equipped, Not Stashed) or a Gem (which we handle specially)
+                const excludedTypes = ['Class', 'Ancestry', 'Background', 'Language', 'Talent', 'Spell', 'Effect', 'Deity', 'Title', 'Feature', 'Boon', 'Gem'];
                 const isExcluded = excludedTypes.some(t => t.toLowerCase() === type.toLowerCase());
 
                 if (!isExcluded) {
                     carried.push({ ...item, derived: { ...item.derived, slots } });
-                    totalSlots += slots;
+                }
+
+                // Treasure (non-gem) still counts towards slots per item if not stashed
+                if ((type === 'Treasure' || !isExcluded) && type !== 'Gem' && !system.equipped) {
+                    if (!system.stashed) totalSlots += slots;
                 }
             }
         });
+
+        // Add special slot calculations for Gems and Coins
+        const gems = items.filter((i: any) => i.type === 'Gem');
+        totalSlots += calculateGemSlots(gems);
+        totalSlots += calculateCoinSlots(actor.system?.coins);
 
         const maxSlots = calculateMaxSlots(actor);
 

@@ -6,12 +6,16 @@ import {
     resolveImage,
     calculateItemSlots,
     calculateMaxSlots,
+    calculateCoinSlots,
+    calculateGemSlots,
     getSafeDescription,
     formatDescription
 } from './sheet-utils';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 import { useOptimisticOverrides } from '@/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
+import GemBagModal from './components/GemBagModal';
+import { Gem } from 'lucide-react';
 
 interface InventoryTabProps {
     actor: any;
@@ -19,10 +23,13 @@ interface InventoryTabProps {
     onRoll: (type: string, key: string, options?: any) => void;
     foundryUrl?: string;
     onDeleteItem?: (itemId: string) => void;
+    onCreateItem?: (itemData: any) => Promise<void>;
+    onUpdateItem?: (itemData: any) => Promise<void>;
 }
 
-export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl, onCreateItem, onUpdateItem }: InventoryTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+    const [isGemModalOpen, setIsGemModalOpen] = useState(false);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -44,21 +51,46 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
     // This function is now provided by useOptimisticOverrides
 
     // Exclude non-inventory types
-    const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language', 'Class Ability'];
+    const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language', 'Class Ability', 'Gem'];
     const filterInventory = (list: any[]) => list.filter((i: any) => !NON_INVENTORY_TYPES.includes(i.type));
 
     const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
     const carriedItems = applyOverrides(filterInventory(actor.derived?.inventory?.carried || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
     const stashedItems = applyOverrides(filterInventory(actor.derived?.inventory?.stashed || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-    // We rely on the adapter for max slots, but we must re-calculate CURRENT usage based on optimistic updates
-    // The adapter gives us 'slots.current', but that doesn't account for local optimistic changes.
-    // So we should re-sum the slots from our *optimistic* lists.
-    // Re-use calculateItemSlots from sheet-utils because it's available and correct.
+    // For slot calculation, we need to include gems specifically since they are excluded from the gear lists
+    const gems = applyOverrides((actor.items || []).filter((i: any) => i.type === 'Gem'));
 
     const calculateTotal = (list: any[]) => list.reduce((acc, i) => acc + calculateItemSlots(i), 0);
-    const currentSlots = calculateTotal(equippedItems) + calculateTotal(carriedItems); // Stashed don't count
+
+    // Separate treasure items (system.treasure=true) from regular gear
+    const treasureItems = [...equippedItems, ...carriedItems].filter((i: any) => i.system?.treasure === true);
+    const gearItems = [...equippedItems, ...carriedItems].filter((i: any) => i.system?.treasure !== true);
+
+    const gearSlots = calculateTotal(gearItems);
+    const treasureSlots = calculateTotal(treasureItems);
+    const gemSlots = calculateGemSlots(gems.filter(g => !g.system?.stashed));
+    const coinSlots = calculateCoinSlots(actor.system?.coins);
+
+    const currentSlots = gearSlots + treasureSlots + gemSlots + coinSlots;
     const maxSlots = actor.derived?.inventory?.slots?.max || calculateMaxSlots(actor);
+
+    // Coin Synced States
+    const [localGp, setLocalGp] = useState(actor.system?.coins?.gp || 0);
+    const [localSp, setLocalSp] = useState(actor.system?.coins?.sp || 0);
+    const [localCp, setLocalCp] = useState(actor.system?.coins?.cp || 0);
+
+    useEffect(() => {
+        setLocalGp(actor.system?.coins?.gp || 0);
+    }, [actor.system?.coins?.gp]);
+
+    useEffect(() => {
+        setLocalSp(actor.system?.coins?.sp || 0);
+    }, [actor.system?.coins?.sp]);
+
+    useEffect(() => {
+        setLocalCp(actor.system?.coins?.cp || 0);
+    }, [actor.system?.coins?.cp]);
 
     const handleOptimisticUpdate = (path: string, value: any) => {
         // Parse path: "items.<id>.system.<prop>"
@@ -177,23 +209,26 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                     <h3 className="font-serif font-bold text-lg border-b-2 border-black pb-1 mb-3 uppercase tracking-wide">Slots</h3>
                     <div className="flex justify-between items-baseline mb-3">
                         <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Total</span>
-                        <span className={`text-3xl font-serif font-black ${(currentSlots > maxSlots) ? 'text-red-600' : ''}`}>
+                        <span className={`text-3xl font-serif font-black ${currentSlots > maxSlots ? 'text-red-600' : 'text-black'}`}>
                             {currentSlots} / {maxSlots}
                         </span>
                     </div>
-                    <hr className="border-neutral-300 mb-3" />
-                    <div className="space-y-1 font-serif text-sm">
-                        <div className="flex justify-between">
-                            <span>Gear</span>
-                            <span className="font-bold">{[...equippedItems, ...carriedItems].filter((i: any) => i.type !== 'Gem' && i.type !== 'Treasure').reduce((acc: number, i: any) => {
-                                return acc + calculateItemSlots(i);
-                            }, 0)}</span>
+                    <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
+                            <span className="text-neutral-500">Gear</span>
+                            <span>{gearSlots}</span>
                         </div>
-                        <div className="flex justify-between text-neutral-500">
-                            <span>Treasure (Free)</span>
-                            <span className="font-bold">{[...equippedItems, ...carriedItems].filter((i: any) => i.type === 'Gem' || i.type === 'Treasure').reduce((acc: number, i: any) => {
-                                return acc + calculateItemSlots(i);
-                            }, 0)}</span>
+                        <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
+                            <span className="text-neutral-500">Treasure</span>
+                            <span>{treasureSlots}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
+                            <span className="text-neutral-500">Gems</span>
+                            <span>{gemSlots}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
+                            <span className="text-neutral-500">Coins</span>
+                            <span>{coinSlots}</span>
                         </div>
                     </div>
                 </div>
@@ -209,8 +244,9 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                             <label className="font-bold text-amber-600 font-serif">GP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.system?.coins?.gp || 0}
-                                onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value))}
+                                value={localGp}
+                                onChange={(e) => setLocalGp(parseInt(e.target.value) || 0)}
+                                onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
@@ -218,8 +254,9 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                             <label className="font-bold text-neutral-500 font-serif">SP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.system?.coins?.sp || 0}
-                                onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value))}
+                                value={localSp}
+                                onChange={(e) => setLocalSp(parseInt(e.target.value) || 0)}
+                                onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
@@ -227,12 +264,31 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                             <label className="font-bold text-orange-700 font-serif">CP</label>
                             <input
                                 type="number"
-                                defaultValue={actor.system?.coins?.cp || 0}
-                                onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value))}
+                                value={localCp}
+                                onChange={(e) => setLocalCp(parseInt(e.target.value) || 0)}
+                                onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                     </div>
+                </div>
+
+                {/* Gems Panel */}
+                <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="font-serif font-bold text-lg border-b-2 border-black pb-1 mb-3 uppercase tracking-wide">Gems</h3>
+                    <div className="flex justify-between items-baseline mb-3">
+                        <span className="text-sm font-bold text-neutral-500 uppercase tracking-widest">Total</span>
+                        <span className="text-3xl font-serif font-black">
+                            {(actor.items || []).filter((i: any) => i.type === 'Gem').length}
+                        </span>
+                    </div>
+                    <button
+                        onClick={() => setIsGemModalOpen(true)}
+                        className="w-full py-2 bg-black text-white font-serif font-bold uppercase tracking-widest text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-none transition-all flex items-center justify-center gap-2"
+                    >
+                        <Gem size={14} />
+                        Gem Bag
+                    </button>
                 </div>
             </div>
 
@@ -244,6 +300,17 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                 confirmLabel="Delete"
                 onConfirm={handleDelete}
                 onCancel={() => setItemToDelete(null)}
+            />
+
+            {/* Gem Bag Modal */}
+            <GemBagModal
+                isOpen={isGemModalOpen}
+                onClose={() => setIsGemModalOpen(false)}
+                actor={actor}
+                onUpdate={onUpdate}
+                onCreateItem={onCreateItem}
+                onUpdateItem={onUpdateItem}
+                onDeleteItem={onDeleteItem}
             />
         </div>
     );
