@@ -360,7 +360,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 spells: [] as any[],
                 talents: [] as any[],
                 titles: {},
-                PREDEFINED_EFFECTS: {}
+                PREDEFINED_EFFECTS: {},
+                debug: [] as any[]
             };
 
             // @ts-ignore
@@ -476,15 +477,109 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
                 // Index Spells
                 const spellIndex = filterType('spell');
-                results.spells.push(...spellIndex.map((s: any) => ({
-                    name: s.name,
-                    uuid: `Compendium.${pack.collection}.Item.${s._id}`,
-                    tier: s.system?.tier || 0,
-                    class: s.system?.class || [],
-                    img: s.img,
-                    description: ''
-                })));
+                if (spellIndex.length > 0) {
+                    results.debug.push({
+                        pack: pack.collection,
+                        count: spellIndex.length,
+                        firstEntry: spellIndex[0] ? { name: spellIndex[0].name, type: spellIndex[0].type } : null
+                    });
+                }
+
+                results.spells.push(...spellIndex.map((s: any) => {
+                    // Robust access for flattened or nested index fields
+                    // Check system.tier, system.level, and flat versions
+                    const tier = s.system?.tier !== undefined ? s.system.tier :
+                        (s['system.tier'] !== undefined ? s['system.tier'] :
+                            (s.system?.level !== undefined ? s.system.level :
+                                (s['system.level'] !== undefined ? s['system.level'] : 0)));
+
+                    const classes = s.system?.class || s['system.class'] ||
+                        s.system?.classes || s['system.classes'] || [];
+
+                    return {
+                        name: s.name,
+                        uuid: `Compendium.${pack.collection}.Item.${s._id}`,
+                        tier: tier,
+                        class: classes,
+                        img: s.img,
+                        system: {
+                            duration: s.system?.duration || s['system.duration'],
+                            range: s.system?.range || s['system.range']
+                        },
+                        description: ''
+                    };
+                }));
             }
+
+            // ADDED: Include World Items (for world-defined spells/classes)
+            // @ts-ignore
+            const worldItems = window.game.items.contents;
+            worldItems.forEach((item: any) => {
+                const type = item.type.toLowerCase();
+                const baseInfo = { name: item.name, uuid: item.uuid, img: item.img };
+
+                if (type === 'spell') {
+                    results.spells.push({
+                        ...baseInfo,
+                        tier: item.system?.tier || 0,
+                        class: item.system?.class || [],
+                        system: {
+                            duration: item.system?.duration,
+                            range: item.system?.range
+                        },
+                        description: ''
+                    });
+                } else if (type === 'class') {
+                    results.classes.push(baseInfo);
+                    // @ts-ignore
+                    if (item.system?.titles) results.titles[item.name] = item.system.titles;
+                } else if (type === 'talent') {
+                    results.talents.push(baseInfo);
+                }
+            });
+
+            // FINAL PASS: Resolve Class UUIDs to names in Spell Database
+            // This fixes the issue where spells list "Compendium.shadowdark.classes.Item..."
+            // instead of "Wizard" or "Priest". 
+            // We use Case-Insensitive matching.
+            const classUuidLookup = new Map<string, string>();
+            results.classes.forEach((c: any) => {
+                if (c.uuid) classUuidLookup.set(c.uuid.toLowerCase(), c.name.toLowerCase());
+            });
+            results.talents.forEach((t: any) => {
+                if (t.uuid) classUuidLookup.set(t.uuid.toLowerCase(), t.name.toLowerCase());
+            });
+
+            results.debug.push({
+                msg: "Resolution Pass",
+                classesIndexed: results.classes.length,
+                lookupSize: classUuidLookup.size
+            });
+
+            results.spells = results.spells.map((s: any) => {
+                const rawClasses = Array.isArray(s.class) ? s.class : [s.class];
+                const resolved = rawClasses.map((c: any) => {
+                    const cStr = String(c);
+                    const cLower = cStr.toLowerCase();
+
+                    // 1. Exact UUID match (case-insensitive)
+                    const found = classUuidLookup.get(cLower);
+                    if (found) return found;
+
+                    // 2. Fuzzy match: check if UUID path contains a known class name
+                    const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+                    for (const cls of knownClasses) {
+                        if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
+                            return cls;
+                        }
+                    }
+
+                    // 3. Fallback: Return original or lowercased if not a UUID
+                    return (cStr.includes('.') ? cStr : cLower);
+                });
+                return { ...s, class: resolved };
+            });
+
             return results;
         });
     }
@@ -913,20 +1008,36 @@ export class ShadowdarkAdapter implements SystemAdapter {
             const isRangedType = item.system?.type === 'ranged';
             const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
 
-            // Base Bonus
-            // let bonus = 0;
-            const itemBonus = item.system?.bonuses?.attackBonus || 0;
+            // Global Bonuses (from talents/effects)
+            const globalAttackBonus = Number(actor.system?.bonuses?.attackBonus || 0);
+            const globalDamageBonus = Number(actor.system?.bonuses?.damageBonus || 0);
+            const meleeAttackBonus = Number(actor.system?.bonuses?.meleeAttackBonus || 0);
+            const meleeDamageBonus = Number(actor.system?.bonuses?.meleeDamageBonus || 0);
+            const rangedAttackBonus = Number(actor.system?.bonuses?.rangedAttackBonus || 0);
+            const rangedDamageBonus = Number(actor.system?.bonuses?.rangedDamageBonus || 0);
+
+            // Item Bonus
+            const itemBonus = Number(item.system?.bonuses?.attackBonus || 0);
 
             // Damage String
-            const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}${item.system?.damage?.oneHanded || 'd4'}`;
+            let damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}${item.system?.damage?.oneHanded || 'd4'}`;
 
             // Melee Logic
             if (item.system?.type === 'melee') {
-                const meleeBonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + itemBonus;
+                const totalMeleeBonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + itemBonus + globalAttackBonus + meleeAttackBonus;
+
+                // Add damage bonus to string if > 0
+                const totalDamageBonus = globalDamageBonus + meleeDamageBonus;
+                if (totalDamageBonus > 0) {
+                    damage += `+${totalDamageBonus}`;
+                } else if (totalDamageBonus < 0) {
+                    damage += `${totalDamageBonus}`;
+                }
+
                 melee.push({
                     ...item,
                     derived: {
-                        toHit: meleeBonus >= 0 ? `+${meleeBonus}` : `${meleeBonus}`,
+                        toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
                         damage: damage,
                         isFinesse
                     }
@@ -935,16 +1046,22 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             // Ranged Logic (includes Thrown melees)
             if (isRangedType || hasRange || (item.system?.type === 'melee' && isThrown)) {
-                // Ranged always uses DEX for Shadowdark unless specified otherwise, but thrown is usually Str/Dex? 
-                // Shadowdark Rules: Ranged is DEX. Finesse/Thrown usually implies choice or Dex. 
-                // Let's stick to existing logic: Ranged = Dex.
+                const totalRangedBonus = dexMod + itemBonus + globalAttackBonus + rangedAttackBonus;
 
-                const rangedBonus = dexMod + itemBonus;
+                // Add damage bonus to string if > 0
+                const totalDamageBonus = globalDamageBonus + rangedDamageBonus;
+                let rangedDamage = damage;
+                if (totalDamageBonus > 0) {
+                    rangedDamage += `+${totalDamageBonus}`;
+                } else if (totalDamageBonus < 0) {
+                    rangedDamage += `${totalDamageBonus}`;
+                }
+
                 ranged.push({
                     ...item,
                     derived: {
-                        toHit: rangedBonus >= 0 ? `+${rangedBonus}` : `${rangedBonus}`,
-                        damage: damage,
+                        toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
+                        damage: rangedDamage,
                         range: item.system?.range
                     }
                 });
@@ -1024,15 +1141,20 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
                         const str = actor.system.abilities?.str?.mod || 0;
                         const dex = actor.system.abilities?.dex?.mod || 0;
-                        const itemBonus = item.system?.bonuses?.attackBonus || 0;
+                        const itemBonus = Number(item.system?.bonuses?.attackBonus || 0);
+
+                        // Global Bonuses
+                        const globalAttackBonus = Number(actor.system?.bonuses?.attackBonus || 0);
+                        const meleeAttackBonus = Number(actor.system?.bonuses?.meleeAttackBonus || 0);
+                        const rangedAttackBonus = Number(actor.system?.bonuses?.rangedAttackBonus || 0);
 
                         let mod = 0;
                         if (isRanged) {
-                            mod = dex;
+                            mod = dex + globalAttackBonus + rangedAttackBonus;
                         } else if (isFinesse) {
-                            mod = Math.max(str, dex);
+                            mod = Math.max(str, dex) + globalAttackBonus + meleeAttackBonus;
                         } else {
-                            mod = str;
+                            mod = str + globalAttackBonus + meleeAttackBonus;
                         }
                         totalBonus = mod + itemBonus;
                     }

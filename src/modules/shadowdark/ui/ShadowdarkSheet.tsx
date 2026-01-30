@@ -430,6 +430,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             onRoll={onRoll}
                             foundryUrl={foundryUrl}
                             onDeleteItem={onDeleteItem}
+                            addNotification={addNotification}
                         />
                     )
                 }

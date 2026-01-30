@@ -251,26 +251,76 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         }
     },
     {
-        id: 'wizard-spell-boon',
-        description: "Learn a wizard spell",
+        id: 'extra-spell-boon',
+        description: "Learn an extra spell (Wizard, Priest, Witch, etc.)",
         matches: (item: any) => {
             const name = (item.name || item.text || item.description || "").toLowerCase();
-            return name.includes("learn a wizard spell");
+            return name.includes("learn a") && name.includes("spell");
         },
         onRoll: (actions: any) => {
-            // Determine max tier. 
-            // If targetLevel is passed in actions? Yes.
             const level = actions.targetLevel || 1;
             const maxTier = Math.ceil(level / 2);
-            // Cap at 5? usually.
+
+            // Extract class from name if possible
+            const name = (actions.rolledItem?.name || "").toLowerCase();
+            const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+            let foundCls = 'Wizard'; // Default
+            for (const cls of classes) {
+                if (name.includes(cls)) {
+                    foundCls = cls.charAt(0).toUpperCase() + cls.slice(1);
+                    break;
+                }
+            }
 
             if (actions.setExtraSpellSelection) {
                 actions.setExtraSpellSelection({
                     active: true,
-                    source: 'Wizard',
+                    source: foundCls,
                     maxTier: Math.min(5, maxTier),
                     selected: []
                 });
+            }
+        },
+        mutateItem: (item: any) => {
+            const name = (item.name || "").toLowerCase();
+            const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+            let foundCls = '';
+            for (const cls of classes) {
+                if (name.includes(cls)) {
+                    foundCls = cls;
+                    break;
+                }
+            }
+
+            if (foundCls) {
+                if (!item.system) item.system = {};
+
+                // Set the predefined effect key
+                item.system.predefinedEffects = 'spellcastingClasses';
+
+                // Add the Active Effect for robustness
+                const effectConfig = SYSTEM_PREDEFINED_EFFECTS.spellcastingClasses;
+                if (!item.effects) item.effects = [];
+
+                const hasEffect = item.effects.some((e: any) =>
+                    e.name === "Bonus Spellcasting Class" ||
+                    e.changes?.some((c: any) => c.key === effectConfig.key)
+                );
+
+                if (!hasEffect) {
+                    item.effects.push({
+                        name: "Bonus Spellcasting Class",
+                        icon: effectConfig.icon,
+                        changes: [
+                            {
+                                key: effectConfig.key,
+                                mode: effectConfig.mode,
+                                value: foundCls
+                            }
+                        ],
+                        transfer: true
+                    });
+                }
             }
         },
         isBlocked: (state: any) => {
