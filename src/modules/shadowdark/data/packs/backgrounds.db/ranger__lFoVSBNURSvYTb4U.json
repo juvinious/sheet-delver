@@ -1,0 +1,16 @@
+{
+	"_id": "lFoVSBNURSvYTb4U",
+	"_key": "!items!lFoVSBNURSvYTb4U",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Ranger",
+	"system": {
+		"description": "<p>The woods and wilds are your true home</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

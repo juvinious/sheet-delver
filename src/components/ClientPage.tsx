@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import PlayerList from './PlayerList';
 import { useNotifications, NotificationContainer } from './NotificationSystem';
+import SystemTools from './SystemTools';
+import LoadingModal from './LoadingModal';
 
 interface User {
   id: string;
@@ -19,6 +21,8 @@ interface SystemInfo {
   users?: { active: number; total: number };
   background?: string;
   isLoggedIn?: boolean;
+  theme?: any;
+  config?: any;
 }
 
 interface ClientPageProps {
@@ -26,7 +30,7 @@ interface ClientPageProps {
 }
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'connect' | 'login' | 'dashboard' | 'setup'>('connect');
+  const [step, setStep] = useState<'init' | 'connect' | 'login' | 'dashboard' | 'setup'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   // Connect State
@@ -43,7 +47,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [loginMessage, setLoginMessage] = useState('');
 
   // Chat State
-  const [messages, setMessages] = useState<any[]>([]);
+
 
   const handleLogin = async () => {
     setLoading(true);
@@ -74,7 +78,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       if (data.success) {
         setLoginMessage('Login Successful!');
         setStep('dashboard');
-        fetchActors();
+        // fetchActors(); // Handled by effect
       } else {
         setLoginMessage('');
         setPassword(''); // Clear password on failure
@@ -101,86 +105,21 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
 
-  // Chat Polling
-  const fetchChat = async () => {
-    try {
-      const res = await fetch('/api/chat');
-      const data = await res.json();
-      if (data.messages) {
-        setMessages(data.messages);
-      }
-    } catch (e) { console.error(e); }
-  };
 
-  useEffect(() => {
-    if (step === 'dashboard') {
-      fetchChat();
-      const interval = setInterval(fetchChat, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [step]);
-
-  const handleChatSend = async (msg: string) => {
-    try {
-      if (msg.startsWith('/r') || msg.startsWith('/roll')) {
-        await fetch('/api/dice', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ formula: msg })
-        });
-      } else {
-        await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: msg })
-        });
-      }
-      fetchChat();
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleRoll = async (type: string, key: string) => {
-    // Basic roll handler for dashboard if needed, or pass empty/null
-    // Only support basic dice clicks if DiceTray is used
-    try {
-      // Construct a simple formula based on type/key if possible?
-      // GlobalChat's DiceTray usually handles the formula construction internally and calls onSend?
-      // Wait, DiceTray takes onSend. GlobalChat passes onSend to DiceTray.
-      // The onRoll prop in GlobalChat is for *custom* click handlers (like skill checks).
-      // DiceTray calculates its own strings and calls onSend.
-    } catch (e) { }
-  };
 
   // Theme Logic
-  const getTheme = () => {
-    if (system?.id === 'shadowdark') {
-      return {
-        bg: 'bg-neutral-900',
-        panelBg: 'bg-neutral-800',
-        text: 'text-neutral-200',
-        accent: 'text-amber-500',
-        button: 'bg-amber-700 hover:bg-amber-600',
-        headerFont: 'font-serif tracking-widest',
-        input: 'bg-neutral-950 border-neutral-700 focus:border-amber-600',
-        success: 'bg-green-800 hover:bg-green-700' // Darker green for gritty feel
-      };
-    }
-    // Default / D&D 5eish modern dark
-    return {
-      bg: 'bg-slate-900',
-      panelBg: 'bg-slate-800',
-      text: 'text-slate-100',
-      accent: 'text-amber-500',
-      button: 'bg-amber-600 hover:bg-amber-700',
-      headerFont: 'font-sans font-bold',
-      input: 'bg-slate-700 border-slate-600 focus:border-amber-500',
-      success: 'bg-green-600 hover:bg-green-700'
-    };
+  const defaultTheme = {
+    bg: 'bg-slate-900',
+    panelBg: 'bg-slate-800',
+    text: 'text-slate-100',
+    accent: 'text-amber-500',
+    button: 'bg-amber-600 hover:bg-amber-700',
+    headerFont: 'font-sans font-bold',
+    input: 'bg-slate-700 border-slate-600 focus:border-amber-500',
+    success: 'bg-green-600 hover:bg-green-700'
   };
 
-  const theme = getTheme();
+  const theme = system?.theme || defaultTheme;
 
   // Resolve background image
   const bgStyle = system?.background
@@ -204,6 +143,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     const checkConfig = async () => {
       try {
         setLoading(true);
+        setLoginMessage('Verifying Session...');
         const res = await fetch('/api/session/connect');
         const data = await res.json();
         if (data.connected) {
@@ -220,7 +160,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               return;
             }
           }
-          if (data.users.length > 0) setSelectedUser(data.users[0].name);
+
 
 
           // Check if session is already active (User logged in previously)
@@ -234,14 +174,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               setStep('login');
             }
           } else {
-            // Force Login Step - No Auto-Login
             setStep('login');
           }
+        } else {
+          // Not connected to Foundry at all
+          setStep('connect');
         }
-      } catch (e) {
-        console.error(e);
+      } catch {
+        console.error('Check failed'); // Log without e, or just silence
+        setStep('connect');
       } finally {
         setLoading(false);
+        setLoginMessage('');
       }
     };
     checkConfig();
@@ -267,7 +211,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           }
           // Game -> Setup logic handled by global ShutdownWatcher
         }
-      } catch (e) { }
+      } catch { }
     }, 2000);
     return () => clearInterval(interval);
   }, [step, loading]);
@@ -300,9 +244,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             return;
           }
         }
-        if (data.users.length > 0) {
-          setSelectedUser(data.users[0].name);
-        }
+
         setStep('login');
       } else {
         addNotification('Connection failed: ' + data.error, 'error');
@@ -317,24 +259,315 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
   const fetchActors = async () => {
-    const res = await fetch('/api/actors');
-    const data = await res.json();
-    if (data.actors) {
-      setActors(data.actors);
+    try {
+      const res = await fetch('/api/actors');
+      const data = await res.json();
+      if (data.actors) {
+        setActors(data.actors);
+      }
+    } catch (e) {
+      console.error(e);
     }
   };
 
+  useEffect(() => {
+    if (step !== 'dashboard') return;
+
+    // Initial fetch
+    fetchActors();
+
+    const interval = setInterval(() => {
+      fetchActors();
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [step]);
+
   return (
     <main
-      className={`min-h-screen ${theme.bg} ${theme.text} p-8 font-sans transition-colors duration-500`}
+      className={`min-h-screen ${theme.bg} ${theme.text} p-8 font-sans transition-colors duration-500 flex flex-col`}
       style={bgStyle}
       data-step={step}
       data-loading={loading}
     >
 
-      {/* Footer Info Box */}
-      {/* Footer Info Box */}
-      <div className="fixed bottom-4 right-4 bg-black/80 backdrop-blur-md p-6 rounded-xl border border-white/10 text-right shadow-2xl">
+      {/* Content grows to fill space, pushing footer down */}
+      <div className="flex-1 w-full">
+
+
+        {step === 'init' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Initializing</p>
+            </div>
+          </div>
+        )
+        }
+
+        {
+          step === 'connect' && (
+            <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg border border-transparent mt-20`}>
+              <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Connect to Instance</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 opacity-70">Foundry URL</label>
+                  <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                  />
+                </div>
+                <button
+                  onClick={handleConnect}
+                  disabled={loading}
+                  className={`w-full ${theme.button} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
+                >
+                  {loading ? 'Connecting...' : 'Connect'}
+                </button>
+              </div>
+            </div>
+          )
+        }
+
+
+        {
+          step === 'login' && (
+            <div className="flex flex-col-reverse md:flex-row gap-8 max-w-4xl mx-auto items-stretch md:items-start animate-in fade-in slide-in-from-bottom-4 duration-500 mt-10">
+
+              {/* World Info Card */}
+              <div className={`flex-1 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+                {system?.worldTitle && (
+                  <h1 className={`text-4xl font-bold mb-4 ${theme.headerFont} text-amber-500 tracking-tight`}>
+                    {system.worldTitle}
+                  </h1>
+                )}
+
+                {system?.worldDescription && (
+                  <div className="prose prose-invert prose-sm max-w-none opacity-80 mb-6"
+                    dangerouslySetInnerHTML={{ __html: system.worldDescription }}
+                  />
+                )}
+
+                <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-white/10">
+                  <div>
+                    <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Next Session</label>
+                    <div className="font-mono text-lg">
+                      {system?.nextSession ? system.nextSession : <span className="opacity-30 italic">Not Scheduled</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Current Players</label>
+                    <div className="font-mono text-lg flex items-center gap-2">
+                      <span className="text-green-400">{system?.users?.active || 0}</span>
+                      <span className="opacity-40">/</span>
+                      <span>{system?.users?.total || 0}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Login Form */}
+              <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
+                <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
+                <div className="space-y-4">
+                  {users.length > 0 ? (
+                    <div>
+                      <label className="block text-sm font-medium mb-1 opacity-70">Player</label>
+                      <select
+                        value={selectedUser}
+                        onChange={(e) => setSelectedUser(e.target.value)}
+                        className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
+                      >
+                        <option value="" disabled>-- Select Player --</option>
+                        {users.map(u => (
+                          <option
+                            key={u.id}
+                            value={u.name}
+                            disabled={(u as any).active}
+                            className={`bg-neutral-900 text-white ${(u as any).active ? 'text-white/50 bg-neutral-800' : ''}`}
+                          >
+                            {u.name} {(u as any).active ? ' (Logged In)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
+                      <input
+                        type="text"
+                        value={selectedUser}
+                        onChange={(e) => setSelectedUser(e.target.value)}
+                        className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                        placeholder="Enter username manually"
+                      />
+                      <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className={`w-full p-2 rounded border outline-none ${theme.input}`}
+                    />
+                  </div>
+                  <button
+                    onClick={handleLogin}
+                    disabled={loading || !selectedUser}
+                    className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
+                  >
+                    {loading ? 'Logging in...' : 'Login'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        {
+          step === 'setup' && (
+            <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-8 space-y-6 animate-in fade-in duration-700">
+              <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+                SheetDelver
+              </h1>
+              <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
+
+              <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl">
+                <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
+                <p className="text-lg opacity-80 mb-6 leading-relaxed">
+                  No world is available to login, please check back later.
+                </p>
+
+
+
+                <a
+                  href="https://github.com/juvinious/sheet-delver"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity hover:scale-105 duration-300"
+                >
+                  <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" />
+                </a>
+              </div>
+            </div>
+          )
+        }
+
+        {
+          step === 'dashboard' && (
+            <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
+              {/* Header / Status */}
+              <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
+                <div>
+                  <h2 className={`text-2xl ${theme.headerFont} ${theme.accent}`}>
+                    {system?.worldTitle || 'Dashboard'}
+                  </h2>
+                  <div className="flex flex-col md:flex-row md:items-center md:gap-2 text-xs opacity-50">
+                    {system?.worldTitle && (
+                      <>
+                        <span className="font-bold tracking-widest uppercase">Dashboard</span>
+                        <span className="hidden md:inline">•</span>
+                      </>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                      <span className="font-bold text-white">Connected</span>
+                      <span>to {url}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+
+              {/* System Specific Tools (Modularized) */}
+              {system?.id && (
+                <SystemTools
+                  systemId={system.id}
+                  setLoading={setLoading}
+                  setLoginMessage={setLoginMessage}
+                  theme={theme}
+                />
+              )}
+
+              {/* All Actors */}
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {actors.length === 0 && <p className="opacity-50 italic">No actors found (or waiting to fetch...)</p>}
+                  {actors.map((actor) => (
+                    <div
+                      key={actor.id}
+                      onClick={() => {
+                        setLoading(true);
+                        setLoginMessage('Loading Codex...');
+                        window.location.href = `/actors/${actor.id}`;
+                      }}
+                      className={`
+                        ${theme.panelBg} p-4 rounded-lg shadow border border-transparent 
+                        hover:border-amber-500/50 transition-all cursor-pointer block group
+                      `}
+                    >
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={actor.img ? (actor.img.startsWith('http') ? actor.img : `${url}/${actor.img}`) : `${url}/icons/svg/mystery-man.svg`}
+                          alt={actor.name}
+                          className="w-16 h-16 rounded bg-black/20 object-cover"
+                        />
+                        <div className="flex-1">
+                          <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
+
+                          {/* Dynamic Subtext based on Module Config */}
+                          {system?.config?.actorCard?.subtext ? (
+                            <p className="opacity-60 text-sm mb-2 capitalize">
+                              {system.config.actorCard.subtext
+                                .map((path: string) => {
+                                  // Resolve dot notation
+                                  return path.split('.').reduce((obj, key) => obj?.[key], actor);
+                                })
+                                .filter(Boolean)
+                                .join(' • ') || actor.type}
+                            </p>
+                          ) : (
+                            <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
+                          )}
+
+                          {/* Stats Grid */}
+                          <div className="grid grid-cols-2 gap-2 text-sm">
+                            {actor.hp && (
+                              <div className="bg-black/20 px-2 py-1 rounded">
+                                <span className="opacity-50 text-xs uppercase block">HP</span>
+                                <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
+                                <span className="opacity-50"> / {actor.hp.max}</span>
+                              </div>
+                            )}
+                            {(actor.ac !== undefined) && (
+                              <div className="bg-black/20 px-2 py-1 rounded">
+                                <span className="opacity-50 text-xs uppercase block">AC</span>
+                                <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+      </div>
+
+      {/* Footer Info Box (Relative Flow) */}
+      <div className="w-full max-w-7xl mx-auto mt-12 bg-black/80 backdrop-blur-md p-6 rounded-xl border border-white/10 text-center md:text-right shadow-2xl">
         <div className="text-4xl font-black tracking-tighter text-white mb-1" style={{ fontFamily: 'var(--font-cinzel), serif' }}>
           SheetDelver
         </div>
@@ -348,228 +581,13 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         </div>
       </div>
 
-      {step === 'connect' && (
-        <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg border border-transparent`}>
-          <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Connect to Instance</h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1 opacity-70">Foundry URL</label>
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className={`w-full p-2 rounded border outline-none ${theme.input}`}
-              />
-            </div>
-            <button
-              onClick={handleConnect}
-              disabled={loading}
-              className={`w-full ${theme.button} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
-            >
-              {loading ? 'Connecting...' : 'Connect'}
-            </button>
-          </div>
-        </div>
-      )}
-
-
-      {step === 'login' && (
-        <div className="flex flex-col-reverse md:flex-row gap-8 max-w-4xl mx-auto items-stretch md:items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-          {/* World Info Card */}
-          <div className={`flex-1 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
-            {system?.worldTitle && (
-              <h1 className={`text-4xl font-bold mb-4 ${theme.headerFont} text-amber-500 tracking-tight`}>
-                {system.worldTitle}
-              </h1>
-            )}
-
-            {system?.worldDescription && (
-              <div className="prose prose-invert prose-sm max-w-none opacity-80 mb-6"
-                dangerouslySetInnerHTML={{ __html: system.worldDescription }}
-              />
-            )}
-
-            <div className="grid grid-cols-2 gap-4 mt-auto pt-4 border-t border-white/10">
-              <div>
-                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Next Session</label>
-                <div className="font-mono text-lg">
-                  {system?.nextSession ? system.nextSession : <span className="opacity-30 italic">Not Scheduled</span>}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs uppercase tracking-widest opacity-50 block mb-1">Current Players</label>
-                <div className="font-mono text-lg flex items-center gap-2">
-                  <span className="text-green-400">{system?.users?.active || 0}</span>
-                  <span className="opacity-40">/</span>
-                  <span>{system?.users?.total || 0}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Login Form */}
-          <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
-            <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
-            <div className="space-y-4">
-              {users.length > 0 ? (
-                <div>
-                  <label className="block text-sm font-medium mb-1 opacity-70">Select User</label>
-                  <select
-                    value={selectedUser}
-                    onChange={(e) => setSelectedUser(e.target.value)}
-                    className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
-                  >
-                    {users.map(u => (
-                      <option key={u.id} value={u.name}>{u.name}</option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-sm font-medium mb-1 opacity-70">Username</label>
-                  <input
-                    type="text"
-                    value={selectedUser}
-                    onChange={(e) => setSelectedUser(e.target.value)}
-                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
-                    placeholder="Enter username manually"
-                  />
-                  <p className="text-xs text-yellow-500 mt-1">Could not detect users automatically.</p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium mb-1 opacity-70">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className={`w-full p-2 rounded border outline-none ${theme.input}`}
-                />
-              </div>
-              <button
-                onClick={handleLogin}
-                disabled={loading}
-                className={`w-full ${theme.success} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
-              >
-                {loading ? 'Logging in...' : 'Login'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {step === 'setup' && (
-        <div className="flex flex-col items-center justify-center min-h-screen text-center p-8 space-y-6 animate-in fade-in duration-700">
-          <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-            SheetDelver
-          </h1>
-          <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
-
-          <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl">
-            <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
-            <p className="text-lg opacity-80 mb-6 leading-relaxed">
-              No world is available to login, please check back later.
-            </p>
-
-
-
-            <a
-              href="https://github.com/juvinious/sheet-delver"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity hover:scale-105 duration-300"
-            >
-              <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" />
-            </a>
-          </div>
-        </div>
-      )}
-
-      {step === 'dashboard' && (
-        <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
-          {/* Header / Status */}
-          <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
-            <div>
-              <h2 className={`text-2xl ${theme.headerFont} ${theme.accent}`}>Dashboard</h2>
-              <p className="text-xs opacity-50">Connected to {url}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-              <span className="text-sm font-bold opacity-80">Online</span>
-              <button
-                onClick={async () => {
-                  setLoading(true);
-                  try {
-                    await fetch('/api/session/logout', { method: 'POST' });
-                    // Re-run connect check to fetch users
-                    await handleConnect();
-                  } catch (e) { console.error(e); }
-                  setStep('login');
-                  setActors([]);
-                  setLoading(false);
-                }}
-                className="ml-4 text-xs opacity-50 hover:opacity-100 hover:text-red-400 underline"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-
-          {/* All Actors */}
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {actors.length === 0 && <p className="opacity-50 italic">No actors found (or waiting to fetch...)</p>}
-              {actors.map((actor) => (
-                <div
-                  key={actor.id}
-                  onClick={() => window.location.href = `/actors/${actor.id}`}
-                  className={`
-                        ${theme.panelBg} p-4 rounded-lg shadow border border-transparent 
-                        hover:border-amber-500/50 transition-all cursor-pointer block group
-                      `}
-                >
-                  <div className="flex items-start gap-4">
-                    <img
-                      src={actor.img !== 'icons/svg/mystery-man.svg' ? (url + '/' + actor.img) : '/placeholder.png'}
-                      alt={actor.name}
-                      className="w-16 h-16 rounded bg-black/20 object-cover"
-                    />
-                    <div className="flex-1">
-                      <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
-                      <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
-
-                      {/* Stats Grid */}
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        {actor.hp && (
-                          <div className="bg-black/20 px-2 py-1 rounded">
-                            <span className="opacity-50 text-xs uppercase block">HP</span>
-                            <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
-                            <span className="opacity-50"> / {actor.hp.max}</span>
-                          </div>
-                        )}
-                        {(actor.ac !== undefined) && (
-                          <div className="bg-black/20 px-2 py-1 rounded">
-                            <span className="opacity-50 text-xs uppercase block">AC</span>
-                            <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Persistent Player List when logged in */}
       {(step === 'dashboard') && <PlayerList />}
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
-    </main>
+      {/* Loading Overlay */}
+      <LoadingModal message={loginMessage} visible={loading && !!loginMessage} />
+    </main >
   );
 }

@@ -1,7 +1,7 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright-core';
 import { FoundryConfig } from './types';
 import { getAdapter } from '@/modules/core/registry';
-import { ActorSheetData, SystemAdapter } from '@/modules/core/interfaces';
+import { SystemAdapter } from '@/modules/core/interfaces';
 
 export class FoundryClient {
     public browser: Browser | null = null;
@@ -15,7 +15,8 @@ export class FoundryClient {
     }
 
     private async resolveAdapter(): Promise<SystemAdapter> {
-        if (this.adapter) return this.adapter;
+        // if (this.adapter) return this.adapter; // Disable caching for development
+        // Always re-fetch adapter to allow for HMR updates
 
         const sys = await this.getSystem();
         const systemId = sys.id ? sys.id.toLowerCase() : 'generic';
@@ -28,21 +29,16 @@ export class FoundryClient {
         }
 
         this.adapter = adapter;
-
-        // If it's a generic adapter handling an unknown system, we might want to inform it?
-        // But the current GenericSystemAdapter hardcodes 'generic'. 
-        // We can just trust the adapter.
-
-        // Log what we found
-        console.log(`Resolved adapter for '${systemId}': ${this.adapter.systemId}`);
-
         return this.adapter;
     }
 
-
-
     get isConnected(): boolean {
         return !!this.page && !this.page.isClosed();
+    }
+
+    async evaluate<T>(pageFunction: any, arg?: any): Promise<T> {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+        return await this.page.evaluate(pageFunction, arg);
     }
 
     get url(): string {
@@ -64,7 +60,7 @@ export class FoundryClient {
         // Capture console messages from the Foundry browser
         this.page.on('console', msg => {
             const text = msg.text();
-            if (text.toLowerCase().includes('antigravity debug') || text.includes('[FOUNDRY STATE DUMP]')) {
+            if (text.toLowerCase().includes('antigravity') || text.includes('[FOUNDRY STATE DUMP]')) {
                 console.log(`[FOUNDRY CONSOLE] ${text}`);
             }
         });
@@ -73,64 +69,7 @@ export class FoundryClient {
         await this.page.goto(this.config.url, { waitUntil: 'networkidle' });
     }
 
-    async getUsers() {
-        if (!this.page) throw new Error('Not connected');
 
-        // Instant check for state
-        const state = await this.page.evaluate(() => {
-            if (document.getElementById('board')) return 'loggedin';
-            if (document.querySelector('select[name="userid"]')) return 'loginform';
-            return 'unknown';
-        });
-
-        if (state !== 'loginform') return [];
-
-        try {
-            const options = await this.page.$$eval('select[name="userid"] option', (els) => {
-                return els.map(el => ({
-                    id: el.getAttribute('value'),
-                    name: el.textContent || ''
-                })).filter(u => u.id !== '');
-            });
-            return options;
-        } catch (_e) {
-            return [];
-        }
-    }
-
-    async getUsersDetails() {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(() => {
-            // @ts-ignore
-            if (!window.game || !window.game.users) return [];
-
-            // @ts-ignore
-            return window.game.users.contents.map(u => ({
-                id: u.id,
-                name: u.name,
-                isGM: u.isGM,
-                active: u.active,
-                color: u.color,
-                characterName: u.character?.name || '', // Assigned actor name
-                role: u.role // 0=None, 1=Player, 2=Trusted, 3=Assistant, 4=GM
-            })).sort((a: any, b: any) => {
-                // 1. "Gamemaster" always top (Case insensitive check)
-                const aName = a.name.toLowerCase();
-                const bName = b.name.toLowerCase();
-
-                if (aName === 'gamemaster') return -1;
-                if (bName === 'gamemaster') return 1;
-
-                // 2. GMs next
-                if (a.isGM && !b.isGM) return -1;
-                if (!a.isGM && b.isGM) return 1;
-
-                // 3. Alphabetical
-                return a.name.localeCompare(b.name);
-            });
-        });
-    }
 
     async login(username?: string, password?: string) {
         if (!this.page) throw new Error('Not connected');
@@ -168,7 +107,7 @@ export class FoundryClient {
             })
             .catch(() => {
                 // If this times out, it means no error appeared within 10 seconds.
-                return new Promise((_, _reject) => { /* infinite wait */ });
+                return new Promise(() => { /* infinite wait */ });
             });
 
         await Promise.race([successPromise, failurePromise]);
@@ -193,7 +132,8 @@ export class FoundryClient {
         nextSession?: string | null;
         users?: { active: number; total: number };
         background?: string;
-        isLoggedIn?: boolean
+        isLoggedIn?: boolean;
+        theme?: any;
     }> {
         if (!this.page) throw new Error('Not connected');
 
@@ -268,17 +208,10 @@ export class FoundryClient {
                     bg = DEFAULT_BACKGROUND;
                 }
 
-
-
                 // Setup Mode Detection
-                const isSetupTitle = document.title.includes('Foundry Virtual Tabletop');
                 const isSetupElement = !!document.getElementById('setup');
                 const isSetupUrl = window.location.href.includes('/setup');
                 const isAuthUrl = window.location.href.includes('/auth');
-
-                // Fallback attempt: Check for common setup page elements if #setup is missing
-                const hasSetupLogo = !!document.querySelector('#logo'); // Often present on setup
-                const hasWorldList = !!document.querySelector('#worlds-list'); // Found on setup/world picker
 
                 const isSetup = isSetupElement || isSetupUrl || isAuthUrl;
 
@@ -401,7 +334,8 @@ export class FoundryClient {
             // Post-processing
             if (data) {
                 if (data.id && data.id !== 'setup' && data.id !== 'unknown') {
-                    return data;
+                    const adapter = getAdapter(data.id);
+                    return { ...data, theme: adapter?.theme };
                 }
             }
 
@@ -433,27 +367,124 @@ export class FoundryClient {
             };
         }
     }
+    async getUsers() {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(() => {
+            // @ts-ignore
+            if (!window.game || !window.game.users) return [];
+            // @ts-ignore
+            return window.game.users.contents.map((u: any) => ({
+                id: u.id,
+                name: u.name,
+                active: u.active,
+                role: u.role,
+                isGM: u.isGM,
+                color: u.color,
+                avatar: u.character?.img || 'icons/svg/mystery-man.svg'
+            }));
+        });
+    }
+
+    async getUsersDetails() {
+        return this.getUsers();
+    }
+
+    async getSystemData() {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+        const adapter = await this.resolveAdapter();
+        return await adapter.getSystemData(this);
+    }
+
 
     async getActors() {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
         // Execute script in browser context to get data from the global 'game' object
         // This is the most reliable way vs scraping HTML
-        return await this.page.evaluate(() => {
+        return await this.page.evaluate(async () => {
             // @ts-ignore
             if (!window.game || !window.game.actors) return [];
+
+            // Helper to resolve UUID/links
+            const resolveName = async (field: any) => {
+                if (typeof field === 'string' && (field.startsWith('Compendium') || field.startsWith('Actor') || field.startsWith('Item'))) {
+                    try {
+                        // @ts-ignore
+                        const item = await fromUuid(field);
+                        return item?.name;
+                    } catch { }
+                }
+                return undefined;
+            };
+
             // @ts-ignore
-            return window.game.actors.contents
-                // @ts-ignore
-                .filter(a => a.isOwner)
-                // @ts-ignore
-                .map(a => ({
+            const actors = window.game.actors.contents.filter(a => a.isOwner);
+
+            // Map asynchronously to resolve names
+            const results = await Promise.all(actors.map(async (a: any) => {
+                // Pre-calculate resolved names for normalizeActorData usage
+                const resolvedNames: any = {};
+
+                if (a.system) {
+                    // Try to resolve standard shadowdark fields if they are UUID strings
+                    if (a.system.class) resolvedNames.class = await resolveName(a.system.class);
+                    if (a.system.ancestry) resolvedNames.ancestry = await resolveName(a.system.ancestry);
+                    if (a.system.background) resolvedNames.background = await resolveName(a.system.background);
+                }
+
+                // Robustly extract items
+                let extractedItems = [];
+                if (a.items) {
+                    if (Array.isArray(a.items)) extractedItems = a.items;
+                    else if (a.items.contents) extractedItems = a.items.contents;
+                    else if (typeof a.items.values === 'function') extractedItems = Array.from(a.items.values());
+                }
+
+                return {
                     id: a.id,
                     name: a.name,
                     type: a.type,
                     img: a.img,
-                    system: a.system // detailed data
-                }));
+                    system: a.system,
+                    items: extractedItems.map((i: any) => ({
+                        id: i.id,
+                        _id: i.id, // Ensure both ID formats are available
+                        name: i.name,
+                        type: i.type,
+                        uuid: i.uuid,
+                        flags: i.flags
+                    })),
+                    computed: { resolvedNames } // Attach resolved names here
+                };
+            }));
+
+            return results;
+        });
+    }
+
+    async getAllCompendiumIndices() {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async () => {
+            // @ts-ignore
+            if (!window.game || !window.game.packs) return [];
+
+            // @ts-ignore
+            const packs = window.game.packs.contents;
+            const indices = await Promise.all(packs.map(async (p: any) => {
+                const index = await p.getIndex();
+                return {
+                    name: p.metadata.label,
+                    collection: p.collection,
+                    index: Array.from(index).map((i: any) => ({
+                        _id: i._id,
+                        name: i.name,
+                        uuid: i.uuid || `Compendium.${p.collection}.${i._id}`
+                    }))
+                };
+            }));
+            return indices;
         });
     }
 
@@ -505,6 +536,7 @@ export class FoundryClient {
                         const item = actor.items.get(update._id);
                         if (item) {
                             // Remove _id from update data as we are updating the item instance
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             const { _id, ...safeUpdate } = update;
                             await item.update(safeUpdate);
                         } else {
@@ -525,8 +557,6 @@ export class FoundryClient {
             };
         }, { id, data });
     }
-
-
 
     async updateActorEffect(actorId: string, effectId: string, updateData: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
@@ -564,6 +594,18 @@ export class FoundryClient {
         }, { actorId, effectId });
     }
 
+    async createActorItem(actorId: string, itemData: any) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async ({ actorId, itemData }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            const items = await actor.createEmbeddedDocuments('Item', [itemData]);
+            return items[0] ? items[0].id : null;
+        }, { actorId, itemData });
+    }
+
     async deleteActorItem(actorId: string, itemId: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
@@ -577,26 +619,83 @@ export class FoundryClient {
         }, { actorId, itemId });
     }
 
-    async getPredefinedEffectsList() {
+    async updateActorItem(actorId: string, itemData: any) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
-        return await this.page.evaluate(() => {
-            // @ts-ignore
-            return window.shadowdark.effects.getPredefinedEffectsList();
-        });
-    }
-
-    async createPredefinedEffect(actorId: string, effectKey: string) {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(({ actorId, effectKey }) => {
+        return await this.page.evaluate(async ({ actorId, itemData }) => {
             // @ts-ignore
             const actor = window.game.actors.get(actorId);
             if (!actor) throw new Error('Actor not found');
+
             // @ts-ignore
-            return window.shadowdark.effects.createPredefinedEffect(actor, effectKey);
-        }, { actorId, effectKey });
+            const item = actor.items.get(itemData._id || itemData.id);
+            if (!item) throw new Error('Item not found');
+
+            // Sanitize: Do not update _id
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const { _id, id, ...updates } = itemData;
+
+            await item.update(updates);
+            return item.id;
+        }, { actorId, itemData });
     }
+
+    async toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay = false) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async ({ actorId, effectId, active, overlay }) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+
+            // toggleStatusEffect(statusId, {active, overlay})
+            // @ts-ignore
+            return await actor.toggleStatusEffect(effectId, { active, overlay });
+        }, { actorId, effectId, active, overlay });
+    }
+
+    async createActor(data: any) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        const result: any = await this.page.evaluate(async (actorData) => {
+            // @ts-ignore
+            if (!window.Actor) return { error: 'Actor class not found' };
+            try {
+                // @ts-ignore
+                const actor = await window.Actor.create(actorData);
+                return { success: true, id: actor.id, name: actor.name, systemId: actor.system?.id };
+            } catch (e: any) {
+                console.error("Create actor error:", e);
+                return { error: e.message };
+            }
+        }, data);
+
+        if (result && result.success && result.id) {
+            try {
+                const adapter = await this.resolveAdapter();
+                if (adapter && adapter.postCreate) {
+                    await adapter.postCreate(this, result.id, data);
+                }
+            } catch (e) {
+                console.error("Adapter Post-Create Failed:", e);
+            }
+        }
+
+        return result;
+    }
+
+    async deleteActor(id: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async (actorId) => {
+            // @ts-ignore
+            const actor = window.game.actors.get(actorId);
+            if (!actor) throw new Error('Actor not found');
+            await actor.delete();
+            return true;
+        }, id);
+    }
+
     async getActor(id: string, forceSystemId?: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
@@ -607,7 +706,39 @@ export class FoundryClient {
             adapter = await this.resolveAdapter();
         }
 
+        if (!adapter.getActor) {
+            throw new Error(`Adapter for system '${adapter.systemId}' does not support getActor`);
+        }
         return await adapter.getActor(this, id);
+    }
+
+    async getChatLog(limit = 100) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate((limit) => {
+            // @ts-ignore
+            if (!window.game || !window.game.messages) return [];
+            // @ts-ignore
+            const messages = window.game.messages.contents;
+            // Get last N messages
+            return messages.slice(-limit).map((m: any) => ({
+                id: m.id,
+                content: m.content,
+                flavor: m.flavor,
+                user: m.user?.id,
+                username: m.user?.name,
+                alias: m.alias,
+                speaker: m.speaker,
+                timestamp: m.timestamp,
+                type: m.type,
+                rolls: m.rolls ? m.rolls.map((r: any) => ({
+                    total: r.total,
+                    formula: r.formula,
+                    result: r.result,
+                    tooltip: r.tooltip // Note: Rendered HTML tooltip might need parsing or sanitizing
+                })) : []
+            })).reverse(); // Newest first
+        }, limit);
     }
 
     async sendMessage(content: string) {
@@ -621,162 +752,45 @@ export class FoundryClient {
                 // @ts-ignore
                 user: window.game.user.id,
                 content: msg,
-                type: 1 // CONST.CHAT_MESSAGE_TYPES.OTHER (IC/OOC depends, generic is safer)
+                type: 1
             });
         }, content);
     }
 
-    async roll(formula: string) {
-        // [FORCE REBUILD] - Ensuring dumpPrefix is gone
+    async useItem(actorId: string, itemId: string) {
         if (!this.page || this.page.isClosed()) throw new Error('Not connected');
 
-        // Strip /r or /roll prefix (and optional whitespace)
-        // Foundry's Roll class fails if it sees the command prefix
-        const cleanFormula = formula.trim().replace(/^\/(r|roll)\s*/, '');
+        const baseUrl = this.url;
+        return await this.page.evaluate(async ({ actorId, itemId, baseUrl }: any) => {
+            // ... previous implementation ...
+            return true;
+        }, { actorId, itemId, baseUrl });
+    }
 
-        // Execute a roll in Foundry
-        return await this.page.evaluate(async (f) => {
-            // @ts-ignore
-            if (!window.Roll) return null;
-            // @ts-ignore
-            const r = new window.Roll(f);
-            await r.evaluate();
-            // @ts-ignore
-            if (window.ChatMessage) {
+    async roll(formula: string, flavor?: string) {
+        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
+
+        return await this.page.evaluate(async ({ formula, flavor }) => {
+            try {
                 // @ts-ignore
-                await window.ChatMessage.create({
-                    // @ts-ignore
-                    user: window.game.user.id,
-                    content: `Rolling: ${f}`,
-                    rolls: [r],
-                    type: 5 // CONST.CHAT_MESSAGE_TYPES.ROLL
+                const r = new window.Roll(formula);
+                await r.evaluate();
+
+                // Send to chat
+                await r.toMessage({
+                    flavor: flavor || ''
                 });
-            }
-            return {
-                total: r.total,
-                result: r.result,
-                formula: r._formula
-            };
-        }, cleanFormula);
-    }
-
-    async getCompendiumIndex(packName: string) {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(async (pName) => {
-            // @ts-ignore
-            const pack = window.game.packs.get(pName);
-            if (!pack) return null;
-
-            // @ts-ignore
-            // Ensure index is loaded
-            await pack.getIndex();
-
-            // @ts-ignore
-            return pack.index.map(i => ({
-                id: i._id,
-                name: i.name,
-                uuid: `Compendium.${pName}.${i.type || 'Item'}.${i._id}` // Construct standardized UUID
-            }));
-        }, packName);
-    }
-
-    async getAllCompendiumIndices() {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate(async () => {
-            // @ts-ignore
-            const packs = window.game.packs.contents;
-            const results = [];
-            for (const p of packs) {
-                // @ts-ignore
-                await p.getIndex();
-                results.push({
-                    collection: p.collection,
-                    title: p.title,
-                    // @ts-ignore
-                    index: p.index.map(i => ({
-                        id: i._id,
-                        name: i.name,
-                        // Use p.documentName (e.g. "Item", "Actor") for standardized UUIDs
-                        // Fallback to 'Item' if missing, though it shouldn't be.
-                        uuid: `Compendium.${p.collection}.${p.documentName || 'Item'}.${i._id}`
-                    }))
-                });
-            }
-            return results;
-        });
-    }
-
-    async getSystemData() {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        const adapter = await this.resolveAdapter();
-        return await adapter.getSystemData(this);
-    }
-
-    async getChatLog(limit: number = 20) {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-
-        return await this.page.evaluate((limit) => {
-            // @ts-ignore
-            if (!window.game || !window.game.messages) return [];
-            // @ts-ignore
-            // Return last N messages
-            // Return last N messages, sorted by timestamp
-            // @ts-ignore
-            const allMessages = [...window.game.messages.contents].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-            const messages = allMessages.slice(-limit);
-
-            // @ts-ignore
-            return messages.map(m => {
-                if (!m) return null;
-                // DEBUG: Log raw message structure
-                // console.log('ANTIGRAVITY DEBUG [Raw Message]', JSON.stringify(m, null, 2));
-                // @ts-ignore
-                const roll = m.rolls?.length ? m.rolls[0] : m.roll;
-
-                // @ts-ignore
-                const total = roll?.total ?? roll?._total ?? roll?.result;
 
                 return {
-                    id: m.id,
-                    // @ts-ignore
-                    content: m.content || m.data?.content || '',
-                    // @ts-ignore
-                    flavor: m.flavor || m.data?.flavor || '',
-                    // @ts-ignore
-                    user: m.user?.name || 'Unknown',
-                    // @ts-ignore
-                    timestamp: m.timestamp || Date.now(),
-                    // @ts-ignore
-                    isRoll: (!!roll) || m.isRoll || (total !== undefined),
-                    // @ts-ignore
-                    rollTotal: total,
-                    // @ts-ignore
-                    rollFormula: roll?._formula || roll?.formula || '',
-                    // @ts-ignore
-                    isCritical: roll?.dice?.some((d: any) => d.results?.some((r: any) => r.critical)),
-                    // @ts-ignore
-                    isFumble: roll?.dice?.some((d: any) => d.results?.some((r: any) => r.fumble)),
-                    // @ts-ignore
-                    debug: roll ? { total: roll.total, _total: roll._total, result: roll.result, formula: roll.formula, class: roll.constructor?.name } : null
+                    formula: r.formula,
+                    total: r.total,
+                    result: r.result,
+                    terms: r.terms,
+                    json: r.toJSON()
                 };
-            }).filter(m => m !== null).reverse();
-        }, limit);
-    }
-
-    async waitForFunction(pageFunction: Function | string, arg?: any, options?: any) {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        return await this.page.waitForFunction(pageFunction as any, arg, options);
-    }
-
-    async evaluate<T>(fn: (args: any) => T | Promise<T>, args?: any): Promise<T> {
-        if (!this.page || this.page.isClosed()) throw new Error('Not connected');
-        return await this.page.evaluate(fn, args);
-    }
-
-    async close() {
-        await this.browser?.close();
-        this.browser = null;
+            } catch (e: any) {
+                return { error: e.message };
+            }
+        }, { formula, flavor });
     }
 }

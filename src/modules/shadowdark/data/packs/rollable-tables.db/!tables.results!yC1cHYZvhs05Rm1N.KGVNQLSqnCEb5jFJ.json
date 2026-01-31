@@ -1,0 +1,14 @@
+{
+	"_id": "KGVNQLSqnCEb5jFJ",
+	"_key": "!tables.results!yC1cHYZvhs05Rm1N.KGVNQLSqnCEb5jFJ",
+	"description": "of the Horde",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		9,
+		9
+	],
+	"type": "text",
+	"weight": 1
+}

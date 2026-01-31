@@ -1,0 +1,14 @@
+{
+	"_id": "itqI1OfOiLwBhVYs",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.itqI1OfOiLwBhVYs",
+	"description": "Hope",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		17,
+		17
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "MFI8EpIyZ33EanXm",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.MFI8EpIyZ33EanXm",
+	"description": "Grotto",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		86,
+		87
+	],
+	"type": "text",
+	"weight": 2
+}

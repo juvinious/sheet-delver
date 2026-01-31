@@ -1,0 +1,14 @@
+{
+	"_id": "GKnUyXuYg2rXY9zZ",
+	"_key": "!tables.results!1RaFraTFH6enPqOH.GKnUyXuYg2rXY9zZ",
+	"description": "of the Demonic",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		54,
+		55
+	],
+	"type": "text",
+	"weight": 2
+}

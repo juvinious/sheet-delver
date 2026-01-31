@@ -1,0 +1,14 @@
+{
+	"_id": "GD1nkTud7dAIcIA5",
+	"_key": "!tables.results!1RaFraTFH6enPqOH.GD1nkTud7dAIcIA5",
+	"description": "of the Insectoid",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		46,
+		47
+	],
+	"type": "text",
+	"weight": 2
+}

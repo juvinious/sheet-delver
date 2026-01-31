@@ -1,0 +1,25 @@
+{
+	"_id": "v4FffM1SjPE4hLgq",
+	"_key": "!journal.pages!I5d5ltGw4F3g15uG.v4FffM1SjPE4hLgq",
+	"category": null,
+	"image": {
+	},
+	"name": "Level Advancement",
+	"src": null,
+	"system": {
+	},
+	"text": {
+		"content": "<h2>Experience Points</h2><p>XP represents your learning, influence, and increasing skill.</p><p>XP awards are based on the quality of the treasure and boons you gain during a session.</p><p>The GM can award XP right away or at the end of each session.</p><h2>Leveling Up</h2><p>To gain a level, you need to earn your <strong>current level x 10 XP</strong>.</p><p>Once you reach a new level, your total XP resets back to zero.</p><p>You get any new title, spells, and talent improvements listed for your level. Your maximum HP increases, and you might also gain a talent roll.</p><table><caption>Advancement</caption><tbody><tr><td style=\"text-align:center\"><p>Level</p></td><td style=\"text-align:center\"><p>Talent</p></td><td style=\"text-align:center\"><p>Level Up At...</p></td></tr><tr><td style=\"text-align:center\"><p>1</p></td><td style=\"text-align:center\"><p>+1</p></td><td style=\"text-align:center\"><p>10 XP</p></td></tr><tr><td style=\"text-align:center\"><p>2</p></td><td style=\"text-align:center\"><p>—</p></td><td style=\"text-align:center\"><p>20 XP</p></td></tr><tr><td style=\"text-align:center\"><p>3</p></td><td style=\"text-align:center\"><p>+1</p></td><td style=\"text-align:center\"><p>30 XP</p></td></tr><tr><td style=\"text-align:center\"><p>4</p></td><td style=\"text-align:center\"><p>—</p></td><td style=\"text-align:center\"><p>40 XP</p></td></tr><tr><td style=\"text-align:center\"><p>5</p></td><td style=\"text-align:center\"><p>+1</p></td><td style=\"text-align:center\"><p>50 XP</p></td></tr><tr><td style=\"text-align:center\"><p>6</p></td><td style=\"text-align:center\"><p>—</p></td><td style=\"text-align:center\"><p>60 XP</p></td></tr><tr><td style=\"text-align:center\"><p>7</p></td><td style=\"text-align:center\"><p>+1</p></td><td style=\"text-align:center\"><p>70 XP</p></td></tr><tr><td style=\"text-align:center\"><p>8</p></td><td style=\"text-align:center\"><p>—</p></td><td style=\"text-align:center\"><p>80 XP</p></td></tr><tr><td style=\"text-align:center\"><p>9</p></td><td style=\"text-align:center\"><p>+1</p></td><td style=\"text-align:center\"><p>90 XP</p></td></tr><tr><td style=\"text-align:center\"><p>10</p></td><td style=\"text-align:center\"><p>—</p></td><td style=\"text-align:center\"><p>100 XP</p></td></tr></tbody></table><h2>Talent Roll</h2><p>You gain one roll on your class's talent table when you reach the indicated levels. Duplicate talents stack unless noted.</p><h2>Increased HP</h2><p>Roll your class's hit points die and add it to your maximum HP.</p><blockquote><p><em>“Certain doom is a challenge, not a promise.\"</em></p><p><em>-Iraga, half-orc priest</em></p></blockquote>",
+		"format": 1,
+		"markdown": ""
+	},
+	"title": {
+		"level": 1,
+		"show": true
+	},
+	"type": "text",
+	"video": {
+		"controls": true,
+		"volume": 0.5
+	}
+}

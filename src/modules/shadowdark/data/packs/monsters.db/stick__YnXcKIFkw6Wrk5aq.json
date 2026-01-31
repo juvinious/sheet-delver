@@ -1,0 +1,17 @@
+{
+	"_id": "YnXcKIFkw6Wrk5aq",
+	"_key": "!actors.items!LFx9hb8JlEfGxDaI.YnXcKIFkw6Wrk5aq",
+	"effects": [
+	],
+	"folder": null,
+	"img": "icons/creatures/abilities/dragon-breath-purple.webp",
+	"name": "Stick",
+	"system": {
+		"description": "<p>[[check 15 str]] or adhere to target; auto-hit with bite. [[check 15 str]] on turn to remove.</p>",
+		"predefinedEffects": "",
+		"source": {
+			"title": ""
+		}
+	},
+	"type": "NPC Feature"
+}

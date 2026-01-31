@@ -1,0 +1,14 @@
+{
+	"_id": "ZK6ZZ5uNDrLcHmmv",
+	"_key": "!tables.results!1xuTMmp7d9BKkAgk.ZK6ZZ5uNDrLcHmmv",
+	"description": "Take",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		74,
+		74
+	],
+	"type": "text",
+	"weight": 1
+}

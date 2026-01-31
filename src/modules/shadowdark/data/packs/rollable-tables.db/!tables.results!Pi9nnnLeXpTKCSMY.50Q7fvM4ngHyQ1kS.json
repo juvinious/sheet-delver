@@ -1,0 +1,14 @@
+{
+	"_id": "50Q7fvM4ngHyQ1kS",
+	"_key": "!tables.results!Pi9nnnLeXpTKCSMY.50Q7fvM4ngHyQ1kS",
+	"description": "10 cp in a greasy pouch",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		6,
+		7
+	],
+	"type": "text",
+	"weight": 2
+}

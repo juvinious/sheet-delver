@@ -39,3 +39,15 @@ export const calculateMaxSlots = (actor: any) => {
 
     return base + bonus;
 };
+
+export const calculateCoinSlots = (coins: any) => {
+    if (!coins) return 0;
+    const total = (Number(coins.gp) || 0) + (Number(coins.sp) || 0) + (Number(coins.cp) || 0);
+    return Math.floor(total / 100);
+};
+
+export const calculateGemSlots = (gems: any[]) => {
+    if (!gems || gems.length === 0) return 0;
+    const total = gems.reduce((acc, g) => acc + (Number(g.system?.quantity) || 1), 0);
+    return Math.floor(total / 10);
+};

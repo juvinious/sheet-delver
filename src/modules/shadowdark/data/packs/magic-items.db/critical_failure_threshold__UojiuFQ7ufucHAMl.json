@@ -1,0 +1,33 @@
+{
+	"_id": "UojiuFQ7ufucHAMl",
+	"_key": "!items.effects!w3UsdCcYKnwcAgbH.UojiuFQ7ufucHAMl",
+	"changes": [
+		{
+			"key": "system.bonuses.critical.failureThreshold",
+			"mode": 5,
+			"priority": null,
+			"value": "3"
+		}
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": null,
+		"seconds": null,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/magic/life/cross-area-circle-green-white.webp",
+	"name": "Critical Failure Threshold",
+	"origin": null,
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

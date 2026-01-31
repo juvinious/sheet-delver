@@ -1,0 +1,153 @@
+{
+	"_id": "RAEbIzHkREYWKvLh",
+	"_key": "!actors!RAEbIzHkREYWKvLh",
+	"effects": [
+	],
+	"folder": null,
+	"img": "systems/shadowdark/assets/tokens/cowled_token.webp",
+	"items": [
+		"9Q0RtuGxslini2Bt",
+		"r6qkMau5LhjCN1gF"
+	],
+	"name": "Fairy",
+	"prototypeToken": {
+		"actorLink": false,
+		"alpha": 1,
+		"appendNumber": false,
+		"bar1": {
+			"attribute": null
+		},
+		"bar2": {
+			"attribute": null
+		},
+		"detectionModes": [
+		],
+		"displayBars": 0,
+		"displayName": 0,
+		"disposition": -1,
+		"flags": {
+		},
+		"height": 0.5,
+		"light": {
+			"alpha": 0.5,
+			"angle": 360,
+			"animation": {
+				"intensity": 5,
+				"reverse": false,
+				"speed": 5,
+				"type": null
+			},
+			"attenuation": 0.5,
+			"bright": 0,
+			"color": null,
+			"coloration": 1,
+			"contrast": 0,
+			"darkness": {
+				"max": 1,
+				"min": 0
+			},
+			"dim": 0,
+			"luminosity": 0.5,
+			"negative": false,
+			"priority": 0,
+			"saturation": 0,
+			"shadows": 0
+		},
+		"lockRotation": false,
+		"movementAction": null,
+		"name": "Fairy",
+		"occludable": {
+			"radius": 0
+		},
+		"prependAdjective": false,
+		"randomImg": false,
+		"ring": {
+			"colors": {
+				"background": null,
+				"ring": null
+			},
+			"effects": 1,
+			"enabled": false,
+			"subject": {
+				"scale": 1,
+				"texture": null
+			}
+		},
+		"rotation": 0,
+		"sight": {
+			"angle": 360,
+			"attenuation": 0.1,
+			"brightness": 0,
+			"color": null,
+			"contrast": 0,
+			"enabled": false,
+			"range": 100,
+			"saturation": 0,
+			"visionMode": "basic"
+		},
+		"texture": {
+			"alphaThreshold": 0.75,
+			"anchorX": 0.5,
+			"anchorY": 0.5,
+			"fit": "contain",
+			"offsetX": 0,
+			"offsetY": 0,
+			"rotation": 0,
+			"scaleX": 1,
+			"scaleY": 1,
+			"src": "systems/shadowdark/assets/tokens/cowled_token.webp",
+			"tint": "#ffffff"
+		},
+		"turnMarker": {
+			"animation": null,
+			"disposition": false,
+			"mode": 1,
+			"src": null
+		},
+		"width": 0.5
+	},
+	"system": {
+		"abilities": {
+			"cha": {
+				"mod": 1
+			},
+			"con": {
+				"mod": 0
+			},
+			"dex": {
+				"mod": 3
+			},
+			"int": {
+				"mod": 1
+			},
+			"str": {
+				"mod": -2
+			},
+			"wis": {
+				"mod": 0
+			}
+		},
+		"alignment": "neutral",
+		"attributes": {
+			"ac": {
+				"value": 13
+			},
+			"hp": {
+				"hd": 0,
+				"max": 4,
+				"value": 4
+			}
+		},
+		"darkAdapted": true,
+		"level": {
+			"value": 1
+		},
+		"move": "near",
+		"moveNote": "fly",
+		"notes": "\n\t<p><i> Miniature fey folk with fluttering moth or butterfly wings. </i></p>\n\t\n\t<p><strong>AC</strong> 13, <strong>HP</strong> 4, <strong>ATK</strong> 1 needle +3 (1 + poison), <strong>MV</strong> near (fly), <strong>S</strong> -2, <strong>D</strong> +3, <strong>C</strong> +0, <strong>I</strong> +1, <strong>W</strong> +0, <strong>Ch</strong> +1, <strong>AL</strong> N, <strong>LV</strong> 1</p>\n\t<p><strong> Poison</strong>. [[check 12 con]] or fall into deep sleep for 1d4 hours.</p>",
+		"spellcastingAbility": "",
+		"spellcastingAttackNum": 0,
+		"spellcastingBonus": 0
+	},
+	"type": "NPC"
+}

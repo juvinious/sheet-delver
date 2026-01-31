@@ -1,0 +1,25 @@
+{
+	"_id": "uqlaZb9K0rv2nI0Y",
+	"_key": "!journal.pages!I5d5ltGw4F3g15uG.uqlaZb9K0rv2nI0Y",
+	"category": null,
+	"image": {
+	},
+	"name": "Languages",
+	"src": null,
+	"system": {
+	},
+	"text": {
+		"content": "<table style=\"width:100%\"><caption>Common Languages</caption><tbody><tr><td><p>Language</p></td><td><p>Who Speaks It</p></td></tr><tr><td><p>Common</p></td><td><p>Most humanoids</p></td></tr><tr><td><p>Dwarvish</p></td><td><p>Dwarves</p></td></tr><tr><td><p>Elvish</p></td><td><p>Elves</p></td></tr><tr><td><p>Giant</p></td><td><p>Giants, ogres, trolls</p></td></tr><tr><td><p>Goblin</p></td><td><p>Bugbears, goblins, hobgoblins</p></td></tr><tr><td><p>Merran</p></td><td><p>Merfolk, sahuagin, sirens</p></td></tr><tr><td><p>Orcish</p></td><td><p>Orcs</p></td></tr><tr><td><p>Reptilian</p></td><td><p>Lizardfolk, viperians</p></td></tr><tr><td><p>Sylvan</p></td><td><p>Centaurs, dryads, faeries</p></td></tr><tr><td><p>Thanian</p></td><td><p>Minotaurs, beastmen, manticores</p></td></tr></tbody></table><table style=\"width:100%\"><caption>Rare Languages</caption><tbody><tr><td><p>Language</p></td><td><p>Who Speaks It</p></td></tr><tr><td><p>Celestial</p></td><td><p>Angels</p></td></tr><tr><td><p>Diabolic</p></td><td><p>Demons, devils</p></td></tr><tr><td><p>Draconic</p></td><td><p>Dragons</p></td></tr><tr><td><p>Primordial</p></td><td><p>Elder things, elementals</p></td></tr></tbody></table><blockquote><p><em>“Language is the key to the most important doors.\"</em></p><p><em>-Creeg, human wizard</em></p></blockquote>",
+		"format": 1,
+		"markdown": ""
+	},
+	"title": {
+		"level": 1,
+		"show": true
+	},
+	"type": "text",
+	"video": {
+		"controls": true,
+		"volume": 0.5
+	}
+}

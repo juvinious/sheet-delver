@@ -1,0 +1,27 @@
+{
+	"_id": "xJe5blefAwRNfYJk",
+	"_key": "!items.effects!qNd9stCSD6ZJyoOj.xJe5blefAwRNfYJk",
+	"changes": [
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": 1,
+		"seconds": null,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/skills/wounds/bone-broken-knee-beam.webp",
+	"name": "Fragile",
+	"origin": "Item.aAdqy5QwVJrT8JWE",
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

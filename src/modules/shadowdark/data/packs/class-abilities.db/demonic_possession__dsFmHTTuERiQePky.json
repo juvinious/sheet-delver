@@ -1,0 +1,27 @@
+{
+	"_id": "dsFmHTTuERiQePky",
+	"_key": "!items!dsFmHTTuERiQePky",
+	"effects": [
+	],
+	"folder": "JecnLEQ8FwHnDCny",
+	"img": "icons/magic/unholy/silhouette-evil-horned-giant.webp",
+	"name": "Demonic Possession",
+	"system": {
+		"ability": "",
+		"dc": 10,
+		"description": "<p>3/day, gain a +1 bonus to your damage rolls that lasts 3 rounds.</p><p>In addition, add half your level to the damage bonus (round down).</p>",
+		"group": "Knight of St. Ydris",
+		"limitedUses": true,
+		"loseOnFailure": false,
+		"lost": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "cursed-scroll-1"
+		},
+		"uses": {
+			"available": 3,
+			"max": 3
+		}
+	},
+	"type": "Class Ability"
+}

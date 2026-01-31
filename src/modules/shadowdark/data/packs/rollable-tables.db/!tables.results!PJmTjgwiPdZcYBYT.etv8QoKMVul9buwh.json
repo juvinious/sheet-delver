@@ -1,0 +1,14 @@
+{
+	"_id": "etv8QoKMVul9buwh",
+	"_key": "!tables.results!PJmTjgwiPdZcYBYT.etv8QoKMVul9buwh",
+	"description": "Two @UUID[Compendium.shadowdark.monsters.0JAEN5FsKjaXXZaA]{Darkmantles} circle each other in a duel of intimidation",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		88,
+		89
+	],
+	"type": "text",
+	"weight": 2
+}

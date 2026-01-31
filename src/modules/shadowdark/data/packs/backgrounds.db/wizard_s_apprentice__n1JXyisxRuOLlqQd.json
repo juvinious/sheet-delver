@@ -1,0 +1,16 @@
+{
+	"_id": "n1JXyisxRuOLlqQd",
+	"_key": "!items!n1JXyisxRuOLlqQd",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Wizard's Apprentice",
+	"system": {
+		"description": "<p>You have a knack and eye for magic</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

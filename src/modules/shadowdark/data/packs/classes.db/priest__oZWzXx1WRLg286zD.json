@@ -1,0 +1,184 @@
+{
+	"_id": "oZWzXx1WRLg286zD",
+	"_key": "!items!oZWzXx1WRLg286zD",
+	"effects": [
+	],
+	"folder": null,
+	"img": "icons/sundries/documents/document-sealed-brown-red.webp",
+	"name": "Priest",
+	"system": {
+		"alignment": "",
+		"allArmor": true,
+		"allMeleeWeapons": false,
+		"allRangedWeapons": false,
+		"allWeapons": false,
+		"armor": [
+		],
+		"classAbilities": [
+		],
+		"classAbilityChoiceCount": 0,
+		"classAbilityChoices": [
+		],
+		"classTalentTable": "Compendium.shadowdark.rollable-tables.RollTable.CtkKBhsOpV1v5YjX",
+		"description": "<p>Crusading templars, prophetic shamans, or mad-eyed zealots who wield the power of their gods to cleanse the unholy.</p>",
+		"hitPoints": "d6",
+		"language": {
+			"select": null
+		},
+		"languages": {
+			"common": 0,
+			"fixed": [
+			],
+			"rare": 0,
+			"select": 1,
+			"selectOptions": [
+				"Compendium.shadowdark.languages.Item.b5yBrLaRIl7ZEWKu",
+				"Compendium.shadowdark.languages.Item.EP8NdjL8B5xXK7u9",
+				"Compendium.shadowdark.languages.Item.ufwua5RXnJXlA0St"
+			]
+		},
+		"patron": {
+			"required": false,
+			"startingBoons": 0
+		},
+		"predefinedEffects": "",
+		"source": {
+			"title": "core-rules"
+		},
+		"spellcasting": {
+			"ability": "wis",
+			"baseDifficulty": 10,
+			"class": "",
+			"spellsknown": {
+				"1": {
+					"1": 2,
+					"2": null,
+					"3": null,
+					"4": null,
+					"5": null
+				},
+				"10": {
+					"1": 3,
+					"2": 3,
+					"3": 3,
+					"4": 2,
+					"5": 2
+				},
+				"2": {
+					"1": 3,
+					"2": null,
+					"3": null,
+					"4": null,
+					"5": null
+				},
+				"3": {
+					"1": 3,
+					"2": 1,
+					"3": null,
+					"4": null,
+					"5": null
+				},
+				"4": {
+					"1": 3,
+					"2": 2,
+					"3": null,
+					"4": null,
+					"5": null
+				},
+				"5": {
+					"1": 3,
+					"2": 2,
+					"3": 1,
+					"4": null,
+					"5": null
+				},
+				"6": {
+					"1": 3,
+					"2": 2,
+					"3": 2,
+					"4": null,
+					"5": null
+				},
+				"7": {
+					"1": 3,
+					"2": 3,
+					"3": 2,
+					"4": 1,
+					"5": null
+				},
+				"8": {
+					"1": 3,
+					"2": 3,
+					"3": 2,
+					"4": 2,
+					"5": null
+				},
+				"9": {
+					"1": 3,
+					"2": 3,
+					"3": 2,
+					"4": 2,
+					"5": 1
+				}
+			}
+		},
+		"startingSpells": [
+			"Compendium.shadowdark.spells.Item.mByUvcHIVEPWscfH"
+		],
+		"talentChoiceCount": 0,
+		"talentChoices": [
+		],
+		"talents": [
+			"Compendium.shadowdark.talents.Item.EYRxfb5BUEzH1w3b",
+			"Compendium.shadowdark.talents.Item.LfHTnYW8I65x8Y31",
+			"Compendium.shadowdark.talents.Item.QxhyKNW4aDQqolMi"
+		],
+		"titles": [
+			{
+				"chaotic": "Initiate",
+				"from": 1,
+				"lawful": "Acolyte",
+				"neutral": "Seeker",
+				"to": 2
+			},
+			{
+				"chaotic": "Zealot",
+				"from": 3,
+				"lawful": "Crusader",
+				"neutral": "Invoker",
+				"to": 4
+			},
+			{
+				"chaotic": "Cultist",
+				"from": 5,
+				"lawful": "Templar",
+				"neutral": "Haruspex",
+				"to": 6
+			},
+			{
+				"chaotic": "Scourge",
+				"from": 7,
+				"lawful": "Champion",
+				"neutral": "Mystic",
+				"to": 8
+			},
+			{
+				"chaotic": "Chaos Knight",
+				"from": 9,
+				"lawful": "Paladin",
+				"neutral": "Oracle",
+				"to": 10
+			}
+		],
+		"weapons": [
+			"Compendium.shadowdark.gear.Item.9eTpsuEuzL3Vaxge",
+			"Compendium.shadowdark.gear.Item.C3mc5OlKPSJNMrng",
+			"Compendium.shadowdark.gear.Item.eeVEJexfirwWzOVu",
+			"Compendium.shadowdark.gear.Item.jGZyVuFJnW7QcBFX",
+			"Compendium.shadowdark.gear.Item.JM2XN855QYNhgtre",
+			"Compendium.shadowdark.gear.Item.z98LNu4yOIe1B1eg",
+			"Compendium.shadowdark.gear.Item.ZPUhNMmwXXrtbCXi"
+		]
+	},
+	"type": "Class"
+}

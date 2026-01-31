@@ -1,0 +1,14 @@
+{
+	"_id": "baTv7i1BheHEUvaT",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.baTv7i1BheHEUvaT",
+	"description": "Crime",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		36,
+		36
+	],
+	"type": "text",
+	"weight": 1
+}

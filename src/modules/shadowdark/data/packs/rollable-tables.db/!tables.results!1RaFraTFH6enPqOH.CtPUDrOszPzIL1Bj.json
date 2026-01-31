@@ -1,0 +1,14 @@
+{
+	"_id": "CtPUDrOszPzIL1Bj",
+	"_key": "!tables.results!1RaFraTFH6enPqOH.CtPUDrOszPzIL1Bj",
+	"description": "of the Lightning",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		62,
+		63
+	],
+	"type": "text",
+	"weight": 2
+}

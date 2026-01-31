@@ -1,0 +1,14 @@
+{
+	"_id": "nx5GiVHmncM0KGfJ",
+	"_key": "!tables.results!MlSMyJcXaJWuZ56O.nx5GiVHmncM0KGfJ",
+	"description": "Goblin spelunkers found an underground cathedral",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		64,
+		65
+	],
+	"type": "text",
+	"weight": 2
+}

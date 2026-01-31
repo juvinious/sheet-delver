@@ -1,0 +1,14 @@
+{
+	"_id": "uwZVCntIUK7gftJt",
+	"_key": "!tables.results!AsJlWy1q0mmq5caV.uwZVCntIUK7gftJt",
+	"description": "A mound in the earth quickly burrows toward you",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		26,
+		27
+	],
+	"type": "text",
+	"weight": 2
+}

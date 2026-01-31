@@ -1,0 +1,27 @@
+{
+	"_id": "EhaA5tBROfrws1Kx",
+	"_key": "!items!EhaA5tBROfrws1Kx",
+	"effects": [
+	],
+	"folder": "Agdcg0ystOpP8kcL",
+	"img": "icons/consumables/potions/potion-flask-corled-pink-red.webp",
+	"name": "Stimulant",
+	"system": {
+		"ability": "int",
+		"dc": 12,
+		"description": "<p>@UUID[Compendium.shadowdark.gear.Item.dBQr9YPyhvwyPm0g]{Stimulant} You can't be surprised for 10 rounds</p>",
+		"group": "Herbalism",
+		"limitedUses": false,
+		"loseOnFailure": true,
+		"lost": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "bard-and-ranger"
+		},
+		"uses": {
+			"available": 0,
+			"max": 0
+		}
+	},
+	"type": "Class Ability"
+}

@@ -4,25 +4,31 @@ export type NotificationType = 'info' | 'success' | 'error';
 
 export interface Notification {
     id: number;
-    message: string;
+    content: string;
     type: NotificationType;
+    html?: boolean;
 }
 
-export const useNotifications = () => {
+interface NotificationOptions {
+    html?: boolean;
+    duration?: number;
+}
+
+export const useNotifications = (defaultDuration = 5000) => {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const notificationIdRef = useRef(0);
 
-    const addNotification = useCallback((message: string, type: NotificationType = 'info') => {
+    const addNotification = useCallback((content: string, type: NotificationType = 'info', options?: NotificationOptions) => {
         const id = ++notificationIdRef.current;
-        setNotifications(prev => [...prev, { id, message, type }]);
+        const duration = options?.duration || defaultDuration;
+
+        setNotifications(prev => [...prev, { id, content, type, html: options?.html }]);
 
         // Auto-dismiss
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
-        }, 5000); // 5 seconds default, or match the user's 20s preference? 
-        // User requested 20s in the other file, but 5s is standard for toast. 
-        // I'll stick to 5s for login errors, maybe 10s for errors.
-    }, []);
+        }, duration);
+    }, [defaultDuration]);
 
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
@@ -38,8 +44,8 @@ export const NotificationContainer = ({ notifications, removeNotification }: { n
                 <div
                     key={n.id}
                     className={`relative p-4 rounded-lg shadow-2xl border-l-4 transform transition-all animate-in slide-in-from-right fade-in duration-300 pointer-events-auto ${n.type === 'success' ? 'bg-slate-800 border-green-500 text-green-100' :
-                            n.type === 'error' ? 'bg-slate-800 border-red-500 text-red-100' :
-                                'bg-slate-800 border-blue-500 text-blue-100'
+                        n.type === 'error' ? 'bg-slate-800 border-red-500 text-red-100' :
+                            'bg-slate-800 border-blue-500 text-blue-100'
                         }`}
                 >
                     <button
@@ -51,7 +57,15 @@ export const NotificationContainer = ({ notifications, removeNotification }: { n
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
-                    <p className="font-medium text-sm pr-6 break-words">{n.message}</p>
+                    <div
+                        className="text-sm pr-6 break-words [&_img]:max-h-16 [&_img]:w-auto [&_img]:object-contain [&_img]:rounded [&_img]:inline-block [&_img]:mr-2 [&_img]:align-middle [&_header]:font-bold [&_header]:mb-1 [&_header]:border-b [&_header]:border-white/20 [&_h3]:inline [&_h3]:m-0 [&_p]:m-0"
+                    >
+                        {n.html ? (
+                            <div dangerouslySetInnerHTML={{ __html: n.content }} />
+                        ) : (
+                            <p className="font-medium">{n.content}</p>
+                        )}
+                    </div>
                 </div>
             ))}
         </div>

@@ -1,0 +1,14 @@
+{
+	"_id": "1Iy9MShFF65nrzFe",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.1Iy9MShFF65nrzFe",
+	"description": "Path",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		81,
+		81
+	],
+	"type": "text",
+	"weight": 1
+}

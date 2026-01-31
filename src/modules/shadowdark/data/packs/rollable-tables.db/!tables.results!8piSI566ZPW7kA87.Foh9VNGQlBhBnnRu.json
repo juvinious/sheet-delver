@@ -1,0 +1,14 @@
+{
+	"_id": "Foh9VNGQlBhBnnRu",
+	"_key": "!tables.results!8piSI566ZPW7kA87.Foh9VNGQlBhBnnRu",
+	"description": "The Astral",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		6,
+		6
+	],
+	"type": "text",
+	"weight": 1
+}

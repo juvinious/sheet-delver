@@ -1,0 +1,14 @@
+{
+	"_id": "cWGLpSj1FBRvwT4j",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.cWGLpSj1FBRvwT4j",
+	"description": "Chaos",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		44,
+		44
+	],
+	"type": "text",
+	"weight": 1
+}

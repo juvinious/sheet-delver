@@ -24,7 +24,7 @@ export default function PlayerList() {
             if (data.users) {
                 setUsers(data.users);
             }
-        } catch (e) {
+        } catch {
             // Silent error
         }
     };
@@ -56,7 +56,7 @@ export default function PlayerList() {
     const activeCount = users.filter(u => u.active).length;
 
     return (
-        <div ref={containerRef} className="fixed bottom-6 left-6 z-50 flex flex-col items-start gap-4">
+        <div ref={containerRef} className="fixed bottom-6 left-6 z-[110] flex flex-col items-start gap-4">
 
             {/* List Popup */}
             <div className={`
@@ -90,6 +90,21 @@ export default function PlayerList() {
                         </li>
                     ))}
                 </ul>
+                <div className="p-2 border-t border-white/5 mt-1">
+                    <button
+                        onClick={async () => {
+                            try {
+                                await fetch('/api/session/logout', { method: 'POST' });
+                                window.location.reload();
+                            } catch (e) {
+                                console.error(e);
+                            }
+                        }}
+                        className="w-full text-xs bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 rounded py-1.5 transition-colors font-bold uppercase tracking-wider"
+                    >
+                        Logout
+                    </button>
+                </div>
             </div>
 
             {/* Toggle Button */}
@@ -98,17 +113,23 @@ export default function PlayerList() {
                 className={`
                     h-12 w-12 rounded-full shadow-lg flex items-center justify-center border border-white/10
                     transition-all duration-300 hover:scale-110 active:scale-95 group
-                    ${isOpen ? 'bg-neutral-800 text-white' : 'bg-neutral-900 text-neutral-400 hover:text-white hover:bg-neutral-800'}
+                    ${isOpen ? 'bg-neutral-800 text-white rotate-90' : 'bg-neutral-900 text-neutral-400 hover:text-white hover:bg-neutral-800'}
                 `}
                 title="Toggle Player List"
             >
-                <div className="relative">
-                    <Users className="w-5 h-5" />
-                    {/* Active Count Badge */}
-                    <span className="absolute -top-2 -right-2 bg-green-600 text-white text-[9px] font-bold h-4 w-4 flex items-center justify-center rounded-full ring-2 ring-black">
-                        {activeCount}
-                    </span>
-                </div>
+                {isOpen ? (
+                    <div className="-rotate-90"> {/* Counter rotate if needed, but rotate-90 usually spins the X nicely. The chat button uses svg path X. */}
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </div>
+                ) : (
+                    <div className="relative">
+                        <Users className="w-5 h-5" />
+                        {/* Active Count Badge */}
+                        <span className="absolute -top-2 -right-2 bg-green-600 text-white text-[9px] font-bold h-4 w-4 flex items-center justify-center rounded-full ring-2 ring-black">
+                            {activeCount}
+                        </span>
+                    </div>
+                )}
             </button>
         </div>
     );

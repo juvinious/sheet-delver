@@ -1,0 +1,14 @@
+{
+	"_id": "4yvnWJ3tbmZXpEpo",
+	"_key": "!tables.results!5NMEXYjDS4C8Tm3n.4yvnWJ3tbmZXpEpo",
+	"description": "Opening a door",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		3,
+		3
+	],
+	"type": "text",
+	"weight": 1
+}

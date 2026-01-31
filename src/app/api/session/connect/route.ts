@@ -3,6 +3,7 @@ import { FoundryClient } from '@/lib/foundry/client';
 import { getClient, setClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 import { logger } from '@/lib/logger';
+import { getConfig } from '@/modules/core/registry';
 
 export async function GET() {
     const config = await loadConfig();
@@ -18,12 +19,16 @@ export async function GET() {
     if (existingClient && existingClient.isConnected) {
         try {
 
-            const system = await existingClient.getSystem().catch(() => null);
+
+            const system: any = await existingClient.getSystem().catch(() => null);
+            if (system && system.id) {
+                system.config = getConfig(system.id);
+            }
             // If setup, don't bother with users
             const users = (system?.id === 'setup') ? [] : await existingClient.getUsers();
 
             return NextResponse.json({ connected: true, users, system, url: existingClient.url, appVersion });
-        } catch (e) {
+        } catch {
             await logger.warn('Existing connection check failed, trying to reconnect...');
         }
     }
@@ -47,7 +52,10 @@ export async function GET() {
             // Auto-Login Removed via User Request
             // if (config.debug.foundryUser && config.debug.foundryUser.name) { ... }
 
-            const system = await client.getSystem().catch(() => null);
+            const system: any = await client.getSystem().catch(() => null);
+            if (system && system.id) {
+                system.config = getConfig(system.id);
+            }
             const users = (system?.id === 'setup') ? [] : await client.getUsers();
 
             return NextResponse.json({ connected: true, users, system, url: url, appVersion });
@@ -79,7 +87,10 @@ export async function POST(request: Request) {
         }
 
         const users = await client.getUsers();
-        const system = await client.getSystem().catch(() => null);
+        const system: any = await client.getSystem().catch(() => null);
+        if (system && system.id) {
+            system.config = getConfig(system.id);
+        }
 
         const config = await loadConfig();
         const appVersion = config?.app.version || '0.0.0';

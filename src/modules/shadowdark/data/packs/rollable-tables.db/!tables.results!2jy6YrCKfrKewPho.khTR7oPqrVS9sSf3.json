@@ -1,0 +1,14 @@
+{
+	"_id": "khTR7oPqrVS9sSf3",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.khTR7oPqrVS9sSf3",
+	"description": "Fortress",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		12,
+		13
+	],
+	"type": "text",
+	"weight": 2
+}

@@ -1,0 +1,153 @@
+{
+	"_id": "K9M3BA8PlvYWFADe",
+	"_key": "!actors!K9M3BA8PlvYWFADe",
+	"effects": [
+	],
+	"folder": null,
+	"img": "systems/shadowdark/assets/tokens/cowled_token.webp",
+	"items": [
+		"0sulpsldvpJkHCcx",
+		"KxfcNf9Cicd0zvHs"
+	],
+	"name": "Wasp, Giant",
+	"prototypeToken": {
+		"actorLink": false,
+		"alpha": 1,
+		"appendNumber": false,
+		"bar1": {
+			"attribute": null
+		},
+		"bar2": {
+			"attribute": null
+		},
+		"detectionModes": [
+		],
+		"displayBars": 0,
+		"displayName": 0,
+		"disposition": -1,
+		"flags": {
+		},
+		"height": 1,
+		"light": {
+			"alpha": 0.5,
+			"angle": 360,
+			"animation": {
+				"intensity": 5,
+				"reverse": false,
+				"speed": 5,
+				"type": null
+			},
+			"attenuation": 0.5,
+			"bright": 0,
+			"color": null,
+			"coloration": 1,
+			"contrast": 0,
+			"darkness": {
+				"max": 1,
+				"min": 0
+			},
+			"dim": 0,
+			"luminosity": 0.5,
+			"negative": false,
+			"priority": 0,
+			"saturation": 0,
+			"shadows": 0
+		},
+		"lockRotation": false,
+		"movementAction": null,
+		"name": "Giant Wasp",
+		"occludable": {
+			"radius": 0
+		},
+		"prependAdjective": false,
+		"randomImg": false,
+		"ring": {
+			"colors": {
+				"background": null,
+				"ring": null
+			},
+			"effects": 1,
+			"enabled": false,
+			"subject": {
+				"scale": 1,
+				"texture": null
+			}
+		},
+		"rotation": 0,
+		"sight": {
+			"angle": 360,
+			"attenuation": 0.1,
+			"brightness": 0,
+			"color": null,
+			"contrast": 0,
+			"enabled": false,
+			"range": 100,
+			"saturation": 0,
+			"visionMode": "basic"
+		},
+		"texture": {
+			"alphaThreshold": 0.75,
+			"anchorX": 0.5,
+			"anchorY": 0.5,
+			"fit": "contain",
+			"offsetX": 0,
+			"offsetY": 0,
+			"rotation": 0,
+			"scaleX": 1,
+			"scaleY": 1,
+			"src": "systems/shadowdark/assets/tokens/cowled_token.webp",
+			"tint": "#ffffff"
+		},
+		"turnMarker": {
+			"animation": null,
+			"disposition": false,
+			"mode": 1,
+			"src": null
+		},
+		"width": 1
+	},
+	"system": {
+		"abilities": {
+			"cha": {
+				"mod": -3
+			},
+			"con": {
+				"mod": 0
+			},
+			"dex": {
+				"mod": 3
+			},
+			"int": {
+				"mod": -3
+			},
+			"str": {
+				"mod": 1
+			},
+			"wis": {
+				"mod": 0
+			}
+		},
+		"alignment": "neutral",
+		"attributes": {
+			"ac": {
+				"value": 13
+			},
+			"hp": {
+				"hd": 0,
+				"max": 9,
+				"value": 9
+			}
+		},
+		"darkAdapted": true,
+		"level": {
+			"value": 2
+		},
+		"move": "near",
+		"moveNote": "fly",
+		"notes": "\n\t<p><i> Man-sized wasps with glossy, yellow-striped abdomens. </i></p>\n\t\n\t<p><strong>AC</strong> 13, <strong>HP</strong> 9, <strong>ATK</strong> 1 sting +3 (1d6 + venom), <strong>MV</strong> near (fly), <strong>S</strong> +1, <strong>D</strong> +3, <strong>C</strong> +0, <strong>I</strong> -3, <strong>W</strong> +0, <strong>Ch</strong> -3, <strong>AL</strong> N, <strong>LV</strong> 2</p>\n\t<p><strong> Venom</strong>. [[check 9 con]] or go to 0 HP.</p>",
+		"spellcastingAbility": "",
+		"spellcastingAttackNum": 0,
+		"spellcastingBonus": 0
+	},
+	"type": "NPC"
+}

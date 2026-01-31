@@ -1,10 +1,15 @@
 'use client';
 
-import { useState, useEffect, use, useRef } from 'react';
+import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import SheetRouter from '@/components/SheetRouter';
 import GlobalChat from '@/components/GlobalChat';
 import PlayerList from '@/components/PlayerList';
+import { processHtmlContent } from '@/modules/core/utils';
+import { getMatchingAdapter } from '@/modules/core/registry';
+import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
+import LoadingModal from '@/components/LoadingModal';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -12,71 +17,66 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [actor, setActor] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const currentUserRef = useRef<string | null>(null);
+    const foundryUrlRef = useRef<string | undefined>(undefined);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-    useEffect(() => {
-        if (!id) return;
+    // Chat State
+    const [messages, setMessages] = useState<any[]>([]);
 
-        // Initial fetch
-        fetchActor(id);
+    // Notifications
+    const { notifications, addNotification: addToast, removeNotification } = useNotifications(20000);
 
-        // Poll for updates
-        const interval = setInterval(() => {
-            fetchActor(id, true); // Pass true to silent loading
-        }, 5000);
+    const addNotification = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
+        // Ensure images in the toast are absolute URLs
+        const content = processHtmlContent(message, foundryUrlRef.current);
+        addToast(content, type, { html: true });
+    }, [addToast]);
 
-        return () => clearInterval(interval);
-    }, [id]);
-
-    const fetchActor = async (id: string, silent = false) => {
+    const fetchActor = useCallback(async (id: string, silent = false) => {
         if (!silent) setLoading(true);
         try {
             const res = await fetch(`/api/actors/${id}`);
+
+            // Handle Disconnected State (503)
+            if (res.status === 503) {
+                router.push('/');
+                return;
+            }
+
+            // Handle Not Found (404) - Deleted
+            if (res.status === 404) {
+                setShowDeleteModal(true);
+                return;
+            }
+
             const data = await res.json();
-            // API now returns the actor object directly (mixed with debug info)
             if (data && !data.error) {
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
-
-                if (data.currentUser) currentUserRef.current = data.currentUser;
+                if (data.foundryUrl) foundryUrlRef.current = data.foundryUrl;
             } else {
-                if (!silent) {
-                    // Redirect instead of alert
-                    router.push('/');
-                }
+                if (!silent) setShowDeleteModal(true);
+                else setShowDeleteModal(true);
             }
         } catch (e) {
             console.error(e);
-            if (!silent) router.push('/');
+            if (!silent) setShowDeleteModal(true);
         } finally {
             if (!silent) setLoading(false);
         }
-    };
-
-    // ... (keep state definitions)
-    const [messages, setMessages] = useState<any[]>([]);
-    const [notifications, setNotifications] = useState<{ id: number, message: string, type: 'info' | 'success' | 'error' }[]>([]);
+    }, [router]);
 
     // Lifted state for Universal Roller
     const [isDiceTrayOpen, setDiceTrayOpen] = useState(false);
     const toggleDiceTray = () => setDiceTrayOpen(prev => !prev);
 
-    const notificationIdRef = useRef(0);
 
-    const addNotification = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
-        const id = ++notificationIdRef.current;
-        setNotifications(prev => [...prev, { id, message, type }]);
-        setTimeout(() => {
-            setNotifications(prev => prev.filter(n => n.id !== id));
-        }, 20000); // 20 seconds as requested
-    };
 
-    const removeNotification = (id: number) => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-    };
+
 
     const lastSeenTimestamp = useRef<number>(0);
 
-    const fetchChat = async () => {
+    const fetchChat = useCallback(async () => {
         try {
             const res = await fetch('/api/chat');
             const data = await res.json();
@@ -110,14 +110,28 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         } catch (e) {
             console.error(e);
         }
-    };
+    }, [addNotification]);
 
     useEffect(() => {
         // Poll for chat
         const interval = setInterval(fetchChat, 3000);
         fetchChat();
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchChat]);
+
+    useEffect(() => {
+        if (!id) return;
+
+        // Initial fetch
+        fetchActor(id);
+
+        // Poll for updates
+        const interval = setInterval(() => {
+            fetchActor(id, true); // Pass true to silent loading
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [id, fetchActor]);
 
     const handleChatSend = async (message: string) => {
         try {
@@ -150,7 +164,13 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             });
             const data = await res.json();
             if (data.success) {
-                addNotification(`Rolled ${data.label}: ${data.result.total}`, 'success');
+                if (data.html) {
+                    addNotification(data.html, 'success');
+                } else if (data.result?.total !== undefined) {
+                    addNotification(`Rolled ${data.label || 'Result'}: ${data.result.total}`, 'success');
+                } else {
+                    addNotification(`${data.label || 'Item'} used`, 'success');
+                }
                 fetchChat(); // Update chat immediately
             } else {
                 addNotification('Roll failed: ' + data.error, 'error');
@@ -167,10 +187,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         const optimisticActor = JSON.parse(JSON.stringify(actor));
 
         // Mapping for known mismatches between Foundry Path and Local Normalized Data
-        let targetPath = path;
-        // Shadowdark Adapter: 'system.attributes.hp.value' -> 'hp.value'
-        if (path === 'system.attributes.hp.value') targetPath = 'hp.value';
-        if (path === 'system.luck.available') targetPath = 'luck.available';
+        const targetPath = path;
         // Add other mappings if needed, or implement a smarter adapter-aware updater.
 
         // Safety: Check if we can traverse.
@@ -240,6 +257,55 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
     };
 
+    const handleCreateItem = async (itemData: any) => {
+        if (!actor) return;
+        try {
+            const res = await fetch(`/api/actors/${actor.id}/items`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification(`Created ${itemData.name}`, 'success');
+            } else {
+                addNotification('Failed to create item: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
+    const handleUpdateItem = async (itemData: any, deletedEffectIds: string[] = []) => {
+        if (!actor) return;
+        try {
+            // 1. Handle Deleted Effects first (if any)
+            if (deletedEffectIds && deletedEffectIds.length > 0) {
+                await Promise.all(deletedEffectIds.map(effId =>
+                    fetch(`/api/actors/${actor.id}/effects?effectId=${effId}`, { method: 'DELETE' })
+                ));
+            }
+
+            // 2. Update Item
+            const res = await fetch(`/api/actors/${actor.id}/items`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(itemData)
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification(`Updated ${itemData.name}`, 'success');
+            } else {
+                addNotification('Failed to update item: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
     const handleDeleteEffect = async (effectId: string) => {
         if (!actor) return;
         // Confirmation is handled by UI component now
@@ -283,34 +349,21 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
     };
 
-    const handleCreatePredefinedEffect = async (effectKey: string) => {
-        if (!actor) return;
-        try {
-            const res = await fetch(`/api/actors/${actor.id}/predefined-effects`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ effectKey })
-            });
-            const data = await res.json();
-            if (data.success) {
-                // Refresh actor data to show new effect
-                fetchActor(actor.id, true);
-                addNotification('Effect Added', 'success');
-            } else {
-                addNotification('Failed to add effect: ' + data.error, 'error');
-            }
-        } catch (e: any) {
-            addNotification('Error: ' + e.message, 'error');
-        }
-    };
+
 
     // ... (Keep existing loading/error checks)
-    if (loading) return <div className="p-8 text-neutral-400">Loading...</div>;
-    // If not loading and no actor, we are likely redirecting, so render specific fallback or null
-    if (!actor) return null;
+    // ... (Keep existing loading/error checks)
 
-    // Detect system (fallback to shadowdark for now if unknown/missing)
-    // The actor object from API might need to contain system info.
+    // ...
+
+    if (loading) {
+        return <LoadingModal message="Loading Codex..." />;
+    }
+    // If not loading and no actor, we are likely redirecting, so render specific fallback or null
+    // If not loading and no actor, check if we need to show the delete modal
+    if (!actor && !showDeleteModal) return null;
+
+
 
     return (
         <main className="min-h-screen font-sans selection:bg-amber-900 pb-20">
@@ -330,59 +383,63 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             </nav>
 
             {/* Main Content */}
-            <div className="w-full max-w-5xl mx-auto p-4 pt-20">
-                <SheetRouter
-                    systemId={actor.systemId || 'generic'}
-                    actor={actor}
-                    foundryUrl={actor?.foundryUrl}
-                    isOwner={actor?.isOwner ?? true}
-                    onRoll={handleRoll}
-                    onUpdate={handleUpdate}
-                    onToggleEffect={handleToggleEffect}
-                    onDeleteEffect={handleDeleteEffect}
-                    onDeleteItem={handleDeleteItem}
-                    onCreatePredefinedEffect={handleCreatePredefinedEffect}
-                    onToggleDiceTray={toggleDiceTray}
-                />
-            </div>
+            {actor && (
+                <>
+                    <div className="w-full max-w-5xl mx-auto p-4 pt-20">
+                        <SheetRouter
+                            systemId={actor.systemId || 'generic'}
+                            actor={actor}
+                            foundryUrl={actor?.foundryUrl}
+                            isOwner={actor?.isOwner ?? true}
+                            onRoll={handleRoll}
+                            onUpdate={handleUpdate}
+                            onToggleEffect={handleToggleEffect}
+                            onDeleteEffect={handleDeleteEffect}
+                            onDeleteItem={handleDeleteItem}
+                            onCreateItem={handleCreateItem}
+                            onUpdateItem={handleUpdateItem}
+                            onToggleDiceTray={toggleDiceTray}
+                            isDiceTrayOpen={isDiceTrayOpen}
+                        />
+                    </div>
 
-            {/* Global Chat Overlay */}
-            <GlobalChat
-                messages={messages}
-                onSend={handleChatSend}
-                onRoll={handleRoll}
-                foundryUrl={actor?.foundryUrl}
-                variant={actor.systemId === 'shadowdark' ? 'shadowdark' : 'default'}
-                isDiceTrayOpen={isDiceTrayOpen}
-                onToggleDiceTray={toggleDiceTray}
-            />
+                    {/* Global Chat Overlay */}
+                    <GlobalChat
+                        messages={messages}
+                        onSend={handleChatSend}
+                        onRoll={handleRoll}
+                        foundryUrl={actor?.foundryUrl}
+                        adapter={getMatchingAdapter(actor)}
+                        isDiceTrayOpen={isDiceTrayOpen}
+                        onToggleDiceTray={toggleDiceTray}
+                    />
 
-            {/* Player List */}
-            <PlayerList />
+                    {/* Player List */}
+                    <PlayerList />
+                </>
+            )}
 
             {/* Notifications Container */}
-            <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
-                {notifications.map(n => (
-                    <div
-                        key={n.id}
-                        className={`relative p-4 rounded-lg shadow-2xl border-l-4 transform transition-all animate-in slide-in-from-right fade-in duration-300 ${n.type === 'success' ? 'bg-slate-800 border-green-500 text-green-100' :
-                            n.type === 'error' ? 'bg-slate-800 border-red-500 text-red-100' :
-                                'bg-slate-800 border-blue-500 text-blue-100'
-                            }`}
-                    >
+            <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
+
+            {/* Deletion Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+                    <div className="bg-neutral-900 border border-amber-500/30 p-8 rounded-xl max-w-md w-full text-center shadow-2xl">
+                        <div className="text-5xl mb-4">💀</div>
+                        <h2 className="text-2xl font-bold text-white mb-2 font-serif">Character Deleted</h2>
+                        <p className="text-neutral-400 mb-8">
+                            This character has been deleted from the world.
+                        </p>
                         <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                removeNotification(n.id);
-                            }}
-                            className="absolute top-2 right-2 text-current opacity-50 hover:opacity-100 p-1 rounded hover:bg-black/20 transition-colors"
+                            onClick={() => router.push('/')}
+                            className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
                         >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                            Return to Dashboard
                         </button>
-                        <p className="font-medium text-sm pr-6">{n.message}</p>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
 
         </main>
     );

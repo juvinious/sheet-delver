@@ -1,0 +1,14 @@
+{
+	"_id": "sxiB0gfcGVNnnIja",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.sxiB0gfcGVNnnIja",
+	"description": "Sanctum",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		76,
+		77
+	],
+	"type": "text",
+	"weight": 2
+}

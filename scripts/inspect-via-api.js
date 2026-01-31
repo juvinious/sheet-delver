@@ -14,7 +14,7 @@ async function main() {
             return;
         }
         const data = await res.json();
-        const weapons = data.items.filter(i => i.type === 'Weapon');
+        actor.items.filter(i => i.type === 'Weapon');
 
         console.log('System Details:', JSON.stringify(data.debug.system.details, null, 2));
         console.log('System Notes:', JSON.stringify(data.debug.system.notes, null, 2));

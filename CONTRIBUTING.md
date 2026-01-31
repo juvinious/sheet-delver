@@ -22,6 +22,11 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
     npm install
     ```
 
+3.  **Install Playwright browser binaries:**
+    ```bash
+    npx playwright install --with-deps
+    ```
+
 3.  **Configure connection:**
     Create a `settings.yaml` file in the root directory. This file is ignored by git.
     ```yaml
@@ -60,7 +65,9 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
   - `<system_id>/`: Self-contained system module.
     - `index.ts`: Module manifest export.
     - `info.json`: Metadata.
-    - `adapter.ts`: System logic and data implementation.
+    - `system.ts`: System adapter logic and data migrations.
+    - `rules.ts`: Core system rules and calculations.
+    - `importer.ts`: System-specific character importers (optional).
     - `ui/`: React components for the sheet.
 - `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
 
@@ -73,22 +80,32 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     *   **Data Fetching**: `getActor(client, id)` (running in browser context via Playwright).
     *   **Normalization**: `normalizeActorData(actor)` (converting raw Foundry data to a UI-friendly shape).
     *   **Rolling**: `getRollData(...)` (handling system-specific dice logic).
+    *   **Theming**: `theme` (colors/fonts) and `componentStyles` (granular overrides for `ChatTab`, `DiceTray`, etc.).
 *   **Isolation**: Do not import code from other system modules. Shared UI components (like `RichTextEditor`, `DiceTray`) are available in `@/components`.
+*   **Registry**: Frontend components that need valid server-side rendering or dynamic imports (like Dashboard Tools) are registered in `src/modules/core/component-registry.tsx`.
 
 ## Adding a New System
 
 1.  **Create Directory**: Create `src/modules/<system-id>/`.
 2.  **Metadata**: Add `info.json`:
     ```json
-    { "id": "mysystem", "title": "My RPG System" }
+    { 
+        "id": "mysystem", 
+        "title": "My RPG System",
+        "actorCard": {
+            "subtext": ["details.class", "details.ancestry", "level.value"] 
+        }
+    }
     ```
-3.  **Implement Adapter**: Create `adapter.ts` and implement `SystemAdapter`.
-4.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
-5.  **Export Manifest**: Create `index.ts`:
+    *   `actorCard.subtext`: Optional. Array of dot-notation paths to display on the dashboard character card (e.g. "Wizard, Elf • Level 1"). If omitted, it defaults to the actor type.
+3.  **Implement Adapter**: Create `system.ts` and implement `SystemAdapter`.
+4.  **Implement Rules (Optional)**: Create `rules.ts` for calculations.
+5.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
+6.  **Export Manifest**: Create `index.ts`:
     ```typescript
     import React from 'react';
     import { ModuleManifest } from '../core/interfaces';
-    import { MySystemAdapter } from './adapter';
+    import { MySystemAdapter } from './system';
     import info from './info.json';
 
     const manifest: ModuleManifest = {
@@ -98,62 +115,25 @@ To maintain a scalable codebase, we use a **Vertical Slice** architecture for sy
     };
     export default manifest;
     ```
-6.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
+7.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
+8.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
+
+## Module API & Server-Side Logic
+
+Modules can define server-side API handlers that are automatically routed via `/api/modules/<systemId>/<route>`.
+For details on implementing module APIs, see [docs/API.md](docs/API.md).
 
 ## Development Workflow
 
 1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files within your module's directory.
 2.  **Styling**: Use Tailwind CSS for styling.
 3.  **Testing**: Verify your changes against a live Foundry instance running the target system.
+4.  **Common Utilities**: Use `src/modules/core/utils.ts` for common helpers like `resolveImage` and `processHtmlContent` to ensure consistency.
 
 ## Reusable UI Components
 
-We provide several core components to ensure a consistent UI across different system sheets.
-
-### RichTextEditor
-A wrapper around Tiptap for editing HTML content (biographies, notes).
-**Path**: `@/components/RichTextEditor`
-```tsx
-<RichTextEditor 
-    content={actor.system.notes} 
-    onChange={(html) => onUpdate('system.notes', html)} 
-/>
-```
-
-### ConfirmationModal
-A standard modal for destructive actions. Uses React Portal.
-**Path**: `@/components/ui/ConfirmationModal`
-```tsx
-<ConfirmationModal
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onConfirm={handleDelete}
-    title="Delete Item?"
-    message="Are you sure you want to delete this content?"
-    confirmLabel="Delete"
-    isDanger={true}
-/>
-```
-
-### RollDialog
-A unified dialog for configuring dice rolls (Ability checks, Attacks, Spells). Supports generic options or system-specific extensions.
-**Path**: `@/components/RollDialog`
-```tsx
-<RollDialog
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onRoll={(options) => onRoll('attack', 'dager', options)}
-    title="Dagger Attack"
-    config={{
-        modes: ['normal', 'advantage', 'disadvantage'],
-        bonuses: ['ability', 'item', 'talent']
-    }}
-/>
-```
-
-### DiceTray
-A persistent tray for manual dice rolling. Generally handled by the layout but accessible if needed.
-**Path**: `@/components/DiceTray`
+We provide several core UI components (RichTextEditor, Toast, Modal, DiceTray) to ensure a consistent UI.
+For detailed documentation and usage examples, see [docs/UI.md](docs/UI.md).
 
 ## License
 

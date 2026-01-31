@@ -1,0 +1,27 @@
+{
+	"_id": "3XkiakzqwT78EG4j",
+	"_key": "!items.effects!vmcHEQWOyX933G1R.3XkiakzqwT78EG4j",
+	"changes": [
+	],
+	"description": "",
+	"disabled": false,
+	"duration": {
+		"combat": null,
+		"rounds": null,
+		"seconds": 1,
+		"startRound": null,
+		"startTime": null,
+		"startTurn": null,
+		"turns": null
+	},
+	"img": "icons/magic/control/hypnosis-mesmerism-pendulum.webp",
+	"name": "Condition: Mesmerized",
+	"origin": "Item.vmcHEQWOyX933G1R",
+	"statuses": [
+	],
+	"system": {
+	},
+	"tint": "#ffffff",
+	"transfer": true,
+	"type": "base"
+}

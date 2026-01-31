@@ -1,0 +1,14 @@
+{
+	"_id": "AEBTvFTvelGZASW6",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.AEBTvFTvelGZASW6",
+	"description": "Prosperity",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		11,
+		11
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,42 @@
+{
+	"_id": "SOkcvkzrGMGQKhmk",
+	"_key": "!items!SOkcvkzrGMGQKhmk",
+	"effects": [
+		"ItjPVhv2obp0MEhy"
+	],
+	"folder": null,
+	"img": "icons/creatures/eyes/humanoid-single-blind.webp",
+	"name": "Spell Effect: Blind",
+	"system": {
+		"category": "effect",
+		"description": "<p>The creature is blind and has disadvantage on tasks requiring sight.</p>",
+		"duration": {
+			"type": "focus",
+			"value": 1
+		},
+		"effectPanel": {
+			"show": true
+		},
+		"light": {
+			"active": false,
+			"hasBeenUsed": false,
+			"isSource": false,
+			"longevityMins": 60,
+			"remainingSecs": 3600,
+			"template": "torch"
+		},
+		"magicItem": false,
+		"predefinedEffects": "",
+		"source": {
+			"title": "core-rules"
+		},
+		"start": {
+			"combatTime": null,
+			"value": 0
+		},
+		"tokenIcon": {
+			"show": true
+		}
+	},
+	"type": "Effect"
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "p6cDOmUDBLyKUK2j",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.p6cDOmUDBLyKUK2j",
+	"description": "Loss",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		56,
+		56
+	],
+	"type": "text",
+	"weight": 1
+}

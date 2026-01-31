@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Inter } from 'next/font/google';
-import { LayoutGrid, Package, Sparkles, AlertCircle, Search } from 'lucide-react';
+import { LayoutGrid, Package, Sparkles, AlertCircle } from 'lucide-react';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -14,7 +14,6 @@ interface GenericSheetProps {
 
 export default function GenericSheet({ actor, onUpdate }: GenericSheetProps) {
     const [activeTab, setActiveTab] = useState<'system' | 'items' | 'effects'>('system');
-    const [searchTerm, setSearchTerm] = useState('');
 
     // Safe accessors
     const systemId = actor.systemId || actor.system?.details?.system || 'unknown';
@@ -27,7 +26,6 @@ export default function GenericSheet({ actor, onUpdate }: GenericSheetProps) {
             <header className="shrink-0 bg-white border-b border-neutral-200 p-4 shadow-sm z-10 sticky top-0">
                 <div className="flex items-center gap-4 max-w-3xl mx-auto">
                     <div className="w-16 h-16 rounded-full overflow-hidden bg-neutral-200 border-2 border-white shadow-md shrink-0">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={actor.img || '/icons/svg/mystery-man.svg'}
                             alt={actor.name}
@@ -73,7 +71,6 @@ export default function GenericSheet({ actor, onUpdate }: GenericSheetProps) {
                                 items.map((item: any) => (
                                     <div key={item.id} className="bg-white p-3 rounded-lg border border-neutral-200 shadow-sm flex items-center gap-3 active:scale-[0.99] transition-transform">
                                         <div className="w-10 h-10 bg-neutral-100 rounded border border-neutral-200 overflow-hidden shrink-0">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
                                             <img src={item.img} alt={item.name} className="w-full h-full object-cover" />
                                         </div>
                                         <div className="flex-1 min-w-0">

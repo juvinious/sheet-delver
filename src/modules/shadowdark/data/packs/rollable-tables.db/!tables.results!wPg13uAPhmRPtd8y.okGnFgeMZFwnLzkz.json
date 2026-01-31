@@ -1,0 +1,14 @@
+{
+	"_id": "okGnFgeMZFwnLzkz",
+	"_key": "!tables.results!wPg13uAPhmRPtd8y.okGnFgeMZFwnLzkz",
+	"description": "Sleeping",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		12,
+		12
+	],
+	"type": "text",
+	"weight": 1
+}

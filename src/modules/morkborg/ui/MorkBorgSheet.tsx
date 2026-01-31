@@ -42,7 +42,7 @@ const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value
     </div>
 );
 
-const AbilityBlock = ({ label, value, path, onRoll }: { label: string, value: number, path: string, onRoll: any }) => (
+const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, onRoll: any }) => (
     <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onRoll('ability', label.toLowerCase())}>
         <div className={`${fell.className} text-3xl w-12 text-right group-hover:text-amber-500 transition-colors`}>
             {label.substring(0, 3)}
@@ -108,10 +108,10 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
                             {/* Abilities Vertical Stack */}
                             <div className="flex flex-col gap-2 border-l-4 border-black pl-6 py-2">
-                                <AbilityBlock label="Strength" value={actor.computed?.abilities?.strength?.value ?? 0} path="strength" onRoll={onRoll} />
-                                <AbilityBlock label="Agility" value={actor.computed?.abilities?.agility?.value ?? 0} path="agility" onRoll={onRoll} />
-                                <AbilityBlock label="Presence" value={actor.computed?.abilities?.presence?.value ?? 0} path="presence" onRoll={onRoll} />
-                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness?.value ?? 0} path="toughness" onRoll={onRoll} />
+                                <AbilityBlock label="Strength" value={actor.computed?.abilities?.strength?.value ?? 0} onRoll={onRoll} />
+                                <AbilityBlock label="Agility" value={actor.computed?.abilities?.agility?.value ?? 0} onRoll={onRoll} />
+                                <AbilityBlock label="Presence" value={actor.computed?.abilities?.presence?.value ?? 0} onRoll={onRoll} />
+                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness?.value ?? 0} onRoll={onRoll} />
                             </div>
                         </div>
                     </header>

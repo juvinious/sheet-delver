@@ -1,0 +1,14 @@
+{
+	"_id": "50BtdNjlBy77VnvK",
+	"_key": "!tables.results!yC1cHYZvhs05Rm1N.50BtdNjlBy77VnvK",
+	"description": "of the Spirits",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		20,
+		20
+	],
+	"type": "text",
+	"weight": 1
+}

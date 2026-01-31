@@ -1,0 +1,14 @@
+{
+	"_id": "VPhu0cKYYKT96TFh",
+	"_key": "!tables.results!1RaFraTFH6enPqOH.VPhu0cKYYKT96TFh",
+	"description": "of the Ethereal",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		38,
+		39
+	],
+	"type": "text",
+	"weight": 2
+}

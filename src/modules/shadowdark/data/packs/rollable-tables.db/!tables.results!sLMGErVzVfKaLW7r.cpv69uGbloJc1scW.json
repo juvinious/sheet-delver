@@ -1,0 +1,14 @@
+{
+	"_id": "cpv69uGbloJc1scW",
+	"_key": "!tables.results!sLMGErVzVfKaLW7r.cpv69uGbloJc1scW",
+	"description": "Choose 1",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		6,
+		9
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,44 @@
+{
+	"_id": "QV93CYmgcgJ3UCPf",
+	"_key": "!items!QV93CYmgcgJ3UCPf",
+	"effects": [
+	],
+	"folder": "iHOSxtXRWKd2vx1U",
+	"img": "icons/consumables/drinks/alcohol-spirits-bottle-green.webp",
+	"name": "Restorative",
+	"system": {
+		"broken": false,
+		"canBeEquipped": false,
+		"class": [
+		],
+		"cost": {
+			"cp": 0,
+			"gp": 0,
+			"sp": 0
+		},
+		"description": "<p>Ends one poison or disease</p>",
+		"duration": {
+			"type": "",
+			"value": ""
+		},
+		"equipped": false,
+		"isAmmunition": false,
+		"isPhysical": true,
+		"magicItem": true,
+		"predefinedEffects": "",
+		"quantity": 1,
+		"range": "",
+		"slots": {
+			"free_carry": 1,
+			"per_slot": 1,
+			"slots_used": 1
+		},
+		"source": {
+			"title": "core-rules"
+		},
+		"spellName": "",
+		"stashed": false,
+		"tier": 1
+	},
+	"type": "Potion"
+}

@@ -3,6 +3,10 @@ import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 export class DnD5eAdapter implements SystemAdapter {
     systemId = 'dnd5e';
 
+    match(actor: any): boolean {
+        return actor.systemId === 'dnd5e';
+    }
+
     async getActor(client: any, actorId: string): Promise<any> {
         // Basic implementation for now
         return await client.evaluate((id: string) => {
@@ -51,6 +55,7 @@ export class DnD5eAdapter implements SystemAdapter {
         };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getRollData(actor: any, type: string, key: string, _options: any = {}): { formula: string; type: string; label: string } | null {
         if (type === 'ability') {
             const abilities = actor.system.abilities;

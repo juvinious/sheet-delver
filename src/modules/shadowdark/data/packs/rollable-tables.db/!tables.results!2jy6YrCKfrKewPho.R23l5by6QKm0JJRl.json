@@ -1,0 +1,14 @@
+{
+	"_id": "R23l5by6QKm0JJRl",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.R23l5by6QKm0JJRl",
+	"description": "Laboratory",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		14,
+		15
+	],
+	"type": "text",
+	"weight": 2
+}

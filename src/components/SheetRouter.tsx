@@ -9,11 +9,13 @@ interface SheetRouterProps {
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
     onDeleteItem: (itemId: string) => void;
-    onCreatePredefinedEffect: (effectKey: string) => void;
+    onCreateItem: (itemData: any) => Promise<void>;
     onToggleDiceTray?: () => void;
+    isDiceTrayOpen?: boolean;
     foundryUrl?: string;
     onRoll: (type: string, key: string, options?: any) => Promise<void>;
     onUpdate: (path: string, value: any) => Promise<void>;
+    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
 }
 
 export default function SheetRouter(props: SheetRouterProps) {

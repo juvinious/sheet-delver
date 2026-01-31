@@ -1,0 +1,14 @@
+{
+	"_id": "3u2YlIj853owvMd3",
+	"_key": "!tables.results!es2O2GjdzKjSCMMG.3u2YlIj853owvMd3",
+	"description": "Twist",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		10,
+		10
+	],
+	"type": "text",
+	"weight": 1
+}

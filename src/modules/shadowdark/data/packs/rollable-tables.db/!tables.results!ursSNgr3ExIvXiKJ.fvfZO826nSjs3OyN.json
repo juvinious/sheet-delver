@@ -1,0 +1,14 @@
+{
+	"_id": "fvfZO826nSjs3OyN",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.fvfZO826nSjs3OyN",
+	"description": "Knight",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		12,
+		13
+	],
+	"type": "text",
+	"weight": 2
+}

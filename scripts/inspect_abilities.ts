@@ -1,6 +1,6 @@
 
 import { getClient } from '../src/lib/foundry/instance';
-import { logger } from '../src/lib/logger';
+//import { logger } from '../src/lib/logger';
 
 async function main() {
     const client = getClient();

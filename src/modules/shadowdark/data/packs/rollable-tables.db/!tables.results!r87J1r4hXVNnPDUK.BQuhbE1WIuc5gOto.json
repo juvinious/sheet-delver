@@ -1,0 +1,14 @@
+{
+	"_id": "BQuhbE1WIuc5gOto",
+	"_key": "!tables.results!r87J1r4hXVNnPDUK.BQuhbE1WIuc5gOto",
+	"description": "Choose 1",
+	"drawn": false,
+	"img": "icons/dice/d20black.svg",
+	"name": "",
+	"range": [
+		7,
+		9
+	],
+	"type": "text",
+	"weight": 1
+}

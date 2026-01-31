@@ -54,10 +54,10 @@ async function run() {
                     collection: p.collection,
                     title: p.title,
                     // @ts-ignore
-                    index: index.map(i => ({ _id: i._id, name: i.name }))
+                    index: index.map(i => ({ _id: i._id, name: i.name, type: i.type, img: i.img }))
                 });
             }
-            return result;
+            return result.filter(p => p.collection.toLowerCase().includes('patron') || p.collection.toLowerCase().includes('deiti') || p.title.toLowerCase().includes('patron'));
         });
 
         console.log(JSON.stringify(packs, null, 2));

@@ -1,0 +1,16 @@
+{
+	"_id": "qzrK4PvIPTaOCViF",
+	"_key": "!items!qzrK4PvIPTaOCViF",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Cult Initiate",
+	"system": {
+		"description": "<p>You know blasphemous secrets and rituals</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "eRbCBbRfwNNlH2oO",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.eRbCBbRfwNNlH2oO",
+	"description": "Spirit",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		18,
+		19
+	],
+	"type": "text",
+	"weight": 2
+}

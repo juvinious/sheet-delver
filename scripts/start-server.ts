@@ -6,12 +6,6 @@ import { spawn } from 'child_process';
 
 const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
 
-interface Settings {
-    host?: string;
-    port?: number;
-    protocol?: string;
-}
-
 // Default settings
 let host = 'localhost';
 let port = 3000;

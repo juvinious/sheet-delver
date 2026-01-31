@@ -1,18 +1,41 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { resolveImage, resolveEntityName } from './sheet-utils';
+
 interface AbilitiesTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
+    onRoll?: (type: string, key: string, options?: any) => void;
+    foundryUrl?: string;
 }
 
-export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: AbilitiesTabProps) {
+export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: AbilitiesTabProps) {
 
     // Common container style for standard sheet feel
-    const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-sm relative";
+    const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
+
+    // Optimistic Logic
+    const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
+
+    // Clear overrides when actor data updates (server sync)
+    useEffect(() => {
+        setOptimisticOverrides({});
+    }, [actor]);
+
+    const handleOptimisticUpdate = (path: string, value: any) => {
+        setOptimisticOverrides(prev => ({ ...prev, [path]: value }));
+        onUpdate(path, value);
+    };
+
+    const getValue = (path: string, fallback: any) => {
+        return optimisticOverrides[path] !== undefined ? optimisticOverrides[path] : fallback;
+    };
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full overflow-hidden">
+
 
             {/* LEFT COLUMN: Vitals, Stats */}
             <div className="md:col-span-1 flex flex-col gap-4 overflow-y-auto pr-2 pb-20">
@@ -37,7 +60,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                                     if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
                                 }}
                                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-                                className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none"
+                                className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <span className="text-neutral-400 text-xl font-sans font-light">/</span>
                             <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
@@ -114,7 +137,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         <button className="text-neutral-400 hover:text-white"><i className="fas fa-pen text-xs"></i></button>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                        {Object.entries(actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
+                        {Object.entries(actor.attributes || actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
                             <div key={key}
                                 className="flex flex-col items-center bg-neutral-100 border-2 border-neutral-300 rounded cursor-pointer transition-all hover:border-black hover:bg-white hover:scale-105 active:scale-95 group overflow-hidden"
                                 onClick={() => triggerRollDialog('ability', key)}>
@@ -122,7 +145,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                                     <span className="font-bold text-xs uppercase tracking-widest text-neutral-600 group-hover:text-white transition-colors">{key}</span>
                                 </div>
                                 <div className="flex flex-col items-center py-2">
-                                    <span className="font-serif text-2xl font-bold leading-none mb-1 text-black">{stat.base}</span>
+                                    <span className="font-serif text-2xl font-bold leading-none mb-1 text-black">{stat.value}</span>
                                     <span className="text-neutral-500 text-xs font-serif font-bold">
                                         ({stat.mod >= 0 ? '+' : ''}{stat.mod})
                                     </span>
@@ -135,7 +158,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
             </div>
 
             {/* RIGHT COLUMN: Combat & Attacks */}
-            <div className="md:col-span-2 flex flex-col gap-4 overflow-y-auto pb-20">
+            <div className="md:col-span-2 flex flex-col gap-6 overflow-y-auto pb-20">
 
                 {/* Melee Attacks */}
                 <div className={cardStyle}>
@@ -215,6 +238,157 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog }: Abi
                         )}
                     </div>
                 </div>
+
+                {/* Special Abilities (Limited Use) */}
+                <div className={cardStyle}>
+                    <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white">
+                        <span className="font-serif font-bold text-lg uppercase">Special Abilities</span>
+                    </div>
+                    <div className="space-y-4">
+                        {(() => {
+
+
+                            const specialItems = (actor.items?.filter((i: any) =>
+                                ['Talent', 'Feature', 'Ability', 'NPC Feature', 'Class Ability'].includes(i.type) &&
+                                (i.system?.uses?.max > 0 || i.system?.uses?.value > 0)
+                            ) || []);
+
+                            if (specialItems.length === 0) {
+                                return <div className="text-neutral-400 text-sm italic text-center py-2">No special abilities with limited uses.</div>;
+                            }
+
+                            // Grouping
+                            const grouped: Record<string, any[]> = {};
+                            specialItems.forEach((item: any) => {
+                                let group = "General";
+                                const src = item.system?.source;
+                                if (src) {
+                                    if (typeof src === 'string') group = src;
+                                    else if (typeof src === 'object') group = src.title || src.name || src.label || "General";
+                                }
+                                else if (item.system?.talentClass === 'class') group = resolveEntityName(actor.system?.class, actor, {}, 'classes') || "Class";
+                                else if (item.system?.talentClass === 'ancestry') group = resolveEntityName(actor.system?.ancestry, actor, {}, 'ancestries') || "Ancestry";
+
+                                if (!grouped[group]) grouped[group] = [];
+                                grouped[group].push(item);
+                            });
+
+                            return Object.entries(grouped).map(([group, items]) => (
+                                <div key={group}>
+                                    {/* Header Row */}
+                                    <div className="flex justify-between items-center border-b-2 border-black pb-1 mb-1 text-black font-bold text-sm uppercase">
+                                        <div className="flex-1">{group}</div>
+                                        <div className="w-24 text-center">Uses</div>
+                                        <div className="w-16 text-right">Actions</div>
+                                    </div>
+
+                                    <div className="divide-y divide-neutral-200">
+                                        {items.map((item: any) => {
+                                            // Prefer 'available' if present, otherwise 'value'
+                                            const usesKey = item.system?.uses?.available !== undefined ? 'available' : 'value';
+                                            const usesPath = `items.${item.id}.system.uses.${usesKey}`;
+                                            const lostPath = `items.${item.id}.system.lost`;
+
+                                            // Optimistic or Real values
+                                            const realCurrent = item.system?.uses?.[usesKey] ?? 0;
+                                            const currentUses = getValue(usesPath, realCurrent);
+                                            const maxUses = item.system?.uses?.max || 0;
+                                            const isLost = getValue(lostPath, item.system?.lost || false);
+
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className="py-2 flex items-center text-sm hover:bg-neutral-50 group"
+                                                >
+                                                    {/* Col 1: Image + Name */}
+                                                    <div className="flex-1 flex items-center gap-2">
+                                                        <img
+                                                            src={resolveImage(item.img, foundryUrl)}
+                                                            className="w-8 h-8 border border-black object-cover bg-neutral-200"
+                                                            alt={item.name}
+                                                        />
+                                                        <span className={`font-serif font-bold text-lg leading-tight ${isLost ? 'opacity-50 line-through' : ''}`}>{item.name}</span>
+                                                    </div>
+
+                                                    {/* Col 2: Uses (- X/Y +) */}
+                                                    <div className="w-24 flex items-center justify-center gap-1">
+                                                        <button
+                                                            onClick={() => {
+                                                                if (currentUses > 0) handleOptimisticUpdate(usesPath, currentUses - 1);
+                                                            }}
+                                                            className="w-5 h-5 flex items-center justify-center hover:bg-neutral-200 rounded text-neutral-600 font-bold disabled:opacity-30"
+                                                            disabled={currentUses <= 0 || isLost}
+                                                        >
+                                                            -
+                                                        </button>
+                                                        <span className={`font-mono font-bold text-sm min-w-[3ch] text-center ${isLost ? 'opacity-50' : ''}`}>
+                                                            {currentUses}/{maxUses}
+                                                        </span>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (currentUses < maxUses) handleOptimisticUpdate(usesPath, currentUses + 1);
+                                                            }}
+                                                            className="w-5 h-5 flex items-center justify-center hover:bg-neutral-200 rounded text-neutral-600 font-bold disabled:opacity-30"
+                                                            disabled={currentUses >= maxUses || isLost}
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Col 3: Actions (Use Die | Checkbox) */}
+                                                    <div className="w-16 flex items-center justify-end gap-2 pr-1">
+                                                        {/* Use Item Button */}
+                                                        <button
+                                                            className="text-neutral-400 hover:text-black transition-colors transform hover:scale-110 flex items-center justify-center p-1 disabled:opacity-30 disabled:hover:scale-100 disabled:hover:text-neutral-400"
+                                                            title="Use Ability (Post to Chat)"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (currentUses > 0) {
+                                                                    if (onRoll) {
+                                                                        onRoll('use-item', item.id); // Direct call, bypass dialog
+                                                                    } else {
+                                                                        // Fallback if no direct roll provided (though it should be)
+                                                                        triggerRollDialog('use-item', item.id);
+                                                                    }
+                                                                    handleOptimisticUpdate(usesPath, currentUses - 1);
+                                                                }
+                                                            }}
+                                                            disabled={currentUses <= 0 || isLost}
+                                                        >
+                                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
+                                                                <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="white">20</text>
+                                                            </svg>
+                                                        </button>
+
+                                                        {/* Lost Toggle (Optimistic) */}
+                                                        <button
+                                                            className={`transition-all flex items-center justify-center rounded-full w-6 h-6 border shadow-sm ${isLost ? 'bg-red-100 border-red-500 text-red-600 hover:scale-110' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black hover:scale-110'}`}
+                                                            title={isLost ? "Restore Ability" : "Mark as Lost"}
+                                                            onClick={() => handleOptimisticUpdate(lostPath, !isLost)}
+                                                        >
+                                                            {isLost ? (
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                                                </svg>
+                                                            ) : (
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                                </svg>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ));
+                        })()}
+                    </div>
+                </div>
+
+
 
             </div>
         </div>

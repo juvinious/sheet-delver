@@ -1,0 +1,14 @@
+{
+	"_id": "YM9Dl1jeXDxUaMsp",
+	"_key": "!tables.results!ursSNgr3ExIvXiKJ.YM9Dl1jeXDxUaMsp",
+	"description": "Mechanism",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		46,
+		47
+	],
+	"type": "text",
+	"weight": 2
+}

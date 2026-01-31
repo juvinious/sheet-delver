@@ -15,6 +15,10 @@ export class CompendiumCache {
         return CompendiumCache.instance;
     }
 
+    public hasLoaded(): boolean {
+        return this.initialized;
+    }
+
     public async initialize(client: FoundryClient) {
         if (this.initialized) return;
         if (this.loadingPromise) return this.loadingPromise;

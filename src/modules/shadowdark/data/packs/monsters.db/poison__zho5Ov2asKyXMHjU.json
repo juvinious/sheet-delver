@@ -1,0 +1,17 @@
+{
+	"_id": "zho5Ov2asKyXMHjU",
+	"_key": "!actors.items!8Lma2TIrsJc0IJzV.zho5Ov2asKyXMHjU",
+	"effects": [
+	],
+	"folder": null,
+	"img": "icons/creatures/abilities/dragon-breath-purple.webp",
+	"name": "Poison",
+	"system": {
+		"description": "<p>[[check 15 con]] or target's eyes go jet black and it turns on its allies for [[/r 1d4]] rounds. [[check 15 wis]] on turn to end effect.</p>",
+		"predefinedEffects": "",
+		"source": {
+			"title": ""
+		}
+	},
+	"type": "NPC Feature"
+}

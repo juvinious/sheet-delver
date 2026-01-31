@@ -1,0 +1,16 @@
+{
+	"_id": "2bf6cUSTzdI7CMHE",
+	"_key": "!items!2bf6cUSTzdI7CMHE",
+	"effects": [
+	],
+	"folder": "InLbadov5GPzXI6c",
+	"img": "icons/environment/people/commoner.webp",
+	"name": "Jeweler",
+	"system": {
+		"description": "<p>You can easily appraise value and authenticity</p>",
+		"source": {
+			"title": "core-rules"
+		}
+	},
+	"type": "Background"
+}

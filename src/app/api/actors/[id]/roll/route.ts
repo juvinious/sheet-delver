@@ -44,16 +44,23 @@ export async function POST(
             rollData = adapter.getRollData(rawActor, type, key, options);
         }
 
+        if (type === 'use-item') {
+            const result = await client.useItem(id, key); // key is itemId
+            // Flatten result ({ success, method, html, result }) into the top-level response
+            return NextResponse.json({ ...(result as any), success: true });
+        }
+
         if (!rollData) {
             return NextResponse.json({ success: false, error: 'Cannot determine roll formula' }, { status: 400 });
         }
 
         // 4. Exec Roll via Client
-        const result = await client.roll(rollData.formula);
+        const result = await client.roll(rollData.formula, rollData.label);
 
         return NextResponse.json({ success: true, result, label: rollData.label });
 
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error('[API] Roll Error:', error);
+        return NextResponse.json({ error: error.message, stack: error.stack }, { status: 500 });
     }
 }

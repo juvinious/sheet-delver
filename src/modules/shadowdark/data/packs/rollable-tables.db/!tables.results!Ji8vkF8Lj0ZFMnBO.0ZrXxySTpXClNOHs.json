@@ -1,0 +1,14 @@
+{
+	"_id": "0ZrXxySTpXClNOHs",
+	"_key": "!tables.results!Ji8vkF8Lj0ZFMnBO.0ZrXxySTpXClNOHs",
+	"description": "[[/r 1d6]] / @UUID[Compendium.shadowdark.spell-effects.SOkcvkzrGMGQKhmk]{Blind}",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		4,
+		4
+	],
+	"type": "text",
+	"weight": 1
+}

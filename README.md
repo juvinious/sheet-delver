@@ -11,6 +11,8 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 - **Inventory Management**: Drag-and-drop equipment, slot tracking, and toggleable states (Equipped/Stashed/Light).
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
+- **Character Import**: Import characters via JSON from Shadowdarklings (including Gear, Spells, and Magic Items).
+- **System Agnostic UI**: Core components adapt to system themes via configuration.
 - **Mobile Friendly**: optimized touch targets and layout.
 
 ## Supported Systems
@@ -31,9 +33,14 @@ Each module follows a consistent structure:
 src/modules/<system>/
 ├── index.ts           # Manifest
 ├── info.json          # Metadata
-├── adapter.ts         # Logic & Data Fetching
+├── system.ts          # Data Migration & Adapter Logic
+├── rules.ts           # Core System Rules
+├── importer.ts        # Character Importers (Optional)
+├── server.ts          # Server-Side API Handlers (Optional)
 └── ui/                # React Components
 ```
+
+5.  **Module API** (`api/modules/[systemId]/...`): Automatically routes requests to the module's `server.ts` handlers, allowing system-specific backend logic (e.g. importers).
 
 For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
@@ -78,6 +85,8 @@ To run the application locally for personal use:
 
 1.  Current directory:
     ```bash
+    npm install
+    npx playwright install --with-deps
     npm run build
     npm start
     ```
@@ -88,11 +97,22 @@ To deploy on a dedicated server:
 
 1.  Clone the repository.
 2.  Install dependencies: `npm install`
-3.  Build the application: `npm run build`
-4.  Start the server: `npm start`
+3.  Install browser binaries: `npx playwright install --with-deps`
+4.  Build the application: `npm run build`
+5.  Start the server: `npm start`
     - *Note: You may want to use a process manager like PM2 to keep it running.*
 
 ## Development
 For developers interested in contributing to **SheetDelver**, please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions, architecture overview, and guidelines.
 
+## License
 
+This project is licensed under the MIT License.
+
+### Third-Party Licenses
+
+**Shadowdark RPG**
+This product is an independent product published under the Shadowdark RPG Third-Party License and is not affiliated with The Arcane Library, LLC. Shadowdark RPG © 2023 The Arcane Library, LLC.
+
+**foundryvtt-shadowdark**
+Partial code and data utilized from the [foundryvtt-shadowdark](https://github.com/Muttley/foundryvtt-shadowdark) system, licensed under the MIT License. Copyright (c) 2023 Paul Maskelyne.

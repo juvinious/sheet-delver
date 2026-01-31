@@ -1,0 +1,14 @@
+{
+	"_id": "DRbZGBMSOR3SnrcQ",
+	"_key": "!tables.results!2jy6YrCKfrKewPho.DRbZGBMSOR3SnrcQ",
+	"description": "Keep",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		60,
+		61
+	],
+	"type": "text",
+	"weight": 2
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "nFO6CLacDPwVQVac",
+	"_key": "!tables.results!OQWo5AQe0XOcVWjD.nFO6CLacDPwVQVac",
+	"description": "Eye",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		19,
+		19
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "MPLM8GL7xutEE9pT",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.MPLM8GL7xutEE9pT",
+	"description": "Family",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		21,
+		21
+	],
+	"type": "text",
+	"weight": 1
+}

@@ -1,0 +1,14 @@
+{
+	"_id": "se7WEwMvCUSGPUec",
+	"_key": "!tables.results!7cYFj7NH2XbHVakm.se7WEwMvCUSGPUec",
+	"description": "Wealth",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		46,
+		46
+	],
+	"type": "text",
+	"weight": 1
+}

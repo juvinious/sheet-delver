@@ -52,7 +52,7 @@ async function main() {
         // Wait for board or timeout
         try {
             await client.page?.waitForFunction(() => (window as any).game && (window as any).game.ready, null, { timeout: 10000 });
-        } catch (e) {
+        } catch {
             console.log('Timeout waiting for game.ready. Might be in Setup or stuck.');
         }
 

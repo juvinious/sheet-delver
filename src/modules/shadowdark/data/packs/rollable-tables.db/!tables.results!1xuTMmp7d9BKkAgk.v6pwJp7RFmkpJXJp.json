@@ -1,0 +1,14 @@
+{
+	"_id": "v6pwJp7RFmkpJXJp",
+	"_key": "!tables.results!1xuTMmp7d9BKkAgk.v6pwJp7RFmkpJXJp",
+	"description": "Acquire",
+	"drawn": false,
+	"img": "icons/svg/d20-black.svg",
+	"name": "",
+	"range": [
+		88,
+		88
+	],
+	"type": "text",
+	"weight": 1
+}
