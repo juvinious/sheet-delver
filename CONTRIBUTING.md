@@ -41,14 +41,13 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
         host: foundryserver.local # Hostname of your Foundry VTT instance
         port: 30000               # Port of your Foundry VTT instance
         protocol: http            # Protocol (http/https)
+        provider: bridge          # 'bridge' (Headless Sockets) or 'playwright' (Browser)
+        username: "gamemaster"    # Required for Headless connection
+        password: "password"      # Required for Headless connection
     
     debug:
-        enabled: true        # Run browser in headful mode (visible) for debugging
+        enabled: true        # Enable debug logging
         level: 4             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
-        # Optional: Auto-login credentials for development
-        foundryUser:
-            name: gamemaster # Foundry Username
-            password: password # Foundry Password
     ```
 
 4.  **Run the development server:**

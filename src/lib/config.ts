@@ -15,14 +15,13 @@ export interface AppConfig {
         port: number;
         protocol: string;
         url: string;
+        username?: string;
+        password?: string;
+        userId?: string;
     };
     debug: {
         enabled: boolean;
         level: number;
-        foundryUser?: {
-            name: string;
-            password?: string;
-        };
     };
 }
 
@@ -64,12 +63,14 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     host: foundry.host || 'localhost',
                     port: foundry.port || 30000,
                     protocol: foundry.protocol || 'http',
-                    url: foundryUrl
+                    url: foundryUrl,
+                    username: foundry.username,
+                    password: foundry.password,
+                    userId: foundry.userId
                 },
                 debug: {
                     enabled: debug.enabled ?? false,
-                    level: debug.level ?? 1,
-                    foundryUser: debug.foundryUser
+                    level: debug.level ?? 1
                 }
             };
             return _cachedConfig;

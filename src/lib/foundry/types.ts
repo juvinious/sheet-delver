@@ -10,5 +10,7 @@ export interface FoundryConfig {
   url: string;
   username?: string;
   password?: string;
+  userId?: string;
   headless?: boolean;
+  provider?: 'playwright' | 'bridge';
 }

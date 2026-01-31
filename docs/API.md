@@ -1,6 +1,6 @@
 # API Documentation
 
-SheetDelver acts as a bridge between the Frontend (Next.js) and the Foundry VTT instance (via Playwright). It exposes several RESTful endpoints.
+SheetDelver acts as a bridge between the Frontend (Next.js) and the Foundry VTT instance (via direct Sockets). It operates in a truly headless mode, removing the need for a browser or Playwright.
 
 ## Core API Routes
 
@@ -45,7 +45,7 @@ These routes handle standard operations like fetching actors, rolling dice, and 
 -   **GET** `/api/session/connect`
     Check connection status with Foundry.
 -   **POST** `/api/session/login`
-    Authenticate with Foundry using an access key.
+    Authenticate with Foundry using GM/Assistant credentials from `settings.yaml`.
 -   **POST** `/api/session/logout`
     Terminate the current session.
 -   **GET** `/api/users`

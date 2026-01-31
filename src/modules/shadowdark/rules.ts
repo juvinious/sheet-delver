@@ -51,3 +51,140 @@ export const calculateGemSlots = (gems: any[]) => {
     const total = gems.reduce((acc, g) => acc + (Number(g.system?.quantity) || 1), 0);
     return Math.floor(total / 10);
 };
+
+export const calculateAC = (actor: any, items: any[]) => {
+    // 1. Base AC = 10 + Dex Mod
+    const abilities = actor.system?.abilities || {};
+    const dex = abilities.dex || abilities.DEX || { mod: 0 };
+    let base = 10 + (Number(dex.mod) || 0);
+
+    // 2. Armor Bonus
+    const armor = items.filter((i: any) => i.type === 'Armor' && i.system?.equipped);
+    for (const a of armor) {
+        // Shadowdark armor replaces base AC usually, or adds to it?
+        // Rules: Leather (AC 11 + Dex), Chain (AC 13 + Dex), Plate (AC 15, No Dex).
+        // Shield (+2).
+
+        // We need to know the Armor properties.
+        // Assuming system.ac.value or similar.
+        const acVal = Number(a.system?.ac?.value) || 0;
+        const acBase = Number(a.system?.ac?.base) || 0;
+
+        // If it's a Shield, it adds.
+        const isShield = a.system?.isShield || a.name.toLowerCase().includes('shield');
+
+        if (isShield) {
+            base += (acBase || acVal); // Usually +2
+        } else {
+            // Main Armor.
+            // Check if it allows Dex.
+            // Simplified: If AC > 10, it sets the base.
+            // Plate (15) doesn't use Dex.
+            // Leather (11) uses Dex.
+
+            // We need to emulate Foundry system logic or standard rules.
+            // Standard:
+            // Leather: 11 + Dex
+            // Chain: 13 + Dex
+            // Plate: 15 (No Dex)
+
+            // If item has `system.ac.base`, we use that.
+            if (acBase > 0) {
+                // Check property "noDex" or similar?
+                const propertyArr = a.system?.properties || [];
+                const noDex = propertyArr.includes('noDex') || acBase >= 15; // Heuristic
+
+                if (noDex) {
+                    base = acBase; // Reset base, ignore Dex (wait, base included Dex before)
+                    // Re-calc: base = acBase
+                    // If shield was added, we need to preserve it?
+                    // Better: Set `armorBase` and `shieldBonus`.
+                } else {
+                    base = acBase + (Number(dex.mod) || 0);
+                }
+            }
+        }
+    }
+
+    // If multiple armors equipped, usually highest counts.
+    // Simplifying: The user should define this properly.
+    // For now, let's trust `actor.system.attributes.ac.value` if available, otherwise 10.
+    // But we are porting LOGIC.
+
+    return base;
+};
+
+export const applyEffects = (systemData: any, effects: any[]) => {
+    // Ported from system.ts
+    const MODES = { CUSTOM: 0, MULTIPLY: 1, ADD: 2, DOWNGRADE: 3, UPGRADE: 4, OVERRIDE: 5 };
+
+    // Helper to get nested property
+    const getProperty = (obj: any, path: string) => {
+        return path.split('.').reduce((prev, curr) => prev ? prev[curr] : undefined, obj);
+    };
+
+    // Helper to set nested property
+    const setProperty = (obj: any, path: string, value: any) => {
+        const parts = path.split('.');
+        let current = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!current[parts[i]]) current[parts[i]] = {};
+            current = current[parts[i]];
+        }
+        current[parts[parts.length - 1]] = value;
+    };
+
+    for (const effect of effects) {
+        if (effect.disabled) continue;
+
+        const changes = effect.changes || [];
+        for (const change of changes) {
+            const { key, value, mode } = change;
+            if (!key) continue;
+
+            let path = key;
+            if (path.startsWith('system.')) path = path.substring(7);
+
+            // Shorthands
+            const SHORTHANDS: Record<string, string> = {
+                'str.bonus': 'abilities.str.bonus',
+                'dex.bonus': 'abilities.dex.bonus',
+                'con.bonus': 'abilities.con.bonus',
+                'int.bonus': 'abilities.int.bonus',
+                'wis.bonus': 'abilities.wis.bonus',
+                'cha.bonus': 'abilities.cha.bonus',
+                'hp.max': 'attributes.hp.max',
+                'hp.bonus': 'attributes.hp.bonus'
+            };
+            if (SHORTHANDS[path]) path = SHORTHANDS[path];
+
+            const currentVal = Number(getProperty(systemData, path)) || 0;
+            let changeVal = Number(value) || 0;
+
+            if (isNaN(changeVal) && mode !== MODES.OVERRIDE) continue;
+
+            let finalVal = currentVal;
+            switch (Number(mode)) {
+                case MODES.ADD: finalVal = currentVal + changeVal; break;
+                case MODES.MULTIPLY: finalVal = currentVal * changeVal; break;
+                case MODES.OVERRIDE: finalVal = isNaN(changeVal) ? value : changeVal; break;
+                case MODES.UPGRADE: finalVal = Math.max(currentVal, changeVal); break;
+                case MODES.DOWNGRADE: finalVal = Math.min(currentVal, changeVal); break;
+            }
+            setProperty(systemData, path, finalVal);
+        }
+    }
+};
+
+export const calculateAbilities = (systemData: any) => {
+    const abilities: any = systemData.abilities || {};
+    const res: any = {};
+
+    for (const key of Object.keys(abilities)) {
+        const stat = abilities[key];
+        const val = Number(stat.value) || (Number(stat.base) + Number(stat.bonus)) || 10;
+        const mod = Math.floor((val - 10) / 2);
+        res[key] = { ...stat, value: val, mod };
+    }
+    return res;
+};

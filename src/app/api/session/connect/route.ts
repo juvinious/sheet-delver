@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { FoundryClient } from '@/lib/foundry/client';
+import { createFoundryClient, FoundryClient } from '@/lib/foundry';
 import { getClient, setClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 import { logger } from '@/lib/logger';
@@ -37,8 +37,8 @@ export async function GET() {
     if (url) {
         try {
             await logger.info('Initializing new FoundryClient connection to', url);
-            const client = new FoundryClient({
-                url: url,
+            const client = createFoundryClient({
+                ...config.foundry,
                 headless: true
             });
             await client.connect();
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
         // If we want to force a new connection or different URL
         if (!client || client.url !== url || !client.isConnected) {
             await logger.info('Establishing new connection via POST request to', url);
-            client = new FoundryClient({
+            client = createFoundryClient({
                 url,
                 headless: true
             });

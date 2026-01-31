@@ -1,6 +1,6 @@
 # Reusable UI Components
 
-SheetDelver provides a set of core UI components to ensure consistency across different system sheets. These components are designed to be system-agnostic and themable via the `SystemAdapter`.
+SheetDelver provides a set of core UI components to ensure consistency across different system sheets. These components are designed to be system-agnostic and themable via the `SystemAdapter`, interfacing with a headless Socket.io backend.
 
 ## Notification System (Toast)
 

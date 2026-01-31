@@ -1,5 +1,5 @@
 
-import { FoundryClient } from '@/lib/foundry/client';
+import { FoundryClient } from '@/lib/foundry';
 import fs from 'fs';
 import path from 'path';
 

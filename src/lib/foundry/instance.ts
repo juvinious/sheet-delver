@@ -1,4 +1,4 @@
-import { FoundryClient } from './client';
+import { FoundryClient } from './interfaces';
 
 // Augment the global scope to include our client
 declare global {
