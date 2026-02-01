@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import RollDialog from '@/components/RollDialog';
 import LoadingModal from '@/components/LoadingModal';
 import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
@@ -140,11 +140,11 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const [overflowTabs, setOverflowTabs] = useState<typeof tabsOrder>([]);
 
     // Determine how many tabs fit based on width
-    const getVisibleCount = (width: number) => {
+    const getVisibleCount = useCallback((width: number) => {
         if (width < 640) return 3;
         if (width < 1024) return 5;
         return tabsOrder.length;
-    };
+    }, [tabsOrder.length]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -167,7 +167,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor.computed?.showSpellsTab]);
+    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount]);
 
     // Auto-close Level Up Modal when level effectively changes
     useEffect(() => {

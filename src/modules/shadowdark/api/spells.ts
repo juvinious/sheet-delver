@@ -51,7 +51,7 @@ export async function handleGetSpellsBySource(request: Request) {
 
         // 1. Try Local Cache (Offline Capable)
         // @ts-ignore
-        const spells = dataManager.getSpellsBySource(source);
+        const spells = await dataManager.getSpellsBySource(source);
         if (spells && spells.length > 0) {
             return NextResponse.json({ success: true, spells });
         }

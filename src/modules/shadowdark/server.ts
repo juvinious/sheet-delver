@@ -2,12 +2,14 @@
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource } from './api/spells';
+import { handleIndex } from './api/index';
 import { dataManager } from './data/DataManager';
 
 // Initialize data cache
 dataManager.initialize();
 
 export const apiRoutes = {
+    'index': handleIndex,
     'import': handleImport,
     'actors/[id]/level-up/data': async (request: Request, { params }: any) => {
         const { route } = await params;

@@ -47,12 +47,17 @@ export class CompendiumCache {
     }
 
     public getName(uuid: string): string | undefined {
-        return this.cache.get(uuid);
+        const val = this.cache.get(uuid);
+        // if (!val) console.log(`[CompendiumCache] Miss: ${uuid}`);
+        return val;
     }
 
     public resolve(text: string): string {
         // Simple replacement for now, or direct lookup
         if (this.cache.has(text)) return this.cache.get(text)!;
         return text;
+    }
+    public set(uuid: string, name: string): void {
+        this.cache.set(uuid, name);
     }
 }

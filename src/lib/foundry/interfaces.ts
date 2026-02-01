@@ -1,17 +1,34 @@
 
+export interface SystemConnectionData {
+    id: string;
+    title: string;
+    version: string;
+    worldTitle?: string;
+    worldBackground?: string;
+    worldDescription?: string;
+    nextSession?: string | null;
+    isLoggedIn?: boolean;
+    isAuthenticating?: boolean;
+    background?: string;
+    users?: { active: number; total: number; list?: any[] };
+}
+
 export interface FoundryClient {
     isConnected: boolean;
+    isLoggedIn: boolean;
     url: string;
 
     connect(): Promise<void>;
+    disconnect(): void;
     login(username?: string, password?: string): Promise<void>;
     logout(): Promise<void>;
 
     evaluate<T>(pageFunction: any, arg?: any): Promise<T>;
 
-    getSystem(): Promise<any>;
+    getSystem(): Promise<SystemConnectionData>;
     getUsers(): Promise<any[]>;
     getUsersDetails(): Promise<any[]>;
+    getCurrentUserId(): string | null;
     getSystemData(): Promise<any>;
     getActors(): Promise<any[]>;
     getActor(id: string, forceSystemId?: string): Promise<any>;

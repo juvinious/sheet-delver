@@ -1,6 +1,4 @@
 
-import path from 'path';
-import fs from 'fs';
 
 class DataManager {
     private static instance: DataManager;
@@ -16,8 +14,11 @@ class DataManager {
         return DataManager.instance;
     }
 
-    public initialize() {
+    public async initialize() {
         if (this.initialized) return;
+
+        const path = (await import('path')).default;
+        const fs = (await import('fs')).default;
 
         const packsDir = path.join(process.cwd(), 'src/modules/shadowdark/data/packs');
 
@@ -91,20 +92,20 @@ class DataManager {
         this.initialized = true;
     }
 
-    public getDocument(uuid: string): any | null {
+    public async getDocument(uuid: string): Promise<any | null> {
         // If not initialized yet, do it lazily
-        if (!this.initialized) this.initialize();
+        if (!this.initialized) await this.initialize();
 
         return this.index.get(uuid) || null;
     }
 
-    public getSpellsBySource(className: string): any[] {
-        if (!this.initialized) this.initialize();
+    public async getSpellsBySource(className: string): Promise<any[]> {
+        if (!this.initialized) await this.initialize();
 
-        const spells: any[] = [];
+        // const spells: any[] = [];
         const normalizedClass = className.toLowerCase();
 
-        for (const [key, doc] of this.index.entries()) {
+        for (const [_key, _doc] of this.index.entries()) {
             // Unpack if duplicated (we store short and long UUIDs)
             // Just iterate unique objects? The map values are references, so strict equality works, 
             // but we iterate entries.
@@ -126,14 +127,14 @@ class DataManager {
         }
 
         // Find Class UUID
-        let classUuid: string | null = null;
+        // let classUuid: string | null = null;
         for (const doc of uniqueDocs) {
             if (doc.type === 'Class' && doc.name.toLowerCase() === normalizedClass) {
                 // heuristic: find the one that looks like a compendium item?
                 // actually we have the UUIDs in the map keys.
                 // But efficient reverse lookup is tricky.
                 // Let's just find the document matching the name.
-                classUuid = doc._id; // We need the full UUID usually stored in .class array?
+                // let classUuid = doc._id;
                 // The .json usually has _id: "16XuBF2xjUnoepyp"
                 // The spell has system.class: ["Compendium.shadowdark.classes.Item.035nuVkU9q2wtMPs"]
                 // We need to match that.
@@ -144,26 +145,45 @@ class DataManager {
         // If we can't find the class by name in our data, we can't filter safely?
         // Actually, we can return all spells and filter if we know the UUID.
 
-        return Array.from(uniqueDocs).filter(doc => {
-            if (doc.type !== 'Spell') return false;
-            if (!doc.system?.class) return false;
+        // Resolve all promises concurrently for efficiency if getDocument call was needed (but we have index)
+        // Actually we don't need getDocument if we iterate internal index.
+        // But the filter lambda uses it.
 
-            // Check if any of the associated classes match the requested class name
-            // Requires resolving the linked UUIDs to see if they are the class we want.
-            // OR finding our class doc first.
+        const results: any[] = [];
+        for (const doc of Array.from(uniqueDocs)) {
+            if (doc.type !== 'Spell') continue;
+            if (!doc.system?.class) continue;
 
-            // Alternative: Return all spells, let caller filter? No, inefficient.
+            let match = false;
+            // Iterate classes safely
+            const classes = Array.isArray(doc.system.class) ? doc.system.class : [doc.system.class];
 
-            return doc.system.class.some((classRef: string) => {
-                const linkedClass = this.getDocument(classRef);
-                return linkedClass && linkedClass.name.toLowerCase() === normalizedClass;
-            });
-        });
+            for (const classRef of classes) {
+                // We need to look up the classRef in our index
+                // We can access this.index directly since we are in the class.
+                const linkedClass = this.index.get(classRef);
+                if (linkedClass && linkedClass.name.toLowerCase() === normalizedClass) {
+                    match = true;
+                    break;
+                }
+            }
+            if (match) results.push(doc);
+        }
+        return results;
     }
 
-    public getAllDocuments(): any[] {
-        if (!this.initialized) this.initialize();
+    public async getAllDocuments(): Promise<any[]> {
+        if (!this.initialized) await this.initialize();
         return Array.from(new Set(this.index.values()));
+    }
+
+    public async getIndex(): Promise<Record<string, string>> {
+        if (!this.initialized) await this.initialize();
+        const result: Record<string, string> = {};
+        for (const [uuid, doc] of this.index.entries()) {
+            result[uuid] = doc.name;
+        }
+        return result;
     }
 }
 

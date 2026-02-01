@@ -67,7 +67,7 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>("");
     const [fetchedPatron, setFetchedPatron] = useState<any>(null);
     const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
-    const [loadingPatrons, setLoadingPatrons] = useState(false);
+
 
     const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
     const [fixedLanguages, setFixedLanguages] = useState<string[]>([]);
@@ -107,7 +107,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 const num = parseInt(formula);
                 return isNaN(num) ? 0 : num;
             }
-            const [_, countStr, dieStr, op, modStr] = match;
+            const [, countStr, dieStr, op, modStr] = match;
             const count = parseInt(countStr);
             const die = parseInt(dieStr);
             let total = 0;
@@ -198,7 +198,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
         const formula = tableObj.formula || "1d1";
         const roll = simpleRoll(formula);
-        let matchingResults = results.filter(r => {
+        const matchingResults = results.filter(r => {
             const range = r.range || [1, 1];
             return roll >= range[0] && roll <= range[1];
         });
@@ -782,7 +782,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, activeClassObj, availableClasses, availablePatrons, classUuid, currentLevel, fetchDocument, fetchLevelUpData]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {
@@ -800,7 +800,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             };
             fetchSpells();
         }
-    }, [extraSpellSelection.active, extraSpellSelection.source]);
+    }, [extraSpellSelection.active, extraSpellSelection.source, extraSpellsList.length]);
 
 
 
@@ -854,7 +854,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         if (targetClassUuid && targetClassUuid !== classUuid) {
             setHpRoll(0); setGoldRoll(0); setRolledTalents([]); setRolledBoons([]); setSelectedSpells([]); setPendingChoices(null); setSelectedPatronUuid("");
         }
-    }, [targetClassUuid]);
+    }, [targetClassUuid, classUuid]);
 
     const isComplete = useCallback(() => {
         // if (hpRoll <= 0) { console.log('Blocked: HP'); return false; }
@@ -925,7 +925,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         }
         return true;
-    }, [hpRoll, rolledTalents, requiredTalents, needsBoon, rolledBoons, startingBoons, choiceRolls, languageGroups, selectedLanguages, knownLanguages, selectedSpells, spellsToChooseTotal, isSpellcaster, spellsToChoose, availableLanguages, fixedLanguages, availableSpells, statuses, statSelection, weaponMasterySelection, armorMasterySelection, extraSpellSelection]);
+    }, [rolledTalents, requiredTalents, needsBoon, rolledBoons, startingBoons, choiceRolls, languageGroups, selectedLanguages, knownLanguages, selectedSpells, spellsToChooseTotal, isSpellcaster, spellsToChoose, availableLanguages, fixedLanguages, availableSpells, statSelection, weaponMasterySelection, armorMasterySelection, extraSpellSelection]);
 
     const [hpFormula, hpMax] = useMemo(() => {
         const hitDieStr = activeClassObj?.system?.hitPoints || "1d6";

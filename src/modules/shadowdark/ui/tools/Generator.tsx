@@ -428,6 +428,7 @@ export default function Generator() {
             // 1. Pick Core Options
             const anc = rand(systemData.ancestries);
             const bg = rand(systemData.backgrounds);
+            // let classItem = null; // Unused // Unused
             let cls = null;
             if (!formData.level0) {
                 cls = rand(systemData.classes);
@@ -1083,12 +1084,12 @@ export default function Generator() {
                 }
             }
 
-            const backgroundItem = await addItem(formData.background);
+            await addItem(formData.background);
 
             // Add Patron if selected (Warlock)
-            let patronItem = null;
+            // let patronItem = null; // Unused
             if (formData.patron) {
-                patronItem = await addItem(formData.patron);
+                await addItem(formData.patron);
             }
 
             // Add Class (if not Level 0)
@@ -1219,9 +1220,8 @@ export default function Generator() {
                 items.push(cleanItem);
             }
 
-            let classItem = null;
             if (!formData.level0) {
-                classItem = await addItem(formData.class);
+                await addItem(formData.class);
             }
 
             // Collect Language UUIDs for system.languages array

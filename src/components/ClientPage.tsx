@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import PlayerList from './PlayerList';
 import { useNotifications, NotificationContainer } from './NotificationSystem';
 import SystemTools from './SystemTools';
 import LoadingModal from './LoadingModal';
 
 interface User {
-  id: string;
+  id?: string;
+  _id?: string;
   name: string;
 }
 
@@ -20,6 +21,7 @@ interface SystemInfo {
   nextSession?: string | null;
   users?: { active: number; total: number };
   background?: string;
+  worldBackground?: string;
   isLoggedIn?: boolean;
   theme?: any;
   config?: any;
@@ -43,7 +45,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [password, setPassword] = useState('');
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [appVersion, setAppVersion] = useState('');
-  const [actors, setActors] = useState<any[]>([]);
+  const [, setActors] = useState<any[]>([]); // "All" or "Owned" fallback
+  const [ownedActors, setOwnedActors] = useState<any[]>([]);
+  const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
   const [loginMessage, setLoginMessage] = useState('');
 
   // Chat State
@@ -51,17 +55,12 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   const handleLogin = async () => {
     setLoading(true);
-    setLoginMessage('Logging into Foundry VTT...');
+    setLoginMessage('Logging in...');
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
-    }, 15000); // Force timeout after 15 seconds
-
-    // Timer for "taking longer" message (visual feedback only)
-    const slowTimer = setTimeout(() => {
-      setLoginMessage('Taking longer than expected... Please wait.');
-    }, 5000);
+    }, 45000); // 45 seconds to match backend 30s + buffer
 
     try {
       const res = await fetch('/api/session/login', {
@@ -73,12 +72,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       clearTimeout(timeoutId);
       const data = await res.json();
 
-      clearTimeout(slowTimer);
-
       if (data.success) {
-        setLoginMessage('Login Successful!');
         setStep('dashboard');
-        // fetchActors(); // Handled by effect
       } else {
         setLoginMessage('');
         setPassword(''); // Clear password on failure
@@ -86,12 +81,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       }
     } catch (e: any) {
       clearTimeout(timeoutId);
-      clearTimeout(slowTimer);
       setLoginMessage('');
       setPassword('');
 
       if (e.name === 'AbortError') {
-        addNotification('Login timed out. The server took too long to respond. Please check your password or try again.', 'error');
+        addNotification('Login timed out. Please try again.', 'error');
       } else {
         addNotification('Error: ' + e.message, 'error');
       }
@@ -100,12 +94,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       setLoginMessage('');
     }
   };
-
-  // ... (render) ...
-
-
-
-
 
   // Theme Logic
   const defaultTheme = {
@@ -122,9 +110,10 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const theme = system?.theme || defaultTheme;
 
   // Resolve background image
-  const bgStyle = system?.background
+  const bgSrc = system?.worldBackground || system?.background;
+  const bgStyle = bgSrc
     ? {
-      backgroundImage: `url(${system.background.startsWith('http') ? system.background : `${url}/${system.background}`})`,
+      backgroundImage: `url(${bgSrc.startsWith('http') ? bgSrc : `${url}/${bgSrc}`})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat'
@@ -167,8 +156,10 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           if (data.system?.isLoggedIn) {
             const actorRes = await fetch('/api/actors');
             const actorData = await actorRes.json();
-            if (actorData.actors) {
-              setActors(actorData.actors);
+            if (actorData.ownedActors || actorData.actors) {
+              setActors(actorData.actors || []);
+              setOwnedActors(actorData.ownedActors || actorData.actors || []);
+              setReadOnlyActors(actorData.readOnlyActors || []);
               setStep('dashboard'); // ALREADY LOGGED IN
             } else {
               setStep('login');
@@ -203,18 +194,41 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       if (loading) return;
       try {
         const res = await fetch('/api/session/connect');
+
+        if (res.status === 401) {
+          if (step === 'dashboard') {
+            console.warn('[Session Poll] Unauthorized (401). Redirecting to login.');
+            addNotification('Your session has ended.', 'info');
+            setStep('login');
+          }
+          return;
+        }
+
         const data = await res.json();
+
         if (data.system) {
-          // 1. Setup -> Game (Start Up)
+          // 1. Setup -> Game (Start Up) transition
           if (data.system.id !== 'setup' && step === 'setup') {
             window.location.reload();
           }
-          // Game -> Setup logic handled by global ShutdownWatcher
+
+          // 2. Kicked Detection: If we are on dashboard but no longer logged in
+          if (step === 'dashboard') {
+            if (!data.system.isLoggedIn && !data.system.isAuthenticating) {
+              console.warn('[Session Poll] Session ended (reported by system). Redirecting to login.', data);
+              addNotification('Your session has ended.', 'info');
+              setStep('login');
+            } else if (!data.system.isLoggedIn && data.system.isAuthenticating) {
+              console.log('[Session Poll] System reports: Logging in/Authenticating... (waiting)');
+            }
+          }
         }
-      } catch { }
+      } catch {
+        // Silent error for poll failures
+      }
     }, 2000);
     return () => clearInterval(interval);
-  }, [step, loading]);
+  }, [step, loading, addNotification]);
 
 
   const handleConnect = async () => {
@@ -258,17 +272,35 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
 
-  const fetchActors = async () => {
+  const fetchActors = useCallback(async () => {
+    if (loading) return;
     try {
       const res = await fetch('/api/actors');
-      const data = await res.json();
-      if (data.actors) {
-        setActors(data.actors);
+      if (res.status === 401) {
+        if (step === 'dashboard') {
+          console.warn('[Actors Poll] 401 Unauthorized. Checking if authenticating...');
+          // Check system status before kicking, maybe we are just re-logging?
+          const sysRes = await fetch('/api/session/connect');
+          const sysData = await sysRes.json();
+          if (!sysData.system?.isAuthenticating) {
+            console.error('[Actors Poll] Definitive session loss. Redirecting to login.');
+            setStep('login');
+          } else {
+            console.log('[Actors Poll] 401 encountered, but system is authenticating. Ignoring.');
+          }
+        }
+        return;
       }
-    } catch (e) {
-      console.error(e);
+      const data = await res.json();
+      if (data.ownedActors || data.actors) {
+        setActors(data.actors || []); // Fallback for old code
+        setOwnedActors(data.ownedActors || data.actors || []);
+        setReadOnlyActors(data.readOnlyActors || []);
+      }
+    } catch (error) {
+      console.error(error);
     }
-  };
+  }, [loading, step]);
 
   useEffect(() => {
     if (step !== 'dashboard') return;
@@ -281,7 +313,83 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [step]);
+  }, [step, fetchActors]);
+
+  // Helper to render an actor card
+  const renderActorCard = (actor: any, index: number, clickable: boolean = true) => {
+    return (
+      <div
+        key={actor.id}
+        onClick={() => {
+          if (!clickable) return;
+          setLoading(true);
+          setLoginMessage('Loading Codex...');
+          window.location.href = `/actors/${actor.id}`;
+        }}
+        className={`
+          ${theme.panelBg}/40 backdrop-blur-md p-4 rounded-xl shadow-lg border border-white/5 
+          ${clickable ? 'hover:border-amber-500/50 hover:-translate-y-1 hover:shadow-2xl cursor-pointer' : 'cursor-default opacity-80'} 
+          transition-all duration-300 block group animate-in fade-in slide-in-from-bottom-4
+        `}
+        style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
+      >
+        <div className="flex items-start gap-4">
+          <div className="relative">
+            <img
+              src={actor.img ? (actor.img.startsWith('http') ? actor.img : `${url}/${actor.img}`) : `${url}/icons/svg/mystery-man.svg`}
+              alt={actor.name}
+              className="w-16 h-16 rounded-lg bg-black/40 object-cover border border-white/10 group-hover:border-amber-500/30 transition-colors"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = `${url}/icons/svg/mystery-man.svg`;
+              }}
+            />
+            {clickable && (
+              <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/5 transition-colors rounded-lg"></div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className={`font-bold text-lg truncate ${theme.accent} ${clickable ? 'group-hover:brightness-125' : ''}`}>
+              {actor.name}
+            </h3>
+
+            {/* Dynamic Subtext based on Module Config */}
+            {system?.config?.actorCard?.subtext ? (
+              <p className="opacity-60 text-sm mb-2 capitalize truncate">
+                {system.config.actorCard.subtext
+                  .map((path: string) => {
+                    const rawVal = path.split('.').reduce((obj, key) => obj?.[key], actor);
+                    return rawVal;
+                  })
+                  .filter(Boolean)
+                  .join(' • ') || actor.type}
+              </p>
+            ) : (
+              <p className="opacity-60 text-sm mb-2 capitalize truncate">{actor.type}</p>
+            )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {actor.hp && (
+                <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
+                  <span className="opacity-50 text-[10px] uppercase tracking-tighter block">HP</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
+                    <span className="opacity-30 text-xs">/ {actor.hp.max}</span>
+                  </div>
+                </div>
+              )}
+              {(actor.ac !== undefined) && (
+                <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
+                  <span className="opacity-50 text-[10px] uppercase tracking-tighter block">AC</span>
+                  <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <main
@@ -386,7 +494,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                         <option value="" disabled>-- Select Player --</option>
                         {users.map(u => (
                           <option
-                            key={u.id}
+                            key={u.id || u._id}
                             value={u.name}
                             disabled={(u as any).active}
                             className={`bg-neutral-900 text-white ${(u as any).active ? 'text-white/50 bg-neutral-800' : ''}`}
@@ -474,13 +582,13 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                     {system?.worldTitle && (
                       <>
                         <span className="font-bold tracking-widest uppercase">Dashboard</span>
-                        <span className="hidden md:inline">•</span>
                       </>
                     )}
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                      <span className="font-bold text-white">Connected</span>
-                      <span>to {url}</span>
+                      <span className="font-bold text-white">Connected as {users.find(u => (u as any).active)?.name || 'Unknown'}</span>
+                      <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                      <span>{url}</span>
                     </div>
                   </div>
                 </div>
@@ -497,69 +605,30 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                 />
               )}
 
-              {/* All Actors */}
+              {/* Owned Actors */}
               <div>
+                <div className="flex items-center gap-3 mb-4">
+                  <h3 className={`text-xl font-bold uppercase tracking-widest opacity-80 ${theme.accent}`}>Your Characters</h3>
+                  <div className="h-px flex-1 bg-white/10"></div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {actors.length === 0 && <p className="opacity-50 italic">No actors found (or waiting to fetch...)</p>}
-                  {actors.map((actor) => (
-                    <div
-                      key={actor.id}
-                      onClick={() => {
-                        setLoading(true);
-                        setLoginMessage('Loading Codex...');
-                        window.location.href = `/actors/${actor.id}`;
-                      }}
-                      className={`
-                        ${theme.panelBg} p-4 rounded-lg shadow border border-transparent 
-                        hover:border-amber-500/50 transition-all cursor-pointer block group
-                      `}
-                    >
-                      <div className="flex items-start gap-4">
-                        <img
-                          src={actor.img ? (actor.img.startsWith('http') ? actor.img : `${url}/${actor.img}`) : `${url}/icons/svg/mystery-man.svg`}
-                          alt={actor.name}
-                          className="w-16 h-16 rounded bg-black/20 object-cover"
-                        />
-                        <div className="flex-1">
-                          <h3 className={`font-bold text-lg ${theme.accent} group-hover:brightness-110`}>{actor.name}</h3>
-
-                          {/* Dynamic Subtext based on Module Config */}
-                          {system?.config?.actorCard?.subtext ? (
-                            <p className="opacity-60 text-sm mb-2 capitalize">
-                              {system.config.actorCard.subtext
-                                .map((path: string) => {
-                                  // Resolve dot notation
-                                  return path.split('.').reduce((obj, key) => obj?.[key], actor);
-                                })
-                                .filter(Boolean)
-                                .join(' • ') || actor.type}
-                            </p>
-                          ) : (
-                            <p className="opacity-60 text-sm mb-2 capitalize">{actor.type}</p>
-                          )}
-
-                          {/* Stats Grid */}
-                          <div className="grid grid-cols-2 gap-2 text-sm">
-                            {actor.hp && (
-                              <div className="bg-black/20 px-2 py-1 rounded">
-                                <span className="opacity-50 text-xs uppercase block">HP</span>
-                                <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
-                                <span className="opacity-50"> / {actor.hp.max}</span>
-                              </div>
-                            )}
-                            {(actor.ac !== undefined) && (
-                              <div className="bg-black/20 px-2 py-1 rounded">
-                                <span className="opacity-50 text-xs uppercase block">AC</span>
-                                <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  {ownedActors.length === 0 && <p className="opacity-50 italic text-sm py-4">You don&apos;t own any characters in this world.</p>}
+                  {ownedActors.map((actor, idx) => renderActorCard(actor, idx, true))}
                 </div>
               </div>
+
+              {/* Read Only Actors */}
+              {readOnlyActors.length > 0 && (
+                <div className="mt-4">
+                  <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-xl font-bold uppercase tracking-widest opacity-40 text-neutral-400">Other Characters (Read Only)</h3>
+                    <div className="h-px flex-1 bg-white/10"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {readOnlyActors.map((actor, idx) => renderActorCard(actor, ownedActors.length + idx, false))}
+                  </div>
+                </div>
+              )}
             </div>
           )
         }

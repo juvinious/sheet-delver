@@ -6,12 +6,12 @@ import { CompendiumCache } from '@/lib/foundry/compendium-cache';
 export async function GET() {
     const client = getClient();
 
-    if (!client) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
     try {
-        // 1. Get current system ID
+        // 1. Get current system ID and user ID
         const systemInfo = await client.getSystem();
         const adapter = getAdapter(systemInfo.id);
 
@@ -19,34 +19,83 @@ export async function GET() {
             throw new Error(`System adapter '${systemInfo.id}' not found`);
         }
 
+        // Get current user ID
+        const currentUserId = client.getCurrentUserId();
+
+        // Get all users to check if current user is GM
+        const allUsers = await client.getUsers();
+        const currentUser = allUsers.find((u: any) => u._id === currentUserId);
+        const isGM = currentUser?.role >= 4; // Role 4 = Gamemaster
+
         // 2. Fetch raw actors
-        const rawActors = await client.getActors(); // client actually returns a partial structure we defined, but let's assume it passes through 'system'
+        // const allActors = await client.getActors(); // Unused
+        const rawActors = await client.getActors();
 
-        // DEBUG: Check first actor for computed data
+        // 3. Filter and group actors based on ownership
+        const ownedActors: any[] = [];
+        const readOnlyActors: any[] = [];
 
+        rawActors.forEach((actor: any) => {
+            // GMs see all actors as owned
+            if (isGM) {
+                ownedActors.push(actor);
+                return;
+            }
+
+            // If no user ID, skip
+            if (!currentUserId) return;
+
+            const ownership = actor.ownership || {};
+
+            // Debug first few actors
+            if (rawActors.indexOf(actor) < 3) {
+                console.log(`[Actors API] Actor "${actor.name}" - Type: ${actor.type} - Ownership:`, ownership);
+            }
+
+            // Check if user has OWNER permission (level 3)
+            if (ownership[currentUserId] >= 3) {
+                ownedActors.push(actor);
+            }
+            // Check if user has OBSERVER permission (level 2) via default or explicit
+            else if (ownership[currentUserId] >= 2 || ownership.default >= 2) {
+                readOnlyActors.push(actor);
+            }
+        });
+
+        const allActors = [...ownedActors, ...readOnlyActors];
+        console.log(`[Actors API] User ${currentUser?.name} (${currentUserId}) - Role: ${currentUser?.role} - Total: ${rawActors.length}, Owned: ${ownedActors.length}, Read-Only: ${readOnlyActors.length}`);
 
         // Use CompendiumCache as fallback/primary resolver
-        // Browser-side fromUuid can be flaky if packs aren't loaded in the view
         const cache = CompendiumCache.getInstance();
         if (!cache.hasLoaded()) {
             await cache.initialize(client);
         }
 
-        // 3. Normalize
-        const actors = await Promise.all(rawActors.map(async (actor: any) => {
-            // Ensure computed exists
+        // 4. Normalize all actors
+        const normalizedOwned = await Promise.all(ownedActors.map(async (actor: any) => {
             if (!actor.computed) actor.computed = {};
             if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
-
-            // Delegate system-specific name resolution to the adapter
             if (adapter.resolveActorNames) {
                 adapter.resolveActorNames(actor, cache);
             }
-
             return adapter.normalizeActorData(actor);
         }));
 
-        return NextResponse.json({ actors, system: systemInfo.id });
+        const normalizedReadOnly = await Promise.all(readOnlyActors.map(async (actor: any) => {
+            if (!actor.computed) actor.computed = {};
+            if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
+            if (adapter.resolveActorNames) {
+                adapter.resolveActorNames(actor, cache);
+            }
+            return adapter.normalizeActorData(actor);
+        }));
+
+        return NextResponse.json({
+            actors: normalizedOwned, // Keep for backward compatibility
+            ownedActors: normalizedOwned,
+            readOnlyActors: normalizedReadOnly,
+            system: systemInfo.id
+        });
 
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -26,8 +26,8 @@ export class ShadowdarkImporter {
             const mappingPath = path.join(process.cwd(), 'src/modules/shadowdark/data/shadowdarkling/map-shadowdarkling.json');
             const fileContent = await fs.promises.readFile(mappingPath, 'utf-8');
             this.mapping = JSON.parse(fileContent);
-        } catch (e) {
-            console.error('[ShadowdarkImporter] Failed to load mapping file', e);
+        } catch (error) {
+            console.error('[ShadowdarkImporter] Failed to load mapping file', error);
             throw new Error('Failed to load import mappings');
         }
     }
@@ -258,7 +258,7 @@ export class ShadowdarkImporter {
                                 log(`[findGenericIcon] Found icon: ${doc.img} from ${doc.name}`);
                                 return doc.img;
                             }
-                        } catch (e) { /* ignore */ }
+                        } catch { /* ignore */ }
                     }
                 }
                 return null;
@@ -472,7 +472,7 @@ export class ShadowdarkImporter {
                                     else if (isWand) img = "icons/tools/wands/wand-wood.webp";
                                 }
 
-                                let desc = `<strong>${g.name}</strong>`;
+                                const desc = `<strong>${g.name}</strong>`;
                                 // Check if we have extras on basic gear? Shadowdarkling basic gear usually doesn't have features unless it's a magic item disguised as sundry.
                                 // But 'g' here comes from json.gear which is sometimes limited.
                                 // If this was triggered from the Magic Items loop (below), we have more data 'm'.

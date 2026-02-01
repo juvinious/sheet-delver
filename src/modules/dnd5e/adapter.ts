@@ -14,7 +14,7 @@ export class DnD5eAdapter implements SystemAdapter {
             const actor = window.game.actors.get(id);
             if (!actor) return null;
             return {
-                id: actor.id,
+                id: actor.id || actor._id,
                 name: actor.name,
                 type: actor.type,
                 img: actor.img,
@@ -45,7 +45,7 @@ export class DnD5eAdapter implements SystemAdapter {
         const abilities = s.abilities || {};
 
         return {
-            id: actor.id,
+            id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
             img: actor.img,

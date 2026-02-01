@@ -1,10 +1,11 @@
 import io from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { FoundryConfig } from './types';
-import { FoundryClient } from './interfaces';
+import { FoundryClient, SystemConnectionData } from './interfaces';
 import { getAdapter } from '../../modules/core/registry';
 import { SystemAdapter } from '../../modules/core/interfaces';
 import { logger } from '../logger';
+import { CompendiumCache } from './compendium-cache';
 
 export class SocketFoundryClient implements FoundryClient {
     private config: FoundryConfig;
@@ -15,14 +16,35 @@ export class SocketFoundryClient implements FoundryClient {
     public userId: string | null = null;
     private isJoining: boolean = false;
     public isConnected: boolean = false;
+    public isExplicitSession: boolean = false;
+    get isLoggedIn(): boolean {
+        // As long as we have explicitly established a session, we consider ourselves logged in.
+        // This prevents the frontend from kicking the user during transient socket reconnections
+        // or moments where the userId is being re-confirmed by the server.
+        // Definitive session termination only happens via logout() or a confirmed kick.
+        return this.isExplicitSession;
+    }
+    private worldTitleFromHtml: string | null = null;
+    private worldBackgroundFromHtml: string | null = null;
+    private validationFailCount: number = 0;
+    private consecutiveFailures: number = 0;
+    public isAuthenticating: boolean = false;
+    private disconnectReason: string | null = null;
+    private userMap: Map<string, any> = new Map();
+    private actorCache: Map<string, string> = new Map();
 
     constructor(config: FoundryConfig) {
         this.config = config;
     }
 
+    // ... (get url, resolveAdapter methods unchanged)
+
+    // ... (login, logout methods - ensure they match existing)
+
     get url(): string {
         return this.config.url;
     }
+
 
     private async resolveAdapter(): Promise<SystemAdapter> {
         if (this.adapter) return this.adapter;
@@ -42,20 +64,70 @@ export class SocketFoundryClient implements FoundryClient {
         if (username) this.config.username = username;
         if (password) this.config.password = password;
 
-        if (this.isConnected) {
-            this.disconnect();
+        this.isAuthenticating = true;
+        try {
+            if (this.isConnected) {
+                this.disconnect();
+            }
+            await this.connect();
+
+            // wait for authenticated session AND active status
+            const timeout = 30000;
+            await this.waitForAuthentication(timeout);
+
+            this.isExplicitSession = true;
+        } catch (e: any) {
+            logger.error(`SocketFoundryClient | Login exception: ${e.message}`);
+            this.disconnect(`Login failure: ${e.message}`);
+            throw e;
+        } finally {
+            this.isAuthenticating = false;
         }
-        await this.connect();
+    }
+
+    private async waitForAuthentication(timeoutMs: number): Promise<void> {
+        logger.info(`SocketFoundryClient | Waiting for authentication (timeout: ${timeoutMs}ms)...`);
+        const start = Date.now();
+        // Optimistic: We only wait up to 5s for the active status. 
+        // If we have the userId from the session event, we are effectively logged in.
+        while (Date.now() - start < 5000) {
+            if (this.userId) {
+                try {
+                    const users = await this.getUsers();
+                    const me = users.find((u: any) => (u._id || u.id) === this.userId);
+                    if (me?.active) {
+                        logger.info(`SocketFoundryClient | User ${this.userId} is active.`);
+                        return;
+                    }
+                } catch { }
+            }
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        logger.info(`SocketFoundryClient | Proceeding with session (userId: ${this.userId})`);
     }
 
     async logout(): Promise<void> {
-        this.disconnect();
+        logger.info(`SocketFoundryClient | Logging out user ${this.userId}`);
+        this.isExplicitSession = false;
+        this.userId = null;
+        this.sessionCookie = null;
+        this.disconnect("User logged out explicitly");
     }
 
     async connect(): Promise<void> {
         // Socket connection is now considered stable for v13.
 
         if (this.isConnected) return;
+
+        if (this.isConnected) return;
+
+        // Initialize Compendium Cache in background
+        CompendiumCache.getInstance().initialize(this).catch(e => logger.warn(`CompendiumCache init failed: ${e}`));
+
+        // Reset world data on new connection attempt to ensure freshness
+        this.worldTitleFromHtml = null;
+        this.worldBackgroundFromHtml = null;
+
 
         const baseUrl = this.config.url.endsWith('/') ? this.config.url.slice(0, -1) : this.config.url;
 
@@ -84,38 +156,125 @@ export class SocketFoundryClient implements FoundryClient {
 
                 const html = await joinResponse.text();
 
-                let userId = this.config.userId || html.match(new RegExp(`option value="([^"]+)">[^<]*${this.config.username}`, 'i'))?.[1];
-                if (!userId) {
-                    userId = html.match(new RegExp(`"id":"([^"]+)"[^{}]*"name":"${this.config.username}"`, 'i'))?.[1];
+                // Check if we were redirected to setup
+                const isSetup = joinResponse.url.includes('/setup') || html.includes('id="setup"');
+                if (isSetup) {
+                    logger.info(`SocketFoundryClient | Redirected to Setup page (or Setup detected). Parsing public details.`);
                 }
-                if (!userId) {
-                    logger.warn(`SocketFoundryClient | User "${this.config.username}" not found in /join HTML. Using config fallback.`);
-                    logger.info(`SocketFoundryClient | /join HTML content preview: ${html.substring(0, 2000)}`);
-                    userId = this.config.username;
+
+                // Parse World Title & Background from Login/Setup Page
+                // 1. Title
+                const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+                if (titleMatch) {
+                    let rawTitle = titleMatch[1].trim();
+                    rawTitle = rawTitle.replace(/^Foundry Virtual Tabletop [\u2022\u00B7\-|]\s*/i, '');
+                    this.worldTitleFromHtml = rawTitle;
+                    logger.info(`SocketFoundryClient | Parsed World/System Title: "${this.worldTitleFromHtml}"`);
                 }
+
+                // 2. Background - load from cache if available
+                const { SetupScraper } = await import('./SetupScraper');
+                const cache = await SetupScraper.loadCache();
+
+                let userId: string | undefined;
+                let backgroundUrl: string | null = null;
+
+                if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
+                    const worldData = cache.worlds[cache.currentWorldId];
+                    backgroundUrl = worldData.backgroundUrl;
+                    this.worldBackgroundFromHtml = backgroundUrl;
+
+                    // Find user ID from cache
+                    const cachedUser = worldData.users.find(u => u.name === this.config.username);
+                    if (cachedUser) {
+                        userId = cachedUser._id;
+                        logger.info(`SocketFoundryClient | Loaded User ID from cache: ${userId}`);
+                    } else {
+                        logger.warn(`SocketFoundryClient | User "${this.config.username}" not found in cached world data`);
+                    }
+                } else {
+                    logger.warn(`SocketFoundryClient | No cached world data found. Setup required.`);
+                    // Fallback: parse background from HTML
+                    const cssVarMatch = html.match(/--background-url:\s*url\((['"]?)(.*?)\1\)/i);
+                    const bgImageMatch = html.match(/background-image:\s*url\((['"]?)(.*?)\1\)/i);
+
+                    if (cssVarMatch) {
+                        backgroundUrl = cssVarMatch[2].trim();
+                    } else if (bgImageMatch) {
+                        backgroundUrl = bgImageMatch[2].trim();
+                    }
+
+                    if (backgroundUrl && !backgroundUrl.startsWith('http')) {
+                        const path = backgroundUrl.startsWith('/') ? backgroundUrl : `/${backgroundUrl}`;
+                        backgroundUrl = `${baseUrl}${path}`;
+                    }
+                    this.worldBackgroundFromHtml = backgroundUrl;
+                }
+
+                // Use config userId as fallback
+                if (!userId) {
+                    userId = this.config.userId;
+                }
+
+                if (!userId) {
+                    throw new Error(`No User ID available. Please run setup at /setup to configure your Foundry connection.`);
+                }
+
                 this.discoveredUserId = userId;
+
+                // Extract CSRF Token
+                const csrfMatch = html.match(/name="csrf-token" content="(.*?)"/) || html.match(/input type="hidden" name="csrf" value="(.*?)"/);
+                const csrfToken = csrfMatch ? csrfMatch[1] : null;
+
+                if (csrfToken) {
+                    logger.info(`SocketFoundryClient | Found CSRF Token: ${csrfToken.substring(0, 10)}...`);
+                } else {
+                    logger.warn(`SocketFoundryClient | No CSRF Token found. Login might fail.`);
+                }
+
+                // Add Origin and Referer for strict security checks
+                const postHeaders = {
+                    'Content-Type': 'application/json',
+                    'User-Agent': 'SheetDelver/1.0',
+                    'Origin': baseUrl,
+                    'Referer': `${baseUrl}/join`,
+                    'Cookie': Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
+                };
+
+                const bodyData: any = {
+                    userid: userId,
+                    username: this.config.username, // Include username explicitly for hidden user fallback
+                    password: this.config.password || '',
+                    action: 'join'
+                };
+                if (csrfToken) {
+                    bodyData['csrf-token'] = csrfToken; // Foundry usually expects 'csrf-token' key or 'csrf'
+                    bodyData['csrf'] = csrfToken;       // Send both to be safe
+                }
 
                 const loginResponse = await fetch(`${baseUrl}/join`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'SheetDelver/1.0',
-                        'Cookie': Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
-                    },
-                    body: JSON.stringify({
-                        userid: userId,
-                        password: this.config.password || '',
-                        action: 'join'
-                    }),
+                    headers: postHeaders,
+                    body: JSON.stringify(bodyData),
                     redirect: 'manual'
                 });
 
                 addCookies(loginResponse.headers.get('set-cookie'));
 
+                const loginBody = await loginResponse.text();
                 logger.info(`SocketFoundryClient | Login POST status: ${loginResponse.status}`);
-                if (loginResponse.status !== 302 && loginResponse.status !== 200) {
-                    const loginBody = await loginResponse.text();
-                    logger.warn(`SocketFoundryClient | Login POST body: ${loginBody.substring(0, 500)}`);
+
+                // Success could be 302 (Redirect), 200 (JSON Success), or even 200 (HTML with cookie).
+                // We rely on the subsequent /game check to verify if the session is valid.
+
+                const isJsonSuccess = loginResponse.status === 200 && (loginBody.includes('"status":"success"') || loginBody.includes('JOIN.LoginSuccess'));
+                const isRedirect = loginResponse.status === 302;
+
+                // CRITICAL: specific fail check. If it's NOT success, we MUST throw.
+                // We cannot fall through because we might have a guest cookie that looks valid.
+                if (!isRedirect && !isJsonSuccess) {
+                    logger.error(`SocketFoundryClient | Login Failed: Unexpected status ${loginResponse.status}. Body preview: ${loginBody.substring(0, 300)}`);
+                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}`);
                 }
 
                 if (cookieMap.size > 0) {
@@ -132,6 +291,11 @@ export class SocketFoundryClient implements FoundryClient {
                         });
 
                         logger.info(`SocketFoundryClient | /game fetch status: ${gameResponse.status}`);
+
+                        if (gameResponse.status === 200) {
+                            // Already parsed in /join
+                        }
+
                         const gameCookies = gameResponse.headers.get('set-cookie');
                         if (gameCookies) {
                             logger.info(`SocketFoundryClient | /game set-cookie received.`);
@@ -162,16 +326,26 @@ export class SocketFoundryClient implements FoundryClient {
         }
 
         // 2. Establish Socket Connection
-        return new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
             this.isJoining = false;
 
-            // Robustly extract sessionId from cookie (name might be 'session' or 'foundry')
+            // Robustly extract sessionId from cookie (look for 'session' or 'foundry')
             let sessionId: string | undefined;
             if (this.sessionCookie) {
-                const cookieParts = this.sessionCookie.split(';')[0].split('=');
-                if (cookieParts.length >= 2) {
-                    sessionId = cookieParts[1];
-                    logger.info(`SocketFoundryClient | Extracted sessionId from cookie: ${sessionId.substring(0, 8)}... (name: ${cookieParts[0]})`);
+                const parts = this.sessionCookie.split(';');
+                for (const part of parts) {
+                    const [key, value] = part.trim().split('=');
+                    if (key === 'session' || key === 'foundry') {
+                        sessionId = value;
+                        logger.info(`SocketFoundryClient | Extracted sessionId from cookie: ${sessionId.substring(0, 8)}... (name: ${key})`);
+                        break;
+                    }
+                }
+                // Fallback to first if explicit search fails (legacy behavior)
+                if (!sessionId && parts.length > 0) {
+                    const [key, value] = parts[0].trim().split('=');
+                    sessionId = value;
+                    logger.info(`SocketFoundryClient | Fallback sessionId from first cookie: ${sessionId?.substring(0, 8)}... (name: ${key})`);
                 }
             }
 
@@ -182,18 +356,29 @@ export class SocketFoundryClient implements FoundryClient {
             };
 
             logger.info(`SocketFoundryClient | Connecting to socket at ${baseUrl}...`);
+            logger.info(`SocketFoundryClient | DEBUG: Sending Cookie Header: "${headers.Cookie}"`);
 
             // @ts-ignore
             this.socket = io(baseUrl, {
                 path: '/socket.io',
                 transports: ['websocket'],
                 reconnection: true,
+                forceNew: true,
                 query: sessionId ? { session: sessionId } : {},
                 auth: sessionId ? { session: sessionId } : {},
                 extraHeaders: headers,
+                transportOptions: {
+                    websocket: {
+                        extraHeaders: headers
+                    }
+                },
                 withCredentials: true
             });
-            logger.info(`SocketFoundryClient | Final socket options: path=${(this.socket as any).io.opts.path}, query=${JSON.stringify((this.socket as any).io.opts.query)}, auth=${JSON.stringify((this.socket as any).auth)}`);
+
+            const ioOpts = (this.socket as any).io.opts;
+            logger.info(`SocketFoundryClient | Final socket options: path=${ioOpts.path}, query=${JSON.stringify(ioOpts.query)}, auth=${JSON.stringify((this.socket as any).auth)}`);
+            logger.info(`SocketFoundryClient | DEBUG: extraHeaders: ${JSON.stringify(ioOpts.extraHeaders)}`);
+            logger.info(`SocketFoundryClient | DEBUG: transportOptions: ${JSON.stringify(ioOpts.transportOptions)}`);
 
             if (!this.socket) {
                 return reject(new Error("Failed to initialize socket"));
@@ -208,6 +393,9 @@ export class SocketFoundryClient implements FoundryClient {
 
             socket.on('disconnect', (reason) => {
                 logger.warn('SocketFoundryClient | Socket disconnected. Reason: ' + reason);
+                this.isConnected = false;
+                // DO NOT clear isExplicitSession here. 
+                // We want to allow the client to stay "Logged In" during reconnections.
             });
 
             socket.io.on('reconnect_attempt', (attempt) => {
@@ -216,6 +404,32 @@ export class SocketFoundryClient implements FoundryClient {
 
             socket.io.on('error', (error) => {
                 logger.error('SocketFoundryClient | Socket.io error: ' + error);
+            });
+
+            // Handle when user is kicked/disconnected from Foundry
+            socket.on('userDisconnected', (data: any) => {
+                const id = data.userId || data._id || data.id;
+                logger.warn(`SocketFoundryClient | User disconnected event received: ${id}`);
+
+                const existing = this.userMap.get(id);
+                if (existing) {
+                    this.userMap.set(id, { ...existing, active: false });
+                }
+
+                if (id === this.userId) {
+                    logger.warn('SocketFoundryClient | Current user was kicked/disconnected. Clearing session.');
+                    this.isConnected = false;
+                    this.isExplicitSession = false; // Clear session flag
+                    this.userId = null;
+                    this.discoveredUserId = null;
+                }
+            });
+
+            socket.on('userConnected', (user: any) => {
+                const id = user._id || user.id;
+                logger.info(`SocketFoundryClient | User connected: ${user.name} (${id})`);
+                const existing = this.userMap.get(id) || {};
+                this.userMap.set(id, { ...existing, ...user, active: true });
             });
 
             socket.onAny((event, ...args) => {
@@ -231,36 +445,72 @@ export class SocketFoundryClient implements FoundryClient {
                     const data = args[0] || {};
 
                     if (data.userId) {
-                        logger.info(`SocketFoundryClient | Session event. data.userId: ${data.userId}`);
+                        logger.info(`SocketFoundryClient | Session event. Authenticated as ${data.userId}`);
                         this.discoveredUserId = data.userId;
                         this.userId = data.userId;
 
-                        // Mark as connected - passive approach, no join emission
                         if (!this.isConnected) {
                             this.isConnected = true;
                             resolve();
                         }
                     } else {
-                        logger.info(`SocketFoundryClient | Session event. data.userId not present (yet).`);
+                        logger.info(`SocketFoundryClient | Session event. Guest session (userId: null).`);
+
+                        // If we had an explicit session and it was cleared by the server
+                        if (this.isExplicitSession) {
+                            logger.warn(`SocketFoundryClient | Explicit session lost (server-side). Forcing disconnect.`);
+                            this.logout(); // This clears isExplicitSession and calls disconnect()
+                        } else {
+                            this.userId = null;
+                            if (!this.isConnected) {
+                                this.isConnected = true;
+                                resolve();
+                            }
+                        }
                     }
                 }
 
-                // Detect userActivity for self as fallback connection indicator
+                // Detect userActivity for self and others
                 if (event === 'userActivity') {
-                    const [userId, activityData] = args;
-                    if (userId === this.discoveredUserId && !this.isConnected) {
-                        logger.info(`SocketFoundryClient | Detected userActivity for self (${userId}). Assuming connected.`);
+                    const arg1 = args[0];
+                    const activeUserId = typeof arg1 === 'string' ? arg1 : (arg1?.userId || arg1?._id || arg1?.id);
+
+                    if (activeUserId) {
+                        const existing = this.userMap.get(activeUserId);
+                        if (existing) {
+                            this.userMap.set(activeUserId, { ...existing, active: true });
+                        }
+
+                        if (activeUserId === this.discoveredUserId && !this.isConnected) {
+                            logger.info(`SocketFoundryClient | Detected userActivity for self (${activeUserId}). Assuming connected.`);
+                            this.isConnected = true;
+                            resolve();
+                        }
+                    }
+                }
+
+
+                if (event === 'ready' || event === 'init') {
+                    const payload = args[0] || {};
+                    const activeUserIds = payload.activeUsers || payload.userIds || [];
+                    logger.info(`SocketFoundryClient | '${event}' payload keys: ${Object.keys(payload).join(', ')} | Active users: ${activeUserIds.length}`);
+
+                    if (payload.users) {
+                        logger.info(`SocketFoundryClient | Populating user map with ${payload.users.length} users from ready event.`);
+                        payload.users.forEach((u: any, i: number) => {
+                            const id = u._id || u.id;
+                            const isActive = activeUserIds.includes(id) || u.active === true;
+                            if (i < 3) logger.info(`SocketFoundryClient | User ${u.name} (${id}) | active: ${isActive} (doc active: ${u.active})`);
+                            this.userMap.set(id, { ...u, active: isActive });
+                        });
+                    }
+
+                    if (!this.isConnected) {
+                        logger.info(`SocketFoundryClient | Received '${event}'. Connected.`);
                         this.isConnected = true;
+                        this.isJoining = false;
                         resolve();
                     }
-                }
-
-
-                if ((event === 'ready' || event === 'init') && !this.isConnected) {
-                    logger.info(`SocketFoundryClient | Received '${event}'. Connected.`);
-                    this.isConnected = true;
-                    this.isJoining = false;
-                    resolve();
                 }
 
                 if (event === 'setup') {
@@ -295,17 +545,41 @@ export class SocketFoundryClient implements FoundryClient {
                 }
             }, 60000); // 60s for slower environments
         });
+
+        // 3. Post-Connection Initialization
+        try {
+            const adapter = await this.resolveAdapter();
+            if (adapter.loadSupplementaryData) {
+                logger.debug('SocketFoundryClient | Loading supplementary system data...');
+                // Ensure cache is initialized if it wasn't already (though it should be)
+                if (!CompendiumCache.getInstance().hasLoaded()) {
+                    await CompendiumCache.getInstance().initialize(this);
+                }
+                await adapter.loadSupplementaryData(CompendiumCache.getInstance());
+                logger.info('SocketFoundryClient | Supplementary data loaded successfully.');
+            }
+        } catch (e) {
+            logger.warn(`SocketFoundryClient | Failed to load supplementary data: ${e}`);
+        }
     }
 
-    public disconnect() {
+    public disconnect(reason?: string) {
+        if (reason) this.disconnectReason = reason;
         if (this.socket) {
             this.socket.disconnect();
         }
         this.socket = null;
-        this.sessionCookie = null;
         this.isConnected = false;
+        // CRITICAL: We DO NOT clear isExplicitSession or userId here anymore.
+        // This allows the session to persist through transient socket reconnections.
+
         this.isJoining = false;
-        logger.info("SocketFoundryClient | Disconnected.");
+        if (!this.isAuthenticating) {
+            this.isAuthenticating = false;
+        }
+        this.consecutiveFailures = 0;
+        this.validationFailCount = 0;
+        logger.info(`SocketFoundryClient | Socket Disconnected. Reason: ${this.disconnectReason || 'None'}`);
     }
 
     private async emit<T>(event: string, ...args: any[]): Promise<T> {
@@ -335,7 +609,7 @@ export class SocketFoundryClient implements FoundryClient {
                 }
             });
 
-            setTimeout(() => reject(new Error(`Timeout waiting for event: ${event} [${requestId}]`)), 15000);
+            setTimeout(() => reject(new Error(`Timeout waiting for event: ${event} [${requestId}]`)), 5000);
         });
     }
 
@@ -355,15 +629,8 @@ export class SocketFoundryClient implements FoundryClient {
         // Handle parent logic: convert {type, id} to parentUuid string
         if (parent) {
             // Mapping simplistic type/id to UUID
-            // Root documents (Actor) don't have parents. 
-            // Embedded (Item, ActiveEffect): Actor.ID
             operation.parentUuid = `${parent.type}.${parent.id}`;
-            // NOTE: This assumes standard UUID format. 
-            // If parent is World-level, it might just be the ID if type is omitted? 
-            // But static analysis showed `ClientDatabaseBackend.#buildRequest` handles this.
-            // Safe bet for Actor items: "Actor.<ActorId>"
         }
-        // If operation has parent object, process it
         else if (operation.parent && typeof operation.parent === 'object') {
             operation.parentUuid = `${operation.parent.type}.${operation.parent.id}`;
             delete operation.parent;
@@ -375,39 +642,180 @@ export class SocketFoundryClient implements FoundryClient {
             operation
         };
 
-        return await this.emit('modifyDocument', payload);
+        try {
+            const result = await this.emit('modifyDocument', payload);
+            this.consecutiveFailures = 0; // Reset on success
+            return result;
+        } catch (e: any) {
+            this.consecutiveFailures++;
+            // Don't disconnect immediately on first failure, let the caller handle it or wait for more
+            // Increased threshold to 15 to be more resilient to network blips
+            if (this.consecutiveFailures >= 15) {
+                logger.error(`SocketFoundryClient | Too many consecutive failures (${this.consecutiveFailures}) in dispatch. Forcing disconnect.`);
+                this.disconnect(`Too many consecutive failures: ${this.consecutiveFailures}`);
+            }
+            throw e;
+        }
     }
 
-    async evaluate<T>(pageFunction: any, arg?: any): Promise<T> {
+    async switchPage<T>(): Promise<T> {
+        logger.warn(`SocketFoundryClient | switchPage() not supported.`);
+        return null as any;
+    }
+
+    async evaluate<T>(): Promise<T> {
         logger.warn(`SocketFoundryClient | evaluate() not supported.`);
         return null as any;
     }
 
-    async getSystem(): Promise<any> {
-        if (!this.isConnected) return { id: 'unknown' };
+    async getSystem(): Promise<SystemConnectionData> {
+        if (this.isAuthenticating) {
+            return {
+                id: 'unknown',
+                title: 'Unknown System',
+                version: '0.0.0',
+                isLoggedIn: this.isLoggedIn, // Use getter
+                isAuthenticating: true
+            };
+        }
+
+        // If not connected, we return a degraded state but preserve isLoggedIn
+        if (!this.isConnected) {
+            return {
+                id: 'unknown',
+                title: 'Reconnecting...',
+                version: '0.0.0',
+                isLoggedIn: this.isLoggedIn,
+                isAuthenticating: false
+            };
+        }
+
+        const sysData: SystemConnectionData = {
+            id: 'shadowdark', // Default fallback
+            title: 'Shadowdark RPG',
+            version: '1.0.0',
+            worldTitle: this.worldTitleFromHtml || 'Foundry World',
+            worldDescription: '',
+            worldBackground: this.worldBackgroundFromHtml || `${this.url}/ui/denim075.png`,
+            isLoggedIn: this.isLoggedIn,
+            isAuthenticating: this.isAuthenticating,
+            users: { active: 0, total: 0 }
+        };
+
         try {
-            // Fetch core.system setting
-            const response: any = await this.dispatchDocumentSocket('Setting', 'get', {
+            // 1. Fetch System ID (core.system)
+            const sysResponse: any = await this.dispatchDocumentSocket('Setting', 'get', {
                 query: { key: 'core.system' },
                 broadcast: false
             });
-            const systems = response?.result || [];
-            if (systems && systems.length > 0) {
-                return { id: systems[0].value };
+            if (sysResponse?.result?.[0]?.value) {
+                sysData.id = sysResponse.result[0].value;
             }
-        } catch (e) {
+
+            // 2. Fetch Users for Count and Session Validation
+            try {
+                // Optimistic: Use our live userMap if it has contents
+                let users = Array.from(this.userMap.values());
+                if (users.length === 0) {
+                    users = await this.getUsers().catch(() => []);
+                }
+
+                if (users && users.length > 0) {
+                    const activeUsers = users.filter((u: any) => {
+                        const id = u._id || u.id;
+                        return id === this.userId || u.active === true;
+                    });
+                    const activeCount = activeUsers.length;
+                    // Final sanity check: if we think we're logged in, is our user actually active in Foundry?
+                    // Note: In some versions/states, 'active' might be undefined. We only kick if explicitly false.
+                    if (this.isExplicitSession && this.userId) {
+                        const me = users.find((u: any) => (u._id || u.id) === this.userId);
+
+                        if (!me || me.active === false) {
+                            this.validationFailCount++;
+                            logger.warn(`SocketFoundryClient | Session Validation Check failed (${this.validationFailCount}) | User: ${this.userId} | Me: ${!!me} | Active: ${me?.active}`);
+
+                            // Only logout if we've failed 10 times in a row (handles longer blips/slow Foundry updates)
+                            // 10 failures @ 2s polling = 20 seconds of definitive inactivity
+                            if (this.validationFailCount >= 10) {
+                                logger.error(`SocketFoundryClient | User definitively inactive/kicked. Forcing logout.`);
+                                this.logout();
+                                sysData.isLoggedIn = false;
+                                this.validationFailCount = 0;
+                            }
+                        } else {
+                            this.validationFailCount = 0;
+                        }
+                    } else {
+                        // If we got an empty user list, it's likely a transient socket state.
+                        // Skip validation to prevent accidental logouts.
+                        logger.debug(`SocketFoundryClient | User list empty. Skipping session validation.`);
+                        this.validationFailCount = 0;
+                    }
+
+                    sysData.users = {
+                        active: activeCount,
+                        total: users.length,
+                        list: users // Pass list for detailed status
+                    };
+                }
+            } catch (ue) {
+                logger.warn(`SocketFoundryClient | Failed to fetch users for system info: ${ue}`);
+            }
+
+            return sysData;
+
+        } catch (e: any) {
             logger.warn(`SocketFoundryClient | Failed to fetch system info: ${e}`);
+            // If we fail to fetch system info, it might be a temporary blip.
+            // We return sysData as-is (with isLoggedIn preserved).
+            // We DO NOT call disconnect() here, as it's too aggressive.
         }
-        return { id: 'shadowdark', version: '1.0.0', world: 'unknown' };
+        return sysData;
     }
 
     async getUsers(): Promise<any[]> {
         const response: any = await this.dispatchDocumentSocket('User', 'get', { broadcast: false });
-        return response?.result || [];
+        const users = response?.result || [];
+
+        if (users.length > 0) {
+            logger.debug(`SocketFoundryClient | Raw first user sample: ${JSON.stringify(users[0])}`);
+        }
+
+        // We should trust Foundry's active status. If a user is kicked, they will be active: false.
+        // We no longer manually override this to true, as it was masking kicks and session timeouts.
+        return users;
     }
 
     async getUsersDetails(): Promise<any[]> {
-        return this.getUsers();
+        let users = Array.from(this.userMap.values());
+        if (users.length === 0) users = await this.getUsers().catch(() => []);
+
+        // Try to update actor cache for names if empty or periodically
+        if (this.actorCache.size === 0 || Math.random() < 0.05) {
+            try {
+                const actors = await this.getActors();
+                actors.forEach((a: any) => {
+                    this.actorCache.set(a._id || a.id, a.name);
+                });
+            } catch { }
+        }
+
+        return users.map(u => {
+            const id = u._id || u.id;
+            return {
+                id,
+                name: u.name,
+                isGM: (u.role || 0) >= 3, // Role 3 is Assistant GM, Role 4 is GM
+                active: id === this.userId || u.active === true,
+                color: u.color || '#ffffff',
+                characterName: u.character ? this.actorCache.get(u.character) : undefined
+            };
+        });
+    }
+
+    getCurrentUserId(): string | null {
+        return this.userId || this.discoveredUserId || null;
     }
 
     async getSystemData(): Promise<any> {
@@ -416,6 +824,14 @@ export class SocketFoundryClient implements FoundryClient {
     }
 
     async getActors(): Promise<any[]> {
+        // Ensure cache is loaded before fetching to allow resolving names
+        try {
+            await Promise.race([
+                CompendiumCache.getInstance().initialize(this),
+                new Promise(resolve => setTimeout(resolve, 2000))
+            ]);
+        } catch { }
+
         try {
             // operation: { action: 'get', broadcast: false }
             // Response: { result: Object[] } -> we return result
@@ -502,7 +918,12 @@ export class SocketFoundryClient implements FoundryClient {
         );
     }
 
-    async toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay?: boolean): Promise<any> {
+    async render(): Promise<any> {
+        logger.warn(`SocketFoundryClient | render() not supported.`);
+        return null as any;
+    }
+
+    async toggleStatusEffect(actorId: string, effectId: string, active?: boolean): Promise<any> {
         // Fetch existing effects first to see if it exists
         const response: any = await this.dispatchDocumentSocket('Actor', 'get', {
             query: { _id: actorId },

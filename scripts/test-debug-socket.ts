@@ -1,6 +1,5 @@
 import { loadConfig } from '../src/lib/config.ts';
 import { SocketFoundryClient } from '../src/lib/foundry/SocketClient.ts';
-import { logger } from '../src/lib/logger.ts';
 
 async function debugSocket() {
     const config = await loadConfig();

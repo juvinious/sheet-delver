@@ -5,24 +5,20 @@ interface Props {
     hpRoll: number;
     hpFormula: string;
     hpMax: number;
-    confirmReroll: boolean;
     status: SectionStatus;
     onRoll: (isReroll: boolean) => void;
     onManualChange: (val: number) => void;
     onClear: () => void;
-    setConfirmReroll: (confirm: boolean) => void;
 }
 
 export const HPRollSection = ({
     hpRoll,
     hpFormula,
     hpMax,
-    confirmReroll,
     status,
     onRoll,
     onManualChange,
-    onClear,
-    setConfirmReroll
+    onClear
 }: Props) => {
     const [isManual, setIsManual] = useState(false);
 

@@ -17,6 +17,10 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
 
+    if (!client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
+    }
+
     try {
         // Generic fetch for any Document (Item, Actor, RollTable, JournalEntry, etc.)
         const data = await client.evaluate(async (uuid: any) => {

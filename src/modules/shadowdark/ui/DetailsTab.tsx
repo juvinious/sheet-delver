@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { resolveImage, resolveEntityName } from './sheet-utils';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
-import { Trash2, Power, Pencil } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 
 interface DetailsTabProps {
@@ -19,7 +19,7 @@ interface DetailsTabProps {
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
 }
 
-export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, onCreateItem, onUpdateItem, onDeleteItem, onToggleEffect }: DetailsTabProps) {
+export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, onCreateItem, onUpdateItem, onDeleteItem }: DetailsTabProps) {
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -75,7 +75,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
             multiSelect,
             onSelect: (option) => {
                 const valToStore = option.uuid || option.name;
-                const optName = option.name;
+                // const optName = option.name;
 
                 // Handle Multi-Select (Toggle)
                 if (multiSelect) {
@@ -86,7 +86,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         // Sanitize & Normalize to UUIDs
                         // We map existing values (Names or UUIDs) to the authoritative UUIDs from options if available.
                         const cleanArray = (Array.isArray(currentVal) ? currentVal : []).filter((c: any) => c != null).map((c: any) => {
-                            let val = typeof c === 'object' ? (c.uuid || c.name) : c;
+                            const val = typeof c === 'object' ? (c.uuid || c.name) : c;
                             if (!val) return '';
 
                             // Try to resolve to UUID from options
@@ -98,7 +98,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         }).filter((c: any) => c !== '');
 
                         // Deduplicate
-                        let newArray = Array.from(new Set(cleanArray));
+                        const newArray = Array.from(new Set(cleanArray));
 
                         // Determine the value to toggle (Prefer UUID)
                         const targetVal = option.uuid || option.name;

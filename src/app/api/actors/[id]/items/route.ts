@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     let itemData;
     try {
         itemData = await req.json();
-    } catch (e) {
+    } catch (_e) {
         return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
     }
 
@@ -69,7 +69,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     let itemData;
     try {
         itemData = await req.json();
-    } catch (e) {
+    } catch (_e) {
         return NextResponse.json({ success: false, error: 'Invalid JSON' }, { status: 400 });
     }
 

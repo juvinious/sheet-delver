@@ -21,9 +21,7 @@ import { ExtraSpellSelectionSection } from './levelup/sections/ExtraSpellSelecti
 // ... (inside component)
 
 import {
-    resolveImage,
-    formatDescription,
-    getSafeDescription
+    resolveImage
 } from '../sheet-utils';
 
 export const LevelUpModal = (props: LevelUpProps) => {
@@ -71,18 +69,15 @@ export const LevelUpModal = (props: LevelUpProps) => {
                 {(state.loadingClass || state.loadingPatrons || state.isSubmitting) && <LoadingOverlay />}
 
                 <LevelUpHeader
-                    actorId={props.actorId}
                     actorName={props.actorName}
                     currentLevel={props.currentLevel}
                     targetLevel={props.targetLevel}
                     targetClassUuid={state.targetClassUuid}
                     availableClasses={props.availableClasses || []}
-                    loading={state.loading}
                     error={state.error}
                     needsBoon={state.needsBoon}
                     availablePatrons={state.availablePatrons}
                     selectedPatronUuid={state.selectedPatronUuid}
-                    loadingPatrons={state.loadingPatrons}
                     onClassChange={actions.setTargetClassUuid}
                     onPatronChange={actions.setSelectedPatronUuid}
                     foundryUrl={props.foundryUrl}
@@ -103,12 +98,10 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                             hpRoll={state.hpRoll}
                                             hpFormula={state.hpFormula}
                                             hpMax={state.hpMax}
-                                            confirmReroll={state.confirmReroll}
                                             status={state.statuses.hp}
                                             onRoll={actions.handleRollHP}
                                             onManualChange={actions.setHpRoll}
                                             onClear={() => actions.setHpRoll(0)}
-                                            setConfirmReroll={actions.setConfirmReroll}
                                         />
 
                                         {props.currentLevel === 0 && (

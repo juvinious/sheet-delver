@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Trash2, Settings, Power, Plus } from 'lucide-react';
+import { X, Trash2, Settings, Power } from 'lucide-react';
 import { resolveImage } from '../sheet-utils';
 
 interface CustomBoonModalProps {
@@ -42,7 +42,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
     // For simplicity, we might replace all effects on update to ensure 1:1 mapping with UI
     const [originalEffectIds, setOriginalEffectIds] = useState<string[]>([]);
 
-    const boonTypes = systemConfig?.BOON_TYPES || DEFAULT_BOON_TYPES;
+    // const boonTypes = systemConfig?.BOON_TYPES || DEFAULT_BOON_TYPES;
 
     // Flatten predefined effects for dropdown
     const effectOptions = useMemo(() => {
@@ -73,7 +73,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
 
                         const effectsMap = predefinedEffects || systemConfig?.PREDEFINED_EFFECTS || {};
 
-                        const found = Object.entries(effectsMap).find(([_, conf]: any) =>
+                        const found = Object.entries(effectsMap).find(([_key, conf]: any) =>
                             conf && conf.effectKey === c.key
                         );
 
@@ -255,8 +255,8 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                 onChange={e => setBoonType(e.target.value)}
                                 className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-sans"
                             >
-                                {Object.entries(boonTypes).map(([key, label]: [string, any]) => (
-                                    <option key={key} value={key}>{label}</option>
+                                {Object.entries(predefinedEffects || {}).map(([_key, effect]) => (
+                                    <option key={_key} value={_key}>{effect.name}</option>
                                 ))}
                             </select>
                         </div>

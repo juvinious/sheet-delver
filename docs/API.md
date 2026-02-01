@@ -9,9 +9,9 @@ These routes handle standard operations like fetching actors, rolling dice, and 
 ### Actors
 
 -   **GET** `/api/actors`
-    List all accessible actors.
+    List all accessible actors. **Requires Authentication.**
 -   **GET** `/api/actors/:id`
-    Fetch normalized actor data. Automatically detects the system and uses the appropriate `SystemAdapter`.
+    Fetch normalized actor data. Automatically detects the system and uses the appropriate `SystemAdapter`. **Requires Authentication.**
 -   **DELETE** `/api/actors/:id`
     Delete an actor from Foundry.
 -   **POST** `/api/actors/:id/update`
@@ -49,19 +49,40 @@ These routes handle standard operations like fetching actors, rolling dice, and 
 -   **POST** `/api/session/logout`
     Terminate the current session.
 -   **GET** `/api/users`
-    Fetch list of available Foundry users.
+    Fetch list of available Foundry users. **Requires Authentication.**
 
 ### System
 
 -   **GET** `/api/system`
-    Get system-wide configuration or status.
+    Get system-wide configuration or status. **Requires Authentication.**
 -   **GET** `/api/system/data`
-    Get detailed system data (e.g. compendiums, world settings).
+    Get detailed system data (e.g. compendiums, world settings). **Requires Authentication.**
 
 ### Foundry
 
 -   **GET** `/api/foundry/document?uuid=...`
-    Fetch a raw document from Foundry by UUID (e.g. an Item from a Compendium).
+    Fetch a raw document from Foundry by UUID (e.g. an Item from a Compendium). **Requires Authentication.**
+
+### Shadowdark (System Specific)
+
+Base Path: `/api/modules/shadowdark`
+
+-   **GET** `/index`
+    Fetch the server-side compendium index manifest. Used for UUID resolution. **Requires Authentication.**
+-   **POST** `/import`
+    Import a character from JSON data (Shadowdarklings output).
+-   **GET** `/actors/:id/level-up/data`
+    Fetch formatted data required for the level-up modal.
+-   **POST** `/actors/:id/level-up/roll-hp`
+    Roll HP for the current class/level.
+-   **POST** `/actors/:id/level-up/roll-gold`
+    Roll starting gold for a level 1 character.
+-   **POST** `/actors/:id/level-up/finalize`
+    Apply level-up changes (HP, talents, stats) to the actor.
+-   **POST** `/actors/:id/spells/learn`
+    Learn a spell by UUID.
+-   **GET** `/spells/list?source=:className`
+    Fetch a list of spells available for a specific class (e.g. "Wizard").
 
 ## Module API Architecture
 

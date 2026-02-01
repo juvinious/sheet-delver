@@ -1,15 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
-    resolveImage,
     calculateItemSlots,
     calculateMaxSlots,
     calculateCoinSlots,
     calculateGemSlots,
-    getSafeDescription,
-    formatDescription
 } from './sheet-utils';
 import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
 import { useOptimisticOverrides } from '@/hooks/useOptimisticOverrides';

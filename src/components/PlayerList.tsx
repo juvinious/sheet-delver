@@ -60,9 +60,9 @@ export default function PlayerList() {
 
             {/* List Popup */}
             <div className={`
-                bg-black/90 backdrop-blur-md rounded-lg border border-white/10 shadow-2xl overflow-hidden
+                bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden
                 transition-all duration-300 origin-bottom-left
-                ${isOpen ? 'w-[220px] opacity-100 scale-100 mb-0' : 'w-[0px] h-[0px] opacity-0 scale-90 -mb-10'}
+                ${isOpen ? 'w-[240px] opacity-100 scale-100 mb-0 translate-y-0' : 'w-[0px] h-[0px] opacity-0 scale-90 -mb-10 translate-y-10'}
             `}>
                 <div className="bg-neutral-900/50 p-2 border-b border-white/5 flex justify-between items-center">
                     <span className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 pl-1">
@@ -111,9 +111,9 @@ export default function PlayerList() {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className={`
-                    h-12 w-12 rounded-full shadow-lg flex items-center justify-center border border-white/10
-                    transition-all duration-300 hover:scale-110 active:scale-95 group
-                    ${isOpen ? 'bg-neutral-800 text-white rotate-90' : 'bg-neutral-900 text-neutral-400 hover:text-white hover:bg-neutral-800'}
+                    h-12 w-12 rounded-full shadow-xl flex items-center justify-center border border-white/10 backdrop-blur-sm
+                    transition-all duration-300 hover:scale-110 active:scale-95 group z-50
+                    ${isOpen ? 'bg-neutral-800 text-white rotate-90 border-amber-500/50' : 'bg-black/60 text-neutral-400 hover:text-white hover:bg-black/80'}
                 `}
                 title="Toggle Player List"
             >

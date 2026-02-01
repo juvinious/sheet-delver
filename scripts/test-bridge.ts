@@ -1,6 +1,5 @@
 import { loadConfig } from '../src/lib/config.js';
 import { createFoundryClient } from '../src/lib/foundry/index.js';
-import { logger } from '../src/lib/logger.js';
 
 console.log(">>> TEST SCRIPT STARTING <<<");
 
@@ -12,7 +11,7 @@ async function testHeadless() {
     }
 
     console.log(`--- Headless Connection Test ---`);
-    console.log(`Provider: ${config.foundry.provider}`);
+
     console.log(`URL: ${config.foundry.url}`);
     console.log(`User: ${config.foundry.username}`);
 

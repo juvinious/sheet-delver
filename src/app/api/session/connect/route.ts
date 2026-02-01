@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createFoundryClient, FoundryClient } from '@/lib/foundry';
+import { createFoundryClient } from '@/lib/foundry';
 import { getClient, setClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 import { logger } from '@/lib/logger';
@@ -18,23 +18,46 @@ export async function GET() {
     // Check existing connection
     if (existingClient && existingClient.isConnected) {
         try {
-
-
+            // Verify connection is actually alive by fetching system info
             const system: any = await existingClient.getSystem().catch(() => null);
             if (system && system.id) {
                 system.config = getConfig(system.id);
             }
             // If setup, don't bother with users
-            const users = (system?.id === 'setup') ? [] : await existingClient.getUsers();
+            const users = (system?.id === 'setup') ? [] : await existingClient.getUsers().catch(() => []);
 
-            return NextResponse.json({ connected: true, users, system, url: existingClient.url, appVersion });
-        } catch {
-            await logger.warn('Existing connection check failed, trying to reconnect...');
+            return NextResponse.json({ connected: existingClient.isConnected, users, system, url: existingClient.url, appVersion });
+        } catch (error) {
+            await logger.warn('Existing connection check failed, connection may be flaky.', error);
+            // We DO NOT call disconnect() here anymore. Let SocketClient handle reconnection internally.
+            return NextResponse.json({ connected: existingClient.isConnected, error: 'Connection flaky', appVersion });
         }
     }
 
     // Try auto-connect
     if (url) {
+        // [Security Fix] If a client already exists, we should return its status
+        // rather than attempting to create a new session or clobbering it.
+        if (existingClient) {
+            try {
+                const system: any = await existingClient.getSystem().catch(() => null);
+                if (system && system.id) system.config = getConfig(system.id);
+                const users = (system?.id === 'setup') ? [] : await existingClient.getUsers().catch(() => []);
+
+                return NextResponse.json({
+                    connected: existingClient.isConnected,
+                    users,
+                    system,
+                    url: existingClient.url,
+                    appVersion
+                });
+            } catch (e) {
+                // If existing client is broken, fall through to new auto-connect
+                await logger.warn('Existing client check failed during connect. Attempting fresh auto-connect.', e);
+                existingClient.disconnect();
+            }
+        }
+
         try {
             await logger.info('Initializing new FoundryClient connection to', url);
             const client = createFoundryClient({

@@ -1,9 +1,12 @@
 
 import { FoundryClient } from '../lib/foundry/client';
 
+import { loadConfig } from '../lib/config';
+
 async function main() {
+    const config = await loadConfig();
     const client = new FoundryClient({
-        url: 'http://localhost:30000',
+        url: config?.foundry?.url || 'http://localhost:30000',
         headless: true
     });
 

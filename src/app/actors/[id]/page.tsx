@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+
 import SheetRouter from '@/components/SheetRouter';
 import GlobalChat from '@/components/GlobalChat';
 import PlayerList from '@/components/PlayerList';

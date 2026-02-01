@@ -50,6 +50,11 @@ export interface SystemAdapter {
     resolveActorNames?(actor: any, cache: any): void;
 
     /**
+     * Optional hook to load system-specific supplementary data (e.g. from local DB) into the cache.
+     */
+    loadSupplementaryData?(cache: any): Promise<void>;
+
+    /**
      * Optional theme configuration for the client UI.
      */
     theme?: {
@@ -100,6 +105,7 @@ export interface SystemAdapter {
             input?: string;
         };
     };
+
 }
 
 export interface ModuleManifest {

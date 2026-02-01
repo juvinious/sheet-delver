@@ -14,6 +14,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         success: 'bg-green-800 hover:bg-green-700'
     };
 
+
+
     componentStyles = {
         chat: {
             container: "bg-white border-2 border-black",
@@ -302,7 +304,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 return {
-                    id: actor.id,
+                    id: actor.id || actor._id,
                     name: actor.name,
                     type: actor.type,
                     img: resolveUrl(actor.img),
@@ -600,6 +602,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
     // ... existing normalizeActorData below ...
 
     // --- Active Effect Application ---
+    // --- Active Effect Application ---
+
     private applyEffects(actor: any, systemData: any) {
         const effects = actor.effects || [];
         if (!effects.length) return;
@@ -671,7 +675,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 const currentVal = Number(getProperty(systemData, path)) || 0;
-                let changeVal = Number(value) || 0;
+                const changeVal = Number(value) || 0;
                 // NOTE: `value` could be a formula in Foundry (e.g. "@abilities.str.mod").
                 // Evaluating strings is dangerous/complex without a full parser. 
                 // For now, we support numeric literals. If NaN, we skip (or try strict string for Override).
@@ -788,7 +792,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
 
         const sheetData: ActorSheetData = {
-            id: actor.id,
+            id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
             img: actor.img,
@@ -1201,13 +1205,73 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // 2. Try Compendium Cache
-            return cache.getName(uuid);
+            let name = cache.getName(uuid);
+
+            if (!name) {
+                // Attempt Normalization for mismatched casing (e.g. Shadowdark -> shadowdark, Classes -> classes)
+                const parts = uuid.split('.');
+                console.log(`[ShadowdarkAdapter] Resolving: ${uuid}`);
+
+                if (parts.length >= 5 && parts[0] === 'Compendium') {
+                    // parts[1] = System, parts[2] = Pack
+                    // We want to force System matches to be lower (shadowdark)
+                    // We want to force Pack matches to be lower (classes, ancestries)
+                    // But we MUST preserve the ID (parts[4])!
+
+                    const system = parts[1].toLowerCase();
+                    const pack = parts[2].toLowerCase();
+                    const type = parts[3]; // Keep as is, usually Item
+                    const id = parts[4];   // Keep case crucial!
+
+                    const normalized = `Compendium.${system}.${pack}.${type}.${id}`;
+                    name = cache.getName(normalized);
+
+                    if (!name) console.log(`[ShadowdarkAdapter] Failed normalized: ${normalized}`);
+                    else console.log(`[ShadowdarkAdapter] Success normalized: ${normalized} -> ${name}`);
+                }
+            }
+            return name;
         };
 
         if (actor.system) {
             actor.computed.resolvedNames.class = resolve(actor.system.class, actor.computed.resolvedNames.class);
             actor.computed.resolvedNames.ancestry = resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
             actor.computed.resolvedNames.background = resolve(actor.system.background, actor.computed.resolvedNames.background);
+        }
+    }
+
+    async loadSupplementaryData(cache: any): Promise<void> {
+        try {
+            let index: Record<string, string> = {};
+
+            if (typeof window === 'undefined') {
+                // Server-side: Direct load
+                try {
+                    const { dataManager } = await import('./data/DataManager');
+                    index = await dataManager.getIndex();
+                    console.log(`[ShadowdarkAdapter] Loaded ${Object.keys(index).length} local entries via DataManager (Server-side).`);
+                } catch (err) {
+                    console.error('[ShadowdarkAdapter] Failed to import DataManager', err);
+                    return;
+                }
+            } else {
+                // Client-side: Fetch from API
+                const res = await fetch('/api/modules/shadowdark/index');
+                if (!res.ok) return;
+                index = await res.json();
+            }
+
+            let count = 0;
+            for (const [uuid, name] of Object.entries(index)) {
+                // @ts-ignore
+                cache.set(uuid, name as string);
+                count++;
+            }
+            if (typeof window !== 'undefined') {
+                console.log(`[ShadowdarkAdapter] Loaded ${count} local index entries (Client-side).`);
+            }
+        } catch (e) {
+            console.error('[ShadowdarkAdapter] Failed to load local data', e);
         }
     }
 }

@@ -1,4 +1,4 @@
-import { TALENT_EFFECTS_MAP, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
+import { SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 
 export interface TalentHandler {
     id: string;

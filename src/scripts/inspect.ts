@@ -6,8 +6,8 @@ async function main() {
     const config = await loadConfig();
 
     // Fallback URL if config fails or is missing (safer default)
-    const url = config?.foundry?.url || process.env.FOUNDRY_URL || 'http://localhost:30000';
-    const { name: username, password } = config?.debug?.foundryUser || {};
+    const url = config?.foundry?.url || 'http://localhost:30000';
+    const { username, password } = config?.foundry || {};
 
     console.log(`Connecting to ${url}...`);
 

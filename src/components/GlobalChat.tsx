@@ -1,8 +1,9 @@
+
 import { useState, useRef, useEffect } from 'react';
 import ChatTab from './ChatTab';
 import DiceTray from './DiceTray';
 import { Inter } from 'next/font/google';
-import { Dices, MessageSquare } from 'lucide-react';
+import { MessageSquare } from 'lucide-react';
 import { SystemAdapter } from '../modules/core/interfaces';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -67,7 +68,7 @@ export default function GlobalChat(props: GlobalChatProps) {
     }, [isChatOpen, isDiceOpen, props]);
 
     return (
-        <div ref={containerRef} className={`fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-none ${inter.className}`}>
+        <div ref={containerRef} className={`fixed bottom - 6 right - 6 z - [100] flex flex - col items - end gap - 4 pointer - events - none ${inter.className} `}>
 
             {/* --- WINDOWS --- */}
             <div className="absolute bottom-20 right-0 flex gap-4 pointer-events-none">
@@ -75,13 +76,14 @@ export default function GlobalChat(props: GlobalChatProps) {
                 {/* Dice Window (Conditional) */}
                 {!props.hideDice && (
                     <div className={`
-                        pointer-events-auto
-                        bg-zinc-950 border border-zinc-800 shadow-2xl rounded-lg overflow-hidden
-                        transition-all duration-300 origin-bottom sm:origin-bottom-right
+pointer - events - auto
+bg - zinc - 950 border border - zinc - 800 shadow - 2xl rounded - lg overflow - hidden
+transition - all duration - 300 origin - bottom sm: origin - bottom - right
                         ${isDiceOpen
                             ? 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] h-auto opacity-100 scale-100 pointer-events-auto sm:translate-x-0 sm:static sm:w-[400px]'
-                            : 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] opacity-0 scale-90 pointer-events-none sm:translate-x-0 sm:static sm:w-[0px] sm:h-[0px]'}
-                    `}>
+                            : 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] opacity-0 scale-90 pointer-events-none sm:translate-x-0 sm:static sm:w-[0px] sm:h-[0px]'
+                        }
+`}>
                         <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800">
                             <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">Dice Tray</span>
                             <button onClick={toggleDice} className="text-zinc-500 hover:text-white px-2">✕</button>
@@ -94,11 +96,11 @@ export default function GlobalChat(props: GlobalChatProps) {
 
                 {/* Chat Window */}
                 <div className={`
-                    pointer-events-auto
-                    bg-zinc-950 border border-zinc-800 shadow-2xl rounded-lg overflow-hidden
-                    transition-all duration-300 origin-bottom-right flex flex-col
+pointer - events - auto
+bg - zinc - 950 border border - zinc - 800 shadow - 2xl rounded - lg overflow - hidden
+transition - all duration - 300 origin - bottom - right flex flex - col
                     ${isChatOpen ? 'w-[350px] h-[500px] opacity-100 scale-100' : 'w-[0px] h-[0px] opacity-0 scale-90'}
-                `}>
+`}>
                     <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800 flex-none">
                         <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">
                             Game Chat {props.messages.length > 0 && `(${props.messages.length})`}
@@ -125,10 +127,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                             toggleDice();
                         }}
                         className={`
-                            group h-12 w-12 rounded-full shadow-lg flex items-center justify-center
-                            transition-all duration-300 hover:scale-110 active:scale-95
+                            group h - 12 w - 12 rounded - full shadow - lg flex items - center justify - center
+transition - all duration - 300 hover: scale - 110 active: scale - 95
                             ${isDiceOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-indigo-600 text-white hover:bg-indigo-500'}
-                        `}
+`}
                         title="Toggle Dice Tray"
                     >
                         {isDiceOpen ? (
@@ -146,10 +148,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                         setIsChatOpen(!isChatOpen);
                     }}
                     className={`
-                        h-14 w-14 rounded-full shadow-lg flex items-center justify-center
-                        transition-all duration-300 hover:scale-110 active:scale-95
+h - 14 w - 14 rounded - full shadow - lg flex items - center justify - center
+transition - all duration - 300 hover: scale - 110 active: scale - 95
                         ${isChatOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-amber-600 text-white hover:bg-amber-500'}
-                    `}
+`}
                     title="Toggle Chat"
                 >
                     {isChatOpen ? (

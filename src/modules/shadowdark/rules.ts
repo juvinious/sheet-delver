@@ -159,7 +159,7 @@ export const applyEffects = (systemData: any, effects: any[]) => {
             if (SHORTHANDS[path]) path = SHORTHANDS[path];
 
             const currentVal = Number(getProperty(systemData, path)) || 0;
-            let changeVal = Number(value) || 0;
+            const changeVal = Number(value) || 0;
 
             if (isNaN(changeVal) && mode !== MODES.OVERRIDE) continue;
 

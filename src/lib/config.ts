@@ -46,11 +46,20 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const app = doc.app || {};
             const debug = doc.debug || {};
 
-            const protocol = foundry.protocol || 'http';
-            const host = foundry.host || 'localhost';
-            const port = foundry.port || 30000;
+            const envUrl = process.env.FOUNDRY_URL;
+            const envHost = process.env.FOUNDRY_HOST;
+            const envPort = process.env.FOUNDRY_PORT ? parseInt(process.env.FOUNDRY_PORT) : undefined;
+            const envProtocol = process.env.FOUNDRY_PROTOCOL;
+            const envUsername = process.env.FOUNDRY_USERNAME;
+            const envPassword = process.env.FOUNDRY_PASSWORD;
+
+            const protocol = envProtocol || foundry.protocol || 'http';
+            const host = envHost || foundry.host || 'localhost';
+            const port = envPort || foundry.port || 30000;
             const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
-            const foundryUrl = `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
+
+            // Priority: Env URL -> Constructed from Env Host/Port -> Config URL -> Constructed from Config Host/Port
+            const foundryUrl = envUrl || (envHost ? `${protocol}://${host}${isStandardPort ? '' : `:${port}`}` : null) || foundry.url || `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
 
             _cachedConfig = {
                 app: {
@@ -61,12 +70,12 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     version: version
                 },
                 foundry: {
-                    host: foundry.host || 'localhost',
-                    port: foundry.port || 30000,
-                    protocol: foundry.protocol || 'http',
+                    host: host,
+                    port: port,
+                    protocol: protocol,
                     url: foundryUrl,
-                    username: foundry.username,
-                    password: foundry.password,
+                    username: envUsername || foundry.username,
+                    password: envPassword || foundry.password,
                     userId: foundry.userId,
                     connector: foundry.connector,
                 },
@@ -84,5 +93,13 @@ export async function loadConfig(): Promise<AppConfig | null> {
     return null;
 }
 
-// Synchronous version if needed, or just use async everywhere.
-// For Next.js App Router, async is usually fine.
+/**
+ * Get config synchronously (requires config to be loaded first)
+ * For use in API routes after initial load
+ */
+export function getConfig(): AppConfig {
+    if (!_cachedConfig) {
+        throw new Error('Config not loaded. Call loadConfig() first.');
+    }
+    return _cachedConfig;
+}

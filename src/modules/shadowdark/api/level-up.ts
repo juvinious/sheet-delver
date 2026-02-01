@@ -51,8 +51,9 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
         }
 
         // 2. Try to resolve Data locally (Fast Path)
-        const classDoc = classUuid ? dataManager.getDocument(classUuid) : null;
-        const patronDoc = patronUuid ? dataManager.getDocument(patronUuid) : null;
+        // 2. Try to resolve Data locally (Fast Path)
+        const classDoc = classUuid ? await dataManager.getDocument(classUuid) : null;
+        const patronDoc = patronUuid ? await dataManager.getDocument(patronUuid) : null;
 
         // If we have the class doc (or don't need one), we can proceed locally
         if (classDoc || !classUuid) {
@@ -87,7 +88,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
 
                 // Get Spells from Cache
                 if (classDoc?.name) {
-                    availableSpells = dataManager.getSpellsBySource(classDoc.name);
+                    availableSpells = await dataManager.getSpellsBySource(classDoc.name);
                 }
             }
 
@@ -146,7 +147,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { isReroll, classId } = await request.json();
+        const { isReroll: _isReroll, classId: _classId } = await request.json(); // Unused properties
 
         // Determines Hit Die based on Class or actor data
         // For simplicity in Headless mode, we default to 1d6 if class not found, or user must provide it?
@@ -166,14 +167,14 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             try {
                 const actor = await client.getActor(actorId);
                 if (actor && actor.system) {
-                    const classUuid = actor.system.class;
+                    // const classUuid = actor.system.class; // Unused
                     // We can't resolve UUID. But maybe actor has class item embedded?
                     const classItem = actor.items?.find((i: any) => i.type === 'Class');
                     if (classItem && classItem.system && classItem.system.hitPoints) {
                         hitDie = classItem.system.hitPoints;
                     }
                 }
-            } catch (e) { console.error('Error fetching actor for HP Roll:', e); }
+            } catch { console.error('Error fetching actor for HP Roll:'); }
         }
 
         // Roll
@@ -192,7 +193,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
 
         if (!result) throw new Error('Roll failed');
         // result is [messageData]
-        const msg = Array.isArray(result) ? result[0] : result;
+        // const _msg = Array.isArray(result) ? result[0] : result; // Unused
         // In Foundry v10+, rolls are serialized in 'rolls' array. 
         // We need to parse it? Or is it already JSON?
         // 'rolls' in JSON are strings usually.
@@ -210,9 +211,6 @@ export async function handleRollHP(actorId: string | undefined, request: Request
         // But the UI needs the value.
 
         // Let's use a simple local roll for the value, and send a chat message.
-        // Or trust the socket response.
-
-        // Let's just implement a local roll and send it as a message.
         // That effectively "rolls" for the user.
 
         // Simple dice parser? 
@@ -229,22 +227,14 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             speaker: { actor: actorId }
         });
 
-        return {
-            success: true,
-            formula: hitDie,
-            total: total
-        };
-
-
-        if ('error' in result) {
-            return NextResponse.json({ error: result.error }, { status: 404 });
-        }
-
         return NextResponse.json({
             success: true,
+            formula: hitDie,
+            total: total,
             roll: {
-                ...result,
-                isReroll: isReroll || false
+                total,
+                formula: hitDie,
+                isReroll: _isReroll || false
             }
         });
 
@@ -260,11 +250,11 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
         return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
 
-    const { isReroll, classId } = await request.json();
+    // const { isReroll: _isReroll, classId: _classId } = await request.json(); // Unused
 
     // Shadowdark Standard Gold: 2d6 * 5
-    let multiplier = 5;
-    let dice = "2d6";
+    const multiplier = 5;
+    const dice = "2d6";
 
     // Simple local roll
     let rTotal = 0;
@@ -298,14 +288,14 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { hpRoll, items, languages } = await request.json();
+        // const { hpRoll: _hpRoll, items: _items, languages: _languages } = await request.json(); // Unused
 
         return NextResponse.json({ error: 'Finalizing level-up is not supported in Socket mode yet.' }, { status: 501 });
 
         /*
         const result = await client.page!.evaluate(async ({ actorId, hpRoll, items, languages }) => {
              // ... implementation ...
-        }, { actorId, hpRoll, items, languages });
+          const { _hpRoll, _items, _languages } = data;
         */
 
         return NextResponse.json({ success: true, actor: {} });
