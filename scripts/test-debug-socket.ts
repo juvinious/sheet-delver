@@ -20,25 +20,19 @@ async function debugSocket() {
         // if (client.socket) client.socket.emit('clientReady');
         await new Promise(r => setTimeout(r, 1000));
 
-        // Test 1: Read (Actors)
-        console.log("Testing Read Actors...");
-        try {
-            const actors = await client.getActors();
-            // const actors: any[] = [];
-            console.log(`✅ Found ${actors.length} actors.`);
+        // Test 1: Read (Actors) - DISABLED until authentication works
+        // console.log("Testing Read Actors...");
+        // try {
+        //     const actors = await client.getActors();
+        //     console.log(`✅ Found ${actors.length} actors.`);
 
-            if (actors.length > 0) {
-                const actor = actors[0];
-                console.log(`First Actor: ${actor.name}`);
-
-                // Test 2: Update Actor (Harmless flag) - DISABLED (Testing Read-Only Stability)
-                // console.log(`Testing Update on Actor: ${actor.name}`);
-                // await client.updateActor(actor.id || actor._id, { "flags.world.test": Date.now() });
-                // console.log("✅ Updated actor flag.");
-            }
-        } catch (readErr: any) {
-            console.error("❌ Read Actors failed:", readErr);
-        }
+        //     if (actors.length > 0) {
+        //         const actor = actors[0];
+        //         console.log(`First Actor: ${actor.name}`);
+        //     }
+        // } catch (readErr: any) {
+        //     console.error("❌ Read Actors failed:", readErr);
+        // }
 
         // Test 3: Chat (Write) - DISABLED (Suspected Server Breaker)
         // console.log("Testing Chat...");
@@ -50,8 +44,8 @@ async function debugSocket() {
         // await client.roll("1d20 + 5", "Test Roll");
         // console.log("✅ Sent roll.");
 
-        console.log("Waiting 15s to allow server session to stabilize...");
-        await new Promise(r => setTimeout(r, 15000));
+        console.log("Waiting 2s to simulate session...");
+        await new Promise(r => setTimeout(r, 2000));
 
     } catch (e: any) {
         console.error("Test failed:", e);

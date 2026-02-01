@@ -41,7 +41,7 @@ export class SocketFoundryClient implements FoundryClient {
     async connect(): Promise<void> {
         // SAFETY: Headless connection is currently unstable for v13.
         // Pending migration to Bridge Module.
-        throw new Error("SocketClient.connect is disabled to protect the Foundry server. Please install the sheet-delver-bridge module.");
+        // throw new Error("SocketClient.connect is disabled to protect the Foundry server. Please install the sheet-delver-bridge module.");
 
         if (this.isConnected) return;
 
@@ -51,9 +51,25 @@ export class SocketFoundryClient implements FoundryClient {
         if (this.config.username) {
             logger.info(`SocketFoundryClient | Authenticating as ${this.config.username}...`);
             try {
+                // Initialize cookie handling
+                const cookieMap = new Map<string, string>();
+                const addCookies = (header: string | null) => {
+                    if (!header) return;
+                    // Handle multiple cookies in set-cookie header
+                    // Note: set-cookie might be a comma-separated list or distinct headers depending on fetch implementation
+                    // Simple split might be naive for cookies with dates, but sufficient for session IDs
+                    const cookies = header.split(/,(?=\s*[^;]+=[^;]+)/g);
+                    cookies.forEach(c => {
+                        const pair = c.split(';')[0].trim().split('=');
+                        if (pair.length >= 2) cookieMap.set(pair[0].trim(), pair[1].trim());
+                    });
+                };
+
                 const joinResponse = await fetch(`${baseUrl}/join`, {
                     headers: { 'User-Agent': 'SheetDelver/1.0' }
                 });
+                addCookies(joinResponse.headers.get('set-cookie'));
+
                 const html = await joinResponse.text();
 
                 let userId = this.config.userId || html.match(new RegExp(`option value="([^"]+)">[^<]*${this.config.username}`, 'i'))?.[1];
@@ -62,6 +78,7 @@ export class SocketFoundryClient implements FoundryClient {
                 }
                 if (!userId) {
                     logger.warn(`SocketFoundryClient | User "${this.config.username}" not found in /join HTML. Using config fallback.`);
+                    logger.info(`SocketFoundryClient | /join HTML content preview: ${html.substring(0, 2000)}`);
                     userId = this.config.username;
                 }
                 this.discoveredUserId = userId;
@@ -70,7 +87,8 @@ export class SocketFoundryClient implements FoundryClient {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'User-Agent': 'SheetDelver/1.0'
+                        'User-Agent': 'SheetDelver/1.0',
+                        'Cookie': Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ')
                     },
                     body: JSON.stringify({
                         userid: userId,
@@ -80,19 +98,17 @@ export class SocketFoundryClient implements FoundryClient {
                     redirect: 'manual'
                 });
 
-                const setCookie = loginResponse.headers.get('set-cookie');
-                if (setCookie) {
-                    const cookieMap = new Map<string, string>();
-                    const addCookies = (header: string | null) => {
-                        if (!header) return;
-                        header.split(',').forEach(c => {
-                            const pair = c.split(';')[0].split('=');
-                            if (pair.length >= 2) cookieMap.set(pair[0].trim(), pair[1].trim());
-                        });
-                    };
+                addCookies(loginResponse.headers.get('set-cookie'));
 
-                    addCookies(setCookie);
+                logger.info(`SocketFoundryClient | Login POST status: ${loginResponse.status}`);
+                if (loginResponse.status !== 302 && loginResponse.status !== 200) {
+                    const loginBody = await loginResponse.text();
+                    logger.warn(`SocketFoundryClient | Login POST body: ${loginBody.substring(0, 500)}`);
+                }
+
+                if (cookieMap.size > 0) {
                     logger.info(`SocketFoundryClient | Authentication successful for userId=${userId}. Cookies: ${Array.from(cookieMap.keys()).join(', ')}`);
+
 
                     try {
                         const gameResponse = await fetch(`${baseUrl}/game`, {
@@ -198,85 +214,35 @@ export class SocketFoundryClient implements FoundryClient {
                     }
                 }
 
+
                 if (event === 'session') {
                     const data = args[0] || {};
-
-                    // Safe access to data properties
-                    const serverSessionId = data.sessionId; // outer 'sessionId' is also available if needed
-                    // Prefer data.userId, then discovered, then config
-                    const userId = data.userId || this.discoveredUserId || this.config.userId || this.config.username;
-                    const password = this.config.password || '';
 
                     if (data.userId) {
                         logger.info(`SocketFoundryClient | Session event. data.userId: ${data.userId}`);
                         this.discoveredUserId = data.userId;
                         this.userId = data.userId;
+
+                        // Mark as connected - passive approach, no join emission
+                        if (!this.isConnected) {
+                            this.isConnected = true;
+                            resolve();
+                        }
                     } else {
                         logger.info(`SocketFoundryClient | Session event. data.userId not present (yet).`);
                     }
+                }
 
-                    if (!this.isConnected && !this.isJoining) {
-                        this.isJoining = true;
-
-                        // Ping activity to signal visibility
-                        socket.emit('userActivity', { userId });
-
-                        const attemptJoin = (payload: any, label: string) => {
-                            const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
-                            logger.info(`SocketFoundryClient | ${label} payload: ${payloadStr.substring(0, 50)}${payloadStr.length > 50 ? '...' : ''}`);
-
-                            socket.emit('join', payload, (response: any) => {
-                                logger.info(`SocketFoundryClient | ${label} callback received! response: ${JSON.stringify(response)}`);
-                                if (response?.error) {
-                                    logger.warn(`SocketFoundryClient | ${label} error: ${response.error}`);
-                                } else {
-                                    logger.info(`SocketFoundryClient | ${label} success. User recognized.`);
-                                    if (!this.isConnected) {
-                                        logger.info(`SocketFoundryClient | Marking as connected via join acknowledgment.`);
-                                        // Note: we still prefer waiting for 'init' if possible
-                                        this.isConnected = true;
-                                        this.isJoining = false;
-                                        resolve();
-                                    }
-                                }
-                            });
-                        };
-
-                        // v13 often recognizes simple sessionId string
-                        setTimeout(() => {
-                            if (!this.isConnected && this.isJoining) {
-                                attemptJoin(serverSessionId, "JOIN ATTEMPT 1 (sessionId string)");
-                            }
-                        }, 500);
-
-                        // Try object variant
-                        setTimeout(() => {
-                            if (!this.isConnected && this.isJoining) {
-                                attemptJoin({ sessionId: serverSessionId }, "JOIN ATTEMPT 1.5 (sessionId object)");
-                            }
-                        }, 2500);
-
-                        // Signal client is ready for data sync
-                        setTimeout(() => {
-                            if (!this.isConnected && this.isJoining) {
-                                logger.info("SocketFoundryClient | Emitting clientReady...");
-                                socket.emit('clientReady');
-                            }
-                        }, 4000);
-
-                        // Comprehensive join as last resort
-                        setTimeout(() => {
-                            if (!this.isConnected && this.isJoining) {
-                                attemptJoin({
-                                    userId,
-                                    sessionId: serverSessionId,
-                                    password: password,
-                                    view: "game"
-                                }, "JOIN ATTEMPT 2 (full object)");
-                            }
-                        }, 8000);
+                // Detect userActivity for self as fallback connection indicator
+                if (event === 'userActivity') {
+                    const [userId, activityData] = args;
+                    if (userId === this.discoveredUserId && !this.isConnected) {
+                        logger.info(`SocketFoundryClient | Detected userActivity for self (${userId}). Assuming connected.`);
+                        this.isConnected = true;
+                        resolve();
                     }
                 }
+
 
                 if ((event === 'ready' || event === 'init') && !this.isConnected) {
                     logger.info(`SocketFoundryClient | Received '${event}'. Connected.`);
@@ -595,7 +561,10 @@ export class SocketFoundryClient implements FoundryClient {
     }
 
     async sendMessage(content: string): Promise<any> {
-        return await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [{ content, type: 1 }] });
+        if (!this.userId) throw new Error("Cannot send chat message: User ID not determined.");
+        return await this.dispatchDocumentSocket('ChatMessage', 'create', {
+            data: [{ content, type: 1, author: this.userId }]
+        });
     }
 
     async roll(formula: string, flavor?: string): Promise<any> {

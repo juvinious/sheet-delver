@@ -7,7 +7,13 @@
     "dev": "ts-node scripts/start-server.ts dev",
     "build": "next build",
     "start": "ts-node scripts/start-server.ts start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:socket": "npx tsx src/test/socket/run-all.ts",
+    "test:socket:connection": "npx tsx src/test/socket/01-connection.test.ts",
+    "test:socket:system": "npx tsx src/test/socket/02-system-info.test.ts",
+    "test:socket:actors": "npx tsx src/test/socket/03-actor-access.test.ts",
+    "test:socket:users": "npx tsx src/test/socket/04-users-compendia.test.ts",
+    "test:socket:write": "npx tsx src/test/socket/05-write-operations.test.ts"
   },
   "dependencies": {
     "@next/font": "^14.2.15",
