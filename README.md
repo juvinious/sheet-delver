@@ -5,8 +5,11 @@
 
 A modern, external character sheet interface for [Foundry VTT](https://foundryvtt.com/).
 
-## Current Features
-- **Shadowdark RPG Support**: Full support for Shadowdark character sheets with a clean, modern UI.
+## Supported Systems
+
+### Shadowdark RPG
+While not yet feature-complete, SheetDelver offers robust support for Shadowdark:
+- **Character Sheets**: Full support for Shadowdark character sheets with a clean, modern UI.
 - **Auto-Calculations**: Automatic calculation of Stats, HP, AC, and Inventory flexibility.
 - **Inventory Management**: Drag-and-drop equipment, slot tracking, and toggleable states (Equipped/Stashed/Light).
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
@@ -15,8 +18,7 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 - **System Agnostic UI**: Core components adapt to system themes via configuration.
 - **Mobile Friendly**: optimized touch targets and layout.
 
-## Supported Systems
-- **Shadowdark RPG**: Complete support (Stats, Inventory, Spells, Talents, Effects).
+## Planned System Support
 - **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).
 - **D&D 5e**: Basic adapter support (Stats, Skills).
 - **Generic**: Fallback support for any Foundry system (Raw data view).
@@ -70,9 +72,9 @@ foundry:
     host: foundryserver.local # Hostname of your Foundry VTT instance
     port: 30000               # Port of your Foundry VTT instance
     protocol: http            # Protocol (http/https)
-    provider: bridge          # 'bridge' (Headless Sockets) or 'playwright' (Browser)
-    username: "gamemaster"    # Required for Headless connection
-    password: "password"      # Required for Headless connection
+    connector: socket         # Connection method (socket)
+    username: "gamemaster"    # Required for connection
+    password: "password"      # Required for connection
 
 debug:
     enabled: true        # Enable debug logging
@@ -85,7 +87,6 @@ To run the application locally for personal use:
 1.  Current directory:
     ```bash
     npm install
-    npx playwright install --with-deps
     npm run build
     npm start
     ```
@@ -96,9 +97,8 @@ To deploy on a dedicated server:
 
 1.  Clone the repository.
 2.  Install dependencies: `npm install`
-3.  Install browser binaries: `npx playwright install --with-deps`
-4.  Build the application: `npm run build`
-5.  Start the server: `npm start`
+3.  Build the application: `npm run build`
+4.  Start the server: `npm start`
     - *Note: You may want to use a process manager like PM2 to keep it running.*
 
 ## Development

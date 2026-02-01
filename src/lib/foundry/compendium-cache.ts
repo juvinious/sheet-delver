@@ -1,4 +1,4 @@
-import { FoundryClient } from './client';
+import { FoundryClient } from './interfaces';
 
 export class CompendiumCache {
     private static instance: CompendiumCache;

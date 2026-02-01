@@ -38,8 +38,7 @@ export async function GET() {
         try {
             await logger.info('Initializing new FoundryClient connection to', url);
             const client = createFoundryClient({
-                ...config.foundry,
-                headless: true
+                ...config.foundry
             });
             await client.connect();
             setClient(client);
@@ -79,8 +78,7 @@ export async function POST(request: Request) {
         if (!client || client.url !== url || !client.isConnected) {
             await logger.info('Establishing new connection via POST request to', url);
             client = createFoundryClient({
-                url,
-                headless: true
+                url
             });
             await client.connect();
             setClient(client);

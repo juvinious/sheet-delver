@@ -107,18 +107,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     try {
         try {
-            if (typeof client.deleteActor === 'function') {
-                await client.deleteActor(id);
-            } else {
-                // Fallback if HMR didn't update class prototype
-                if (!client.page || client.page.isClosed()) throw new Error('Not connected');
-                await client.page.evaluate(async (actorId) => {
-                    // @ts-ignore
-                    const actor = window.game.actors.get(actorId);
-                    if (!actor) throw new Error('Actor not found');
-                    await actor.delete();
-                }, id);
-            }
+            await client.deleteActor(id);
         } catch (e: any) {
             // Check for permission error and swallow it
             const msg = e.message || e.toString();

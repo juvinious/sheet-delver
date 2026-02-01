@@ -8,6 +8,7 @@ import { testConnection } from './01-connection.test';
 import { testSystemInfo } from './02-system-info.test';
 import { testActorAccess } from './03-actor-access.test';
 import { testUsersAndCompendia } from './04-users-compendia.test';
+import { testWriteOperations } from './05-write-operations.test';
 
 async function runAllTests() {
     console.log('🚀 Socket Client Test Suite\n');
@@ -17,7 +18,8 @@ async function runAllTests() {
         { name: 'Connection & Authentication', fn: testConnection },
         { name: 'System Information', fn: testSystemInfo },
         { name: 'Actor Data Access', fn: testActorAccess },
-        { name: 'Users & Compendium Data', fn: testUsersAndCompendia }
+        { name: 'Users & Compendium Data', fn: testUsersAndCompendia },
+        { name: 'Write Operations', fn: testWriteOperations }
     ];
 
     const results: any[] = [];

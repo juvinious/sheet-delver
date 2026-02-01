@@ -4,8 +4,8 @@ export interface FoundryClient {
     url: string;
 
     connect(): Promise<void>;
-    login?(username?: string, password?: string): Promise<void>;
-    logout?(): Promise<void>;
+    login(username?: string, password?: string): Promise<void>;
+    logout(): Promise<void>;
 
     evaluate<T>(pageFunction: any, arg?: any): Promise<T>;
 
@@ -32,7 +32,7 @@ export interface FoundryClient {
     toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay?: boolean): Promise<any>;
 
     getChatLog(limit?: number): Promise<any[]>;
-    sendMessage(content: string): Promise<any>;
+    sendMessage(content: string | any): Promise<any>;
 
     useItem(actorId: string, itemId: string): Promise<any>;
     roll(formula: string, flavor?: string): Promise<any>;

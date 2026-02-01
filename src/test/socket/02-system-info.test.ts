@@ -34,8 +34,8 @@ export async function testSystemInfo() {
         // Test 2b: getSystemData()
         console.log('\n2b. Testing getSystemData()...');
         try {
-            const systemData = await client.getSystemData();
-            console.log(`   ✅ Retrieved system data`);
+            await client.getSystemData();
+            console.log('   ✅ Retrieved system data\n');
             results.tests.push({ name: 'getSystemData', success: true });
         } catch (error: any) {
             console.log(`   ❌ Failed: ${error.message}`);
@@ -45,7 +45,9 @@ export async function testSystemInfo() {
         // Test 2c: evaluate() for world info
         console.log('\n2c. Testing evaluate() for world info...');
         try {
+            // @ts-ignore
             const worldId = await client.evaluate(() => (game as any).world.id);
+            // @ts-ignore
             const worldTitle = await client.evaluate(() => (game as any).world.title);
             console.log(`   ✅ World: ${worldTitle} (${worldId})`);
             results.tests.push({ name: 'evaluate-world', success: true, data: { worldId, worldTitle } });

@@ -18,6 +18,7 @@ export interface AppConfig {
         username?: string;
         password?: string;
         userId?: string;
+        connector?: string;
     };
     debug: {
         enabled: boolean;
@@ -66,7 +67,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     url: foundryUrl,
                     username: foundry.username,
                     password: foundry.password,
-                    userId: foundry.userId
+                    userId: foundry.userId,
+                    connector: foundry.connector,
                 },
                 debug: {
                     enabled: debug.enabled ?? false,

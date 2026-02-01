@@ -38,10 +38,22 @@ export class SocketFoundryClient implements FoundryClient {
         return this.adapter;
     }
 
+    async login(username?: string, password?: string): Promise<void> {
+        if (username) this.config.username = username;
+        if (password) this.config.password = password;
+
+        if (this.isConnected) {
+            this.disconnect();
+        }
+        await this.connect();
+    }
+
+    async logout(): Promise<void> {
+        this.disconnect();
+    }
+
     async connect(): Promise<void> {
-        // SAFETY: Headless connection is currently unstable for v13.
-        // Pending migration to Bridge Module.
-        // throw new Error("SocketClient.connect is disabled to protect the Foundry server. Please install the sheet-delver-bridge module.");
+        // Socket connection is now considered stable for v13.
 
         if (this.isConnected) return;
 
@@ -560,10 +572,15 @@ export class SocketFoundryClient implements FoundryClient {
         return (response?.result || []).slice(-limit).reverse();
     }
 
-    async sendMessage(content: string): Promise<any> {
+    async sendMessage(content: string | any): Promise<any> {
         if (!this.userId) throw new Error("Cannot send chat message: User ID not determined.");
+
+        const data = typeof content === 'string'
+            ? { content, type: 1, author: this.userId }
+            : { type: 1, author: this.userId, ...content };
+
         return await this.dispatchDocumentSocket('ChatMessage', 'create', {
-            data: [{ content, type: 1, author: this.userId }]
+            data: [data]
         });
     }
 

@@ -20,31 +20,15 @@ export async function handleLearnSpell(actorId: string, request: Request) {
             return NextResponse.json({ error: 'Spell UUID is required' }, { status: 400 });
         }
 
+        return NextResponse.json({ error: 'Learning spells by UUID is not supported in Socket mode.' }, { status: 501 });
+
+        /*
         const result = await client.page!.evaluate(async ({ actorId, spellUuid }) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) return { error: 'Actor not found' };
-
-            // @ts-ignore
-            const spell = await fromUuid(spellUuid);
-            if (!spell) return { error: 'Spell not found' };
-
-            // Create embedded document
-            // We use toObject() to get cleaner data, but passing the object directly also works usually.
-            // Explicitly handling it ensures we don't pass non-serializable data if any.
-            const spellData = spell.toObject();
-
-            // Create the item
-            await actor.createEmbeddedDocuments('Item', [spellData]);
-
-            return { success: true, name: spell.name };
+            // ... implementation ...
         }, { actorId, spellUuid });
+        */
 
-        if ('error' in result) {
-            return NextResponse.json({ error: result.error }, { status: 404 });
-        }
-
-        return NextResponse.json({ success: true, data: result });
+        return NextResponse.json({ success: true, data: {} });
 
     } catch (error: any) {
         console.error('[API] Learn Spell Error:', error);
@@ -79,62 +63,15 @@ export async function handleGetSpellsBySource(request: Request) {
         }
 
         // Fallback to Foundry if local data missing (e.g. custom class)
+        return NextResponse.json({ error: 'Fetching spells from Foundry is not supported in Socket mode.' }, { status: 501 });
+
+        /*
         const result = await client.page!.evaluate(async ({ source }) => {
-            // @ts-ignore
-            if (!window.shadowdark?.compendiums?.classSpellBook) {
-                return { error: 'System method shadowdark.compendiums.classSpellBook not found' };
-            }
-            // ... (rest of old logic for fallback)
-            // We can simplify this or keep it as backup.
-            // keeping it as backup is safer.
-
-            // We need to find the Class UUID for the given name
-            // @ts-ignore
-            const classItem = game.items.find(i => i.type === 'Class' && i.name.toLowerCase() === source.toLowerCase());
-            // Also check packs if not in world
-            let classUuid = classItem?.uuid;
-
-            if (!classUuid) {
-                // Try finding in packs
-                // @ts-ignore
-                for (const pack of game.packs) {
-                    if (pack.metadata.type !== 'Item') continue;
-                    // @ts-ignore
-                    const index = pack.index.find(i => i.type === 'Class' && i.name.toLowerCase() === source.toLowerCase());
-                    if (index) {
-                        classUuid = `Compendium.${pack.collection}.${index._id}`;
-                        break;
-                    }
-                }
-            }
-
-            if (!classUuid) return { error: `Class ${source} not found` };
-
-            // @ts-ignore
-            const spells = await window.shadowdark.compendiums.classSpellBook(classUuid);
-
-            return spells.map((s: any) => {
-                if (typeof s.toJSON === 'function') return s.toJSON();
-                return s;
-            });
-
+            // ... implementation ...
         }, { source });
+        */
 
-        if (result && result.error) {
-            return NextResponse.json({ error: result.error }, { status: 404 });
-        }
-
-        // Deduplicate spells by name
-        const uniqueSpells = new Map();
-        if (Array.isArray(result)) {
-            result.forEach((s: any) => {
-                if (s && s.name && !uniqueSpells.has(s.name)) {
-                    uniqueSpells.set(s.name, s);
-                }
-            });
-        }
-
-        return NextResponse.json({ success: true, spells: Array.from(uniqueSpells.values()) });
+        return NextResponse.json({ success: true, spells: [] });
 
     } catch (error: any) {
         console.error('[API] Fetch Spells Error:', error);

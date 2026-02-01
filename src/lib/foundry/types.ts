@@ -11,6 +11,5 @@ export interface FoundryConfig {
   username?: string;
   password?: string;
   userId?: string;
-  headless?: boolean;
-  provider?: 'playwright' | 'bridge';
+  connector?: string;
 }

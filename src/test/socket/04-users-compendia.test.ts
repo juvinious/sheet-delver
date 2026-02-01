@@ -34,7 +34,7 @@ export async function testUsersAndCompendia() {
         // Test 4b: getUsersDetails()
         console.log('\n4b. Testing getUsersDetails()...');
         try {
-            const usersDetails = await client.getUsersDetails();
+            await client.getUsersDetails();
             console.log(`   ✅ Retrieved detailed user info`);
             results.tests.push({ name: 'getUsersDetails', success: true });
         } catch (error: any) {
