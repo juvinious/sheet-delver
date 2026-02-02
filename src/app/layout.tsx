@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Cinzel } from "next/font/google";
 import "./globals.css";
 
-import ShutdownWatcher from "@/components/ShutdownWatcher";
+import ShutdownWatcher from "@/app/ui/components/ShutdownWatcher";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

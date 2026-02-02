@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import RollDialog from '@/components/RollDialog';
-import LoadingModal from '@/components/LoadingModal';
-import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
+import RollDialog from '@/app/ui/components/RollDialog';
+import LoadingModal from '@/app/ui/components/LoadingModal';
+import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveImage, resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { Menu, X } from 'lucide-react';

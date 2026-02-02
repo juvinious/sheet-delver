@@ -6,7 +6,7 @@ import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { Trash2, Pencil } from 'lucide-react';
-import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
+import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 
 interface DetailsTabProps {
     actor: any;

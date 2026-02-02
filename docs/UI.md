@@ -124,3 +124,18 @@ import LoadingModal from '@/components/LoadingModal';
 />
 ```
 
+
+## Reconnecting Overlay
+
+A non-disruptive, full-screen overlay that automatically appears when the socket connection to Foundry is lost while the system is in an "Active" world state. This preserves the current UI context (e.g., an open character sheet) while the backend attempts to reconnect.
+
+**Implementation**: Integrated directly into `ClientPage.tsx`.
+
+```tsx
+// Pattern:
+{step === 'dashboard' && system?.status !== 'active' && (
+  <div className="fixed inset-0 z-[60] ...">
+    {/* Reconnecting UI */}
+  </div>
+)}
+```

@@ -41,13 +41,13 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
         host: foundryserver.local # Hostname of your Foundry VTT instance
         port: 30000               # Port of your Foundry VTT instance
         protocol: http            # Protocol (http/https)
-        provider: bridge          # 'bridge' (Headless Sockets) or 'playwright' (Browser)
+        connector: socket         # 'socket' (Headless Sockets)
         username: "gamemaster"    # Required for Headless connection
         password: "password"      # Required for Headless connection
     
     debug:
         enabled: true        # Enable debug logging
-        level: 4             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
+        level: 3             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
     ```
 
 4.  **Run the development server:**
@@ -58,21 +58,21 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
 
 ## Project Structure
 
-- `src/lib/foundry`: Core logic for `FoundryClient` (Playwright automation).
-- `src/modules`: Vertical slices for each supported system.
-  - `core/`: Core interfaces and registry (`SystemAdapter`, `ModuleManifest`).
-  - `<system_id>/`: Self-contained system module.
-    - `index.ts`: Module manifest export.
-    - `info.json`: Metadata.
-    - `system.ts`: System adapter logic and data migrations.
-    - `rules.ts`: Core system rules and calculations.
-    - `importer.ts`: System-specific character importers (optional).
-    - `ui/`: React components for the sheet.
-- `src/app/api`: Next.js API routes acting as a bridge between frontend and Foundry.
+SheetDelver follows a **Decoupled Core/Shell** architecture to ensure stability and separation of concerns.
+
+- `src/core`: The **Engine**. Contains headless Foundry logic, socket maintenance, and system registries.
+- `src/shared`: Common TypeScript **Interfaces and Types** shared between backend and frontend.
+- `src/server`: The **Core Service**. Express API that wraps the Core logic and provides REST endpoints.
+- `src/app`: The **Frontend Shell**. Next.js application containing the UI and API proxies.
+  - `ui/`: React components and hooks.
+- `src/modules`: Pluggable **RPG System Modules**. Each module contains its own Adapter and Sheet UI.
+- `src/cli`: The **Admin Console**. CLI tool for world management and authenticated scrapes.
+- `src/scripts`: Tooling, build scripts, and the unified startup manager.
+- `src/tests`: Automated unit and integration tests.
 
 ## Module Architecture & Vertical Slices
 
-To maintain a scalable codebase, we use a **Vertical Slice** architecture for systems.
+Each RPG system is implemented as a **Vertical Slice** within `src/modules/<system_id>/`.
 
 *   **Everything belongs to a Module**: If you are adding support for a new RPG system (e.g., Pathfinder), *all* code related to that system (Types, Adapter logic, React Components, CSS) must reside in `src/modules/pathfinder/`.
 *   **The SystemAdapter Contract**: Each module must implement the `SystemAdapter` interface defined in `src/modules/core/interfaces.ts`. This interface handles:

@@ -14,9 +14,9 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 - **Inventory Management**: Drag-and-drop equipment, slot tracking, and toggleable states (Equipped/Stashed/Light).
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
-- **Character Import**: Import characters via JSON from Shadowdarklings (including Gear, Spells, and Magic Items).
-- **System Agnostic UI**: Core components adapt to system themes via configuration.
-- **Mobile Friendly**: optimized touch targets and layout.
+- **Character Import**: Import characters via JSON from Shadowdarklings.
+- **Mobile Friendly**: Optimized touch targets and layout.
+- **Resilient Connection**: High-stability socket client with auto-reconnection and a dedicated "Reconnecting" overlay for non-disruptive UX.
 
 ## Planned System Support
 - **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).
@@ -24,82 +24,30 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 - **Generic**: Fallback support for any Foundry system (Raw data view).
 
 ## Architecture
-SheetDelver uses a multi-system architecture based on specific modules:
-1.  **System Modules** (`src/modules/<system>/`): Self-contained vertical slices containing proper logic and UI.
-2.  **Core Registry** (`src/modules/core/registry.ts`): Dynamically loads system modules.
-3.  **Sheet Router** (`src/components/SheetRouter.tsx`): Renders the correct UI based on the actor's system.
-4.  **Foundry Adapter**: Decouples backend logic, ensuring valid data flow regardless of the system.
+SheetDelver follows a **Decoupled Core/Shell** architecture:
+1.  **Core Service** (`src/core`, `src/server`): A standalone backend that maintains the persistent socket connection to Foundry VTT.
+2.  **Frontend Shell** (`src/app`): A Next.js application that provides the user interface and proxies requests to the Core Service via `coreFetch`.
+3.  **Shared Layer** (`src/shared`): Common TypeScript interfaces and constants used by both Core and Shell.
+4.  **System Modules** (`src/modules`): Pluggable RPG system logic (Adapters and UI).
 
-Each module follows a consistent structure:
-```
-src/modules/<system>/
-├── index.ts           # Manifest
-├── info.json          # Metadata
-├── system.ts          # Data Migration & Adapter Logic
-├── rules.ts           # Core System Rules
-├── importer.ts        # Character Importers (Optional)
-├── server.ts          # Server-Side API Handlers (Optional)
-└── ui/                # React Components
-```
-
-5.  **Module API** (`api/modules/[systemId]/...`): Automatically routes requests to the module's `server.ts` handlers, allowing system-specific backend logic (e.g. importers).
-
-For details on adding a new system, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Future Roadmap
-- **Component Library**: Generic "Base Sheet" components for rapid system development.
-- **Modules Integration**: Better integration with core Foundry modules.
-- **Character Creation**: Native Foundry character creation support, utilizing system macros where available.
+---
 
 ## Usage
 
 ### Requirements
 - **Node.js**: 18+
-- **Foundry VTT**: Valid instance (v13+ required)
+- **Foundry VTT**: Valid instance (v13+ recommended)
 
 ### Configuration
 Create a `settings.yaml` file in the root directory to configure the connection to your Foundry instance.
 
-```yaml
-# settings.yaml
-app:
-    host: localhost      # Hostname for the SheetDelver application
-    port: 3000           # Port for SheetDelver to listen on
-    protocol: http       # Protocol for SheetDelver (http/https)
-    chat-history: 100    # Max number of chat messages to retain/display
-
-foundry:
-    host: foundryserver.local # Hostname of your Foundry VTT instance
-    port: 30000               # Port of your Foundry VTT instance
-    protocol: http            # Protocol (http/https)
-    connector: socket         # Connection method (socket)
-    username: "gamemaster"    # Required for connection
-    password: "password"      # Required for connection
-
-debug:
-    enabled: true        # Enable debug logging
-    level: 4             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
-```
-
 ### Running Locally
-To run the application locally for personal use:
+To run the application locally:
+1.  Install dependencies: `npm install`
+2.  Launch both Core and Shell: `npm run dev` (for development) or `npm run build && npm start` (for production).
+3.  Open [http://localhost:3000](http://localhost:3000).
 
-1.  Current directory:
-    ```bash
-    npm install
-    npm run build
-    npm start
-    ```
-2.  Open [http://localhost:3000](http://localhost:3000).
-
-### Deployment
-To deploy on a dedicated server:
-
-1.  Clone the repository.
-2.  Install dependencies: `npm install`
-3.  Build the application: `npm run build`
-4.  Start the server: `npm start`
-    - *Note: You may want to use a process manager like PM2 to keep it running.*
+*Note: The startup process automatically manages both the backend service and the frontend web server.*
 
 ## Development
 For developers interested in contributing to **SheetDelver**, please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions, architecture overview, and guidelines.

@@ -43,13 +43,16 @@ These routes handle standard operations like fetching actors, rolling dice, and 
 ### Session & Users
 
 -   **GET** `/api/session/connect`
-    Check connection status with Foundry.
+    Check connection status with Foundry. Proxies to `/api/status` in the Core Service.
+    **Returns:** `{ connected: boolean, isLoggedIn: boolean, users: Object[], system: Object, url: string, appVersion: string }`
+    **Note:** User objects are sanitized (no IDs) for security.
 -   **POST** `/api/session/login`
     Authenticate with Foundry using GM/Assistant credentials from `settings.yaml`.
 -   **POST** `/api/session/logout`
     Terminate the current session.
 -   **GET** `/api/users`
-    Fetch list of available Foundry users. **Requires Authentication.**
+    Fetch list of available Foundry users for login selection.
+    **Note:** Returns sanitized data (no IDs). Does NOT require authentication (Guests rely on Cache).
 
 ### System
 
@@ -83,6 +86,25 @@ Base Path: `/api/modules/shadowdark`
     Learn a spell by UUID.
 -   **GET** `/spells/list?source=:className`
     Fetch a list of spells available for a specific class (e.g. "Wizard").
+
+## Admin API
+
+These routes are restricted to `localhost` and are used by the CLI tool for server management.
+
+-   **GET** `/admin/status`
+    Raw debugging status (connection, world state, user ID).
+-   **GET** `/admin/worlds`
+    List available worlds. Falls back to scraping `/setup` if live socket data is unavailable.
+-   **GET** `/admin/cache`
+    Dump the current persistent cache.
+-   **POST** `/admin/setup/scrape`
+    Trigger a manual scrape of the `/setup` page using a session cookie.
+    Body: `{ sessionCookie: string }`
+-   **POST** `/admin/world/launch`
+    Launch a specific world.
+    Body: `{ worldId: string }`
+-   **POST** `/admin/world/shutdown`
+    Request a shutdown of the current world (return to Setup).
 
 ## Module API Architecture
 

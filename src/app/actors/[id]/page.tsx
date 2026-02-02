@@ -3,13 +3,13 @@
 import { useState, useEffect, use, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
-import SheetRouter from '@/components/SheetRouter';
-import GlobalChat from '@/components/GlobalChat';
-import PlayerList from '@/components/PlayerList';
+import SheetRouter from '@/app/ui/components/SheetRouter';
+import GlobalChat from '@/app/ui/components/GlobalChat';
+import PlayerList from '@/app/ui/components/PlayerList';
 import { processHtmlContent } from '@/modules/core/utils';
 import { getMatchingAdapter } from '@/modules/core/registry';
-import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
-import LoadingModal from '@/components/LoadingModal';
+import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
+import LoadingModal from '@/app/ui/components/LoadingModal';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();

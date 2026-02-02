@@ -1,6 +1,6 @@
 'use client';
 
-import RichTextEditor from '@/components/RichTextEditor';
+import RichTextEditor from '@/app/ui/components/RichTextEditor';
 
 interface NotesTabProps {
     actor: any;

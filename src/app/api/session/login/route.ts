@@ -1,21 +1,16 @@
 import { NextResponse } from 'next/server';
-import { getClient } from '@/lib/foundry/instance';
+import { coreFetch } from '@/app/lib/core-api';
 
 export async function POST(request: Request) {
-    const client = getClient();
-    if (!client) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 400 });
-    }
-
     try {
         const body = await request.json();
-        const { username, password } = body;
-
-        await client.login(username, password);
-
-        return NextResponse.json({ success: true });
+        const data = await coreFetch('/login', {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+        return NextResponse.json(data);
     } catch (error: any) {
-        console.error('Login error:', error);
+        console.error('Login proxy error:', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

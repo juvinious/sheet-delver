@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getClient } from '@/lib/foundry/instance';
+import { getClient } from '@/core/foundry/instance';
 import { ShadowdarkImporter } from '../importer';
 
 export async function handleImport(request: Request) {
