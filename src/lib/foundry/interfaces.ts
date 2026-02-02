@@ -17,8 +17,15 @@ export interface SystemConnectionData {
 }
 
 export interface FoundryClient {
+    // Legacy support (to be deprecated or aliased)
     isConnected: boolean;
     isLoggedIn: boolean;
+
+    // Strict Separation
+    isSocketConnected: boolean; // Physical socket connection
+    worldState: 'offline' | 'setup' | 'active'; // World Availability
+    isUserAuthenticated: boolean; // User Session
+
     url: string;
     status: ConnectionStatus;
 

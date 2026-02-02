@@ -162,13 +162,19 @@ async function runTest() {
 
     // Wait for world to fully start
     console.log('\n⏳ Waiting for world to fully start (max 45 seconds)...');
-    let worldReady = false;
+    // Check immediately first
+    let state = await getState();
+    let worldReady = ['connected', 'loggedIn'].includes(state.status);
     let attempts = 0;
     const maxAttempts = 15; // 45 seconds
 
+    if (worldReady) {
+        console.log(`✓ World already ready on first check (Instant)`);
+    }
+
     while (!worldReady && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 3000));
-        const state = await getState();
+        state = await getState();
         if (['connected', 'loggedIn'].includes(state.status)) {
             worldReady = true;
             console.log(`✓ World ready after ${(attempts + 1) * 3} seconds`);

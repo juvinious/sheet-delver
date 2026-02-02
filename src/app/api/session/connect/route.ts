@@ -4,34 +4,8 @@ import { getClient, setClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 import { logger } from '@/lib/logger';
 import { getConfig } from '@/modules/core/registry';
-import { SetupScraper } from '@/lib/foundry/SetupScraper';
 
-// Helper for user fallback
-async function getUsersWithFallback(client: any, isSetup: boolean): Promise<any[]> {
-    if (isSetup) return [];
 
-    // 1. Try Live Socket
-    const liveUsers = await client.getUsers().catch(() => []);
-
-    if (liveUsers.length > 0) return liveUsers;
-
-    // 2. Fallback to Persistent Cache
-    try {
-        const cache = await SetupScraper.loadCache();
-        // SetupScraper.loadCache now validates users, so if currentWorldId is set, it has users
-        if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
-            const cachedUsers = cache.worlds[cache.currentWorldId].users || [];
-            if (cachedUsers.length > 0) {
-                await logger.info(`[API] Live socket returned 0 users. Using ${cachedUsers.length} users from persistent cache.`);
-                return cachedUsers;
-            }
-        }
-    } catch (e) {
-        await logger.warn('[API] Failed to load persistent cache for fallback', e);
-    }
-
-    return [];
-}
 
 export async function GET() {
     const config = await loadConfig();
@@ -59,10 +33,10 @@ export async function GET() {
             await logger.info(`[API Connect] Returning system status: ${system?.status} | Setup: ${system?.id === 'setup'} | LoggedIn: ${system?.isLoggedIn} | URL: ${existingClient.url}`);
 
             // If setup, don't bother with users
-            const users = await getUsersWithFallback(existingClient, system?.id === 'setup');
+            const users = system?.users?.list || [];
 
             const sanitizedUsers = users.map((u: any) => ({
-                _id: u._id,
+                _id: u._id || u.id,
                 name: u.name,
                 role: u.role,
                 color: u.color
@@ -90,9 +64,9 @@ export async function GET() {
             try {
                 const system: any = await existingClient.getSystem().catch(() => null);
                 if (system && system.id) system.config = getConfig(system.id);
-                const users = await getUsersWithFallback(existingClient, system?.id === 'setup');
+                const users = system?.users?.list || [];
                 const sanitizedUsers = users.map((u: any) => ({
-                    _id: u._id,
+                    _id: u._id || u.id,
                     name: u.name,
                     role: u.role,
                     color: u.color
@@ -124,9 +98,9 @@ export async function GET() {
             if (system && system.id) {
                 system.config = getConfig(system.id);
             }
-            const users = await getUsersWithFallback(client, system?.id === 'setup');
+            const users = system?.users?.list || [];
             const sanitizedUsers = users.map((u: any) => ({
-                _id: u._id,
+                _id: u._id || u.id,
                 name: u.name,
                 role: u.role,
                 color: u.color
@@ -164,13 +138,13 @@ export async function POST(request: Request) {
             system.config = getConfig(system.id);
         }
 
-        const users = await getUsersWithFallback(client, system?.id === 'setup');
+        const users = system?.users?.list || [];
 
         const config = await loadConfig();
         const appVersion = config?.app.version || '0.0.0';
 
         const sanitizedUsers = users.map((u: any) => ({
-            _id: u._id,
+            _id: u._id || u.id,
             name: u.name,
             role: u.role,
             color: u.color

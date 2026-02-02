@@ -145,8 +145,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           // If still empty, it will redirect to /setup.
           // EXCEPTION: If we are in 'setup' mode, users are EXPECTED to be empty. Do not reload.
           if ((!data.users || data.users.length === 0) && data.system?.id !== 'setup') {
-            console.warn('[ClientPage] Connected but no users found (Live + Cache). Forcing reload to trigger Setup redirect.');
-            window.location.reload();
+            console.warn('[ClientPage] Connected but no users found (Live + Cache). Transitioning to setup.');
+            setStep('setup');
             return;
           }
           if (data.appVersion) setAppVersion(data.appVersion);
@@ -184,8 +184,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                 setStep('login');
                 break;
               case 'connected':
-              default:
                 setStep('login');
+                break;
+              case 'disconnected':
+              default:
+                setStep('setup');
                 break;
             }
           } else {
@@ -208,6 +211,36 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   }, []);
 
+
+  const fetchActors = useCallback(async () => {
+    if (loading) return;
+    try {
+      const res = await fetch('/api/actors');
+      if (res.status === 401) {
+        if (step === 'dashboard') {
+          console.warn('[Actors Poll] 401 Unauthorized. Checking if authenticating...');
+          // Check system status before kicking, maybe we are just re-logging?
+          const sysRes = await fetch('/api/session/connect');
+          const sysData = await sysRes.json();
+          if (!sysData.system?.isAuthenticating) {
+            console.error('[Actors Poll] Definitive session loss. Redirecting to login.');
+            setStep('login');
+          } else {
+            console.log('[Actors Poll] 401 encountered, but system is authenticating. Ignoring.');
+          }
+        }
+        return;
+      }
+      const data = await res.json();
+      if (data.ownedActors || data.actors) {
+        setActors(data.actors || []); // Fallback for old code
+        setOwnedActors(data.ownedActors || data.actors || []);
+        setReadOnlyActors(data.readOnlyActors || []);
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, [loading, step]);
 
 
   // Polling for System State Changes (e.g. World Shutdown / Startup)
@@ -238,11 +271,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             return;
           }
 
-          // Transition from startup to ready state - ONLY reload for successful starts
+          // Transition from startup to ready state - NO RELOAD
           if (step === 'startup') {
             if (status === 'connected' || status === 'loggedIn') {
               console.log(`[ClientPage] World ready! Transitioning from startup to ${status}`);
-              window.location.reload(); // Reload to clear caches/state on fresh start
+              setSystem(data.system);
+              setUsers(data.users || []);
+              if (status === 'loggedIn') {
+                fetchActors();
+                setStep('dashboard');
+              } else {
+                setStep('login');
+              }
               return;
             } else if (status === 'setup') {
               // World failed to start, return to setup without reload
@@ -252,9 +292,17 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             }
           }
 
-          // 2. Setup -> Connected (world launched from setup page)
+          // 2. Setup -> Connected (world launched from setup page) - NO RELOAD
           if (status !== 'setup' && step === 'setup') {
-            window.location.reload();
+            console.log(`[ClientPage] World launched! Transitioning from setup to ${status}`);
+            setSystem(data.system);
+            setUsers(data.users || []);
+            if (status === 'loggedIn') {
+              fetchActors();
+              setStep('dashboard');
+            } else {
+              setStep('login');
+            }
             return;
           }
 
@@ -290,9 +338,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       } catch {
         // Silent error for poll failures
       }
-    }, 1000); // Poll every 1 second for faster updates
+    }, 500); // Poll every 500ms for faster updates
     return () => clearInterval(interval);
-  }, [step, loading, addNotification]);
+  }, [step, loading, addNotification, fetchActors, url]);
 
   const handleRetryConnection = () => {
     window.location.reload();
@@ -300,35 +348,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
 
 
-  const fetchActors = useCallback(async () => {
-    if (loading) return;
-    try {
-      const res = await fetch('/api/actors');
-      if (res.status === 401) {
-        if (step === 'dashboard') {
-          console.warn('[Actors Poll] 401 Unauthorized. Checking if authenticating...');
-          // Check system status before kicking, maybe we are just re-logging?
-          const sysRes = await fetch('/api/session/connect');
-          const sysData = await sysRes.json();
-          if (!sysData.system?.isAuthenticating) {
-            console.error('[Actors Poll] Definitive session loss. Redirecting to login.');
-            setStep('login');
-          } else {
-            console.log('[Actors Poll] 401 encountered, but system is authenticating. Ignoring.');
-          }
-        }
-        return;
-      }
-      const data = await res.json();
-      if (data.ownedActors || data.actors) {
-        setActors(data.actors || []); // Fallback for old code
-        setOwnedActors(data.ownedActors || data.actors || []);
-        setReadOnlyActors(data.readOnlyActors || []);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }, [loading, step]);
+
 
   useEffect(() => {
     if (step !== 'dashboard') return;
@@ -338,7 +358,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
     const interval = setInterval(() => {
       fetchActors();
-    }, 5000);
+    }, 5000); // Poll actors every 5 seconds
 
     return () => clearInterval(interval);
   }, [step, fetchActors]);
