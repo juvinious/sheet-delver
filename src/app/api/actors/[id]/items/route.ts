@@ -12,8 +12,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const client = getClient();
-    if (!client) {
-        return NextResponse.json({ success: false, error: 'Not connected to Foundry' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ success: false, error: 'Not logged in' }, { status: 401 });
     }
 
     try {
@@ -46,8 +46,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     console.log('[API] Creating Item for', id, JSON.stringify(itemData));
 
     const client = getClient();
-    if (!client) {
-        return NextResponse.json({ success: false, error: 'Not connected to Foundry' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ success: false, error: 'Not logged in' }, { status: 401 });
     }
 
     try {
@@ -78,8 +78,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const client = getClient();
-    if (!client) {
-        return NextResponse.json({ success: false, error: 'Not connected to Foundry' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ success: false, error: 'Not logged in' }, { status: 401 });
     }
 
     try {

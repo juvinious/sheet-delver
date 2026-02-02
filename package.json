@@ -13,7 +13,8 @@
     "test:socket:system": "npx tsx src/test/socket/02-system-info.test.ts",
     "test:socket:actors": "npx tsx src/test/socket/03-actor-access.test.ts",
     "test:socket:users": "npx tsx src/test/socket/04-users-compendia.test.ts",
-    "test:socket:write": "npx tsx src/test/socket/05-write-operations.test.ts"
+    "test:socket:write": "npx tsx src/test/socket/05-write-operations.test.ts",
+    "test:states": "npx tsx scripts/test-states.ts"
   },
   "dependencies": {
     "@next/font": "^14.2.15",

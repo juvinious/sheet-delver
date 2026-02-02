@@ -9,8 +9,8 @@ export async function POST(
     const { id } = await params;
     const client = getClient();
 
-    if (!client) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
     try {

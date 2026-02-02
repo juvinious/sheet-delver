@@ -2,6 +2,7 @@ import io from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { FoundryConfig } from './types';
 import { FoundryClient, SystemConnectionData } from './interfaces';
+import { ConnectionStatus } from '../../types/connection';
 import { getAdapter } from '../../modules/core/registry';
 import { SystemAdapter } from '../../modules/core/interfaces';
 import { logger } from '../logger';
@@ -29,12 +30,47 @@ export class SocketFoundryClient implements FoundryClient {
     private validationFailCount: number = 0;
     private consecutiveFailures: number = 0;
     public isAuthenticating: boolean = false;
+    public isSetupMode: boolean = false;
+    public lastLaunchActivity: number = 0;
+    private isWorldReady: boolean = false;
     private disconnectReason: string | null = null;
+    private readonly STARTUP_WINDOW_MS = 30000; // 30 seconds
     private userMap: Map<string, any> = new Map();
     private actorCache: Map<string, string> = new Map();
+    private worldCache: Map<string, Partial<SystemConnectionData>> = new Map();
 
     constructor(config: FoundryConfig) {
         this.config = config;
+    }
+
+    get status(): ConnectionStatus {
+        // 1. If world is confirmed ready and logged in, prioritize that
+        if (this.isLoggedIn && this.isWorldReady) {
+            return 'loggedIn';
+        }
+
+        // 2. Startup only if launch was recent AND world not confirmed ready
+        if (!this.isWorldReady && this.lastLaunchActivity > 0 && Date.now() - this.lastLaunchActivity < this.STARTUP_WINDOW_MS) {
+            return 'startup';
+        }
+
+        // 3. Setup Mode
+        if (this.isSetupMode) {
+            return 'setup';
+        }
+
+        // 4. Authenticating
+        if (this.isAuthenticating) {
+            return 'authenticating';
+        }
+
+        // 5. Connected (Login Screen / Guest)
+        if (this.isConnected) {
+            return 'connected';
+        }
+
+        // 6. Disconnected
+        return 'disconnected';
     }
 
     // ... (get url, resolveAdapter methods unchanged)
@@ -127,6 +163,7 @@ export class SocketFoundryClient implements FoundryClient {
         // Reset world data on new connection attempt to ensure freshness
         this.worldTitleFromHtml = null;
         this.worldBackgroundFromHtml = null;
+        this.isSetupMode = false;
 
 
         const baseUrl = this.config.url.endsWith('/') ? this.config.url.slice(0, -1) : this.config.url;
@@ -160,6 +197,7 @@ export class SocketFoundryClient implements FoundryClient {
                 const isSetup = joinResponse.url.includes('/setup') || html.includes('id="setup"');
                 if (isSetup) {
                     logger.info(`SocketFoundryClient | Redirected to Setup page (or Setup detected). Parsing public details.`);
+                    this.isSetupMode = true;
                 }
 
                 // Parse World Title & Background from Login/Setup Page
@@ -208,7 +246,13 @@ export class SocketFoundryClient implements FoundryClient {
                         const path = backgroundUrl.startsWith('/') ? backgroundUrl : `/${backgroundUrl}`;
                         backgroundUrl = `${baseUrl}${path}`;
                     }
-                    this.worldBackgroundFromHtml = backgroundUrl;
+                }
+                this.worldBackgroundFromHtml = backgroundUrl;
+
+                // CACHE UPDATE: Preserve parsed world info
+                if (this.worldTitleFromHtml) {
+                    const cached = this.worldCache.get(this.url) || {};
+                    this.worldCache.set(this.url, { ...cached, worldTitle: this.worldTitleFromHtml, worldBackground: this.worldBackgroundFromHtml || undefined });
                 }
 
                 // Use config userId as fallback
@@ -270,11 +314,14 @@ export class SocketFoundryClient implements FoundryClient {
                 const isJsonSuccess = loginResponse.status === 200 && (loginBody.includes('"status":"success"') || loginBody.includes('JOIN.LoginSuccess'));
                 const isRedirect = loginResponse.status === 302;
 
+                const hasSessionCookie = cookieMap.has('session') || cookieMap.has('foundry');
+
                 // CRITICAL: specific fail check. If it's NOT success, we MUST throw.
                 // We cannot fall through because we might have a guest cookie that looks valid.
-                if (!isRedirect && !isJsonSuccess) {
-                    logger.error(`SocketFoundryClient | Login Failed: Unexpected status ${loginResponse.status}. Body preview: ${loginBody.substring(0, 300)}`);
-                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}`);
+                if (!isRedirect && !isJsonSuccess && !hasSessionCookie) {
+                    const bodyPreview = loginBody.substring(0, 300);
+                    logger.error(`SocketFoundryClient | Login Failed: Unexpected status ${loginResponse.status}. Body preview: ${bodyPreview}`);
+                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}. Body: ${bodyPreview}`);
                 }
 
                 if (cookieMap.size > 0) {
@@ -441,8 +488,13 @@ export class SocketFoundryClient implements FoundryClient {
                 }
 
 
+
                 if (event === 'session') {
                     const data = args[0] || {};
+
+                    // If we receive a session event, the world is definitely active (even if guest)
+                    // so we can clear the Setup mode flag to allow system data fetching to retry.
+                    this.isSetupMode = false;
 
                     if (data.userId) {
                         logger.info(`SocketFoundryClient | Session event. Authenticated as ${data.userId}`);
@@ -489,12 +541,51 @@ export class SocketFoundryClient implements FoundryClient {
                     }
                 }
 
+                // World Launch Progress (e.g. from Setup to Game)
+                if (event === 'progress') {
+                    const data = args[0] || {};
+                    // If we see launchWorld progress, we are definitely moving out of setup.
+                    if (data.action === 'launchWorld') {
+                        if (this.isSetupMode) {
+                            logger.info(`SocketFoundryClient | World launch detected (${data.pct}%). Clearing Setup Mode flag.`);
+                            this.isSetupMode = false;
+                            this.lastLaunchActivity = Date.now();
+                            // Clear world cache when new world starts launching
+                            this.worldCache.clear();
+                        }
+
+                        // When world launch completes, the world is ready!
+                        // We don't always get a ready/init event if we're already connected
+                        if (data.step === 'complete' && data.pct === 100) {
+                            logger.info(`SocketFoundryClient | World launch complete. World is now ready.`);
+                            this.isWorldReady = true;
+                            // NOTE: We intentionally do NOT clear lastLaunchActivity here.
+                            // It needs to remain set for ~60s to protect against getSystem() timeouts
+                            // during the transition period incorrectly inferring setup mode.
+
+                            // For guest sessions, modifyDocument requests don't work after world launch.
+                            // Re-fetch /game to get the updated world title from HTML.
+                            logger.info(`SocketFoundryClient | Checking if should refresh world title. userId=${this.userId}, data.id=${data.id}`);
+                            if (!this.userId && data.id) {
+                                logger.info(`SocketFoundryClient | Triggering world title refresh for guest session`);
+                                this.refreshWorldTitleFromGame().catch(err => {
+                                    logger.warn(`SocketFoundryClient | Failed to refresh world title: ${err.message}`);
+                                });
+                            }
+                        }
+                    }
+                }
+
 
                 if (event === 'ready' || event === 'init') {
                     const payload = args[0] || {};
+                    // World is ready, so setup mode is definitely over.
+                    this.isSetupMode = false;
+                    this.isWorldReady = true;
+                    this.lastLaunchActivity = 0; // Clear startup mode
+
                     const activeUserIds = payload.activeUsers || payload.userIds || [];
                     logger.info(`SocketFoundryClient | '${event}' payload keys: ${Object.keys(payload).join(', ')} | Active users: ${activeUserIds.length}`);
-
                     if (payload.users) {
                         logger.info(`SocketFoundryClient | Populating user map with ${payload.users.length} users from ready event.`);
                         payload.users.forEach((u: any, i: number) => {
@@ -511,6 +602,18 @@ export class SocketFoundryClient implements FoundryClient {
                         this.isJoining = false;
                         resolve();
                     }
+                }
+
+                // World Shutdown Detection
+                if (event === 'shutdown') {
+                    const data = args[0] || {};
+                    logger.info(`SocketFoundryClient | World shutdown detected: ${data.world || 'unknown'}`);
+                    // World has shut down, we're back in setup mode
+                    this.isSetupMode = true;
+                    this.isWorldReady = false;
+                    this.lastLaunchActivity = 0;
+                    // Clear world cache when world shuts down
+                    this.worldCache.clear();
                 }
 
                 if (event === 'setup') {
@@ -620,8 +723,11 @@ export class SocketFoundryClient implements FoundryClient {
      * @param operation The operation parameters
      * @param parent Specific parent context (optional)
      */
-    private async dispatchDocumentSocket(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }): Promise<any> {
-        // v13 Protocol: { type, action, operation: { parentUuid?, [action]?, ...args } }
+    private async dispatchDocumentSocket(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }, failHard: boolean = true): Promise<any> {
+        if (!this.socket?.connected) {
+            logger.warn(`SocketFoundryClient | Attempting to dispatch ${type}.${action} while disconnected.`);
+            throw new Error('Socket not connected');
+        }
 
         // Ensure action is set in operation
         operation.action = action;
@@ -646,15 +752,28 @@ export class SocketFoundryClient implements FoundryClient {
             const result = await this.emit('modifyDocument', payload);
             this.consecutiveFailures = 0; // Reset on success
             return result;
-        } catch (e: any) {
-            this.consecutiveFailures++;
-            // Don't disconnect immediately on first failure, let the caller handle it or wait for more
-            // Increased threshold to 15 to be more resilient to network blips
-            if (this.consecutiveFailures >= 15) {
-                logger.error(`SocketFoundryClient | Too many consecutive failures (${this.consecutiveFailures}) in dispatch. Forcing disconnect.`);
-                this.disconnect(`Too many consecutive failures: ${this.consecutiveFailures}`);
+        } catch (error: any) {
+            // Check if we are in the "launch transition window"
+            // During World Launch, socket requests (modifyDocument/getSystem) often timeout for 30-60s
+            // We should NOT count these as connection failures to avoid a disconnect loop.
+            const isLaunchTransition = (Date.now() - this.lastLaunchActivity) < 60000;
+
+            if (failHard) {
+                if (isLaunchTransition && error.message?.includes('Timeout')) {
+                    logger.debug(`SocketFoundryClient | Timeout during launch transition. Ignoring failure count.`);
+                } else {
+                    this.consecutiveFailures++;
+                }
+
+                if (this.consecutiveFailures >= 15) {
+                    logger.error(`SocketFoundryClient | Too many consecutive failures (${this.consecutiveFailures}) in dispatch. Forcing disconnect.`);
+                    this.disconnect('Too many consecutive failures: ' + this.consecutiveFailures);
+                }
+            } else {
+                // If failHard is false, we don't count failures, but we generally assume success/retry logic elsewhere
+                this.consecutiveFailures = 0;
             }
-            throw e;
+            throw error;
         }
     }
 
@@ -668,14 +787,72 @@ export class SocketFoundryClient implements FoundryClient {
         return null as any;
     }
 
+    /**
+     * Re-fetch /game page to update world title from HTML.
+     * This is needed for guest sessions where modifyDocument requests don't work.
+     */
+    private async refreshWorldTitleFromGame(): Promise<void> {
+        try {
+            logger.info(`SocketFoundryClient | Refreshing world title from /game...`);
+            const gameUrl = `${this.url}/game`;
+            const response = await fetch(gameUrl, {
+                headers: {
+                    'Cookie': this.sessionCookie || '',
+                    'User-Agent': 'SheetDelver/1.0'
+                },
+                redirect: 'follow' // Follow redirects to get the actual HTML page
+            });
+
+            logger.info(`SocketFoundryClient | /game fetch status: ${response.status}, final URL: ${response.url}`);
+            const html = await response.text();
+
+            // Parse world title from HTML
+            const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+            if (titleMatch) {
+                let rawTitle = titleMatch[1].trim();
+                rawTitle = rawTitle.replace(/^Foundry Virtual Tabletop [•·\-|]\s*/i, '');
+                this.worldTitleFromHtml = rawTitle;
+                logger.info(`SocketFoundryClient | Refreshed world title: "${this.worldTitleFromHtml}"`);
+
+                // Update the cache with the new title
+                const cached = this.worldCache.get(this.url) || {};
+                this.worldCache.set(this.url, { ...cached, worldTitle: this.worldTitleFromHtml });
+            } else {
+                logger.warn(`SocketFoundryClient | Could not find <title> tag in /game response`);
+            }
+        } catch (error: any) {
+            logger.warn(`SocketFoundryClient | Failed to refresh world title: ${error.message}`);
+        }
+    }
+
     async getSystem(): Promise<SystemConnectionData> {
+        // 1. If world is ready, we are NOT in setup mode, regardless of stale flags
+        if (this.isWorldReady) {
+            // Implicitly clear setup mode if we think we're ready
+            this.isSetupMode = false;
+        }
+
+        // FAST CHECK: If we detected setup mode during connection (redirect or title analysis)
+        // BUT only if we are not authenticated or world is not ready
+        if (this.isSetupMode && !this.isWorldReady) {
+            return {
+                id: 'setup',
+                title: 'Foundry Setup',
+                version: '0.0.0',
+                isLoggedIn: false,
+                isAuthenticating: false,
+                status: this.status
+            };
+        }
+
         if (this.isAuthenticating) {
             return {
                 id: 'unknown',
                 title: 'Unknown System',
                 version: '0.0.0',
                 isLoggedIn: this.isLoggedIn, // Use getter
-                isAuthenticating: true
+                isAuthenticating: true,
+                status: this.status
             };
         }
 
@@ -686,30 +863,49 @@ export class SocketFoundryClient implements FoundryClient {
                 title: 'Reconnecting...',
                 version: '0.0.0',
                 isLoggedIn: this.isLoggedIn,
-                isAuthenticating: false
+                isAuthenticating: false,
+                status: this.status
             };
         }
 
+        const cached = this.worldCache.get(this.url) || {};
+
         const sysData: SystemConnectionData = {
-            id: 'shadowdark', // Default fallback
-            title: 'Shadowdark RPG',
-            version: '1.0.0',
-            worldTitle: this.worldTitleFromHtml || 'Foundry World',
-            worldDescription: '',
-            worldBackground: this.worldBackgroundFromHtml || `${this.url}/ui/denim075.png`,
+            id: cached.id || 'shadowdark', // Default fallback
+            title: cached.title || 'Shadowdark RPG',
+            version: cached.version || '1.0.0',
+            worldTitle: this.worldTitleFromHtml || cached.worldTitle || 'Foundry World',
+            worldDescription: cached.worldDescription || '',
+            worldBackground: this.worldBackgroundFromHtml || cached.worldBackground || `${this.url}/ui/denim075.png`,
             isLoggedIn: this.isLoggedIn,
             isAuthenticating: this.isAuthenticating,
-            users: { active: 0, total: 0 }
+            users: { active: 0, total: 0 },
+            status: this.status
         };
 
         try {
             // 1. Fetch System ID (core.system)
-            const sysResponse: any = await this.dispatchDocumentSocket('Setting', 'get', {
-                query: { key: 'core.system' },
-                broadcast: false
-            });
-            if (sysResponse?.result?.[0]?.value) {
-                sysData.id = sysResponse.result[0].value;
+            // For guest sessions after world launch, modifyDocument requests timeout.
+            // Skip this request if we're a guest and the world is ready (we have the data from HTML).
+            if (!this.userId && this.isWorldReady) {
+                logger.debug(`SocketFoundryClient | Skipping modifyDocument for guest session (world ready). Using cached data.`);
+            } else {
+                // If this fails/timeouts with a guest session, we are likely in Setup or just don't have permission.
+                // failHard = false because guests often can't read settings.
+                const sysResponse: any = await this.dispatchDocumentSocket('Setting', 'get', {
+                    query: { key: 'core.system' },
+                    broadcast: false
+                }, undefined, false);
+                if (sysResponse?.result?.[0]?.value) {
+                    sysData.id = sysResponse.result[0].value;
+                    // Update Cache with confirmed System ID
+                    this.worldCache.set(this.url, { ...this.worldCache.get(this.url), id: sysData.id });
+
+                    // Mark world as ready and clear startup mode
+                    this.isWorldReady = true;
+                    this.lastLaunchActivity = 0;
+                    logger.info(`SocketFoundryClient | World confirmed ready. System ID: ${sysData.id}`);
+                }
             }
 
             // 2. Fetch Users for Count and Session Validation
@@ -717,7 +913,8 @@ export class SocketFoundryClient implements FoundryClient {
                 // Optimistic: Use our live userMap if it has contents
                 let users = Array.from(this.userMap.values());
                 if (users.length === 0) {
-                    users = await this.getUsers().catch(() => []);
+                    // Fail hard = false to prevent disconnect loops during startup/shutdown
+                    users = await this.getUsers(false).catch(() => []);
                 }
 
                 if (users && users.length > 0) {
@@ -767,6 +964,28 @@ export class SocketFoundryClient implements FoundryClient {
 
         } catch (e: any) {
             logger.warn(`SocketFoundryClient | Failed to fetch system info: ${e}`);
+
+            // TIMEOUT DETECTION FOR SETUP
+            // If we timed out fetching system info AND we are a guest AND we haven't seen any users
+            // It is highly likely we are sitting on the Setup screen which ignores these socket requests.
+            if (e.message && e.message.includes('Timeout') && !this.userId) {
+                // Exception: If we have seen world launch activity recently (< 60s), 
+                // this is likely just transition turbulence, NOT a static Setup screen.
+                if (Date.now() - this.lastLaunchActivity < 60000) {
+                    logger.info('SocketFoundryClient | Timeout on guest session, but world launch detected recently. Ignoring Setup inference.');
+                } else {
+                    logger.info('SocketFoundryClient | Timeout on guest session. Inferring "Setup" mode.');
+                    this.isSetupMode = true;
+                    return {
+                        id: 'setup',
+                        title: 'Foundry Setup',
+                        version: '0.0.0',
+                        isLoggedIn: false,
+                        isAuthenticating: false
+                    };
+                }
+            }
+
             // If we fail to fetch system info, it might be a temporary blip.
             // We return sysData as-is (with isLoggedIn preserved).
             // We DO NOT call disconnect() here, as it's too aggressive.
@@ -774,8 +993,8 @@ export class SocketFoundryClient implements FoundryClient {
         return sysData;
     }
 
-    async getUsers(): Promise<any[]> {
-        const response: any = await this.dispatchDocumentSocket('User', 'get', { broadcast: false });
+    async getUsers(failHard: boolean = true): Promise<any[]> {
+        const response: any = await this.dispatchDocumentSocket('User', 'get', { broadcast: false }, undefined, failHard);
         const users = response?.result || [];
 
         if (users.length > 0) {

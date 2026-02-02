@@ -104,8 +104,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
     const client = getClient();
-    if (!client) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 503 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
     try {

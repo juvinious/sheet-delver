@@ -10,8 +10,8 @@ import { loadConfig } from '@/lib/config';
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const client = getClient();
-        if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected' }, { status: 503 });
+        if (!client || !client.isLoggedIn) {
+            return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
         }
 
         const { id } = await params;
@@ -94,8 +94,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
     const client = getClient();
-    if (!client || !client.isConnected) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 503 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
     const { id } = await params;

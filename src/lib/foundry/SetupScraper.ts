@@ -207,7 +207,19 @@ export class SetupScraper {
     static async loadCache(): Promise<CacheData> {
         try {
             const data = await fs.readFile(CACHE_FILE, 'utf-8');
-            return JSON.parse(data);
+            const cache = JSON.parse(data);
+
+            // Validate that the current world actually has users
+            if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
+                const world = cache.worlds[cache.currentWorldId];
+                if (!world.users || world.users.length === 0) {
+                    console.warn(`[SetupScraper] Cache exists for ${world.worldTitle} but has 0 users. Treating as invalid/setup-required.`);
+                    // We don't delete the file, but we treat it as "no current world" so the app redirects to setup
+                    return { ...cache, currentWorldId: null };
+                }
+            }
+
+            return cache;
         } catch {
             return { worlds: {}, currentWorldId: null };
         }

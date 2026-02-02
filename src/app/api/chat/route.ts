@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
     const client = getClient();
 
-    if (!client || !client.isConnected) {
-        return NextResponse.json({ error: 'Not connected' }, { status: 400 });
+    if (!client || !client.isLoggedIn) {
+        return NextResponse.json({ error: 'Not logged in' }, { status: 401 });
     }
 
     try {

@@ -4,6 +4,34 @@ import { getClient, setClient } from '@/lib/foundry/instance';
 import { loadConfig } from '@/lib/config';
 import { logger } from '@/lib/logger';
 import { getConfig } from '@/modules/core/registry';
+import { SetupScraper } from '@/lib/foundry/SetupScraper';
+
+// Helper for user fallback
+async function getUsersWithFallback(client: any, isSetup: boolean): Promise<any[]> {
+    if (isSetup) return [];
+
+    // 1. Try Live Socket
+    const liveUsers = await client.getUsers().catch(() => []);
+
+    if (liveUsers.length > 0) return liveUsers;
+
+    // 2. Fallback to Persistent Cache
+    try {
+        const cache = await SetupScraper.loadCache();
+        // SetupScraper.loadCache now validates users, so if currentWorldId is set, it has users
+        if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
+            const cachedUsers = cache.worlds[cache.currentWorldId].users || [];
+            if (cachedUsers.length > 0) {
+                await logger.info(`[API] Live socket returned 0 users. Using ${cachedUsers.length} users from persistent cache.`);
+                return cachedUsers;
+            }
+        }
+    } catch (e) {
+        await logger.warn('[API] Failed to load persistent cache for fallback', e);
+    }
+
+    return [];
+}
 
 export async function GET() {
     const config = await loadConfig();
@@ -15,6 +43,9 @@ export async function GET() {
     const appVersion = config.app.version;
     const existingClient = getClient();
 
+    // [DEBUG] Top level connect check
+    await logger.info(`[API Connect] Request RX. Client exists: ${!!existingClient} | Connected: ${existingClient?.isConnected} | Valid Session: ${(existingClient as any)?.isExplicitSession}`);
+
     // Check existing connection
     if (existingClient && existingClient.isConnected) {
         try {
@@ -23,10 +54,27 @@ export async function GET() {
             if (system && system.id) {
                 system.config = getConfig(system.id);
             }
-            // If setup, don't bother with users
-            const users = (system?.id === 'setup') ? [] : await existingClient.getUsers().catch(() => []);
 
-            return NextResponse.json({ connected: existingClient.isConnected, users, system, url: existingClient.url, appVersion });
+            // [DEBUG] Log the system status we are returning
+            await logger.info(`[API Connect] Returning system status: ${system?.status} | Setup: ${system?.id === 'setup'} | LoggedIn: ${system?.isLoggedIn} | URL: ${existingClient.url}`);
+
+            // If setup, don't bother with users
+            const users = await getUsersWithFallback(existingClient, system?.id === 'setup');
+
+            const sanitizedUsers = users.map((u: any) => ({
+                _id: u._id,
+                name: u.name,
+                role: u.role,
+                color: u.color
+            }));
+
+            return NextResponse.json({
+                connected: existingClient.isConnected,
+                users: sanitizedUsers,
+                system,
+                url: existingClient.url,
+                appVersion
+            });
         } catch (error) {
             await logger.warn('Existing connection check failed, connection may be flaky.', error);
             // We DO NOT call disconnect() here anymore. Let SocketClient handle reconnection internally.
@@ -42,11 +90,17 @@ export async function GET() {
             try {
                 const system: any = await existingClient.getSystem().catch(() => null);
                 if (system && system.id) system.config = getConfig(system.id);
-                const users = (system?.id === 'setup') ? [] : await existingClient.getUsers().catch(() => []);
+                const users = await getUsersWithFallback(existingClient, system?.id === 'setup');
+                const sanitizedUsers = users.map((u: any) => ({
+                    _id: u._id,
+                    name: u.name,
+                    role: u.role,
+                    color: u.color
+                }));
 
                 return NextResponse.json({
                     connected: existingClient.isConnected,
-                    users,
+                    users: sanitizedUsers,
                     system,
                     url: existingClient.url,
                     appVersion
@@ -66,21 +120,19 @@ export async function GET() {
             await client.connect();
             setClient(client);
 
-            setClient(client);
-
-            // Auto-Login Removed via User Request
-            // if (config.debug.foundryUser && config.debug.foundryUser.name) { ... }
-
-            // Auto-Login Removed via User Request
-            // if (config.debug.foundryUser && config.debug.foundryUser.name) { ... }
-
             const system: any = await client.getSystem().catch(() => null);
             if (system && system.id) {
                 system.config = getConfig(system.id);
             }
-            const users = (system?.id === 'setup') ? [] : await client.getUsers();
+            const users = await getUsersWithFallback(client, system?.id === 'setup');
+            const sanitizedUsers = users.map((u: any) => ({
+                _id: u._id,
+                name: u.name,
+                role: u.role,
+                color: u.color
+            }));
 
-            return NextResponse.json({ connected: true, users, system, url: url, appVersion });
+            return NextResponse.json({ connected: true, users: sanitizedUsers, system, url: url, appVersion });
         } catch (error: any) {
             await logger.error('Auto-connect failed', error);
             return NextResponse.json({ connected: false, error: 'Auto-connect failed: ' + error.message, appVersion });
@@ -107,16 +159,24 @@ export async function POST(request: Request) {
             setClient(client);
         }
 
-        const users = await client.getUsers();
         const system: any = await client.getSystem().catch(() => null);
         if (system && system.id) {
             system.config = getConfig(system.id);
         }
 
+        const users = await getUsersWithFallback(client, system?.id === 'setup');
+
         const config = await loadConfig();
         const appVersion = config?.app.version || '0.0.0';
 
-        return NextResponse.json({ success: true, users, system, appVersion });
+        const sanitizedUsers = users.map((u: any) => ({
+            _id: u._id,
+            name: u.name,
+            role: u.role,
+            color: u.color
+        }));
+
+        return NextResponse.json({ success: true, users: sanitizedUsers, system, appVersion });
     } catch (error: any) {
         await logger.error('POST connection failed', error);
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });

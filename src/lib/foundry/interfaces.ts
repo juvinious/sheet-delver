@@ -1,4 +1,6 @@
 
+import { ConnectionStatus } from '../../types/connection';
+
 export interface SystemConnectionData {
     id: string;
     title: string;
@@ -11,12 +13,14 @@ export interface SystemConnectionData {
     isAuthenticating?: boolean;
     background?: string;
     users?: { active: number; total: number; list?: any[] };
+    status?: ConnectionStatus;
 }
 
 export interface FoundryClient {
     isConnected: boolean;
     isLoggedIn: boolean;
     url: string;
+    status: ConnectionStatus;
 
     connect(): Promise<void>;
     disconnect(): void;

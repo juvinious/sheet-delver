@@ -8,10 +8,10 @@ export async function POST(
     const { id } = await params;
     try {
         const client = getClient();
-        if (!client || !client.isConnected) {
+        if (!client || !client.isLoggedIn) {
             return NextResponse.json(
-                { error: 'Not connected to Foundry' },
-                { status: 503 }
+                { error: 'Not logged in' },
+                { status: 401 }
             );
         }
 

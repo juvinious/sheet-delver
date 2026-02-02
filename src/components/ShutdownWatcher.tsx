@@ -22,23 +22,14 @@ export default function ShutdownWatcher() {
         // ClientPage's setup view is not a separate route, it's state-based.
 
         const interval = setInterval(async () => {
-            // If we are on the home page, ClientPage handles the setup UI.
             // If we are on the home page, we only want to trigger if we are currently "In Game" (Dashboard/Login).
             // This prevents an infinite loop where we reload, land on Setup (not logged in), and then reload again.
             // If we are on the home page, we check the data-step attribute.
             // If the app is already in 'setup' or 'connect' mode, we are already handling the "No World" state.
             // We only want to trigger if we remain in 'dashboard' or 'login' mode while the world is stopped.
-            if (pathname === '/') {
-                const mainEl = document.querySelector('main');
-                const currentStep = mainEl?.getAttribute('data-step');
-                const isLoading = mainEl?.getAttribute('data-loading') === 'true';
-
-                // Prevent race conditions: If the app is busy (logging in/connecting), pause detection.
-                if (isLoading) return;
-
-                // Prevent infinite loops: If we are already in Setup/Connect, we are handling the state.
-                if (currentStep === 'setup' || currentStep === 'connect') return;
-            }
+            // If we are on the home page, ClientPage handles all state transitions (Setup, Startup, Reconnecting).
+            // We disable the global watcher here to prevent conflict loops.
+            if (pathname === '/') return;
 
             // If already shutting down, don't keep polling
             if (shutdownRef.current) return;
@@ -47,10 +38,13 @@ export default function ShutdownWatcher() {
                 const res = await fetch('/api/session/connect');
                 const data = await res.json();
 
-                if (data.system && data.system.id === 'setup') {
+                const isSetup = data.system?.id === 'setup';
+                const lostConnection = !data.connected;
+
+                if (isSetup || lostConnection) {
                     // Check if we are already aware (should be caught by shutdownRef, but double check)
                     if (!shutdownRef.current) {
-                        console.log('[ShutdownWatcher] World Shutdown detected. Starting countdown.');
+                        console.log(`[ShutdownWatcher] Shutdown detected (Setup: ${isSetup}, Lost Connection: ${lostConnection}). Starting countdown.`);
                         shutdownRef.current = true;
                         setShutdownDetected(true);
                         setCountDown(3);

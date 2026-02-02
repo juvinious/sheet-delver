@@ -32,7 +32,7 @@ interface ClientPageProps {
 }
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'init' | 'connect' | 'login' | 'dashboard' | 'setup'>('init');
+  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
 
   // Connect State
@@ -110,7 +110,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const theme = system?.theme || defaultTheme;
 
   // Resolve background image
-  const bgSrc = system?.worldBackground || system?.background;
+  // Clear background in setup/startup mode to prevent stale images from previous worlds
+  const bgSrc = (step === 'setup' || step === 'startup') ? null : (system?.worldBackground || system?.background);
   const bgStyle = bgSrc
     ? {
       backgroundImage: `url(${bgSrc.startsWith('http') ? bgSrc : `${url}/${bgSrc}`})`,
@@ -138,42 +139,66 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         if (data.connected) {
           setUrl(data.url);
           setUsers(data.users || []);
+
+          // If connected but no users (even after persistent cache fallback), we are truly hosed.
+          // Reloading will trigger page.tsx -> SetupScraper.loadCache() which now validates users.
+          // If still empty, it will redirect to /setup.
+          // EXCEPTION: If we are in 'setup' mode, users are EXPECTED to be empty. Do not reload.
+          if ((!data.users || data.users.length === 0) && data.system?.id !== 'setup') {
+            console.warn('[ClientPage] Connected but no users found (Live + Cache). Forcing reload to trigger Setup redirect.');
+            window.location.reload();
+            return;
+          }
           if (data.appVersion) setAppVersion(data.appVersion);
 
           if (data.system) {
             setSystem(data.system);
 
-            // Check for Setup Mode
-            if (data.system.id === 'setup') {
-              setStep('setup');
-              return;
-            }
-          }
+            const status = data.system.status;
 
-
-
-          // Check if session is already active (User logged in previously)
-          if (data.system?.isLoggedIn) {
-            const actorRes = await fetch('/api/actors');
-            const actorData = await actorRes.json();
-            if (actorData.ownedActors || actorData.actors) {
-              setActors(actorData.actors || []);
-              setOwnedActors(actorData.ownedActors || actorData.actors || []);
-              setReadOnlyActors(actorData.readOnlyActors || []);
-              setStep('dashboard'); // ALREADY LOGGED IN
-            } else {
-              setStep('login');
+            // State Machine Transition
+            switch (status) {
+              case 'setup':
+                setStep('setup');
+                break;
+              case 'startup':
+                setStep('startup');
+                break;
+              case 'loggedIn':
+                // Fetch actors if logged in
+                const actorRes = await fetch('/api/actors');
+                const actorData = await actorRes.json();
+                if (actorData.ownedActors || actorData.actors) {
+                  setActors(actorData.actors || []);
+                  setOwnedActors(actorData.ownedActors || actorData.actors || []);
+                  setReadOnlyActors(actorData.readOnlyActors || []);
+                  setStep('dashboard');
+                } else {
+                  // Fallback if actors fail?
+                  setStep('dashboard');
+                }
+                break;
+              case 'authenticating':
+                // If server is authenticating, wait/show loading? 
+                // For now, treat as login screen until confirmed
+                setStep('login');
+                break;
+              case 'connected':
+              default:
+                setStep('login');
+                break;
             }
           } else {
-            setStep('login');
+            // Connected but no system data - treat as setup mode
+            setStep('setup');
           }
         } else {
-          // Not connected to Foundry at all
-          setStep('connect');
+          // Not connected to Foundry at all - show setup page
+          setStep('setup');
         }
       } catch {
-        console.error('Check failed'); // Log without e, or just silence
-        setStep('connect');
+        console.warn('Check failed - treating as setup mode');
+        setStep('setup');
       } finally {
         setLoading(false);
         setLoginMessage('');
@@ -187,13 +212,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   // Polling for System State Changes (e.g. World Shutdown / Startup)
   // MOVED TO GLOBAL ShutdownWatcher.tsx
-  // We no longer need to check for shutdown here, as the global watcher will redirect us.
-  // However, we might want to check for "Start Up" (Transition from Setup -> Login) if we are sitting on Setup page.
   useEffect(() => {
     const interval = setInterval(async () => {
       if (loading) return;
       try {
-        const res = await fetch('/api/session/connect');
+        const res = await fetch('/api/session/connect', { cache: 'no-store' });
 
         if (res.status === 401) {
           if (step === 'dashboard') {
@@ -207,67 +230,72 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         const data = await res.json();
 
         if (data.system) {
-          // 1. Setup -> Game (Start Up) transition
-          if (data.system.id !== 'setup' && step === 'setup') {
-            window.location.reload();
+          const status = data.system.status;
+
+          // 1. Handle Startup/Setup Transitions
+          if (status === 'startup' && step !== 'startup') {
+            setStep('startup');
+            return;
           }
 
-          // 2. Kicked Detection: If we are on dashboard but no longer logged in
+          // Transition from startup to ready state - ONLY reload for successful starts
+          if (step === 'startup') {
+            if (status === 'connected' || status === 'loggedIn') {
+              console.log(`[ClientPage] World ready! Transitioning from startup to ${status}`);
+              window.location.reload(); // Reload to clear caches/state on fresh start
+              return;
+            } else if (status === 'setup') {
+              // World failed to start, return to setup without reload
+              console.warn('[ClientPage] World failed to start. Returning to setup.');
+              setStep('setup');
+              return;
+            }
+          }
+
+          // 2. Setup -> Connected (world launched from setup page)
+          if (status !== 'setup' && step === 'setup') {
+            window.location.reload();
+            return;
+          }
+
+
+          if ((step === 'login' || step === 'dashboard') && status === 'setup') {
+            console.warn(`[Session Poll] World shutdown detected from ${step}.`);
+            if (step === 'dashboard') addNotification('World has shut down.', 'error');
+
+            // Force logout to clear session state on server so we don't auto-login on restart
+            fetch('/api/session/logout', { method: 'POST' }).catch(err => console.error('Logout invalidation failed', err));
+
+            setStep('setup');
+            return;
+          }
+
+          // 4. Kicked / Session Loss from Dashboard
           if (step === 'dashboard') {
-            if (!data.system.isLoggedIn && !data.system.isAuthenticating) {
+            if (status === 'connected' && !data.system.isLoggedIn) {
+              // Connected but not logged in -> Login
               console.warn('[Session Poll] Session ended (reported by system). Redirecting to login.', data);
               addNotification('Your session has ended.', 'info');
               setStep('login');
-            } else if (!data.system.isLoggedIn && data.system.isAuthenticating) {
-              console.log('[Session Poll] System reports: Logging in/Authenticating... (waiting)');
+            } else if (status === 'disconnected') {
+              // Disconnected entirely -> Setup (No World)
+              console.warn('[Session Poll] Disconnected from world. Redirecting to setup.');
+              setStep('setup');
             }
           }
+        } else if (!data.connected && step !== 'setup') {
+          // Connection lost entirely - show setup page
+          setStep('setup');
         }
       } catch {
         // Silent error for poll failures
       }
-    }, 2000);
+    }, 1000); // Poll every 1 second for faster updates
     return () => clearInterval(interval);
   }, [step, loading, addNotification]);
 
-
-  const handleConnect = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/session/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setUsers(data.users || []);
-        if (data.appVersion) setAppVersion(data.appVersion);
-        if (data.system) {
-          setSystem(data.system);
-
-          if (data.system.id === 'setup') {
-            setStep('setup');
-            setLoading(false);
-            return;
-          }
-
-          if (data.system.id === 'setup') {
-            setStep('setup');
-            setLoading(false);
-            return;
-          }
-        }
-
-        setStep('login');
-      } else {
-        addNotification('Connection failed: ' + data.error, 'error');
-      }
-    } catch (e) {
-      addNotification('Error: ' + e, 'error');
-    } finally {
-      setLoading(false);
-    }
+  const handleRetryConnection = () => {
+    window.location.reload();
   };
 
 
@@ -413,34 +441,20 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Initializing</p>
             </div>
           </div>
-        )
-        }
+        )}
 
-        {
-          step === 'connect' && (
-            <div className={`max-w-md mx-auto ${theme.panelBg} p-6 rounded-lg shadow-lg border border-transparent mt-20`}>
-              <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Connect to Instance</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1 opacity-70">Foundry URL</label>
-                  <input
-                    type="text"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className={`w-full p-2 rounded border outline-none ${theme.input}`}
-                  />
-                </div>
-                <button
-                  onClick={handleConnect}
-                  disabled={loading}
-                  className={`w-full ${theme.button} text-white font-bold py-2 px-4 rounded transition-all disabled:opacity-50`}
-                >
-                  {loading ? 'Connecting...' : 'Connect'}
-                </button>
-              </div>
+        {step === 'startup' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white ml-2 text-lg">World Starting...</p>
+              <p className="text-white/30 text-xs font-mono tracking-widest uppercase">Please wait while the world launches</p>
             </div>
-          )
-        }
+          </div>
+        )}
 
 
         {
@@ -548,22 +562,23 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               </h1>
               <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
 
-              <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl">
+              <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl w-full">
                 <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
                 <p className="text-lg opacity-80 mb-6 leading-relaxed">
                   No world is available to login, please check back later.
                 </p>
 
-
-
-                <a
-                  href="https://github.com/juvinious/sheet-delver"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 opacity-80 hover:opacity-100 transition-opacity hover:scale-105 duration-300"
-                >
-                  <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" />
-                </a>
+                <div className="flex justify-center gap-4">
+                  <a
+                    href="https://github.com/juvinious/sheet-delver"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono"
+                  >
+                    <span>Read Docs</span>
+                    <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
+                  </a>
+                </div>
               </div>
             </div>
           )
@@ -640,7 +655,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         <div className="text-4xl font-black tracking-tighter text-white mb-1" style={{ fontFamily: 'var(--font-cinzel), serif' }}>
           SheetDelver
         </div>
-        {system && (
+        {system && step !== 'setup' && step !== 'startup' && step !== 'init' && (
           <div className={`text-sm font-bold tracking-widest opacity-80 mb-2 ${theme.accent}`}>
             {system.title.toUpperCase()}
           </div>
