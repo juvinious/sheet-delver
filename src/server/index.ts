@@ -91,8 +91,9 @@ async function startServer() {
 
                 // Add adapter config to system info (for actorCard.subtext, etc.)
                 if (system?.id) {
-                    logger.info(`Status Handler | Getting adapter for system: ${system.id}`);
-                    const adapter = getAdapter(system.id);
+                    const sid = system.id.toLowerCase();
+                    logger.info(`Status Handler | Getting adapter for system: ${sid}`);
+                    const adapter = getAdapter(sid);
                     if (adapter && typeof (adapter as any).getConfig === 'function') {
                         logger.info(`Status Handler | Adapter found, calling getConfig()`);
                         const config = (adapter as any).getConfig();
@@ -111,6 +112,10 @@ async function startServer() {
 
             const connected = client.isConnected;
 
+            if (process.env.NODE_ENV !== 'production') {
+                logger.debug(`Status Handler | Returning system: ${JSON.stringify(system || {}).substring(0, 500)}`);
+            }
+
             res.json({
                 connected,
                 isAuthenticated,
@@ -128,6 +133,51 @@ async function startServer() {
 
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
+
+    // --- System API ---
+    appRouter.get('/system', async (req, res) => {
+        // Authenticate (using a common helper or inline)
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.split(' ')[1];
+        const session = await sessionManager.getOrRestoreSession(token);
+        if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+        try {
+            const systemInfo = await session.client.getSystem();
+            res.json(systemInfo);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/system/data', async (req, res) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+        const token = authHeader.split(' ')[1];
+        const session = await sessionManager.getOrRestoreSession(token);
+        if (!session) return res.status(401).json({ error: 'Unauthorized' });
+
+        try {
+            const client = session.client;
+            const systemInfo = await client.getSystem();
+            const adapter = getAdapter(systemInfo.id);
+
+            if (adapter && typeof (adapter as any).getSystemData === 'function') {
+                const data = await (adapter as any).getSystemData(client);
+                res.json(data);
+            } else {
+                // Fallback: Return raw scraper data if adapter doesn't provide more
+                res.json((client as any).cachedWorldData?.data || {});
+            }
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
 
     appRouter.post('/login', async (req, res) => {
         const { username, password } = req.body;

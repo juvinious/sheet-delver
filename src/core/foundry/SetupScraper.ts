@@ -14,6 +14,7 @@ export interface WorldData {
     worldTitle: string;
     worldDescription: string | null;
     systemId: string;
+    systemVersion?: string;
     backgroundUrl: string | null;
     users: WorldUser[];
     lastUpdated: string;
@@ -131,9 +132,11 @@ export class SetupScraper {
                 });
             });
 
-            const worldId = joinData.world?.id || sessionData.worldId || 'unknown';
-            // world.system is just a string id in v10+, e.g. "dnd5e"
-            const systemId = joinData.world?.system || joinData.system?.id || 'unknown';
+            const worldId = joinData.world?.id || joinData.world?._id || sessionData.worldId || 'unknown';
+
+            // v13+ often has system info in joinData.system, older versions in world.system
+            const systemId = joinData.system?.id || joinData.system?.name || joinData.world?.system || 'unknown';
+            const systemVersion = joinData.system?.version || joinData.world?.systemVersion || '0.0.0';
 
             // Extract description from socket data (preferred over HTML)
             const socketDescription = joinData.world?.description || null;
@@ -153,6 +156,7 @@ export class SetupScraper {
                 worldTitle,
                 worldDescription: socketDescription || worldDescription, // Prefer socket, fallback to HTML
                 systemId,
+                systemVersion,
                 backgroundUrl,
                 users,
                 lastUpdated: new Date().toISOString(),
@@ -301,6 +305,7 @@ export class SetupScraper {
                         worldId: joinData?.world?.id || 'unknown',
                         worldTitle: joinData?.world?.title || worldTitleFromHtml,
                         systemId: joinData?.system?.id || 'unknown',
+                        systemVersion: joinData?.system?.version || '0.0.0',
                         status: isReady ? 'active' : 'offline',
                         source: 'Authenticated Probe'
                     },

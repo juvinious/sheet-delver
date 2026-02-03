@@ -107,10 +107,22 @@ export class SocketFoundryClient implements FoundryClient {
                 if (updated) {
                     this.cachedWorldData = {
                         ...updated,
-                        // Ensure optional fields are handled if missing in update (though SetupScraper ensures structure)
-                        worldDescription: updated.worldDescription || null
+                        // Ensure optional fields are handled if missing in update
+                        worldDescription: updated.worldDescription || null,
+                        systemVersion: updated.systemVersion || updated.data?.version || '0.0.0'
                     };
                     logger.info(`SocketFoundryClient | Hot-reloaded data for world: ${updated.worldTitle}`);
+                }
+            } else if (!this.cachedWorldData && cache.currentWorldId) {
+                // Initialize from current world if available
+                const current = this.cachedWorlds[cache.currentWorldId];
+                if (current) {
+                    this.cachedWorldData = {
+                        ...current,
+                        worldDescription: current.worldDescription || null,
+                        systemVersion: current.systemVersion || current.data?.version || '0.0.0'
+                    };
+                    logger.info(`SocketFoundryClient | Initialized from current world: ${current.worldTitle}`);
                 }
             }
         } catch (e) {
@@ -716,16 +728,22 @@ export class SocketFoundryClient implements FoundryClient {
                             logger.info(`SocketFoundryClient | Fetching world metadata via socket...`);
                             socket.emit('getJoinData', (result: any) => {
                                 if (result?.world) {
+                                    const systemId = result.system?.id || result.system?.name || 'unknown';
+                                    const systemVersion = result.system?.version || '0.0.0';
                                     this.cachedWorldData = {
                                         worldId: result.world.id,
                                         worldTitle: result.world.title,
                                         worldDescription: result.world.description || null,
-                                        systemId: result.system?.id || 'unknown',
+                                        systemId: systemId.toLowerCase(),
+                                        systemVersion: systemVersion,
                                         backgroundUrl: result.world.background,
                                         users: result.users || [],
-                                        lastUpdated: new Date().toISOString()
+                                        lastUpdated: new Date().toISOString(),
+                                        data: result.world
                                     };
-                                    logger.info(`SocketFoundryClient | Metadata restored: "${result.world.title}"`);
+                                    logger.info(`SocketFoundryClient | Metadata restored: "${result.world.title}" (System: ${systemId} v${systemVersion})`);
+                                } else {
+                                    logger.warn(`SocketFoundryClient | getJoinData returned no world data. Structure: ${Object.keys(result || {}).join(', ')}`);
                                 }
                                 resolve();
                             });
@@ -1003,6 +1021,7 @@ export class SocketFoundryClient implements FoundryClient {
                     worldTitle: cached.worldTitle,
                     worldDescription: cached.worldDescription || null,
                     systemId: cached.systemId,
+                    systemVersion: cached.systemVersion || cached.data?.version || '0.0.0',
                     backgroundUrl: cached.backgroundUrl,
                     users: cached.users || [],
                     lastUpdated: cached.lastUpdated,
@@ -1136,10 +1155,11 @@ export class SocketFoundryClient implements FoundryClient {
         // If socket is disconnected, we report it.
         if (!this.isSocketConnected) {
             const cached: any = this.cachedWorldData || {};
+            const sid = (cached.systemId || 'unknown').toLowerCase();
             return {
-                id: cached.systemId || 'unknown',
-                title: cached.systemId ? (cached.systemId.charAt(0).toUpperCase() + cached.systemId.slice(1)) : 'Reconnecting...',
-                version: '0.0.0',
+                id: sid,
+                title: sid !== 'unknown' ? (sid.charAt(0).toUpperCase() + sid.slice(1)) : 'Reconnecting...',
+                version: cached.systemVersion || '0.0.0',
                 worldTitle: cached.worldTitle || 'Reconnecting...',
                 worldBackground: cached.worldBackground,
                 isLoggedIn: this.isLoggedIn,
@@ -1168,10 +1188,14 @@ export class SocketFoundryClient implements FoundryClient {
         const cached = this.worldCache.get(this.url) || {};
         const scraperCache = this.cachedWorldData;
 
+        // Preference order: cachedWorldData.systemId -> cachedWorldData.data.system -> local cache id -> generic
+        const rawSid = scraperCache?.systemId || (scraperCache?.data as any)?.system || cached.id || 'generic';
+        const sid = rawSid.toLowerCase();
+
         const sysData: SystemInfo = {
-            id: scraperCache?.systemId || cached.id || 'generic',
-            title: cached.title || (scraperCache?.systemId ? scraperCache.systemId : 'Unknown System'),
-            version: cached.version || '1.0.0',
+            id: sid,
+            title: cached.title || (sid !== 'generic' && sid !== 'unknown' ? sid.charAt(0).toUpperCase() + sid.slice(1) : 'Unknown System'),
+            version: scraperCache?.systemVersion || (scraperCache?.data as any)?.version || cached.version || '1.0.0',
             worldTitle: scraperCache?.worldTitle || this.worldTitleFromHtml || cached.title || this.url,
             worldDescription: scraperCache?.worldDescription || scraperCache?.data?.description || null,
             worldBackground: scraperCache?.backgroundUrl || this.worldBackgroundFromHtml || `${this.url}/ui/denim075.png`,
