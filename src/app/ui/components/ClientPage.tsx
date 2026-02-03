@@ -97,8 +97,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const theme = system?.theme || defaultTheme;
 
   // Resolve background image
-  // Clear background in startup mode only
-  const bgSrc = (step === 'startup') ? null : (system?.worldBackground || system?.background);
+  // Clear background in startup mode or setup mode (to avoid stale images)
+  const bgSrc = (step === 'startup' || step === 'setup') ? null : (system?.worldBackground || system?.background);
   const bgStyle = bgSrc
     ? {
       backgroundImage: `url(${bgSrc.startsWith('http') ? bgSrc : `${url}/${bgSrc}`})`,
@@ -111,83 +111,54 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   // Auto-Connect Effect
   useEffect(() => {
     // Load Recent Actors (Initial)
-    // Removed initial load to prevent flash of wrong-system actors.
-    // try {
-    //   const stored = localStorage.getItem('recent_actors');
-    //   if (stored) setRecentActors(JSON.parse(stored));
-    // } catch (e) {console.error(e); }
+    // Unified State Logic
+    const determineStep = (data: any, currentStep: string) => {
+      const status = data.system?.status;
+      const isLoggedIn = data.system?.isLoggedIn || false;
+
+      // 1. WORLD STATE: Setup / Disconnected / Startup -> Setup Page
+      if (status !== 'active') {
+        return 'setup';
+      }
+
+      // 2. USER STATE (World is Active)
+      if (isLoggedIn) {
+        return 'dashboard';
+      } else {
+        return 'login';
+      }
+    };
 
     const checkConfig = async () => {
       try {
         setLoading(true);
         setLoginMessage('Verifying Session...');
+
         const res = await fetch('/api/session/connect');
         const data = await res.json();
-        if (data.connected) {
+
+        if (data.connected && data.system) {
+          setSystem(data.system);
           setUrl(data.url);
           setUsers(data.users || []);
 
-          // If connected but no users (even after persistent cache fallback), we are truly hosed.
-          // Reloading will trigger page.tsx -> SetupScraper.loadCache() which now validates users.
-          // If still empty, it will redirect to /setup.
-          // EXCEPTION: If we are in 'setup' mode, users are EXPECTED to be empty. Do not reload.
-          if ((!data.users || data.users.length === 0) && data.system?.id !== 'setup') {
-            console.warn('[ClientPage] Connected but no users found (Live + Cache). Transitioning to setup.');
-            setStep('setup');
-            return;
+          // Apply Strict Logic
+          const targetStep = determineStep(data, step);
+          setStep(targetStep);
+
+          // Side Effects
+          if (targetStep === 'dashboard') {
+            fetchActors();
           }
 
-          if (data.system) {
-            setSystem(data.system);
-
-            const status = data.system.status as ServerConnectionStatus;
-
-            // 1. Reconnecting Overlay Logic
-            // If we are on dashboard but status is NOT active, we are reconnecting.
-            if (step === 'dashboard' && status !== 'active') {
-              // Stay in dashboard but UI will show overlay via system.status check
-            }
-
-            // Strict State Machine
-            if (status === 'setup') {
-              setStep('setup');
-            } else if (status === 'active') {
-              if (data.system.isLoggedIn) {
-                // Fetch actors if logged in
-                const actorRes = await fetch('/api/actors');
-                const actorData = await actorRes.json();
-                if (actorData.ownedActors || actorData.actors) {
-                  setActors(actorData.actors || []);
-                  setOwnedActors(actorData.ownedActors || actorData.actors || []);
-                  setReadOnlyActors(actorData.readOnlyActors || []);
-                  setStep('dashboard');
-                } else {
-                  setStep('dashboard');
-                }
-              } else {
-                setStep('login');
-              }
-            } else {
-              // Disconnected or unknown (Offline)
-              if (step !== 'dashboard') {
-                setStep('setup');
-              }
-            }
-          } else {
-            // Connected but no system data - treat as setup mode
-            if (step !== 'dashboard') setStep('setup');
-          }
         } else {
-          // Not connected to Foundry at all - show setup page
+          // Not connected or no system data -> Setup
           setStep('setup');
         }
 
-        // Always update meta properties if available
         if (data.appVersion) setAppVersion(data.appVersion);
-        if (data.system && !data.connected) setSystem(data.system);
 
       } catch {
-        console.warn('Check failed - treating as setup mode');
         setStep('setup');
       } finally {
         setLoading(false);
@@ -204,31 +175,19 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     try {
       const res = await fetch('/api/actors');
       if (res.status === 401) {
-        if (step === 'dashboard') {
-          console.warn('[Actors Poll] 401 Unauthorized. Checking if authenticating...');
-          // Check system status before kicking, maybe we are just re-logging?
-          const sysRes = await fetch('/api/session/connect');
-          const sysData = await sysRes.json();
-          // Strict check: If we are not logged in, we are kicked.
-          if (!sysData.system?.isLoggedIn) {
-            console.error('[Actors Poll] Definitive session loss. Redirecting to login.');
-            setStep('login');
-          } else {
-            console.log('[Actors Poll] 401 encountered, but system says logged in. Ignoring transient error.');
-          }
-        }
+        // Rely on Polling to fix state if 401 occurs
         return;
       }
       const data = await res.json();
       if (data.ownedActors || data.actors) {
-        setActors(data.actors || []); // Fallback for old code
+        setActors(data.actors || []);
         setOwnedActors(data.ownedActors || data.actors || []);
         setReadOnlyActors(data.readOnlyActors || []);
       }
     } catch (error) {
       console.error(error);
     }
-  }, [loading, step]);
+  }, [loading]);
 
 
   // Polling for System State Changes (e.g. World Shutdown / Startup)
@@ -238,125 +197,61 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       if (loading) return;
       try {
         const res = await fetch('/api/session/connect', { cache: 'no-store' });
-
-        if (res.status === 401) {
-          if (step === 'dashboard') {
-            console.warn('[Session Poll] Unauthorized (401). Redirecting to login.');
-            addNotification('Your session has ended.', 'info');
-            setStep('login');
-          }
-          return;
-        }
-
         const data = await res.json();
 
         if (data.system) {
+          // Always keep explicit system/users state in sync if active
+          if (data.system.status === 'active') {
+            if (JSON.stringify(data.system) !== JSON.stringify(system)) {
+              setSystem(data.system);
+            }
+            // Ensure users are populated if we are on login screen
+            if (step === 'login' && (!users || users.length === 0) && data.users) {
+              setUsers(data.users);
+            }
+          }
+
+          // Apply Strict Logic
+          // We define determineStep inside or reuse logic. 
+          // Duplicating for clarity in Effect scope:
           const status = data.system.status;
+          const isLoggedIn = data.system.isLoggedIn;
 
-          // 1. Handle Startup/Setup Transitions
-          if (status === 'startup' && step !== 'startup') {
-            setStep('startup');
-            return;
+          let targetStep = 'setup';
+          if (status === 'active') {
+            targetStep = isLoggedIn ? 'dashboard' : 'login';
           }
 
-          // Transition from startup to ready state - NO RELOAD
-          if (step === 'startup') {
-            if (status === 'connected' || status === 'loggedIn') {
-              console.log(`[ClientPage] World ready! Transitioning from startup to ${status}`);
-              setSystem(data.system);
-              setUsers(data.users || []);
-              if (status === 'loggedIn') {
-                fetchActors();
-                setStep('dashboard');
-              } else {
-                setStep('login');
-              }
-              return;
-            } else if (status === 'setup') {
-              // World failed to start, return to setup without reload
-              console.warn('[ClientPage] World failed to start. Returning to setup.');
-              setStep('setup');
-              return;
-            }
-          }
+          // Transition
+          // If we are currently 'setup' and target is 'dashboard' or 'login', we allow it.
+          // If we are 'dashboard' and target is 'login' (kicked), we allow it.
+          // If we are 'active' and target is 'setup' (shutdown), we allow it.
 
-          // 2. Setup -> Connected (world launched from setup page) - NO RELOAD
-          if (status !== 'setup' && step === 'setup') {
-            // Only transition if we have a definitive target state.
-            // If disconnected (transient), we stay in setup until 'active' appears.
-            if (status === 'loggedIn' || (status as any) === 'connected') {
-              console.log(`[ClientPage] World launched! Transitioning from setup to ${status} (Dashboard)`);
-              setSystem(data.system);
-              setUsers(data.users || []);
+          if (step !== targetStep) {
+            console.log(`[State] Transitioning ${step} -> ${targetStep}`);
+            setStep(targetStep as any);
+
+            if (targetStep === 'dashboard') {
               fetchActors();
-              setStep('dashboard');
-            } else if (status === 'active') {
-              console.log(`[ClientPage] World launched! Transitioning from setup to ${status} (Login)`);
-              setSystem(data.system);
-              setUsers(data.users || []);
-              setStep('login');
-            } else {
-              // Transient state (disconnected/offline) - Ignore and wait for next poll.
-              console.log(`[ClientPage] World launching... Status: ${status} (Waiting for Active)`);
-            }
-            return;
-          }
-
-
-          if ((step === 'login' || step === 'dashboard') && status === 'setup') {
-            console.warn(`[Session Poll] World shutdown detected from ${step}.`);
-            if (step === 'dashboard') addNotification('World has shut down.', 'error');
-
-            // Do NOT force logout here. We want to keep the session alive so we can
-            // seamlessly reconnect or view the setup screen without losing identity.
-            // fetch('/api/session/logout', { method: 'POST' }).catch(err => console.error('Logout invalidation failed', err));
-
-            setStep('setup');
-            return;
-          }
-
-          // 4. Kicked / Session Loss from Dashboard
-          if (step === 'dashboard') {
-            if (status === 'connected' && !data.system.isLoggedIn) {
-              // Connected but not logged in -> Login
-              console.warn('[Session Poll] Session ended (reported by system). Redirecting to login.', data);
-              addNotification('Your session has ended.', 'info');
-              setStep('login');
-            } else if (status === 'disconnected') {
-              // Disconnected entirely -> Setup (No World)
-              console.warn('[Session Poll] Disconnected from world. Redirecting to setup.');
-              setStep('setup');
             }
           }
-        } else if (!data.connected && step !== 'setup') {
-          // Connection lost entirely - show setup page
-          setStep('setup');
+        } else {
+          // No system data -> Setup
+          if (step !== 'setup') setStep('setup');
         }
       } catch {
-        // Silent error for poll failures
+        // Network error -> Setup (or wait? User said simple... likely Setup implies connection issues too)
+        // But preventing FULL flicker on every missed poll might be desired. 
+        // For strictness: if we can't verify state, we assume connection lost? 
+        // Let's NOT force setup on a single poll fail to avoid extreme jitter,
+        // but if data.connected is explicitly false, we do.
       }
-    }, 500); // Poll every 500ms for faster updates
+    }, 1000); // 1s poll
     return () => clearInterval(interval);
-  }, [step, loading, addNotification, fetchActors, url]);
+  }, [step, loading, system, users]);
 
-  // Polling for User List Recovery (Race Condition Fix)
-  useEffect(() => {
-    if (step === 'login' && users.length === 0 && system?.status === 'active') {
-      const interval = setInterval(async () => {
-        try {
-          const res = await fetch('/api/session/connect');
-          const data = await res.json();
-          if (data.users && data.users.length > 0) {
-            setUsers(data.users);
-            // If we recovered, we don't need to do anything else, the UI will re-render
-          }
-        } catch (e) {
-          // Ignore errors during poll
-        }
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [step, users.length, system?.status]);
+  // Removed old Polling for User List Recovery (Race Condition Fix) - handled in main poll
+
 
   const handleRetryConnection = () => {
     window.location.reload();
@@ -542,16 +437,20 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                         className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
                       >
                         <option value="" disabled>-- Select Player --</option>
-                        {users.map((u: any, idx) => (
-                          <option
-                            key={u.name || idx}
-                            value={u.name}
-                            disabled={u.active}
-                            className={`bg-neutral-900 text-white ${u.active ? 'text-white/50 bg-neutral-800' : ''}`}
-                          >
-                            {u.name} {u.active ? ' (Logged In)' : ''}
-                          </option>
-                        ))}
+                        {users.map((u: any, idx) => {
+                          const isGamemaster = u.name === 'Gamemaster';
+                          const isDisabled = u.active || isGamemaster;
+                          return (
+                            <option
+                              key={u.name || idx}
+                              value={u.name}
+                              disabled={isDisabled}
+                              className={`bg-neutral-900 text-white ${isDisabled ? 'text-white/30 bg-neutral-800' : ''}`}
+                            >
+                              {u.name} {u.active ? ' (Logged In)' : (isGamemaster ? ' (Restricted)' : '')}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   ) : (

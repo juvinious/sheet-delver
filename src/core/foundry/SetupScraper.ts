@@ -12,10 +12,12 @@ export interface WorldUser {
 export interface WorldData {
     worldId: string;
     worldTitle: string;
+    worldDescription: string | null;
     systemId: string;
     backgroundUrl: string | null;
     users: WorldUser[];
     lastUpdated: string;
+    data?: any;
 }
 
 export interface CacheData {
@@ -54,6 +56,28 @@ export class SetupScraper {
 
         // Strip Foundry prefix
         worldTitle = worldTitle.replace(/^Foundry Virtual Tabletop [\u2022\u00B7\-|]\s*/i, '');
+
+        // Parse world description (Foundry VTT usually puts this in a .world-description div)
+        // Adjust regex based on actual Foundry HTML structure if needed
+        const descriptionMatch = html.match(/class="world-description"[^>]*>([\s\S]*?)<\/div>/i)
+            || html.match(/<div[^>]*id="world-description"[^>]*>([\s\S]*?)<\/div>/i);
+        let worldDescription = descriptionMatch ? descriptionMatch[1].trim() : null;
+
+        // Clean up description HTML if necessary (simple tag stripping or keep html)
+        // Keeping HTML is usually better for rich text descriptions
+        if (worldDescription) {
+            worldDescription = worldDescription.replace(/\s+/g, ' ');
+            console.log(`[SetupScraper] Found description: ${worldDescription.substring(0, 50)}...`);
+        } else {
+            console.log('[SetupScraper] HTML Preview (Description not found) - Writing to scrape_debug.html');
+            try {
+                await fs.writeFile(path.join(process.cwd(), 'scrape_debug.html'), html);
+                console.log('[SetupScraper] Wrote scrape_debug.html');
+            } catch (e) {
+                console.error('Failed to write debug html', e);
+            }
+        }
+
 
         // Parse background URL
         const cssVarMatch = html.match(/--background-url:\s*url\((['"]?)(.*?)\1\)/i);
@@ -108,7 +132,12 @@ export class SetupScraper {
             });
 
             const worldId = joinData.world?.id || sessionData.worldId || 'unknown';
-            const systemId = joinData.system?.id || 'unknown';
+            // world.system is just a string id in v10+, e.g. "dnd5e"
+            const systemId = joinData.world?.system || joinData.system?.id || 'unknown';
+
+            // Extract description from socket data (preferred over HTML)
+            const socketDescription = joinData.world?.description || null;
+
             const users: WorldUser[] = (joinData.users || []).map((u: any) => ({
                 _id: u._id,
                 name: u.name,
@@ -122,10 +151,12 @@ export class SetupScraper {
             return {
                 worldId,
                 worldTitle,
+                worldDescription: socketDescription || worldDescription, // Prefer socket, fallback to HTML
                 systemId,
                 backgroundUrl,
                 users,
-                lastUpdated: new Date().toISOString()
+                lastUpdated: new Date().toISOString(),
+                data: joinData.world // Store the entire world object
             };
         } catch (error) {
             console.error('[SetupScraper] Error during scraping:', error);

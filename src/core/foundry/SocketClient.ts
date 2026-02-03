@@ -72,12 +72,51 @@ export class SocketFoundryClient implements FoundryClient {
 
     private async loadInitialCache() {
         try {
-            const cache = await SetupScraper.loadCache();
-            // Store the cache map but DO NOT pre-select a world
-            // We must wait for socket verification in connect()
-            this.cachedWorlds = cache.worlds || {};
+            await this.reloadCache();
+
+            // Watch for external cache updates (e.g. from Admin CLI)
+            // Use simple fs.watch (debounce if possible, but for this simple json simple watch is fine)
+            const fs = require('fs');
+            const path = require('path');
+            const CACHE_FILE = path.join(process.cwd(), '.foundry-cache.json');
+
+            if (fs.existsSync(CACHE_FILE)) {
+                let fsWait: NodeJS.Timeout | null = null;
+                fs.watch(CACHE_FILE, (event: string, filename: string) => {
+                    if (filename) {
+                        if (fsWait) return;
+                        fsWait = setTimeout(() => {
+                            fsWait = null;
+                            logger.info('SocketFoundryClient | Cache file changed, reloading...');
+                            this.reloadCache();
+                        }, 100);
+                    }
+                });
+            }
         } catch (e) {
             logger.warn('SocketFoundryClient | Failed to load initial cache: ' + e);
+        }
+    }
+
+    private async reloadCache() {
+        try {
+            const cache = await SetupScraper.loadCache();
+            this.cachedWorlds = cache.worlds || {};
+
+            // If we have an active world in memory, update its data too
+            if (this.cachedWorldData && this.cachedWorldData.worldId) {
+                const updated = this.cachedWorlds[this.cachedWorldData.worldId];
+                if (updated) {
+                    this.cachedWorldData = {
+                        ...updated,
+                        // Ensure optional fields are handled if missing in update (though SetupScraper ensures structure)
+                        worldDescription: updated.worldDescription || null
+                    };
+                    logger.info(`SocketFoundryClient | Hot-reloaded data for world: ${updated.worldTitle}`);
+                }
+            }
+        } catch (e) {
+            logger.error('SocketFoundryClient | Error reloading cache: ' + e);
         }
     }
 
@@ -96,15 +135,10 @@ export class SocketFoundryClient implements FoundryClient {
             return 'disconnected';
         }
 
-        // 3. Active World - Determine authentication level
+        // 3. Active World
         if (this.worldState === 'active') {
-            if (this.isLoggedIn) {
-                return 'loggedIn';
-            }
-            if (this.isSocketConnected) {
-                return 'connected';
-            }
-            // Fallback for legacy compatibility
+            // User requested strict "Setup" vs "Active" model.
+            // Authentication is handled via the separate isLoggedIn boolean.
             return 'active';
         }
 
@@ -396,6 +430,7 @@ export class SocketFoundryClient implements FoundryClient {
                 this.cachedWorldData = {
                     ...discoveryData,
                     worldTitle: worldTitle || discoveryData.worldTitle,
+                    worldDescription: (discoveryData as any).worldDescription || null,
                     backgroundUrl: cached?.backgroundUrl || discoveryData.backgroundUrl,
                     users: users
                 };
@@ -685,10 +720,12 @@ export class SocketFoundryClient implements FoundryClient {
                                     this.cachedWorldData = {
                                         worldId: cached.worldId,
                                         worldTitle: cached.worldTitle,
+                                        worldDescription: cached.worldDescription || null,
                                         systemId: cached.systemId,
                                         backgroundUrl: cached.backgroundUrl,
                                         users: cached.users || [],
-                                        lastUpdated: cached.lastUpdated
+                                        lastUpdated: cached.lastUpdated,
+                                        data: cached.data
                                     };
                                     logger.info(`SocketFoundryClient | Loaded cached world data: "${cached.worldTitle}"`);
                                 } else {
@@ -725,6 +762,7 @@ export class SocketFoundryClient implements FoundryClient {
                             this.cachedWorldData = {
                                 worldId: cached.worldId,
                                 worldTitle: cached.worldTitle,
+                                worldDescription: cached.worldDescription || null,
                                 systemId: cached.systemId,
                                 backgroundUrl: cached.backgroundUrl,
                                 users: cached.users || [],
@@ -887,10 +925,12 @@ export class SocketFoundryClient implements FoundryClient {
                 this.cachedWorldData = {
                     worldId: cached.worldId,
                     worldTitle: cached.worldTitle,
+                    worldDescription: cached.worldDescription || null,
                     systemId: cached.systemId,
                     backgroundUrl: cached.backgroundUrl,
                     users: cached.users || [],
-                    lastUpdated: cached.lastUpdated
+                    lastUpdated: cached.lastUpdated,
+                    data: cached.data
                 };
                 logger.info(`SocketFoundryClient | Loaded cached world data: "${cached.worldTitle}"`);
             } else {
@@ -1011,7 +1051,8 @@ export class SocketFoundryClient implements FoundryClient {
                 title: 'Authenticating...',
                 version: '0.0.0',
                 isLoggedIn: this.isLoggedIn,
-                status: this.status
+                status: this.status,
+                worldDescription: this.cachedWorldData?.worldDescription || this.cachedWorldData?.data?.description || null
             };
         }
 
@@ -1026,7 +1067,8 @@ export class SocketFoundryClient implements FoundryClient {
                 worldTitle: cached.worldTitle || 'Reconnecting...',
                 worldBackground: cached.worldBackground,
                 isLoggedIn: this.isLoggedIn,
-                status: this.status
+                status: this.status,
+                worldDescription: cached.worldDescription || cached.data?.description || null
             };
         }
 
@@ -1042,7 +1084,8 @@ export class SocketFoundryClient implements FoundryClient {
                 worldTitle: cached.worldTitle || 'No World Active',
                 worldBackground: cached.backgroundUrl || `${this.url}/ui/denim075.png`,
                 isLoggedIn: this.isLoggedIn,
-                status: 'setup'
+                status: 'setup',
+                worldDescription: cached.worldDescription || cached.data?.description || null
             };
         }
 
@@ -1053,9 +1096,9 @@ export class SocketFoundryClient implements FoundryClient {
             id: scraperCache?.systemId || cached.id || 'shadowdark',
             title: cached.title || (scraperCache?.systemId ? scraperCache.systemId : 'Shadowdark RPG'),
             version: cached.version || '1.0.0',
-            worldTitle: this.worldTitleFromHtml || scraperCache?.worldTitle || cached.worldTitle || 'Foundry World',
-            worldDescription: cached.worldDescription || '',
-            worldBackground: this.worldBackgroundFromHtml || scraperCache?.backgroundUrl || cached.worldBackground || `${this.url}/ui/denim075.png`,
+            worldTitle: scraperCache?.worldTitle || this.worldTitleFromHtml || cached.title || this.url,
+            worldDescription: scraperCache?.worldDescription || scraperCache?.data?.description || null,
+            worldBackground: scraperCache?.backgroundUrl || this.worldBackgroundFromHtml || `${this.url}/ui/denim075.png`,
             isLoggedIn: this.isLoggedIn,
             users: { active: 0, total: 0 },
             status: this.status
