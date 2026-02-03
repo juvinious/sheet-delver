@@ -19,8 +19,20 @@ interface ClientPageProps {
 }
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup'>('init');
+  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
+
+  // Centralized State Management with Logging
+  const setStepWithLog = (newStep: typeof step, origin: string, reason?: string) => {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[STATE CHANGE] ${timestamp} | ${step} → ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`;
+    console.log(logMessage);
+
+    // Track the call stack to see where this is coming from
+    console.trace('State change call stack:');
+
+    setStep(newStep);
+  };
 
   // Connect State
   const [url, setUrl] = useState(initialUrl);
@@ -62,6 +74,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     setLoading(true);
     setLoginMessage('Logging in...');
 
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
@@ -79,14 +92,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
       if (data.success) {
         setToken(data.token);
-        setStep('dashboard');
+        setStepWithLog('authenticating', 'handleLogin', 'Login successful, waiting for backend session');
+        setLoading(false);
+        setLoginMessage('');
       } else {
+        setLoading(false);
         setLoginMessage('');
         setPassword(''); // Clear password on failure
         addNotification('Login failed: ' + data.error, 'error');
       }
     } catch (e: any) {
       clearTimeout(timeoutId);
+      setLoading(false);
       setLoginMessage('');
       setPassword('');
 
@@ -95,9 +112,31 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       } else {
         addNotification('Error: ' + e.message, 'error');
       }
-    } finally {
-      setLoading(false);
-      setLoginMessage('');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // CRITICAL: Set step to login BEFORE clearing token
+      // This prevents polling from seeing no auth and transitioning to 'setup'
+      setStepWithLog('login', 'handleLogout', 'User logged out, transitioning to login');
+
+      await fetch('/api/logout', { method: 'POST', headers });
+
+      // Clear token and let state machine handle transition to login
+      setToken(null);
+      setSelectedUser('');
+      setPassword('');
+    } catch (e: any) {
+      console.error('Logout error:', e);
+      // Even if logout fails, clear local state
+      setStepWithLog('login', 'handleLogout error', 'Logout failed, forcing login state');
+      setToken(null);
+      setSelectedUser('');
+      setPassword('');
     }
   };
 
@@ -133,15 +172,35 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     // Unified State Logic
     const determineStep = (data: any, currentStep: string) => {
       const status = data.system?.status;
-      // Using API Authenticated state which strictly tracks explicit user login
       const isAuthenticated = data.isAuthenticated || false;
 
-      // 1. WORLD STATE: Setup / Disconnected / Startup -> Setup Page
+      // Simple state machine:
+      // 1. Are we in setup? -> Show setup screen
       if (status !== 'active') {
         return 'setup';
       }
 
-      // 2. USER STATE (World is Active)
+      // 2. If we're authenticating, stay there until backend confirms
+      if (currentStep === 'authenticating') {
+        // Only transition to dashboard when backend confirms authentication
+        if (isAuthenticated) {
+          return 'dashboard';
+        }
+        // Stay in authenticating state until confirmed
+        return 'authenticating';
+      }
+
+      // 3. Check if world data is complete before showing login
+      // If world is active but data isn't loaded yet, show loading screen
+      const worldTitle = data.system?.worldTitle;
+      const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
+
+      if (!hasCompleteWorldData) {
+        // World is active but data isn't ready, show loading
+        return 'startup';
+      }
+
+      // 4. Authenticated? -> Show dashboard, otherwise login
       if (isAuthenticated) {
         return 'dashboard';
       } else {
@@ -150,6 +209,12 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     };
 
     const checkConfig = async () => {
+      // CRITICAL: Don't run checkConfig when authenticating
+      // Let the session/connect polling handle the transition to dashboard
+      if (step === 'authenticating') {
+        return;
+      }
+
       try {
         setLoading(true);
         setLoginMessage('Connecting to server...');
@@ -173,7 +238,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
           // Apply Strict Logic
           const targetStep = determineStep(data, step);
-          setStep(targetStep);
+          setStepWithLog(targetStep as any, 'checkConfig polling', `Determined step: ${targetStep}`);
 
           // Side Effects
           if (targetStep === 'dashboard') {
@@ -182,7 +247,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
         } else {
           // Not connected or no system data -> Setup
-          setStep('setup');
+          setStepWithLog('setup', 'checkConfig polling', 'Not connected or no system data');
         }
 
         if (data.appVersion) setAppVersion(data.appVersion);
@@ -198,7 +263,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             }
           }, 2000);
         } else {
-          setStep('setup');
+          setStepWithLog('setup', 'checkConfig error handler', error.message);
           setLoading(false);
           setLoginMessage('');
         }
@@ -262,25 +327,37 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             }
           }
 
-          // Apply Strict Logic
-          // We define determineStep inside or reuse logic. 
-          // Duplicating for clarity in Effect scope:
+          // Apply State Machine Logic (same as main polling)
           const status = data.system.status;
           const isAuthenticated = data.isAuthenticated;
 
-          let targetStep = 'setup';
-          if (status === 'active') {
-            targetStep = isAuthenticated ? 'dashboard' : 'login';
+          // Use the same state machine logic
+          let targetStep: string = 'setup';
+
+          if (status !== 'active') {
+            targetStep = 'setup';
+          } else if (step === 'authenticating') {
+            // If we're authenticating, stay there until backend confirms
+            targetStep = isAuthenticated ? 'dashboard' : 'authenticating';
+          } else {
+            // Check if world data is complete before showing login
+            const worldTitle = data.system?.worldTitle;
+            const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
+
+            if (!hasCompleteWorldData) {
+              // World is active but data isn't ready, show loading
+              targetStep = 'startup';
+            } else if (isAuthenticated) {
+              targetStep = 'dashboard';
+            } else {
+              targetStep = 'login';
+            }
           }
 
           // Transition
-          // If we are currently 'setup' and target is 'dashboard' or 'login', we allow it.
-          // If we are 'dashboard' and target is 'login' (kicked), we allow it.
-          // If we are 'active' and target is 'setup' (shutdown), we allow it.
-
           if (step !== targetStep) {
             console.log(`[State] Transitioning ${step} -> ${targetStep}`);
-            setStep(targetStep as any);
+            setStepWithLog(targetStep as any, 'session/connect polling', `Transitioning to ${targetStep}`);
 
             if (targetStep === 'dashboard') {
               fetchActors();
@@ -288,7 +365,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           }
         } else {
           // No system data -> Setup
-          if (step !== 'setup') setStep('setup');
+          if (step !== 'setup') setStepWithLog('setup', 'session/connect polling', 'No system data');
         }
       } catch {
         // Network error -> Setup (or wait? User said simple... likely Setup implies connection issues too)
@@ -425,6 +502,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           </div>
         )}
 
+        {step === 'authenticating' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Authenticating...</p>
+            </div>
+          </div>
+        )}
+
         {step === 'startup' && (
           <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
             <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
@@ -479,7 +568,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               <div className={`w-full md:w-96 ${theme.panelBg} p-6 rounded-lg shadow-lg border border-white/5`}>
                 <h2 className={`text-xl mb-4 ${theme.headerFont}`}>Login</h2>
                 <div className="space-y-4">
-                  {users.length > 0 ? (
+                  {users.length > 0 && (
                     <div>
                       <label className="block text-sm font-medium mb-1 opacity-70">Player</label>
                       <select
@@ -503,17 +592,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                           );
                         })}
                       </select>
-                    </div>
-                  ) : (
-                    <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-lg">
-                      <h3 className="text-red-400 font-bold mb-2 text-sm uppercase tracking-wider">Configuration Error</h3>
-                      <p className="text-xs text-neutral-400 mb-4 leading-relaxed">
-                        Unable to detect players for this world. The cache may be missing or the world was not scraped properly.
-                      </p>
-                      <div className="font-mono text-[10px] bg-black/40 p-3 rounded border border-white/5">
-                        <p className="text-green-400 mb-1">$ npm run admin</p>
-                        <p className="text-yellow-500">[C] Configure/Setup</p>
-                      </div>
                     </div>
                   )}
 
@@ -572,7 +650,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono"
                   >
-                    <span>Read Docs</span>
                     <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
                   </a>
                 </div>
@@ -671,7 +748,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         </div>
         {system && step !== 'setup' && step !== 'startup' && step !== 'init' && (
           <div className={`text-sm font-bold tracking-widest opacity-80 mb-2 ${theme.accent}`}>
-            {system.title.toUpperCase()}
+            {system.title.toUpperCase()} ({system.version.toString().toUpperCase()})
           </div>
         )}
         <div className="text-[10px] opacity-30 font-mono tracking-wide mb-4">
@@ -685,14 +762,13 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono"
           >
-            <span>Read Docs</span>
             <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
           </a>
         </div>
       </div>
 
       {/* Persistent Player List when logged in */}
-      {(step === 'dashboard') && <PlayerList token={token} />}
+      {(step === 'dashboard') && <PlayerList token={token} onLogout={handleLogout} />}
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 

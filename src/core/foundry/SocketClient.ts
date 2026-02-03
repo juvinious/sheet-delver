@@ -16,11 +16,13 @@ export class SocketFoundryClient implements FoundryClient {
     private adapter: SystemAdapter | null = null;
     private socket: Socket | null = null;
     private sessionCookie: string | null = null;
-    private discoveredUserId: string | null = null;
-    public userId: string | null = null;
     private isJoining: boolean = false;
     private isShuttingDown: boolean = false;
+    private discoveredUserId: string | null = null;
+    public userId: string | null = null;
     public isExplicitSession: boolean = false;
+    public isSystemClient: boolean = false;
+    public onSessionInvalidated: (() => void) | null = null;
     // isConnected is now a computed getter in the strict architecture
 
     // Strict Separation Implementation
@@ -41,9 +43,14 @@ export class SocketFoundryClient implements FoundryClient {
     }
     // Interface implementation (LEGACY) - Aliases to new strict properties
     get isLoggedIn(): boolean {
-        // We are logged in if we have an explicit session flag (persistence)
-        // OR if the socket has identified a valid user ID (truth).
-        return this.isExplicitSession || !!this.userId;
+        // We are NOT logged in if we are explicitly in setup mode
+        if (this.worldState === 'setup') return false;
+
+        // Intent: We have an explicit session flag set (restored or logged in)
+        if (this.isExplicitSession) return true;
+
+        // Reality: Socket is connected and we identified a user during the session event
+        return !!this.userId && this.isSocketConnected;
     }
     private worldTitleFromHtml: string | null = null;
     private worldBackgroundFromHtml: string | null = null;
@@ -64,9 +71,9 @@ export class SocketFoundryClient implements FoundryClient {
     private userMap: Map<string, any> = new Map();
     private actorCache: Map<string, string> = new Map();
     private worldCache: Map<string, Partial<SystemInfo>> = new Map();
-
-    constructor(config: FoundryConfig) {
+    constructor(config: FoundryConfig, isSystemClient: boolean = false) {
         this.config = config;
+        this.isSystemClient = isSystemClient;
         this.loadInitialCache();
     }
 
@@ -274,14 +281,29 @@ export class SocketFoundryClient implements FoundryClient {
         // If we have the userId from the session event, we are effectively logged in.
         while (Date.now() - start < 5000) {
             if (this.userId) {
+                let system, users;
                 try {
-                    const users = await this.getUsers();
+                    // If the socket isn't connected, don't attempt to fetch raw data 
+                    // to avoid spamming "Socket not connected" warnings in the logs.
+                    if (this.isSocketConnected) {
+                        system = await this.getSystem();
+                        users = await this.getUsers();
+                    } else {
+                        // Fallback to cached system data if available 
+                        system = await this.getSystem(); // This will use cached data if available
+                        users = []; // No live users if socket is not connected
+                    }
                     const me = users.find((u: any) => (u._id || u.id) === this.userId);
                     if (me?.active) {
                         logger.info(`SocketFoundryClient | User ${this.userId} is active.`);
                         return;
                     }
-                } catch { }
+                } catch (e) {
+                    // Suppress warnings for expected connection issues during this wait
+                    if (!String(e).includes('Socket not connected')) {
+                        logger.debug(`SocketFoundryClient | Error during authentication wait: ${e}`);
+                    }
+                }
             }
             await new Promise(r => setTimeout(r, 1000));
         }
@@ -294,20 +316,44 @@ export class SocketFoundryClient implements FoundryClient {
      * Called on shutdown, disconnect (to setup), or invalid session detection.
      */
     private resetState() {
-        logger.info('SocketFoundryClient | Resetting client state.');
+        const isUserSession = this.isExplicitSession;
+        logger.info(`SocketFoundryClient | Resetting client state (User Session: ${isUserSession}, System Client: ${this.isSystemClient}).`);
+
+        // Notify listener BEFORE we clear local state (in case they need userId)
+        if (isUserSession && this.onSessionInvalidated) {
+            this.onSessionInvalidated();
+        }
+
         this.userMap.clear();
         this.worldCache.clear();
         this.actorCache.clear();
         this.cachedWorldData = null;
         this.worldTitleFromHtml = null;
         this.worldBackgroundFromHtml = null;
-        this.isExplicitSession = false;
-        this.userId = null;
-        this.discoveredUserId = null;
-        this.sessionCookie = null;
+
+        // CRITICAL: Preserve System identity so it can resume watching
+        if (!this.isSystemClient) {
+            this.isExplicitSession = false;
+            this.userId = null;
+            this.discoveredUserId = null;
+            this.sessionCookie = null;
+        }
+
         this.consecutiveFailures = 0;
         this.validationFailCount = 0;
-        // 4. Ensure Setup State if not already
+        this.isSocketConnected = false;
+
+        // CRITICAL: ONLY stop the socket permanently if it's a User session.
+        // System/Service Account clients must stay alive to see world launches.
+        if (isUserSession && !this.isSystemClient && this.socket) {
+            logger.info('SocketFoundryClient | Closing user socket permanently.');
+            this.socket.close();
+            this.socket = null;
+        } else if (this.socket) {
+            logger.info('SocketFoundryClient | Resetting socket caches (System Client). Maintaining connection manager.');
+            // We don't close() so the reconnection manager stays active
+        }
+
         if (this.worldState !== 'setup') {
             this.worldState = 'setup';
         }
@@ -384,6 +430,7 @@ export class SocketFoundryClient implements FoundryClient {
                 // Parse CSRF for later Login
                 const csrfMatch = html.match(/name="csrf-token" content="(.*?)"/) || html.match(/"csrfToken":"(.*?)"/);
                 const csrfToken = csrfMatch ? csrfMatch[1] : null;
+                logger.info(`SocketFoundryClient | CSRF Token extracted: ${csrfToken ? 'Yes' : 'No'}`);
 
                 // B. SOCKET DISCOVERY (Guest Probe)
                 // Connect as guest first to identify world and users from the "Truth" (Socket API)
@@ -541,35 +588,41 @@ export class SocketFoundryClient implements FoundryClient {
                 // E. EXPLICIT AUTHENTICATION (POST /join)
                 if (!csrfToken) logger.warn('SocketFoundryClient | No CSRF Token found. Login might fail.');
 
-                logger.info('SocketFoundryClient | Performing Explicit POST Login...');
+                logger.info('SocketFoundryClient | Performing Explicit POST Login (Form Encoded)...');
+                const loginBody = new URLSearchParams();
+                loginBody.append('userid', userId);
+                loginBody.append('password', this.config.password || '');
+                loginBody.append('action', 'join');
+                if (csrfToken) loginBody.append('csrfToken', csrfToken); // Try both camelCase
+                if (csrfToken) loginBody.append('csrf-token', csrfToken); // and hyphenated
+
                 const loginResponse = await fetch(`${baseUrl}/join`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/x-www-form-urlencoded',
                         'Cookie': guestCookie,
                         'User-Agent': 'SheetDelver/1.0',
                         'Origin': baseUrl,
                         'Referer': `${baseUrl}/join`
                     },
-                    body: JSON.stringify({
-                        userid: userId,
-                        password: this.config.password || '',
-                        action: 'join',
-                        'csrf-token': csrfToken
-                    }),
+                    body: loginBody,
                     redirect: 'manual'
                 });
 
-                addCookies(loginResponse.headers.get('set-cookie'));
+                const loginHeaders = loginResponse.headers.get('set-cookie');
+                logger.info(`SocketFoundryClient | Login POST response: ${loginResponse.status}. Cookies returned: ${!!loginHeaders}`);
+                addCookies(loginHeaders);
 
                 // Verify Login Success
-                const loginBody = await loginResponse.text();
+                const loginText = await loginResponse.text();
                 if (loginResponse.status !== 200 && loginResponse.status !== 302) {
-                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}. Invalid credentials or expired session.`);
+                    logger.error(`SocketFoundryClient | Authentication Failed (Status ${loginResponse.status}). Body: ${loginText.substring(0, 500)}`);
+                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}.`);
                 }
 
                 // Final Session Cookie
                 this.sessionCookie = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+                logger.info(`SocketFoundryClient | Final session cookie established: ${this.sessionCookie.substring(0, 20)}...`);
 
             } catch (e: any) {
                 // If anything in the discovery/auth flow fails, we must NOT proceed to open the main socket.
@@ -641,35 +694,34 @@ export class SocketFoundryClient implements FoundryClient {
 
             // Low-level diagnostics
             socket.on('connect', async () => {
-                logger.info('SocketFoundryClient | Connected to WebSocket. socket.id: ' + socket.id);
-                this.isSocketConnected = true;
+                logger.info('SocketFoundryClient | Low-level Socket Connected. socket.id: ' + socket.id);
+                // CRITICAL: We do NOT set isSocketConnected = true here. 
+                // We wait for the 'session' event to confirm we have a valid environment.
 
-                // Always verify system status on connection or reconnection
+                // Always verify system status on connection
                 setTimeout(() => this.getSystem().catch(e => logger.warn('State refresh failed:', e)), 500);
-
-                // If we don't have a session event yet, we wait for it in the resolve block below
-                // Only resolve here if we don't expect a session event (guest mode)
-                if (!this.sessionCookie) {
-                    resolve();
-                }
             });
 
             socket.on('disconnect', (reason) => {
-                logger.warn('SocketFoundryClient | Socket disconnected. Reason: ' + reason);
+                logger.warn(`SocketFoundryClient | Socket disconnected (User: ${this.userId || 'none'}, System: ${this.isSystemClient}). Reason: ${reason}`);
                 this.isSocketConnected = false;
-                logger.info('SocketFoundryClient | State Change: isSocketConnected = false (disconnect)');
 
-                // If we requested a shutdown, or server kicked us during shutdown,
-                // we should be in setup mode now.
+                // If world state is changing or it's a hard server kick, clear state for users.
                 if (this.isShuttingDown || reason === 'io server disconnect') {
-                    this.worldState = 'setup';
+                    // This is a definitive world shutdown or logout
+                    if (this.worldState !== 'setup' || this.isShuttingDown) {
+                        logger.info(`SocketFoundryClient | Definitive disconnect/shutdown: ${this.worldState} -> setup`);
+                        this.worldState = 'setup';
+                        this.resetState(); // Force state reset on definitive closure
+                    }
                     this.isShuttingDown = false;
-                    this.resetState();
-                } else if (this.worldState !== 'setup') {
+                } else if (this.worldState === 'active') {
+                    // Transient disconnect: move to offline for status reporting, but keep setup mode disabled
+                    logger.info('SocketFoundryClient | Transient disconnect. Moving to offline state.');
                     this.worldState = 'offline';
+                    this.userMap.clear();
+                    this.worldCache.clear();
                 }
-                // DO NOT clear isExplicitSession here. 
-                // We want to allow the client to stay "Logged In" during reconnections.
             });
 
             socket.io.on('reconnect_attempt', (attempt) => {
@@ -751,10 +803,21 @@ export class SocketFoundryClient implements FoundryClient {
                         }
                     } else {
                         logger.info(`SocketFoundryClient | Session event. Guest session (userId: null).`);
+
+                        // IF we previously thought we were an authenticated user session,
+                        // and we just became a guest, the world likely restarted or the cookie expired.
+                        if (this.isExplicitSession) {
+                            logger.warn('SocketFoundryClient | User session downgraded to guest. Triggering reset.');
+                            this.resetState();
+                            return; // resetState clears socket
+                        }
+
                         this.userId = null;
+                        this.isSocketConnected = true; // Guest connection is still a "Connection"
                     }
 
                     this.isSocketConnected = true;
+                    logger.info(`SocketFoundryClient | Session established. isSocketConnected = true.`);
                     resolve();
                 }
 
@@ -785,15 +848,9 @@ export class SocketFoundryClient implements FoundryClient {
 
                     // If we see launchWorld progress, we are definitely moving out of setup.
                     if (data.action === 'launchWorld') {
-                        if (this.isSetupMode) {
-                            logger.info(`SocketFoundryClient | World launch detected (${data.pct}%). Clearing Setup Mode flag.`);
-                            // Transition from 'setup' to 'offline' (intermediate) -> 'startup' (via status getter logic)
-                            this.worldState = 'offline';
-                            this.lastLaunchActivity = Date.now();
-                            // Clear world cache when new world starts launching
-                            this.worldCache.clear();
-                            this.worldTitleFromHtml = null;
-                            this.worldBackgroundFromHtml = null;
+                        if (this.isSetupMode || this.worldState === 'offline') {
+                            logger.info(`SocketFoundryClient | World launch detected (${data.pct}%). Transitioning state.`);
+                            this.worldState = 'active'; // Move out of setup/offline
                         }
 
                         // When world launch completes, the world is ready!
@@ -872,6 +929,7 @@ export class SocketFoundryClient implements FoundryClient {
                     logger.info(`SocketFoundryClient | Active users: ${activeUserIds.length}`);
                     if (payload.users) {
                         logger.info(`SocketFoundryClient | Populating user map with ${payload.users.length} users from ready event.`);
+                        this.userMap.clear(); // Clear existing map before repopulating
                         payload.users.forEach((u: any, i: number) => {
                             const id = u._id || u.id;
                             const isActive = activeUserIds.includes(id) || u.active === true;
@@ -888,8 +946,7 @@ export class SocketFoundryClient implements FoundryClient {
                 // World Shutdown Detection
                 if (event === 'shutdown') {
                     const data = args[0] || {};
-                    logger.info(`SocketFoundryClient | World shutdown detected: ${data.world || 'unknown'}`);
-                    // World has shut down, we're back in setup mode
+                    logger.info(`SocketFoundryClient | World shutdown event: ${data.world || 'unknown'}`);
                     this.worldState = 'setup';
                     this.lastLaunchActivity = 0;
                     this.resetState();
@@ -1156,29 +1213,47 @@ export class SocketFoundryClient implements FoundryClient {
         if (!this.isSocketConnected) {
             const cached: any = this.cachedWorldData || {};
             const sid = (cached.systemId || 'unknown').toLowerCase();
+
+            // Convert relative background URL to absolute
+            let bgUrl = cached.backgroundUrl || cached.worldBackground;
+            if (bgUrl && !bgUrl.startsWith('http://') && !bgUrl.startsWith('https://')) {
+                const baseUrl = this.url.endsWith('/') ? this.url.slice(0, -1) : this.url;
+                const cleanPath = bgUrl.startsWith('/') ? bgUrl : `/${bgUrl}`;
+                bgUrl = `${baseUrl}${cleanPath}`;
+            }
+
             return {
                 id: sid,
                 title: sid !== 'unknown' ? (sid.charAt(0).toUpperCase() + sid.slice(1)) : 'Reconnecting...',
-                version: cached.systemVersion || '0.0.0',
+                version: (cached.data as any)?.version || cached.systemVersion || '0.0.0',
                 worldTitle: cached.worldTitle || 'Reconnecting...',
-                worldBackground: cached.worldBackground,
+                worldBackground: bgUrl,
                 isLoggedIn: this.isLoggedIn,
                 status: this.status,
                 worldDescription: cached.worldDescription || cached.data?.description || null
             };
-        }
+        };
 
         // 3. Setup Mode Check
         // If we're in setup mode, don't attempt to fetch documents (they don't exist)
         // Return cached data from the last active world or setup page scraping
         if (this.worldState === 'setup') {
             const cached: any = this.cachedWorldData || {};
+
+            // Convert relative background URL to absolute
+            let bgUrl = cached.backgroundUrl || `${this.url}/ui/denim075.png`;
+            if (bgUrl && !bgUrl.startsWith('http://') && !bgUrl.startsWith('https://')) {
+                const baseUrl = this.url.endsWith('/') ? this.url.slice(0, -1) : this.url;
+                const cleanPath = bgUrl.startsWith('/') ? bgUrl : `/${bgUrl}`;
+                bgUrl = `${baseUrl}${cleanPath}`;
+            }
+
             return {
                 id: cached.systemId || 'unknown',
                 title: cached.systemId ? (cached.systemId.charAt(0).toUpperCase() + cached.systemId.slice(1)) : 'Setup Mode',
-                version: '0.0.0',
+                version: (cached.data as any)?.version || '0.0.0',
                 worldTitle: cached.worldTitle || 'No World Active',
-                worldBackground: cached.backgroundUrl || `${this.url}/ui/denim075.png`,
+                worldBackground: bgUrl,
                 isLoggedIn: this.isLoggedIn,
                 status: 'setup',
                 worldDescription: cached.worldDescription || cached.data?.description || null
@@ -1192,13 +1267,23 @@ export class SocketFoundryClient implements FoundryClient {
         const rawSid = scraperCache?.systemId || (scraperCache?.data as any)?.system || cached.id || 'generic';
         const sid = rawSid.toLowerCase();
 
+        // Helper to convert relative background URLs to absolute
+        const getAbsoluteBackgroundUrl = (bgUrl: string | null | undefined): string => {
+            if (!bgUrl) return `${this.url}/ui/denim075.png`;
+            if (bgUrl.startsWith('http://') || bgUrl.startsWith('https://')) return bgUrl;
+            // Relative path - prepend Foundry URL
+            const baseUrl = this.url.endsWith('/') ? this.url.slice(0, -1) : this.url;
+            const cleanPath = bgUrl.startsWith('/') ? bgUrl : `/${bgUrl}`;
+            return `${baseUrl}${cleanPath}`;
+        };
+
         const sysData: SystemInfo = {
             id: sid,
             title: cached.title || (sid !== 'generic' && sid !== 'unknown' ? sid.charAt(0).toUpperCase() + sid.slice(1) : 'Unknown System'),
-            version: scraperCache?.systemVersion || (scraperCache?.data as any)?.version || cached.version || '1.0.0',
+            version: (scraperCache?.data as any)?.version || scraperCache?.systemVersion || cached.version || '1.0.0',
             worldTitle: scraperCache?.worldTitle || this.worldTitleFromHtml || cached.title || this.url,
             worldDescription: scraperCache?.worldDescription || scraperCache?.data?.description || null,
-            worldBackground: scraperCache?.backgroundUrl || this.worldBackgroundFromHtml || `${this.url}/ui/denim075.png`,
+            worldBackground: getAbsoluteBackgroundUrl(scraperCache?.backgroundUrl || this.worldBackgroundFromHtml),
             isLoggedIn: this.isLoggedIn,
             users: { active: 0, total: 0 },
             status: this.status
@@ -1212,8 +1297,10 @@ export class SocketFoundryClient implements FoundryClient {
             // If worldState is unknown (offline->connected transition), we attempt it.
 
             // Skip modifyDocument for guest sessions if we already know world is ready
-            if (!this.userId && this.worldState === 'active') {
-                logger.debug(`SocketFoundryClient | Skipping modifyDocument for guest session (world active). Using cached data.`);
+            // Return cached data immediately to ensure login screen shows world info
+            if (!this.userId && this.worldState === 'active' && scraperCache?.worldTitle) {
+                logger.debug(`SocketFoundryClient | Returning cached world data for guest session (world active).`);
+                return sysData;
             } else {
                 const sysResponse: any = await this.dispatchDocumentSocket('Setting', 'get', {
                     query: { key: 'core.system' },
@@ -1351,6 +1438,9 @@ export class SocketFoundryClient implements FoundryClient {
     }
 
     async getUsersDetails(): Promise<any[]> {
+        if (!this.isSocketConnected) {
+            return []; // No logs for expected disconnection
+        }
         let users = Array.from(this.userMap.values());
         if (users.length === 0) users = await this.getUsers().catch(() => []);
 
@@ -1366,11 +1456,16 @@ export class SocketFoundryClient implements FoundryClient {
 
         return users.map(u => {
             const id = u._id || u.id;
+            // A user is active ONLY if:
+            // 1. It is our own client instance's user AND we are connected
+            // 2. Foundry explicitly reports them as active in the user document
+            const isActive = (id === this.userId && this.isConnected) || u.active === true;
+
             return {
                 id,
                 name: u.name,
                 isGM: (u.role || 0) >= 3, // Role 3 is Assistant GM, Role 4 is GM
-                active: id === this.userId || u.active === true,
+                active: isActive,
                 color: u.color || '#ffffff',
                 characterName: u.character ? this.actorCache.get(u.character) : undefined
             };
@@ -1613,5 +1708,14 @@ export class SocketFoundryClient implements FoundryClient {
         } else {
             throw new Error("Socket not connected");
         }
+    }
+    public getSocketState() {
+        return {
+            connected: this.isSocketConnected,
+            worldState: this.worldState,
+            userId: this.userId,
+            isExplicit: this.isExplicitSession,
+            isSystem: this.isSystemClient
+        };
     }
 }

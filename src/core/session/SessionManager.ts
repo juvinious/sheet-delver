@@ -27,8 +27,8 @@ export class SessionManager {
     constructor(config: FoundryConfig) {
         this.config = config;
 
-        // Initialize System Client WITH Service Account Credentials
-        this.systemClient = new SocketFoundryClient(config);
+        // Initialize System Client WITH Service Account Credentials and System Flag
+        this.systemClient = new SocketFoundryClient(config, true);
     }
 
     public async initialize() {
@@ -64,7 +64,7 @@ export class SessionManager {
 
     public async createSession(username: string, password?: string): Promise<{ sessionId: string, userId: string }> {
         logger.info(`SessionManager | Creating session for user: ${username}`);
-        const client = new SocketFoundryClient({ ...this.config, username, password });
+        const client = new SocketFoundryClient({ ...this.config, username, password }, false);
 
         try {
             await client.connect();
@@ -83,6 +83,14 @@ export class SessionManager {
                 cookie: (client as any).sessionCookie
             };
             this.sessions.set(sessionId, session);
+
+            // Hook up invalidation callback to purge memory/disk if client resets
+            client.onSessionInvalidated = () => {
+                logger.warn(`SessionManager | Session ${sessionId} (${username}) invalidated by client. Purging.`);
+                this.sessions.delete(sessionId);
+                this.clearSession(sessionId).catch(e => logger.warn(`Failed to clear session ${sessionId}: ${e}`));
+            };
+
             await this.saveSession(sessionId, client, username);
 
             logger.info(`SessionManager | Session created: ${sessionId} (User: ${username})`);
@@ -172,7 +180,7 @@ export class SessionManager {
                 ...this.config,
                 username: foundryUsername,
                 userId: sessionData.userId
-            });
+            }, isSystem);
 
             await client.restoreSession(sessionData.cookie, sessionData.userId);
 
@@ -185,9 +193,11 @@ export class SessionManager {
             logger.info(`SessionManager | Validating restored session for ${foundryUsername} against world ${currentWorldId}...`);
             const isValid = await client.validateSession(currentWorldId);
             if (!isValid) {
-                logger.warn(`SessionManager | Session validation failed for ${foundryUsername} (Key: ${username}). [NOT CLEARING FROM DISK]`);
+                logger.warn(`SessionManager | Session validation failed for ${foundryUsername} (Key: ${username}). Purging from disk/memory.`);
                 client.disconnect();
-                // IMPORTANT: Do NOT clearSession here. It might be a transient boot error.
+                // If world is active and we fail validation, the session is definitely dead. Purge it.
+                await this.clearSession(username);
+                this.sessions.delete(username);
                 return null;
             }
 
@@ -200,6 +210,14 @@ export class SessionManager {
                     username: foundryUsername, lastActive: Date.now(),
                     worldId: sessionData.worldId, cookie: sessionData.cookie
                 });
+
+                // Hook up invalidation callback
+                client.onSessionInvalidated = () => {
+                    logger.warn(`SessionManager | Restored session ${sessionId} (${foundryUsername}) invalidated by client. Purging.`);
+                    this.sessions.delete(sessionId);
+                    this.clearSession(sessionId).catch(e => logger.warn(`Failed to clear session ${sessionId}: ${e}`));
+                };
+
                 return { client, userId: sessionData.userId, sessionId } as any;
             }
 

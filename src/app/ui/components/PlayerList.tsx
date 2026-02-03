@@ -12,7 +12,7 @@ interface UserDetail {
     characterName?: string;
 }
 
-export default function PlayerList({ token }: { token: string | null }) {
+export default function PlayerList({ token, onLogout }: { token: string | null; onLogout: () => void }) {
     const [users, setUsers] = useState<UserDetail[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -101,14 +101,7 @@ export default function PlayerList({ token }: { token: string | null }) {
                 <div className="p-2 border-t border-white/5 mt-1">
                     <button
                         onClick={async () => {
-                            try {
-                                const headers: any = {};
-                                if (token) headers['Authorization'] = `Bearer ${token}`;
-                                await fetch('/api/logout', { method: 'POST', headers });
-                                window.location.reload();
-                            } catch (e) {
-                                console.error(e);
-                            }
+                            onLogout();
                         }}
                         className="w-full text-xs bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 rounded py-1.5 transition-colors font-bold uppercase tracking-wider"
                     >

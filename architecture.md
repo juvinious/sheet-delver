@@ -87,7 +87,19 @@ graph TD
     - Backend generates `authToken`.
     - Stores `authToken` -> `SocketClient` mapping in `SessionManager`.
     - Returns `authToken` to Frontend.
-5.  Frontend stores `authToken` (memory/local storage).
+5.  Frontend stores `authToken` (sessionStorage).
+6.  **State Machine Transition**:
+    - Frontend transitions to `'authenticating'` state (shows loading screen).
+    - Polling loops wait for backend session confirmation.
+    - Once confirmed, transitions to `'dashboard'` state.
+    - This prevents UI flashing during session establishment.
+
+### 4.2.1 Logout
+1.  Frontend calls `handleLogout()`.
+2.  Frontend transitions to `'login'` state **before** clearing token (prevents flash).
+3.  Backend POST `/api/logout` to destroy session.
+4.  Frontend clears `authToken` from sessionStorage.
+5.  State machine remains on `'login'` screen (smooth transition).
 
 ### 4.3 Data Access (Personalized)
 1.  Frontend GET `/api/actors` with `Authorization: Bearer <token>`.

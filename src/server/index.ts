@@ -43,7 +43,7 @@ async function startServer() {
 
         // Use async restoration
         sessionManager.getOrRestoreSession(sessionId).then(session => {
-            if (!session) {
+            if (!session || !session.client.isLoggedIn) {
                 return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
             }
 
@@ -75,45 +75,47 @@ async function startServer() {
             if (authHeader && authHeader.startsWith('Bearer ')) {
                 const token = authHeader.split(' ')[1];
                 userSession = await sessionManager.getOrRestoreSession(token);
-                if (userSession) {
+                if (userSession && userSession.client.isLoggedIn) {
                     isAuthenticated = true;
                 }
             }
 
-            // Use User Session Client if authenticated, otherwise use System Client
-            const client = userSession?.client || sessionManager.getSystemClient();
+            // Source of Truth: The system client (service account) always tracks world state
+            const systemClient = sessionManager.getSystemClient();
 
-            // Optimistic System Fetch (if connected)
+            // Authentication: Only the user session determines if we are logged in
+            isAuthenticated = !!(userSession && userSession.client.isLoggedIn);
+
             let system, users;
             try {
-                system = await client.getSystem();
-                users = await client.getUsersDetails();
+                // Fetch global state from system client
+                system = await systemClient.getSystem();
+                users = await systemClient.getUsersDetails();
 
-                // Add adapter config to system info (for actorCard.subtext, etc.)
+                // Add adapter config to system info
                 if (system?.id) {
                     const sid = system.id.toLowerCase();
-                    logger.info(`Status Handler | Getting adapter for system: ${sid}`);
                     const adapter = getAdapter(sid);
                     if (adapter && typeof (adapter as any).getConfig === 'function') {
-                        logger.info(`Status Handler | Adapter found, calling getConfig()`);
                         const config = (adapter as any).getConfig();
-                        logger.info(`Status Handler | Adapter config: ${JSON.stringify(config || {}).substring(0, 200)}`);
-                        if (config) {
-                            system.config = config;
-                            logger.info(`Status Handler | Added config to system info`);
-                        }
-                    } else {
-                        logger.warn(`Status Handler | No adapter or getConfig for system: ${system.id}`);
+                        if (config) system.config = config;
                     }
                 }
             } catch (e) {
-                // If client isn't fully ready, use cached/default
+                // Suppress expected transient errors
             }
 
-            const connected = client.isConnected;
+            // Global connected status comes from system client
+            const connected = systemClient.isConnected;
 
             if (process.env.NODE_ENV !== 'production') {
-                logger.debug(`Status Handler | Returning system: ${JSON.stringify(system || {}).substring(0, 500)}`);
+                const sysState = (systemClient as any).getSocketState();
+                const userState = userSession ? (userSession.client as any).getSocketState() : null;
+                logger.debug(`Status Handler | Auth: ${isAuthenticated} | World: ${system?.status}`);
+                logger.debug(`Status Handler | System: conn=${sysState.connected}, state=${sysState.worldState}, user=${sysState.userId}`);
+                if (userState) {
+                    logger.debug(`Status Handler | User: conn=${userState.connected}, state=${userState.worldState}, user=${userState.userId}, explicit=${userState.isExplicit}`);
+                }
             }
 
             res.json({
@@ -143,7 +145,7 @@ async function startServer() {
         }
         const token = authHeader.split(' ')[1];
         const session = await sessionManager.getOrRestoreSession(token);
-        if (!session) return res.status(401).json({ error: 'Unauthorized' });
+        if (!session || !session.client.isLoggedIn) return res.status(401).json({ error: 'Unauthorized' });
 
         try {
             const systemInfo = await session.client.getSystem();
@@ -160,7 +162,7 @@ async function startServer() {
         }
         const token = authHeader.split(' ')[1];
         const session = await sessionManager.getOrRestoreSession(token);
-        if (!session) return res.status(401).json({ error: 'Unauthorized' });
+        if (!session || !session.client.isLoggedIn) return res.status(401).json({ error: 'Unauthorized' });
 
         try {
             const client = session.client;

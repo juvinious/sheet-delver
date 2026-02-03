@@ -139,3 +139,113 @@ A non-disruptive, full-screen overlay that automatically appears when the socket
   </div>
 )}
 ```
+
+## ClientPage State Machine
+
+The `ClientPage` component implements a robust state machine to manage UI transitions during authentication, world loading, and logout scenarios. This prevents UI flashing and ensures smooth user experience.
+
+**Implementation**: `src/app/ui/components/ClientPage.tsx`
+
+### States
+
+| State | Description | UI Display |
+|:------|:------------|:-----------|
+| `init` | Initial page load | Loading spinner |
+| `startup` | World is starting or data is loading | Loading spinner with "Starting up..." |
+| `setup` | No world available | "No World Available" message |
+| `login` | World active, user not authenticated | Login form |
+| `authenticating` | Login submitted, waiting for backend session | Loading spinner with "Authenticating..." |
+| `dashboard` | User authenticated, world active | Character sheets and dashboard |
+
+### State Transitions
+
+```mermaid
+graph TD
+    A[init] --> B[startup]
+    B --> C{World Status}
+    C -->|Not Active| D[setup]
+    C -->|Active, Data Loading| B
+    C -->|Active, Data Ready| E{Authenticated?}
+    E -->|No| F[login]
+    E -->|Yes| G[dashboard]
+    F -->|Login Submitted| H[authenticating]
+    H -->|Session Confirmed| G
+    G -->|Logout| F
+    G -->|World Stops| D
+```
+
+### Key Implementation Details
+
+#### Transitional States
+- **`authenticating`**: Prevents polling loops from overriding the login state before backend session is established
+- **`startup`**: Shows loading screen while world data is being fetched (prevents showing login with incomplete data)
+
+#### State Machine Logic
+
+The `determineStep()` function centralizes state decision logic:
+
+```typescript
+const determineStep = (data: any, currentStep: string) => {
+  const status = data.system?.status;
+  const isAuthenticated = data.isAuthenticated || false;
+
+  // 1. World not active -> setup
+  if (status !== 'active') return 'setup';
+
+  // 2. Authenticating -> wait for confirmation
+  if (currentStep === 'authenticating') {
+    return isAuthenticated ? 'dashboard' : 'authenticating';
+  }
+
+  // 3. Check world data completeness
+  const worldTitle = data.system?.worldTitle;
+  const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
+  if (!hasCompleteWorldData) return 'startup';
+
+  // 4. Authenticated -> dashboard, else login
+  return isAuthenticated ? 'dashboard' : 'login';
+};
+```
+
+#### Polling Protection
+
+Two polling loops (`checkConfig` and `session/connect`) both use the same state machine logic to ensure consistency:
+
+- **`checkConfig` guard**: Skips execution when `step === 'authenticating'`
+- **World data check**: Both loops verify world data completeness before transitioning to login
+
+#### Logout Flow
+
+Critical order of operations to prevent UI flash:
+
+```typescript
+const handleLogout = async () => {
+  // 1. Set step to login FIRST (before clearing token)
+  setStepWithLog('login', 'handleLogout', 'User logged out');
+  
+  // 2. Call logout API
+  await fetch('/api/logout', { method: 'POST', headers });
+  
+  // 3. THEN clear token
+  setToken(null);
+};
+```
+
+### Debugging
+
+The `setStepWithLog()` wrapper provides comprehensive state change logging:
+
+```typescript
+const setStepWithLog = (newStep, origin, reason?) => {
+  console.log(`[STATE CHANGE] ${timestamp} | ${step} → ${newStep} | Origin: ${origin}`);
+  console.trace('State change call stack:');
+  setStep(newStep);
+};
+```
+
+Check browser console for detailed state transition logs including:
+- Timestamp
+- Source/destination states
+- Origin (which function triggered the change)
+- Reason for the change
+- Full call stack trace

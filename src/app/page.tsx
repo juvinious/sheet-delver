@@ -43,7 +43,6 @@ export default async function Page() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono text-neutral-500"
                         >
-                            <span>Read Docs</span>
                             <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
                         </a>
                     </div>
