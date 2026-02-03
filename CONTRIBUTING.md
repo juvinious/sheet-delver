@@ -62,8 +62,8 @@ SheetDelver follows a **Decoupled Core/Shell** architecture to ensure stability 
 
 - `src/core`: The **Engine**. Contains headless Foundry logic, socket maintenance, and system registries.
 - `src/shared`: Common TypeScript **Interfaces and Types** shared between backend and frontend.
-- `src/server`: The **Core Service**. Express API that wraps the Core logic and provides REST endpoints.
-- `src/app`: The **Frontend Shell**. Next.js application containing the UI and API proxies.
+- `src/server`: The **Core Service**. Express API that wraps the Core logic and provides REST endpoints (App API and Admin API).
+- `src/app`: The **Frontend Shell**. Next.js application containing the UI. API requests are forwarded to the Core Service via Next.js rewrite rules.
   - `ui/`: React components and hooks.
 - `src/modules`: Pluggable **RPG System Modules**. Each module contains its own Adapter and Sheet UI.
 - `src/cli`: The **Admin Console**. CLI tool for world management and authenticated scrapes.

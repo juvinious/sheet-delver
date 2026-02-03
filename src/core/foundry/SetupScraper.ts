@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import fs from 'fs/promises';
 import path from 'path';
+import { logger } from '../logger';
 
 export interface WorldUser {
     _id: string;
@@ -26,53 +27,6 @@ const CACHE_FILE = path.join(process.cwd(), '.foundry-cache.json');
 const CACHE_MAX_AGE_DAYS = 7;
 
 export class SetupScraper {
-    /**
-     * Scrape available worlds from the /setup page
-     */
-    static async scrapeAvailableWorlds(foundryUrl: string): Promise<Partial<WorldData>[]> {
-        try {
-            const baseUrl = foundryUrl.endsWith('/') ? foundryUrl.slice(0, -1) : foundryUrl;
-            const response = await fetch(`${baseUrl}/setup`, {
-                headers: { 'User-Agent': 'SheetDelver/1.0' }
-            });
-
-            if (!response.ok) return [];
-
-            const html = await response.text();
-            const worlds: Partial<WorldData>[] = [];
-
-            // Regex to find world entries (simplified for robustness)
-            // Matches: <li ... data-package-id="world-id"> ... <h4 class="package-title">World Title</h4>
-            const worldBlockRegex = /<li[^>]+data-package-id="([^"]+)"[^>]*>([\s\S]*?)<\/li>/g;
-            const titleRegex = /<h4[^>]*class="package-title"[^>]*>([^<]+)<\/h4>/;
-            const systemRegex = /<div[^>]*class="package-metadata"[^>]*>([\s\S]*?)<\/div>/;
-
-            let match;
-            while ((match = worldBlockRegex.exec(html)) !== null) {
-                const id = match[1];
-                const content = match[2];
-
-                const titleMatch = titleRegex.exec(content);
-                const title = titleMatch ? titleMatch[1].trim() : id;
-
-                // Try to loosely find system
-                const sysMatch = content.match(/System:\s*([\w-]+)/i);
-                const systemId = sysMatch ? sysMatch[1] : 'unknown';
-
-                worlds.push({
-                    worldId: id,
-                    worldTitle: title,
-                    systemId: systemId,
-                    users: []
-                });
-            }
-
-            return worlds;
-        } catch (e) {
-            console.error('[SetupScraper] Failed to scrape setup page:', e);
-            return [];
-        }
-    }
 
     /**
      * Scrape world data from an authenticated Foundry session
@@ -96,7 +50,10 @@ export class SetupScraper {
 
         // Parse world title
         const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
-        const worldTitle = titleMatch ? titleMatch[1].trim() : 'Unknown World';
+        let worldTitle = titleMatch ? titleMatch[1].trim() : 'Unknown World';
+
+        // Strip Foundry prefix
+        worldTitle = worldTitle.replace(/^Foundry Virtual Tabletop [\u2022\u00B7\-|]\s*/i, '');
 
         // Parse background URL
         const cssVarMatch = html.match(/--background-url:\s*url\((['"]?)(.*?)\1\)/i);
@@ -176,57 +133,223 @@ export class SetupScraper {
             throw error;
         }
     }
+    /**
+     * Probes for an active world using credentials.
+     * Useful when the world is already running but we don't know which one.
+     */
+    static async probeActiveWorld(baseUrl: string, username: string, password?: string): Promise<{ world: any, cookie: string } | null> {
+        try {
+            logger.info(`SetupScraper | Probing active world with user ${username}...`);
+            const url = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+            // 1. GET /join to get CSRF and session
+            const getResponse = await fetch(`${url}/join`, {
+                headers: { 'User-Agent': 'SheetDelver/1.0' }
+            });
+            const html = await getResponse.text();
+
+            const cookie = getResponse.headers.get('set-cookie');
+            const getSessionId = cookie ? /session=([^;]+)/.exec(cookie)?.[1] : null;
+
+            // 2. Parse CSRF and World Title from HTML
+            const titleMatch = html.match(/<title>(.*?)<\/title>/) || html.match(/<h1>(.*?)<\/h1>/);
+            let worldTitleFromHtml = titleMatch ? titleMatch[1].trim() : null;
+            if (worldTitleFromHtml === 'Foundry Virtual Tabletop') worldTitleFromHtml = null;
+
+            const csrfMatch = html.match(/name="csrf-token" content="(.*?)"/) || html.match(/"csrfToken":"(.*?)"/);
+            const csrfToken = csrfMatch ? csrfMatch[1] : null;
+
+            // 3. Parse User ID for the username
+            let userId: string | null = null;
+            const userMatch = new RegExp(`<option[^>]+value="([^"]+)"[^>]*>\\s*${username}\\s*</option>`, 'i').exec(html);
+            if (userMatch) {
+                userId = userMatch[1];
+                logger.info(`!!! SetupScraper | Found User ID for ${username}: ${userId}`);
+            } else {
+                userId = username;
+            }
+
+            // 4. POST to /join to authenticate
+            const response = await fetch(`${url}/join`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'User-Agent': 'SheetDelver/1.0',
+                    'Origin': url,
+                    'Referer': `${url}/join`
+                },
+                body: JSON.stringify({
+                    userid: userId,
+                    password: password || '',
+                    action: 'join',
+                    'csrf-token': csrfToken
+                }),
+                redirect: 'manual'
+            });
+
+            const postBody = await response.text();
+            logger.info(`!!! SetupScraper | POST /join status: ${response.status}`);
+
+            // Check for success markers in body if 200
+            const isJsonSuccess = response.status === 200 && (postBody.includes('"status":"success"') || postBody.includes('JOIN.LoginSuccess'));
+            const isRedirect = response.status === 302;
+
+            if (response.status === 401 || (!isRedirect && !isJsonSuccess && !response.headers.get('set-cookie') && !cookie)) {
+                logger.warn(`!!! SetupScraper | Auth might have failed. Status: ${response.status}, Success: ${isJsonSuccess}`);
+                if (postBody.length < 500) logger.debug(`!!! SetupScraper | POST Body: ${postBody}`);
+            }
+
+            // Capture ALL cookies, prioritizing new ones
+            const cookieMap = new Map<string, string>();
+            const parseCookies = (c: string | null) => {
+                if (!c) return;
+                c.split(',').forEach(part => {
+                    const pair = part.split(';')[0].split('=');
+                    if (pair.length >= 2) cookieMap.set(pair[0].trim(), pair[1].trim());
+                });
+            };
+
+            parseCookies(cookie);
+            parseCookies(response.headers.get('set-cookie'));
+
+            const combinedCookie = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+            const sessionId = cookieMap.get('session') || cookieMap.get('foundry') || getSessionId;
+
+            if (!sessionId) {
+                logger.warn('!!! SetupScraper | Failed to capture session ID for probe.');
+                return null;
+            }
+
+            // 5. Connect via Socket and wait for authentication
+            logger.info(`!!! SetupScraper | Connecting to socket with sessionId: ${sessionId}`);
+            const socket = await this.connectSocket(url, combinedCookie);
+
+            // Wait for session event before getJoinData
+            const sessionData = await new Promise<any>((resolve, reject) => {
+                const t = setTimeout(() => {
+                    logger.warn(`!!! SetupScraper | session event TIMED OUT after 10s`);
+                    reject(new Error('session event timeout'));
+                }, 10000);
+
+                socket.on('session', (data) => {
+                    clearTimeout(t);
+                    logger.info(`!!! SetupScraper | Session event received for userId: ${data.userId}`);
+                    resolve(data);
+                });
+            });
+
+            logger.info(`!!! SetupScraper | Socket authenticated. Emitting getJoinData...`);
+
+            const joinData = await new Promise<any>((resolve, reject) => {
+                const t = setTimeout(() => {
+                    logger.warn(`!!! SetupScraper | getJoinData TIMED OUT after 5s`);
+                    reject(new Error('getJoinData timeout'));
+                }, 5000);
+
+                socket.emit('getJoinData', (result: any) => {
+                    clearTimeout(t);
+                    logger.info(`!!! SetupScraper | getJoinData RECEIVED result: ${result ? 'YES' : 'NO'}`);
+                    resolve(result);
+                });
+            });
+
+            socket.disconnect();
+
+            if (joinData) {
+                logger.debug(`!!! SetupScraper | joinData keys: ${Object.keys(joinData).join(', ')}`);
+                if (joinData.world) {
+                    logger.info(`!!! SetupScraper | PROBE SUCCESS! World: ${joinData.world.title}`);
+                }
+            }
+
+            if (joinData?.world || (worldTitleFromHtml && worldTitleFromHtml !== 'Critical Failure!')) {
+                const isReady = !!joinData?.world;
+                return {
+                    world: {
+                        worldId: joinData?.world?.id || 'unknown',
+                        worldTitle: joinData?.world?.title || worldTitleFromHtml,
+                        systemId: joinData?.system?.id || 'unknown',
+                        status: isReady ? 'active' : 'offline',
+                        source: 'Authenticated Probe'
+                    },
+                    cookie: combinedCookie
+                };
+            } else {
+                logger.warn(`!!! SetupScraper | PROBE FAILED: No world found. Title from HTML: ${worldTitleFromHtml}`);
+            }
+        } catch (e: any) {
+            logger.warn(`!!! SetupScraper | PROBE EXCEPTION: ${e.message}`);
+        }
+        return null;
+    }
+
+    /**
+     * TODO: Implement authenticated setup page scraping if needed.
+     * Currently focusing on world-specific probes.
+     */
+    static async scrapeAvailableWorlds(foundryUrl: string, sessionCookie?: string): Promise<Partial<WorldData>[]> {
+        // Placeholder for future implementation
+        return [];
+    }
 
     /**
      * Connect socket with authenticated session
      */
     private static async connectSocket(baseUrl: string, sessionCookie: string): Promise<Socket> {
-        // Parse session cookie - handle both "session=value" and just "value" formats
-        let sessionId: string | null = null;
+        if (!sessionCookie) {
+            throw new Error('[SetupScraper] Session cookie is required for socket connection.');
+        }
 
-        if (sessionCookie.includes('=')) {
-            // Format: "session=s%3A..." or "Cookie: session=s%3A..."
-            const match = sessionCookie.match(/(?:session|foundry)=([^;]+)/);
-            sessionId = match ? match[1] : null;
-        } else {
-            // Just the value itself
+        let sessionId: string | undefined;
+
+        // Handle "session=s%3A...; other=..." or just "s%3A..."
+        const match = sessionCookie.match(/(?:session|foundry)=([^; ]+)/);
+        if (match) {
+            sessionId = match[1];
+        } else if (!sessionCookie.includes('=')) {
             sessionId = sessionCookie.trim();
         }
 
-        if (!sessionId) {
-            throw new Error('Invalid session cookie format');
-        }
-
-        console.log('[SetupScraper] Connecting socket with session ID:', sessionId.substring(0, 20) + '...');
+        const headers = {
+            'Cookie': sessionCookie,
+            'User-Agent': 'SheetDelver/1.0',
+            'Origin': baseUrl
+        };
 
         return new Promise((resolve, reject) => {
             const socket = io(baseUrl, {
                 path: '/socket.io',
                 transports: ['websocket'],
                 reconnection: false,
-                query: { session: sessionId },
-                auth: { session: sessionId },
-                extraHeaders: {
-                    'Cookie': `session=${sessionId}`,
-                    'User-Agent': 'SheetDelver/1.0'
+                query: sessionId ? { session: sessionId } : {},
+                auth: sessionId ? { session: sessionId } : {},
+                extraHeaders: headers,
+                transportOptions: {
+                    websocket: {
+                        extraHeaders: headers
+                    }
                 },
                 withCredentials: true
             });
 
+            const timeout = setTimeout(() => {
+                socket.disconnect();
+                reject(new Error('Socket connection timeout'));
+            }, 10000);
+
             socket.on('connect', () => {
+                clearTimeout(timeout);
                 console.log('[SetupScraper] Socket connected successfully');
                 resolve(socket);
             });
 
             socket.on('connect_error', (err) => {
+                clearTimeout(timeout);
+                socket.disconnect();
                 console.error('[SetupScraper] Socket connection error:', err.message);
                 reject(err);
             });
-
-            setTimeout(() => {
-                console.error('[SetupScraper] Socket connection timeout');
-                reject(new Error('Socket connection timeout'));
-            }, 10000);
         });
     }
 

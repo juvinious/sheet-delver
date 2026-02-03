@@ -7,6 +7,7 @@
     "dev": "ts-node src/scripts/start-server.ts dev",
     "build": "next build",
     "start": "ts-node src/scripts/start-server.ts start",
+    "setup": "ts-node src/scripts/setup.ts",
     "lint": "eslint",
     "core": "npx tsx src/server/index.ts",
     "admin": "npx tsx src/cli/index.ts",

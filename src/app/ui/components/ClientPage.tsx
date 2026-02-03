@@ -97,8 +97,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const theme = system?.theme || defaultTheme;
 
   // Resolve background image
-  // Clear background in setup/startup mode to prevent stale images from previous worlds
-  const bgSrc = (step === 'setup' || step === 'startup') ? null : (system?.worldBackground || system?.background);
+  // Clear background in startup mode only
+  const bgSrc = (step === 'startup') ? null : (system?.worldBackground || system?.background);
   const bgStyle = bgSrc
     ? {
       backgroundImage: `url(${bgSrc.startsWith('http') ? bgSrc : `${url}/${bgSrc}`})`,
@@ -136,7 +136,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             setStep('setup');
             return;
           }
-          if (data.appVersion) setAppVersion(data.appVersion);
 
           if (data.system) {
             setSystem(data.system);
@@ -182,6 +181,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           // Not connected to Foundry at all - show setup page
           setStep('setup');
         }
+
+        // Always update meta properties if available
+        if (data.appVersion) setAppVersion(data.appVersion);
+        if (data.system && !data.connected) setSystem(data.system);
+
       } catch {
         console.warn('Check failed - treating as setup mode');
         setStep('setup');

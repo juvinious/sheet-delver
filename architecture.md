@@ -44,9 +44,11 @@ graph TD
     - **No Delivery Knowledge**: This layer does not know about Express or Next.js.
 
 ### 2.2 The Delivery Layers
-- **Server (`src/server`)**: An Express wrapper around the Core logic. Exposes the App API and Admin API.
-- **App (`src/app`)**: A Next.js application that renders the UI and proxies requests to the Server.
-- **CLI (`src/cli`)**: An interactive terminal tool for administrative tasks.
+- **Server (`src/server`)**: An Express API server that wraps the Core logic. Exposes:
+  - **App API** (`/api/*`): Public endpoints for frontend (actors, chat, etc.)
+  - **Admin API** (`/admin/*`): Localhost-only endpoints for CLI (world management, scraping)
+- **App (`src/app`)**: A Next.js application that renders the UI. API requests are forwarded to the Express server via Next.js rewrite rules.
+- **CLI (`src/cli`)**: An interactive terminal tool for administrative tasks, accessing the Admin API.
 
 ### 2.3 The Shared Layer (`src/shared`)
 - **Role**: Common ground for all layers.
@@ -61,8 +63,8 @@ graph TD
 | :--- | :--- | :--- |
 | `src/core/` | **Domain** | Stateful Foundry logic (Client, Registry, Security). |
 | `src/shared/` | **Shared** | Common interfaces, types, and constants. |
-| `src/server/` | **Delivery** | Core Service Express API & Lifecycle management. |
-| `src/app/` | **Delivery** | Next.js Frontend Shell (UI & API Proxies). |
+| `src/server/` | **Delivery** | Core Service Express API (App & Admin endpoints). |
+| `src/app/` | **Delivery** | Next.js Frontend Shell (UI only, no API routes). |
 | `src/app/ui/` | **UI** | React components, hooks, and styles. |
 | `src/cli/` | **Delivery** | Admin Console interactive CLI tool. |
 | `src/modules/` | **Adapters** | System-specific RPG logic (Shadowdark, etc.). |
@@ -79,8 +81,29 @@ Handles the low-level Foundry v13 handshake, cookie parsing, and socket.io maint
 ### 4.2 `SystemAdapter` (`src/modules`)
 The translation layer mapping raw Foundry JSON to standardized internal models.
 
-### 4.3 `coreFetch` (`src/app/lib`)
-The internal proxy utility that allows the Shell to communicate with the Core Service.
+### 4.3 API Communication
+The Next.js frontend communicates with the Express Core Service via Next.js rewrite rules (`next.config.ts`):
+```typescript
+{
+  source: '/api/:path*',
+  destination: 'http://localhost:3001/api/:path*'
+}
+```
+This forwards all `/api/*` requests from the frontend (port 3000) to the Express server (port 3001).
+
+---
+
+## 5. Port Configuration
+
+Ports are configured via `settings.yaml`:
+```yaml
+app:
+  port: 3000  # Next.js Frontend
+```
+
+The Express Core Service runs on `app.port + 1` (default: 3001).
+
+**CLI Access**: The CLI calculates the admin URL as `http://127.0.0.1:${config.app.port + 1}/admin`.
 
 ---
 

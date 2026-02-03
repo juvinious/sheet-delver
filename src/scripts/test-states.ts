@@ -9,8 +9,8 @@
  */
 
 import * as readline from 'readline';
-import { loadConfig } from '../src/lib/config.js';
-import { SocketFoundryClient } from '../src/lib/foundry/SocketClient.js';
+import { loadConfig } from '../core/config';
+import { SocketFoundryClient } from '../core/foundry/SocketClient';
 
 const rl = readline.createInterface({
     input: process.stdin,

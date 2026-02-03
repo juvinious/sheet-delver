@@ -25,10 +25,11 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 
 ## Architecture
 SheetDelver follows a **Decoupled Core/Shell** architecture:
-1.  **Core Service** (`src/core`, `src/server`): A standalone backend that maintains the persistent socket connection to Foundry VTT.
-2.  **Frontend Shell** (`src/app`): A Next.js application that provides the user interface and proxies requests to the Core Service via `coreFetch`.
+1.  **Core Service** (`src/core`, `src/server`): A standalone Express API server that maintains the persistent socket connection to Foundry VTT and exposes REST endpoints.
+2.  **Frontend Shell** (`src/app`): A Next.js application that provides the user interface. API requests are forwarded to the Core Service via Next.js rewrite rules.
 3.  **Shared Layer** (`src/shared`): Common TypeScript interfaces and constants used by both Core and Shell.
 4.  **System Modules** (`src/modules`): Pluggable RPG system logic (Adapters and UI).
+5.  **Admin CLI** (`src/cli`): Command-line tool for world management and administrative tasks.
 
 ---
 

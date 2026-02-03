@@ -33,6 +33,16 @@ try {
 const args = process.argv.slice(2);
 const command = args[0] || 'dev'; // Default to dev
 
+// Pre-flight Check: Ensure Cache Exists
+const CACHE_PATH = path.join(process.cwd(), '.foundry-cache.json');
+if (!fs.existsSync(CACHE_PATH)) {
+    console.error('\n\x1b[31m[CRITICAL] Cache Missing: .foundry-cache.json not found.\x1b[0m');
+    console.error('The application cannot start without initial world data.');
+    console.error('Please run the setup script to initialize the cache:');
+    console.error('\n    \x1b[36mnpm run setup\x1b[0m\n');
+    process.exit(1);
+}
+
 let coreProcess: ChildProcess | null = null;
 let shellProcess: ChildProcess | null = null;
 

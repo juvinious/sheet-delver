@@ -28,34 +28,35 @@ async function startServer() {
     // This API serves the frontend via the Next.js proxy
     const appRouter = express.Router();
 
-    appRouter.get('/status', async (req, res) => {
-        try {
-            const system: any = await client.getSystem().catch(() => null);
-            if (system && system.id) {
-                system.config = getConfig(system.id);
-            }
 
-            const users = system?.users?.list || [];
-            const sanitizedUsers = users.map((u: any) => ({
-                // Intentionally omit ID for security. Source of Truth is Core Cache.
-                name: u.name,
-                role: u.role,
-                color: u.color,
-                active: u.active
-            }));
+    const statusHandler = async (req: express.Request, res: express.Response) => {
+        try {
+            res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+
+            const system = await client.getSystem();
+            const users = await client.getUsersDetails();
+            const isLoggedIn = client.isLoggedIn;
+            const connected = client.isConnected;
 
             res.json({
-                connected: client.isConnected,
-                isLoggedIn: client.isLoggedIn,
-                users: sanitizedUsers,
+                connected,
+                isLoggedIn,
+                users,
                 system,
-                url: client.url,
-                appVersion: config.app.version
+                url: config.foundry.url,
+                appVersion: '0.5.0'
             });
         } catch (error: any) {
-            res.status(500).json({ error: error.message });
+            logger.error(`Status Handler Error: ${error.message}`);
+            res.status(500).json({ error: 'Failed to retrieve status' });
         }
-    });
+    };
+
+
+    appRouter.get('/status', statusHandler);
+    appRouter.get('/session/connect', statusHandler);
 
     appRouter.post('/login', async (req, res) => {
         const { username, password } = req.body;
