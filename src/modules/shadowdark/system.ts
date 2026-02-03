@@ -335,6 +335,21 @@ export class ShadowdarkAdapter implements SystemAdapter {
         return actorData;
     }
 
+    /**
+     * Get adapter configuration (server-side, no browser access needed)
+     * This includes UI configuration like actorCard.subtext
+     */
+    getConfig() {
+        return {
+            actorCard: {
+                // Subtext paths to display on actor cards
+                // Format: ["path.to.field", "another.path"]
+                // For Shadowdark: Show "Ancestry • Class • Level X"
+                subtext: ['details.ancestry', 'details.class', 'level.value']
+            }
+        };
+    }
+
     async getSystemData(client: any): Promise<any> {
         return await client.evaluate(async () => {
             // @ts-ignore

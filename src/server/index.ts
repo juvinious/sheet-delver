@@ -63,29 +63,48 @@ async function startServer() {
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
 
-            // Use System Client (Guest) for Status
-            const systemClient = sessionManager.getSystemClient();
-
-            // Optimistic System Fetch (if connected)
-            let system, users;
-            try {
-                system = await systemClient.getSystem();
-                users = await systemClient.getUsersDetails();
-            } catch (e) {
-                // If guest client isn't fully ready, use cached/default
-            }
-
-            const connected = systemClient.isConnected;
-
-            // Check if Request has a valid session (for "My Dashboard" vs "Login Screen")
+            // Check if Request has a valid session
             let isAuthenticated = false;
+            let userSession = null;
             const authHeader = req.headers.authorization;
             if (authHeader && authHeader.startsWith('Bearer ')) {
                 const token = authHeader.split(' ')[1];
                 if (sessionManager.isValidSession(token)) {
                     isAuthenticated = true;
+                    userSession = sessionManager.getSession(token);
                 }
             }
+
+            // Use User Session Client if authenticated, otherwise use System Client
+            const client = userSession?.client || sessionManager.getSystemClient();
+
+            // Optimistic System Fetch (if connected)
+            let system, users;
+            try {
+                system = await client.getSystem();
+                users = await client.getUsersDetails();
+
+                // Add adapter config to system info (for actorCard.subtext, etc.)
+                if (system?.id) {
+                    logger.info(`Status Handler | Getting adapter for system: ${system.id}`);
+                    const adapter = getAdapter(system.id);
+                    if (adapter && typeof (adapter as any).getConfig === 'function') {
+                        logger.info(`Status Handler | Adapter found, calling getConfig()`);
+                        const config = (adapter as any).getConfig();
+                        logger.info(`Status Handler | Adapter config: ${JSON.stringify(config || {}).substring(0, 200)}`);
+                        if (config) {
+                            system.config = config;
+                            logger.info(`Status Handler | Added config to system info`);
+                        }
+                    } else {
+                        logger.warn(`Status Handler | No adapter or getConfig for system: ${system.id}`);
+                    }
+                }
+            } catch (e) {
+                // If client isn't fully ready, use cached/default
+            }
+
+            const connected = client.isConnected;
 
             res.json({
                 connected,
