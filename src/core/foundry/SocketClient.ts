@@ -192,6 +192,69 @@ export class SocketFoundryClient implements FoundryClient {
         }
     }
 
+    /**
+     * Resumes a connection using a previously saved session cookie.
+     * Skips the POST /join authentication flow.
+     */
+    public async restoreSession(cookie: string, userId: string): Promise<void> {
+        logger.info(`SocketFoundryClient | Restoring session for user ${userId}...`);
+        this.sessionCookie = cookie;
+        this.userId = userId;
+        this.isExplicitSession = true;
+
+        try {
+            await this.connect();
+            // We don't need to wait long here, connect() already handles basic verification
+            logger.info(`SocketFoundryClient | Session restored successfully for user ${userId}.`);
+        } catch (e: any) {
+            logger.error(`SocketFoundryClient | Session restoration failed: ${e.message}`);
+            this.resetState();
+            throw e;
+        }
+    }
+
+    /**
+     * Validates that the current session is still valid on the server
+     * and matches the expected world.
+     */
+    public async validateSession(expectedWorldId: string): Promise<boolean> {
+        if (!this.isConnected || !this.userId) return false;
+
+        try {
+            // 1. Ensure we have world metadata. If missing (restored session), refresh it.
+            if (!this.cachedWorldData?.worldId) {
+                logger.info(`SocketFoundryClient | World metadata missing during validation. Refreshing...`);
+                await this.reloadActiveWorldData();
+            }
+
+            const currentWorldId = this.cachedWorldData?.worldId;
+
+            // 2. Verify world ID matches
+            // We only fail if we HAVE a world ID and it doesn't match.
+            // If it's STILL missing after refresh, we might be in an inconsistent state, but we'll be conservative.
+            if (currentWorldId && currentWorldId !== expectedWorldId) {
+                logger.warn(`SocketFoundryClient | Session validation failed: World ID mismatch (Expected: ${expectedWorldId}, Current: ${currentWorldId})`);
+                return false;
+            }
+
+            // 3. Verify user is still authenticated (can fetch users)
+            const users = await this.getUsers();
+            const me = users.find((u: any) => (u._id || u.id) === this.userId);
+
+            if (!me) {
+                logger.warn(`SocketFoundryClient | Session validation failed: User ${this.userId} not found in world ${currentWorldId || expectedWorldId}.`);
+                return false;
+            }
+
+            logger.info(`SocketFoundryClient | Session validated for user ${this.userId} in world ${currentWorldId || expectedWorldId}.`);
+            return true;
+        } catch (e) {
+            logger.warn(`SocketFoundryClient | Session validation failed with error: ${e}`);
+            return false;
+        }
+    }
+
+
     private async waitForAuthentication(timeoutMs: number): Promise<void> {
         logger.info(`SocketFoundryClient | Waiting for authentication (timeout: ${timeoutMs}ms)...`);
         const start = Date.now();
@@ -277,7 +340,8 @@ export class SocketFoundryClient implements FoundryClient {
 
         // 1. Authenticate if username provided
         // 1. Authenticate if username provided
-        if (this.config.username) {
+        // 1. Authenticate if username provided AND we don't have a session cookie yet
+        if (this.config.username && !this.sessionCookie) {
             logger.info(`SocketFoundryClient | Authenticating as ${this.config.username}...`);
             try {
                 // A. Initial Request & CSRF Setup
@@ -567,16 +631,15 @@ export class SocketFoundryClient implements FoundryClient {
             socket.on('connect', async () => {
                 logger.info('SocketFoundryClient | Connected to WebSocket. socket.id: ' + socket.id);
                 this.isSocketConnected = true;
-                logger.info('SocketFoundryClient | State Change: isSocketConnected = true');
 
                 // Always verify system status on connection or reconnection
-                logger.info(`SocketFoundryClient | Connected. Verifying system status (Current: ${this.worldState})...`);
-                // Allow a brief moment for server to settle if just launched
                 setTimeout(() => this.getSystem().catch(e => logger.warn('State refresh failed:', e)), 500);
 
-                // RESOLVE immediately on low-level connection. 
-                // Session-level wait is handled by waitForAuthentication()
-                resolve();
+                // If we don't have a session event yet, we wait for it in the resolve block below
+                // Only resolve here if we don't expect a session event (guest mode)
+                if (!this.sessionCookie) {
+                    resolve();
+                }
             });
 
             socket.on('disconnect', (reason) => {
@@ -643,16 +706,31 @@ export class SocketFoundryClient implements FoundryClient {
 
                 if (event === 'session') {
                     const data = args[0] || {};
-
-                    // NOTE: We no longer promote to 'active' just from a session event.
-                    // This prevents the Setup page socket from triggering an 'active' state.
-                    // Promotion to 'active' now only happens via successful getSystem() calls
-                    // or successful HTML-based title refreshes from /game.
-
                     if (data.userId) {
                         logger.info(`SocketFoundryClient | Session event. Authenticated as ${data.userId}`);
                         this.discoveredUserId = data.userId;
                         this.userId = data.userId;
+
+                        // Fetch full world metadata via socket if we don't have it (e.g. restoration)
+                        if (!this.cachedWorldData?.worldId) {
+                            logger.info(`SocketFoundryClient | Fetching world metadata via socket...`);
+                            socket.emit('getJoinData', (result: any) => {
+                                if (result?.world) {
+                                    this.cachedWorldData = {
+                                        worldId: result.world.id,
+                                        worldTitle: result.world.title,
+                                        worldDescription: result.world.description || null,
+                                        systemId: result.system?.id || 'unknown',
+                                        backgroundUrl: result.world.background,
+                                        users: result.users || [],
+                                        lastUpdated: new Date().toISOString()
+                                    };
+                                    logger.info(`SocketFoundryClient | Metadata restored: "${result.world.title}"`);
+                                }
+                                resolve();
+                            });
+                            return; // Wait for the callback to resolve
+                        }
                     } else {
                         logger.info(`SocketFoundryClient | Session event. Guest session (userId: null).`);
                         this.userId = null;

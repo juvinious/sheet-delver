@@ -40,16 +40,21 @@ async function startServer() {
         }
 
         const sessionId = authHeader.split(' ')[1];
-        const session = sessionManager.getSession(sessionId);
 
-        if (!session) {
-            return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
-        }
+        // Use async restoration
+        sessionManager.getOrRestoreSession(sessionId).then(session => {
+            if (!session) {
+                return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
+            }
 
-        // Attach client to request
-        (req as any).foundryClient = session.client;
-        (req as any).userSession = session;
-        next();
+            // Attach client to request
+            (req as any).foundryClient = session.client;
+            (req as any).userSession = session;
+            next();
+        }).catch(err => {
+            logger.error(`Authentication Error: ${err.message}`);
+            res.status(500).json({ error: 'Internal Authentication Error' });
+        });
     };
 
     // --- App API (Public/Proxy-bound) ---
@@ -69,9 +74,9 @@ async function startServer() {
             const authHeader = req.headers.authorization;
             if (authHeader && authHeader.startsWith('Bearer ')) {
                 const token = authHeader.split(' ')[1];
-                if (sessionManager.isValidSession(token)) {
+                userSession = await sessionManager.getOrRestoreSession(token);
+                if (userSession) {
                     isAuthenticated = true;
-                    userSession = sessionManager.getSession(token);
                 }
             }
 
