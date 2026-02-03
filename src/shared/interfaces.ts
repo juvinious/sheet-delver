@@ -64,6 +64,7 @@ export interface AppConfig {
         password?: string;
         userId?: string;
         connector?: string;
+        foundryDataDirectory?: string;
     };
     debug: {
         enabled: boolean;

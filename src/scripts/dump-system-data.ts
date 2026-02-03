@@ -10,9 +10,7 @@ async function run() {
         return;
     }
 
-    const { url } = config.foundry;
-    // @ts-ignore
-    const { username, password } = config.debug?.foundryUser || {};
+    const { url, username, password } = config.foundry;
 
     console.log(`Connecting to Foundry at ${url}...`);
 

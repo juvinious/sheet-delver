@@ -49,7 +49,7 @@ async function initializeClient(): Promise<void> {
     console.log('✅ Connected to Foundry!\n');
 }
 
-async function getState(): Promise<{ status: string; worldTitle?: string; systemId?: string }> {
+async function getState(): Promise<{ status: string; worldTitle?: string; systemId?: string; isLoggedIn?: boolean }> {
     if (!client) {
         throw new Error('Client not initialized');
     }
@@ -60,7 +60,8 @@ async function getState(): Promise<{ status: string; worldTitle?: string; system
     return {
         status,
         worldTitle: systemData.worldTitle,
-        systemId: systemData.id
+        systemId: systemData.id,
+        isLoggedIn: systemData.isLoggedIn
     };
 }
 
@@ -155,7 +156,7 @@ async function runTest() {
     logResult({
         step: 'World Startup Detection',
         expected: 'status: "startup" or "connected" or "loggedIn"',
-        actual: `status: "${startupState.status}"`,
+        actual: `status: "${startupState.status}", isLoggedIn: ${startupState.isLoggedIn}`,
         passed: ['startup', 'connected', 'loggedIn'].includes(startupState.status),
         notes: startupState.worldTitle ? `World: ${startupState.worldTitle}` : undefined
     });
@@ -188,7 +189,7 @@ async function runTest() {
     logResult({
         step: 'World Ready State',
         expected: 'status: "connected" or "loggedIn"',
-        actual: `status: "${readyState.status}"`,
+        actual: `status: "${readyState.status}", isLoggedIn: ${readyState.isLoggedIn}`,
         passed: ['connected', 'loggedIn'].includes(readyState.status),
         notes: `Took ${attempts * 3} seconds to reach ready state. World: ${readyState.worldTitle}, System: ${readyState.systemId}`
     });

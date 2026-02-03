@@ -28,27 +28,7 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
     ```
 
 3.  **Configure connection:**
-    Create a `settings.yaml` file in the root directory. This file is ignored by git.
-    ```yaml
-    # settings.yaml
-    app:
-        host: localhost      # Hostname for the SheetDelver application
-        port: 3000           # Port for SheetDelver to listen on
-        protocol: http       # Protocol for SheetDelver (http/https)
-        chat-history: 100    # Max number of chat messages to retain/display
-    
-    foundry:
-        host: foundryserver.local # Hostname of your Foundry VTT instance
-        port: 30000               # Port of your Foundry VTT instance
-        protocol: http            # Protocol (http/https)
-        connector: socket         # 'socket' (Headless Sockets)
-        username: "gamemaster"    # Required for Headless connection
-        password: "password"      # Required for Headless connection
-    
-    debug:
-        enabled: true        # Enable debug logging
-        level: 3             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
-    ```
+    Follow the [Configuration instructions in README.md](README.md#configuration) to create your `settings.yaml` file.
 
 4.  **Run the development server:**
     ```bash

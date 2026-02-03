@@ -1,6 +1,10 @@
 
 import inquirer from 'inquirer';
 import { loadConfig } from '@/core/config';
+import { DirectScraper } from '@/core/foundry/DirectScraper';
+import { SetupScraper, WorldData } from '@/core/foundry/SetupScraper';
+import path from 'path';
+import fs from 'fs';
 
 /**
  * Command Definition
@@ -13,6 +17,72 @@ interface Command {
 }
 
 async function main() {
+    // 1. Check for Direct Command (CLI Arguments)
+    const args = process.argv.slice(2);
+    if (args[0] === 'import') {
+        const dataPathArg = args[1];
+        if (!dataPathArg) {
+            console.error('\x1b[31mError:\x1b[0m Please provide paths to the Foundry Data directory.');
+            console.log('Usage: npm run admin import <FoundryDataPath>');
+            console.log('Example: npm run admin import /home/user/.local/share/FoundryVTT/Data');
+            process.exit(1);
+        }
+
+        const resolvedPath = path.resolve(process.cwd(), dataPathArg);
+        if (!fs.existsSync(resolvedPath)) {
+            console.error(`\x1b[31mError:\x1b[0m Path not found: ${resolvedPath}`);
+            process.exit(1);
+        }
+
+        console.log(`\x1b[36mRunning Direct Batch Import on:\x1b[0m ${resolvedPath}`);
+        try {
+            console.log('Discovering worlds...');
+            const worlds = await DirectScraper.discover(resolvedPath);
+
+            if (worlds.length === 0) {
+                console.log('\x1b[33mNo worlds found in that directory.\x1b[0m');
+                process.exit(0);
+            }
+
+            console.log(`Found ${worlds.length} worlds. Importing...`);
+            const cacheUpdates: WorldData[] = [];
+
+            for (const world of worlds) {
+                try {
+                    console.log(` - Scraping ${world.title} (${world.id})...`);
+                    const data = await DirectScraper.scrape(world.path);
+
+                    cacheUpdates.push({
+                        worldId: data.id,
+                        worldTitle: data.title,
+                        worldDescription: data.description,
+                        systemId: data.system,
+                        backgroundUrl: data.background,
+                        users: data.users.map(u => ({ _id: u.id, name: u.name, role: u.role })),
+                        lastUpdated: new Date().toISOString(),
+                        data: { ...data }
+                    });
+                } catch (err: any) {
+                    console.error(`   \x1b[31mFailed to scrape ${world.id}:\x1b[0m ${err.message}`);
+                }
+            }
+
+            if (cacheUpdates.length > 0) {
+                await SetupScraper.saveBatchCache(cacheUpdates);
+                console.log(`\n\x1b[32mSuccessfully imported ${cacheUpdates.length}/${worlds.length} worlds.\x1b[0m`);
+                console.log(`\x1b[33mCache updated. Application will hot-reload if running.\x1b[0m\n`);
+            } else {
+                console.log('\n\x1b[31mNo worlds were successfully imported.\x1b[0m\n');
+                process.exit(1);
+            }
+            process.exit(0);
+        } catch (e: any) {
+            console.error(`\x1b[31mImport Failed:\x1b[0m ${e.message}`);
+            process.exit(1);
+        }
+    }
+
+    // 2. Interactive Mode
     const config = await loadConfig();
     if (!config) {
         console.error('\x1b[31mError:\x1b[0m Failed to load config.');
@@ -36,9 +106,77 @@ async function main() {
             }
         },
         {
+            key: 'i',
+            label: 'Import Worlds',
+            description: 'Directly import Foundry worlds from disk',
+            action: async () => {
+                console.log('\n\x1b[36m--- Direct World Import ---\x1b[0m');
+
+                let dataPath = config.foundry.foundryDataDirectory;
+
+                if (!dataPath) {
+                    const ans = await inquirer.prompt([{
+                        type: 'input',
+                        name: 'path',
+                        message: 'Enter path to Foundry Data directory:'
+                    }]);
+                    dataPath = ans.path;
+                }
+
+                if (!dataPath) {
+                    console.log('Operation cancelled.');
+                    return;
+                }
+
+                try {
+                    console.log(`Scanning for worlds in: ${dataPath}...`);
+                    const worlds = await DirectScraper.discover(dataPath);
+
+                    if (worlds.length === 0) {
+                        console.log('\x1b[33mNo worlds found in that directory.\x1b[0m');
+                        return;
+                    }
+
+                    const { selectedWorld } = await inquirer.prompt([{
+                        type: 'list',
+                        name: 'selectedWorld',
+                        message: 'Select world to import:',
+                        choices: worlds.map(w => ({
+                            name: `${w.title} (${w.system})`,
+                            value: w.path
+                        }))
+                    }]);
+
+                    console.log(`Importing world from ${selectedWorld}...`);
+                    const data = await DirectScraper.scrape(selectedWorld);
+
+                    // Map to Cache Format
+                    const cacheData: WorldData = {
+                        worldId: data.id,
+                        worldTitle: data.title,
+                        worldDescription: data.description,
+                        systemId: data.system,
+                        backgroundUrl: data.background,
+                        users: data.users.map(u => ({ _id: u.id, name: u.name, role: u.role })),
+                        lastUpdated: new Date().toISOString(),
+                        data: { ...data }
+                    };
+
+                    await SetupScraper.saveCache(cacheData);
+                    console.log('\n\x1b[32mImport Successful!\x1b[0m');
+                    console.log(`Active World set to: ${data.title}`);
+                    console.log(`\x1b[33mApplication hot-reload triggered.\x1b[0m\n`);
+
+                } catch (e: any) {
+                    console.error(`\x1b[31mError:\x1b[0m ${e.message}`);
+                }
+            }
+        },
+        /*
+        {
             key: 'd',
-            label: 'Discover/List Worlds',
-            description: 'Scrape and list available Foundry worlds',
+            label: 'Discover (Web)',
+            description: 'Scrape via Web Interface (Foundry Server)',
             action: async () => {
                 console.log('Scraping worlds...');
                 const res = await fetchWithTimeout(`${adminUrl}/worlds`);
@@ -54,6 +192,7 @@ async function main() {
                 }
             }
         },
+        */
         {
             key: 's',
             label: 'Start World',
@@ -108,7 +247,7 @@ async function main() {
         {
             key: 'c',
             label: 'Configure/Setup',
-            description: 'Run initial setup by scraping world data',
+            description: 'Run initial setup by scraping world data (Manual Cookie)',
             action: async () => {
                 const { token } = await inquirer.prompt([
                     {
@@ -223,19 +362,19 @@ async function main() {
             // Define visibility rules
             return commands.filter(cmd => {
                 // Always show accessible commands
-                if (['v', 'l', '?', 'e'].includes(cmd.key)) return true;
+                if (['v', 'l', '?', 'e', 'i'].includes(cmd.key)) return true; // Added 'i' as always accessible
 
                 if (isSetup) {
-                    // In Setup: Show Discover (d), Start (s). Hide Shutdown (h), Configure (c).
-                    return ['d', 's'].includes(cmd.key);
+                    // In Setup: Show Start (s). Hide Shutdown (h), Configure (c).
+                    return ['s'].includes(cmd.key); // Removed 'd'
                 } else {
-                    // In Active: Show Shutdown (h), Configure (c). Hide Discover (d), Start (s).
-                    return ['h', 'c'].includes(cmd.key);
+                    // In Active: Show Shutdown (h), Configure (c). Hide Start (s).
+                    return ['h', 'c'].includes(cmd.key); // Removed 'd'
                 }
             });
         } catch (e) {
-            // If offline/error, show minimal commands
-            return commands.filter(cmd => ['v', '?', 'e'].includes(cmd.key));
+            // If offline/error, show minimal commands + Import
+            return commands.filter(cmd => ['v', '?', 'e', 'i'].includes(cmd.key));
         }
     }
 

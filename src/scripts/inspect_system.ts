@@ -17,7 +17,7 @@ const settings = yaml.load(fs.readFileSync(path.join(process.cwd(), 'settings.ya
 
     const f = settings.foundry;
     const url = `${f.protocol}://${f.host}:${f.port}`;
-    const user = settings.config.debug.foundryUser;
+    const user = { name: f.username, password: f.password };
 
     try {
         console.log(`Navigating to ${url}...`);

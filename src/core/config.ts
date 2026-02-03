@@ -56,6 +56,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     password: envPassword || foundry.password,
                     userId: foundry.userId,
                     connector: foundry.connector,
+                    foundryDataDirectory: foundry.foundryDataDirectory,
                 },
                 debug: {
                     enabled: debug.enabled ?? false,
@@ -65,8 +66,9 @@ export async function loadConfig(): Promise<AppConfig | null> {
             return _cachedConfig;
         }
     } catch (e) {
-        console.error('Failed to load settings.yaml', e);
-        return null;
+        console.error('\n\x1b[31m[Config] Error: settings.yaml not found or invalid.\x1b[0m');
+        console.error('Please run \x1b[33mnpm run setup\x1b[0m to configure the application.\n');
+        process.exit(1);
     }
     return null;
 }

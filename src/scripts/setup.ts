@@ -1,75 +1,121 @@
 
-import { spawn, ChildProcess } from 'child_process';
-import path from 'path';
+import inquirer from 'inquirer';
 import fs from 'fs';
+import path from 'path';
 import yaml from 'js-yaml';
 
-// Load Settings
 const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
-let port = 3000;
 
-try {
+async function main() {
+    console.log('\x1b[36m%s\x1b[0m', '--- SheetDelver Configuration Setup ---');
+
     if (fs.existsSync(SETTINGS_PATH)) {
-        const fileContents = fs.readFileSync(SETTINGS_PATH, 'utf8');
-        const settings = yaml.load(fileContents) as any;
-        if (settings.app && settings.app.port) port = settings.app.port;
+        const { overwrite } = await inquirer.prompt([
+            {
+                type: 'confirm',
+                name: 'overwrite',
+                message: 'settings.yaml already exists. Overwrite?',
+                default: false
+            }
+        ]);
+
+        if (!overwrite) {
+            console.log('Setup cancelled. Existing configuration preserved.');
+            process.exit(0);
+        }
     }
-} catch (e) {
-    console.error('[Setup] Error reading settings.yaml:', e);
+
+    const answers = await inquirer.prompt([
+        // App Settings
+        {
+            type: 'input',
+            name: 'appHost',
+            message: 'App Host:',
+            default: 'localhost'
+        },
+        {
+            type: 'number',
+            name: 'appPort',
+            message: 'App Port:',
+            default: 3000
+        },
+        {
+            type: 'list',
+            name: 'appProtocol',
+            message: 'App Protocol:',
+            choices: ['http', 'https'],
+            default: 'http'
+        },
+        // Foundry Settings
+        {
+            type: 'input',
+            name: 'foundryHost',
+            message: 'Foundry VTT Host:',
+            default: 'localhost'
+        },
+        {
+            type: 'number',
+            name: 'foundryPort',
+            message: 'Foundry VTT Port:',
+            default: 30000
+        },
+        {
+            type: 'list',
+            name: 'foundryProtocol',
+            message: 'Foundry VTT Protocol:',
+            choices: ['http', 'https'],
+            default: 'http'
+        },
+        {
+            type: 'input',
+            name: 'foundryUsername',
+            message: 'Foundry Username (GM/Assistant):',
+            default: 'gamemaster'
+        },
+        {
+            type: 'password',
+            name: 'foundryPassword',
+            message: 'Foundry Password:',
+        },
+        {
+            type: 'input',
+            name: 'foundryDataDir',
+            message: 'Foundry Data Directory (Optional, for imports):',
+        }
+    ]);
+
+    const config = {
+        app: {
+            host: answers.appHost,
+            port: answers.appPort,
+            protocol: answers.appProtocol,
+            'chat-history': 100
+        },
+        foundry: {
+            host: answers.foundryHost,
+            port: answers.foundryPort,
+            protocol: answers.foundryProtocol,
+            connector: 'socket',
+            username: answers.foundryUsername,
+            password: answers.foundryPassword,
+            ...(answers.foundryDataDir ? { foundryDataDirectory: answers.foundryDataDir } : {})
+        },
+        debug: {
+            enabled: true,
+            level: 3
+        }
+    };
+
+    const yamlStr = yaml.dump(config);
+    fs.writeFileSync(SETTINGS_PATH, yamlStr, 'utf8');
+
+    console.log('\n\x1b[32mConfiguration saved to settings.yaml\x1b[0m');
+    console.log('You can now run:');
+    console.log('  npm run dev      (Development)');
+    console.log('  npm run build && npm start (Production)');
 }
 
-let coreProcess: ChildProcess | null = null;
-let cliProcess: ChildProcess | null = null;
-
-function cleanup() {
-    console.log('\n[Setup] Shutting down services...');
-    if (coreProcess) coreProcess.kill('SIGINT');
-    if (cliProcess) cliProcess.kill('SIGINT');
-}
-
-process.on('SIGINT', () => { cleanup(); process.exit(0); });
-process.on('SIGTERM', () => { cleanup(); process.exit(0); });
-
-async function startSetup() {
-    console.log('===================================================');
-    console.log('       SheeDelver First-Time Setup Mode            ');
-    console.log('===================================================');
-    console.log('1. Starting Core Service (Headless)...');
-
-    // Start Core Service
-    coreProcess = spawn('npx', ['-y', 'tsx', 'src/server/index.ts'], {
-        stdio: 'inherit',
-        env: { ...process.env, PORT: (port + 1).toString() }
-    });
-
-    // Wait briefly for Core to Init
-    await new Promise(r => setTimeout(r, 2000));
-
-    console.log('\n2. Starting Admin CLI...');
-    console.log('---------------------------------------------------');
-    console.log('INSTRUCTIONS:');
-    console.log('1. Login to Foundry VTT as Gamemaster in your browser.');
-    console.log('2. Open DevTools (F12) -> Network Tab -> Filter "game".');
-    console.log('3. Refresh the page. Click the "game" request.');
-    console.log('4. Copy the "Cookie" value from Request Headers.');
-    console.log('5. In the CLI below, type: scrape <paste_cookie>');
-    console.log('---------------------------------------------------\n');
-
-    // Start CLI
-    cliProcess = spawn('npx', ['-y', 'tsx', 'src/cli/index.ts'], {
-        stdio: 'inherit',
-        env: { ...process.env, PORT: (port + 1).toString() } // connect to local core
-    });
-
-    cliProcess.on('close', (code) => {
-        console.log('[Setup] CLI exited. Shutting down.');
-        cleanup();
-        process.exit(code || 0);
-    });
-}
-
-startSetup().catch(e => {
-    console.error('[Setup] Fatal Error:', e);
-    cleanup();
+main().catch(err => {
+    console.error('Setup failed:', err);
     process.exit(1);
 });

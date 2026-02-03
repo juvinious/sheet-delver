@@ -81,7 +81,10 @@ Handles the low-level Foundry v13 handshake, cookie parsing, and socket.io maint
 ### 4.2 `SystemAdapter` (`src/modules`)
 The translation layer mapping raw Foundry JSON to standardized internal models.
 
-### 4.3 API Communication
+### 4.3 `DirectScraper` (`src/core/foundry`)
+Provides direct filesystem access to Foundry world data (`world.json` and LevelDB databases), enabling offline scraping and setup without a running Foundry server.
+
+### 4.4 API Communication
 The Next.js frontend communicates with the Express Core Service via Next.js rewrite rules (`next.config.ts`):
 ```typescript
 {
@@ -114,9 +117,8 @@ The Express Core Service runs on `app.port + 1` (default: 3001).
 SheetDelver implements a **Strict Multi-Layer State Machine** to ensure high reliability during unstable network conditions or world transitions (e.g., launching or shutting down a world).
 
 ### 6.1 Strict State Separation
-1.  **Socket Connection (Network Layer)**: Tracks the physical Socket.io connection.
-2.  **World State (Application Layer)**: Tracks world availability (`offline`, `setup`, `startup`, `active`).
-3.  **User Session (Identity Layer)**: Tracks authentication (`isLoggedIn`) and persists even during transient socket drops.
+1.  **Strict World State (`Setup` vs `Active`)**: The system enforces a binary distinction between "Setup" (Configuration/Offline) and "Active" (Running World). All intermediate states (`startup`, `connected`) are internal and map to one of these two for the UI.
+2.  **User Session (Identity Layer)**: Authentication (`isLoggedIn`) is tracked separately from connection status. This ensures that even if the socket reconnects, the user's session validity is strictly enforced (e.g., Guest vs Logged In).
 
 ### 6.2 UX Reliability
 - **Reconnecting Overlay**: When the socket drops but the world is still "Active", the UI displays a non-disruptive overlay. This allows the user to stay on their current view (e.g., a character sheet) while the backend automatically restores the connection.

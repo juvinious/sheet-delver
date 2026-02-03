@@ -8,6 +8,8 @@ import { SystemAdapter } from '../../modules/core/interfaces';
 import { SetupScraper, WorldData, CacheData } from './SetupScraper';
 import { logger } from '../logger';
 import { CompendiumCache } from './compendium-cache';
+import fs from 'fs';
+import path from 'path';
 
 export class SocketFoundryClient implements FoundryClient {
     private config: FoundryConfig;
@@ -39,11 +41,9 @@ export class SocketFoundryClient implements FoundryClient {
     }
     // Interface implementation (LEGACY) - Aliases to new strict properties
     get isLoggedIn(): boolean {
-        // As long as we have explicitly established a session, we consider ourselves logged in.
-        // This prevents the frontend from kicking the user during transient socket reconnections
-        // or moments where the userId is being re-confirmed by the server.
-        // Definitive session termination only happens via logout() or a confirmed kick.
-        return this.isExplicitSession;
+        // We are logged in if we have an explicit session flag (persistence)
+        // OR if the socket has identified a valid user ID (truth).
+        return this.isExplicitSession || !!this.userId;
     }
     private worldTitleFromHtml: string | null = null;
     private worldBackgroundFromHtml: string | null = null;
@@ -76,13 +76,11 @@ export class SocketFoundryClient implements FoundryClient {
 
             // Watch for external cache updates (e.g. from Admin CLI)
             // Use simple fs.watch (debounce if possible, but for this simple json simple watch is fine)
-            const fs = require('fs');
-            const path = require('path');
             const CACHE_FILE = path.join(process.cwd(), '.foundry-cache.json');
 
             if (fs.existsSync(CACHE_FILE)) {
                 let fsWait: NodeJS.Timeout | null = null;
-                fs.watch(CACHE_FILE, (event: string, filename: string) => {
+                fs.watch(CACHE_FILE, (event: string, filename: string | null) => {
                     if (filename) {
                         if (fsWait) return;
                         fsWait = setTimeout(() => {

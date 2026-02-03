@@ -40,15 +40,84 @@ SheetDelver follows a **Decoupled Core/Shell** architecture:
 - **Foundry VTT**: Valid instance (v13+ recommended)
 
 ### Configuration
-Create a `settings.yaml` file in the root directory to configure the connection to your Foundry instance.
+Create a `settings.yaml` file in the root directory. This file is ignored by git.
+
+```yaml
+# settings.yaml
+app:
+    host: localhost      # Hostname for the SheetDelver application
+    port: 3000           # Port for SheetDelver to listen on
+    protocol: http       # Protocol for SheetDelver (http/https)
+    chat-history: 100    # Max number of chat messages to retain/display
+
+foundry:
+    host: foundryserver.local # Hostname of your Foundry VTT instance
+    port: 30000               # Port of your Foundry VTT instance
+    protocol: http            # Protocol (http/https)
+    connector: socket         # 'socket' (Headless Sockets)
+    username: "gamemaster"    # Required for Headless connection
+    password: "password"      # Required for Headless connection
+    # Optional: Path to Foundry Data directory for direct world import
+    # foundryDataDirectory: "/path/to/foundryuserdata"
+
+debug:
+    enabled: true        # Enable debug logging
+    level: 3             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
+```
 
 ### Running Locally
-To run the application locally:
-1.  Install dependencies: `npm install`
-2.  Launch both Core and Shell: `npm run dev` (for development) or `npm run build && npm start` (for production).
-3.  Open [http://localhost:3000](http://localhost:3000).
+1.  **Install Dependencies**:
+    ```bash
+    npm install
+    ```
+2.  **Run Setup Wizard**:
+    ```bash
+    npm run setup
+    ```
+    *Follow the prompts to configure your Foundry connection.*
+
+3.  **Start the Application**:
+    -   **Development**:
+        ```bash
+        npm run dev
+        ```
+    -   **Production**:
+        ```bash
+        npm run build && npm start
+        ```
+
+4.  **Deployment (PM2)**:
+    For production environments, use [PM2](https://pm2.keymetrics.io/) with the provided ecosystem file to ensure the application runs from the correct directory.
+
+    ```bash
+    # Install PM2 globally
+    npm install -g pm2
+
+    # Start the application using the ecosystem config
+    pm2 start ecosystem.config.cjs
+
+    # (Optional) Enable startup on boot
+    pm2 startup
+    pm2 save
+    ```
+
+5.  **Open**: Navigate to the URL shown in the setup output (typically [http://localhost:3000](http://localhost:3000)).
 
 *Note: The startup process automatically manages both the backend service and the frontend web server.*
+
+### Admin CLI
+SheetDelver includes a command-line interface for managing the Core Service and world data.
+
+- **Interactive Menu**: `npm run admin`
+  - `i` - Import Worlds (from disk)
+  - `s` - Start World (if already imported/cached)
+  - `c` - Configure/Setup (Manual Cookie)
+
+- **Direct Import**: `npm run admin import <path>`
+  - **Smart Discovery**:
+    - If `<path>` is a **Data Directory** (e.g. `FoundryVTT/Data`), it imports **ALL** worlds found within.
+    - If `<path>` is a **World Directory** (e.g. `FoundryVTT/Data/worlds/my-world`), it imports **only that world**.
+  - *Example*: `npm run admin import /home/user/.local/share/FoundryVTT/Data`
 
 ## Development
 For developers interested in contributing to **SheetDelver**, please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for detailed setup instructions, architecture overview, and guidelines.

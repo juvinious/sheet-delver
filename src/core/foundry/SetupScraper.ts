@@ -387,7 +387,7 @@ export class SetupScraper {
     /**
      * Save world data to cache
      */
-    static async saveCache(worldData: WorldData): Promise<void> {
+    static async saveCache(worldData: WorldData, setActive: boolean = true): Promise<void> {
         let cache: CacheData;
 
         try {
@@ -398,7 +398,29 @@ export class SetupScraper {
         }
 
         cache.worlds[worldData.worldId] = worldData;
-        cache.currentWorldId = worldData.worldId;
+        if (setActive) {
+            cache.currentWorldId = worldData.worldId;
+        }
+
+        await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8');
+    }
+
+    /**
+     * Save multiple worlds to cache without changing active world
+     */
+    static async saveBatchCache(worldsData: WorldData[]): Promise<void> {
+        let cache: CacheData;
+
+        try {
+            const existing = await fs.readFile(CACHE_FILE, 'utf-8');
+            cache = JSON.parse(existing);
+        } catch {
+            cache = { worlds: {}, currentWorldId: null };
+        }
+
+        for (const w of worldsData) {
+            cache.worlds[w.worldId] = w;
+        }
 
         await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8');
     }
