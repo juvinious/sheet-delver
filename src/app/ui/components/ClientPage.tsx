@@ -26,6 +26,24 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
 
+  // Session State
+  const [token, setTokenState] = useState<string | null>(null);
+
+  const setToken = (newToken: string | null) => {
+    setTokenState(newToken);
+    if (newToken) {
+      sessionStorage.setItem('sheet-delver-token', newToken);
+    } else {
+      sessionStorage.removeItem('sheet-delver-token');
+    }
+  };
+
+  // Load token on mount
+  useEffect(() => {
+    const stored = sessionStorage.getItem('sheet-delver-token');
+    if (stored) setTokenState(stored);
+  }, []);
+
   // Login State
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState('');
@@ -50,7 +68,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     }, 45000); // 45 seconds to match backend 30s + buffer
 
     try {
-      const res = await fetch('/api/session/login', {
+      const res = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: selectedUser, password }),
@@ -60,6 +78,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       const data = await res.json();
 
       if (data.success) {
+        setToken(data.token);
         setStep('dashboard');
       } else {
         setLoginMessage('');
@@ -114,7 +133,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     // Unified State Logic
     const determineStep = (data: any, currentStep: string) => {
       const status = data.system?.status;
-      const isLoggedIn = data.system?.isLoggedIn || false;
+      // Using API Authenticated state which strictly tracks explicit user login
+      const isAuthenticated = data.isAuthenticated || false;
 
       // 1. WORLD STATE: Setup / Disconnected / Startup -> Setup Page
       if (status !== 'active') {
@@ -122,7 +142,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       }
 
       // 2. USER STATE (World is Active)
-      if (isLoggedIn) {
+      if (isAuthenticated) {
         return 'dashboard';
       } else {
         return 'login';
@@ -132,9 +152,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     const checkConfig = async () => {
       try {
         setLoading(true);
-        setLoginMessage('Verifying Session...');
+        setLoginMessage('Connecting to server...');
 
-        const res = await fetch('/api/session/connect');
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/status', { headers });
+
+        // Handle connection errors (backend not ready yet)
+        if (!res.ok) {
+          throw new Error(`Server returned ${res.status}`);
+        }
+
         const data = await res.json();
 
         if (data.connected && data.system) {
@@ -158,22 +187,41 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
         if (data.appVersion) setAppVersion(data.appVersion);
 
-      } catch {
-        setStep('setup');
+      } catch (error: any) {
+        // If backend is not ready (ECONNREFUSED), retry after a delay
+        if (error.message?.includes('Failed to fetch') || error.message?.includes('500')) {
+          setLoginMessage('Server is starting up, please wait...');
+          // Retry after 2 seconds
+          setTimeout(() => {
+            if (token !== null) { // Only retry if we're still on the same token state
+              checkConfig();
+            }
+          }, 2000);
+        } else {
+          setStep('setup');
+          setLoading(false);
+          setLoginMessage('');
+        }
       } finally {
-        setLoading(false);
-        setLoginMessage('');
+        // Don't clear loading/message if we're retrying
+        if (!loginMessage.includes('starting up')) {
+          setLoading(false);
+          setLoginMessage('');
+        }
       }
     };
     checkConfig();
 
-  }, []);
+  }, [token]);
 
 
   const fetchActors = useCallback(async () => {
     if (loading) return;
     try {
-      const res = await fetch('/api/actors');
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch('/api/actors', { headers });
       if (res.status === 401) {
         // Rely on Polling to fix state if 401 occurs
         return;
@@ -184,10 +232,10 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         setOwnedActors(data.ownedActors || data.actors || []);
         setReadOnlyActors(data.readOnlyActors || []);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
     }
-  }, [loading]);
+  }, [loading, token]);
 
 
   // Polling for System State Changes (e.g. World Shutdown / Startup)
@@ -196,7 +244,10 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     const interval = setInterval(async () => {
       if (loading) return;
       try {
-        const res = await fetch('/api/session/connect', { cache: 'no-store' });
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch('/api/session/connect', { headers, cache: 'no-store' });
         const data = await res.json();
 
         if (data.system) {
@@ -215,11 +266,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           // We define determineStep inside or reuse logic. 
           // Duplicating for clarity in Effect scope:
           const status = data.system.status;
-          const isLoggedIn = data.system.isLoggedIn;
+          const isAuthenticated = data.isAuthenticated;
 
           let targetStep = 'setup';
           if (status === 'active') {
-            targetStep = isLoggedIn ? 'dashboard' : 'login';
+            targetStep = isAuthenticated ? 'dashboard' : 'login';
           }
 
           // Transition
@@ -248,7 +299,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       }
     }, 1000); // 1s poll
     return () => clearInterval(interval);
-  }, [step, loading, system, users]);
+  }, [step, loading, system, users, token]);
 
   // Removed old Polling for User List Recovery (Race Condition Fix) - handled in main poll
 
@@ -579,6 +630,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                   setLoading={setLoading}
                   setLoginMessage={setLoginMessage}
                   theme={theme}
+                  token={token}
                 />
               )}
 
@@ -640,7 +692,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       </div>
 
       {/* Persistent Player List when logged in */}
-      {(step === 'dashboard') && <PlayerList />}
+      {(step === 'dashboard') && <PlayerList token={token} />}
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 

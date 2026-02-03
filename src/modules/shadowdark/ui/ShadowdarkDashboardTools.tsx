@@ -5,9 +5,10 @@ interface ShadowdarkDashboardToolsProps {
     setLoading: (loading: boolean) => void;
     setLoginMessage: (msg: string) => void;
     theme: any;
+    token: string | null;
 }
 
-export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, theme }: ShadowdarkDashboardToolsProps) {
+export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, theme, token }: ShadowdarkDashboardToolsProps) {
     const [showImport, setShowImport] = useState(false);
 
     const handleImportSuccess = (id: string) => {
@@ -51,6 +52,7 @@ export default function ShadowdarkDashboardTools({ setLoading, setLoginMessage, 
                 <ShadowdarkImportModal
                     onClose={() => setShowImport(false)}
                     onImportSuccess={handleImportSuccess}
+                    token={token}
                 />
             )}
         </div>

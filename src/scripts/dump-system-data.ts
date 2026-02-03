@@ -1,6 +1,6 @@
 
-import { FoundryClient } from '../lib/foundry/client';
-import { loadConfig } from '../lib/config';
+import { createFoundryClient } from '../core/foundry';
+import { loadConfig } from '../core/config';
 
 async function run() {
     console.log('Loading configuration...');
@@ -14,34 +14,28 @@ async function run() {
 
     console.log(`Connecting to Foundry at ${url}...`);
 
-    const client = new FoundryClient({
-        url: url,
-        headless: true
+    const client = createFoundryClient({
+        url: url
     });
 
     try {
         await client.connect();
 
         // Manual Login
-        if (username && client.page) {
+        if (username) {
             console.log(`Attempting login as ${username}...`);
             try {
-                // Wait for select
-                await client.page.waitForSelector('select[name="userid"]', { timeout: 10000 });
-                await client.page.selectOption('select[name="userid"]', { label: username });
-                if (password) {
-                    await client.page.fill('input[name="password"]', password);
-                }
-                await client.page.click('button[name="join"]');
-                console.log('Clicked Join...');
-            } catch {
-                console.log('Login elements not found or already logged in (or no auth needed). Continuing...');
+                await client.login(username, password);
+                console.log('Logged in...');
+            } catch (e: any) {
+                console.warn(`Login failed or already logged in: ${e.message}`);
             }
         }
 
-        // Wait longer (20s)
-        console.log('Waiting for world to load (20s)...');
-        await client.page?.waitForTimeout(20000);
+        // Wait to ensure systems are ready?
+        // Socket login usually waits for Hook 'ready', so extra wait might be redundant but safe
+        console.log('Waiting for world sync (5s)...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
 
         const systemData = await client.evaluate(() => {
             // @ts-ignore
@@ -83,7 +77,7 @@ async function run() {
     } catch (e) {
         console.error('Error during dump:', e);
     } finally {
-        await client.close();
+        client.disconnect();
     }
 }
 

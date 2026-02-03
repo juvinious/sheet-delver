@@ -19,6 +19,20 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const currentUserRef = useRef<string | null>(null);
     const foundryUrlRef = useRef<string | undefined>(undefined);
     const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [token, setToken] = useState<string | null>(null);
+
+    // Load Token
+    useEffect(() => {
+        const stored = sessionStorage.getItem('sheet-delver-token');
+        if (stored) setToken(stored);
+    }, []);
+
+    const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        const currentToken = token || sessionStorage.getItem('sheet-delver-token');
+        if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
+        return fetch(input, { ...init, headers });
+    }, [token]);
 
     // Chat State
     const [messages, setMessages] = useState<any[]>([]);
@@ -32,10 +46,10 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         addToast(content, type, { html: true });
     }, [addToast]);
 
-    const fetchActor = useCallback(async (id: string, silent = false) => {
+    const fetchWithAuthActor = useCallback(async (id: string, silent = false) => {
         if (!silent) setLoading(true);
         try {
-            const res = await fetch(`/api/actors/${id}`);
+            const res = await fetchWithAuth(`/api/actors/${id}`);
 
             // Handle Disconnected State (503)
             if (res.status === 503) {
@@ -76,9 +90,9 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const lastSeenTimestamp = useRef<number>(0);
 
-    const fetchChat = useCallback(async () => {
+    const fetchWithAuthChat = useCallback(async () => {
         try {
-            const res = await fetch('/api/chat');
+            const res = await fetchWithAuth('/api/chat');
             const data = await res.json();
             if (data.messages) {
                 const msgs = data.messages;
@@ -114,28 +128,28 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     useEffect(() => {
         // Poll for chat
-        const interval = setInterval(fetchChat, 3000);
-        fetchChat();
+        const interval = setInterval(fetchWithAuthChat, 3000);
+        fetchWithAuthChat();
         return () => clearInterval(interval);
-    }, [fetchChat]);
+    }, [fetchWithAuthChat]);
 
     useEffect(() => {
         if (!id) return;
 
-        // Initial fetch
-        fetchActor(id);
+        // Initial fetchWithAuth
+        fetchWithAuthActor(id);
 
         // Poll for updates
         const interval = setInterval(() => {
-            fetchActor(id, true); // Pass true to silent loading
+            fetchWithAuthActor(id, true); // Pass true to silent loading
         }, 5000);
 
         return () => clearInterval(interval);
-    }, [id, fetchActor]);
+    }, [id, fetchWithAuthActor]);
 
     const handleChatSend = async (message: string) => {
         try {
-            const res = await fetch('/api/chat/send', {
+            const res = await fetchWithAuth('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message })
@@ -145,7 +159,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 if (data.type !== 'roll') {
                     addNotification('Message sent', 'info');
                 }
-                fetchChat(); // Update chat immediately
+                fetchWithAuthChat(); // Update chat immediately
             } else {
                 addNotification('Failed: ' + data.error, 'error');
             }
@@ -157,7 +171,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const handleRoll = async (type: string, key: string, options: any = {}) => {
         if (!actor) return;
         try {
-            const res = await fetch(`/api/actors/${actor.id}/roll`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/roll`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ type, key, options })
@@ -171,7 +185,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 } else {
                     addNotification(`${data.label || 'Item'} used`, 'success');
                 }
-                fetchChat(); // Update chat immediately
+                fetchWithAuthChat(); // Update chat immediately
             } else {
                 addNotification('Roll failed: ' + data.error, 'error');
             }
@@ -214,7 +228,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         }
 
         try {
-            const res = await fetch(`/api/actors/${actor.id}/update`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ [path]: value })
@@ -224,22 +238,22 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             if (data.success) {
                 // Squelch notification for frequent updates like HP, or make it subtle?
                 // addNotification('Saved', 'info'); 
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
             } else {
                 addNotification('Update failed: ' + data.error, 'error');
                 // Revert on failure
-                fetchActor(actor.id, true); // Fetch true state
+                fetchWithAuthActor(actor.id, true); // Fetch true state
             }
         } catch (e: any) {
             addNotification('Error updating: ' + e.message, 'error');
-            fetchActor(actor.id, true);
+            fetchWithAuthActor(actor.id, true);
         }
     };
 
     const handleToggleEffect = async (effectId: string, enabled: boolean) => {
         if (!actor) return;
         try {
-            const res = await fetch(`/api/actors/${actor.id}/effects`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/effects`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ effectId, updateData: { disabled: !enabled } })
@@ -247,7 +261,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             const data = await res.json();
             if (data.success) {
                 // Update local state optimistically
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
                 addNotification(enabled ? 'Effect Enabled' : 'Effect Disabled', 'success');
             } else {
                 addNotification('Failed to toggle effect: ' + data.error, 'error');
@@ -260,14 +274,14 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const handleCreateItem = async (itemData: any) => {
         if (!actor) return;
         try {
-            const res = await fetch(`/api/actors/${actor.id}/items`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/items`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(itemData)
             });
             const data = await res.json();
             if (data.success) {
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
                 addNotification(`Created ${itemData.name}`, 'success');
             } else {
                 addNotification('Failed to create item: ' + data.error, 'error');
@@ -283,12 +297,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             // 1. Handle Deleted Effects first (if any)
             if (deletedEffectIds && deletedEffectIds.length > 0) {
                 await Promise.all(deletedEffectIds.map(effId =>
-                    fetch(`/api/actors/${actor.id}/effects?effectId=${effId}`, { method: 'DELETE' })
+                    fetchWithAuth(`/api/actors/${actor.id}/effects?effectId=${effId}`, { method: 'DELETE' })
                 ));
             }
 
             // 2. Update Item
-            const res = await fetch(`/api/actors/${actor.id}/items`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/items`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(itemData)
@@ -296,7 +310,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             const data = await res.json();
 
             if (data.success) {
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
                 addNotification(`Updated ${itemData.name}`, 'success');
             } else {
                 addNotification('Failed to update item: ' + data.error, 'error');
@@ -310,14 +324,14 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         if (!actor) return;
         // Confirmation is handled by UI component now
         try {
-            const res = await fetch(`/api/actors/${actor.id}/effects?effectId=${effectId}`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/effects?effectId=${effectId}`, {
                 method: 'DELETE'
             });
             const data = await res.json();
             if (data.success) {
                 const newEffects = actor.effects.filter((e: any) => e.id !== effectId);
                 setActor({ ...actor, effects: newEffects });
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
                 addNotification('Effect Deleted', 'success');
             } else {
                 addNotification('Failed to delete effect: ' + data.error, 'error');
@@ -331,15 +345,15 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         if (!actor) return;
         // Confirmation is handled by UI component now
         try {
-            const res = await fetch(`/api/actors/${actor.id}/items?itemId=${itemId}`, {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/items?itemId=${itemId}`, {
                 method: 'DELETE'
             });
             const data = await res.json();
             if (data.success) {
-                // Optimistic update locally if possible, or just re-fetch
+                // Optimistic update locally if possible, or just re-fetchWithAuth
                 // const newItems = actor.items?.filter((i: any) => i.id !== itemId);
                 // setActor({...actor, items: newItems}); // Shallow might not work with complex struct
-                fetchActor(actor.id, true);
+                fetchWithAuthActor(actor.id, true);
                 addNotification('Item Deleted', 'success');
             } else {
                 addNotification('Failed to delete item: ' + data.error, 'error');
@@ -415,7 +429,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     />
 
                     {/* Player List */}
-                    <PlayerList />
+                    <PlayerList token={token} />
                 </>
             )}
 

@@ -43,6 +43,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
                 app: {
                     host: app.host || 'localhost',
                     port: app.port || 3000,
+                    apiPort: app['api-port'] || 3001,
                     protocol: app.protocol || 'http',
                     chatHistory: app['chat-history'] || 100,
                     version: version

@@ -1091,8 +1091,8 @@ export class SocketFoundryClient implements FoundryClient {
         const scraperCache = this.cachedWorldData;
 
         const sysData: SystemInfo = {
-            id: scraperCache?.systemId || cached.id || 'shadowdark',
-            title: cached.title || (scraperCache?.systemId ? scraperCache.systemId : 'Shadowdark RPG'),
+            id: scraperCache?.systemId || cached.id || 'generic',
+            title: cached.title || (scraperCache?.systemId ? scraperCache.systemId : 'Unknown System'),
             version: cached.version || '1.0.0',
             worldTitle: scraperCache?.worldTitle || this.worldTitleFromHtml || cached.title || this.url,
             worldDescription: scraperCache?.worldDescription || scraperCache?.data?.description || null,
@@ -1126,7 +1126,7 @@ export class SocketFoundryClient implements FoundryClient {
                     sysData.id = sysResponse.result[0].value;
 
                     // Update title if it's still the default but we have a different system ID
-                    if (sysData.id !== 'shadowdark' && sysData.title === 'Shadowdark RPG') {
+                    if (sysData.id !== 'generic' && sysData.title === 'Unknown System') {
                         // Simple capitalization (e.g. morkborg -> Morkborg)
                         sysData.title = sysData.id.charAt(0).toUpperCase() + sysData.id.slice(1);
                     }

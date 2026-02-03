@@ -6,6 +6,7 @@ import { useState } from 'react';
 interface ShadowdarkImportModalProps {
     onClose: () => void;
     onImportSuccess: (id: string) => void;
+    token: string | null;
 }
 
 interface ImportError {
@@ -16,7 +17,7 @@ interface ImportError {
 
 import { createPortal } from 'react-dom';
 
-export default function ShadowdarkImportModal({ onClose, onImportSuccess }: ShadowdarkImportModalProps) {
+export default function ShadowdarkImportModal({ onClose, onImportSuccess, token }: ShadowdarkImportModalProps) {
     const [jsonInput, setJsonInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -29,7 +30,9 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess }: Shad
         if (importedId) {
             // Delete the actor if we cancel after creating it
             try {
-                await fetch(`/api/actors/${importedId}`, { method: 'DELETE' });
+                const headers: any = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+                await fetch(`/api/actors/${importedId}`, { method: 'DELETE', headers });
             } catch (e) {
                 console.error("Failed to cleanup actor", e);
             }
@@ -64,9 +67,12 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess }: Shad
                 throw new Error("Invalid JSON format");
             }
 
+            const headers: any = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const res = await fetch('/api/modules/shadowdark/import', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(parsed)
             });
 

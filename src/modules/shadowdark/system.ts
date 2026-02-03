@@ -353,6 +353,16 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 documentTypes: s.documentTypes,
                 template: s.template,
 
+                // Dashboard Configuration
+                config: {
+                    actorCard: {
+                        // Subtext paths to display on actor cards
+                        // Format: ["path.to.field", "another.path"]
+                        // For Shadowdark: Show "Level X • ClassName"
+                        subtext: ['level.value', 'details.class']
+                    }
+                },
+
                 classes: [] as any[],
                 ancestries: [] as any[],
                 backgrounds: [] as any[],

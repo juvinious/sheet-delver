@@ -6,9 +6,10 @@ interface SystemToolsProps {
     setLoading: (loading: boolean) => void;
     setLoginMessage: (msg: string) => void;
     theme: any;
+    token: string | null;
 }
 
-export default function SystemTools({ systemId, setLoading, setLoginMessage, theme }: SystemToolsProps) {
+export default function SystemTools({ systemId, setLoading, setLoginMessage, theme, token }: SystemToolsProps) {
 
     const ToolsComponent = getSystemToolsComponent(systemId);
 
@@ -16,7 +17,8 @@ export default function SystemTools({ systemId, setLoading, setLoginMessage, the
         return React.createElement(ToolsComponent, {
             setLoading,
             setLoginMessage,
-            theme
+            theme,
+            token
         });
     }
 

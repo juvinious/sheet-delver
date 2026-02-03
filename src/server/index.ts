@@ -12,17 +12,45 @@ async function startServer() {
         process.exit(1);
     }
 
-    const { host, port } = config.app || { host: 'localhost', port: 3000 };
-    const corePort = process.env.PORT ? parseInt(process.env.PORT) : (port + 1);
+    const { host, port, apiPort } = config.app || { host: 'localhost', port: 3000, apiPort: 3001 };
+    const corePort = process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort;
 
     const app = express();
     app.use(express.json());
     app.use(cors());
 
-    // Initialize Foundry Client
-    const client = createFoundryClient({
+    // Initialize Session Manager with Service Account
+    const { SessionManager } = await import('../core/session/SessionManager');
+    const sessionManager = new SessionManager({
         ...config.foundry
+        // Service account credentials from settings.yaml are used for system client
     });
+
+    // Start Service Account Client for World Verification
+    await sessionManager.initialize();
+
+    // --- Middleware: Session Authentication ---
+    const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            // For now, fail open? No, strictly require session for data.
+            // Exception: If we want to support the "Global Service Account" legacy mode...
+            // User requested BYPASSING it. So strict error.
+            return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
+        }
+
+        const sessionId = authHeader.split(' ')[1];
+        const session = sessionManager.getSession(sessionId);
+
+        if (!session) {
+            return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
+        }
+
+        // Attach client to request
+        (req as any).foundryClient = session.client;
+        (req as any).userSession = session;
+        next();
+    };
 
     // --- App API (Public/Proxy-bound) ---
     // This API serves the frontend via the Next.js proxy
@@ -35,16 +63,35 @@ async function startServer() {
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
 
-            const system = await client.getSystem();
-            const users = await client.getUsersDetails();
-            const isLoggedIn = client.isLoggedIn;
-            const connected = client.isConnected;
+            // Use System Client (Guest) for Status
+            const systemClient = sessionManager.getSystemClient();
+
+            // Optimistic System Fetch (if connected)
+            let system, users;
+            try {
+                system = await systemClient.getSystem();
+                users = await systemClient.getUsersDetails();
+            } catch (e) {
+                // If guest client isn't fully ready, use cached/default
+            }
+
+            const connected = systemClient.isConnected;
+
+            // Check if Request has a valid session (for "My Dashboard" vs "Login Screen")
+            let isAuthenticated = false;
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.split(' ')[1];
+                if (sessionManager.isValidSession(token)) {
+                    isAuthenticated = true;
+                }
+            }
 
             res.json({
                 connected,
-                isLoggedIn,
-                users,
-                system,
+                isAuthenticated,
+                users: users || [],
+                system: system || {},
                 url: config.foundry.url,
                 appVersion: '0.5.0'
             });
@@ -61,49 +108,43 @@ async function startServer() {
     appRouter.post('/login', async (req, res) => {
         const { username, password } = req.body;
         try {
-            await client.login(username, password);
-            res.json({ success: true, userId: client.userId });
+            // Create a NEW session for this user
+            const session = await sessionManager.createSession(username, password);
+            res.json({ success: true, token: session.sessionId, userId: session.userId });
         } catch (error: any) {
             res.status(401).json({ success: false, error: error.message });
         }
     });
 
     appRouter.post('/logout', async (req, res) => {
-        try {
-            await client.logout();
-            res.json({ success: true });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.split(' ')[1];
+            await sessionManager.destroySession(token);
         }
+        res.json({ success: true });
     });
+
+    // --- Protected Routes (Require Valid Session) ---
+    appRouter.use(authenticateSession);
 
     appRouter.get('/actors', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
+
             const systemInfo = await client.getSystem();
             const adapter = getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
-            const currentUserId = client.userId;
-            const users = systemInfo.users?.list || [];
-            const currentUser = users.find((u: any) => (u._id || u.id) === currentUserId);
-            const isGM = currentUser?.role >= 4;
-
             const rawActors = await client.getActors();
-            const owned: any[] = [];
-            const readOnly: any[] = [];
+
+            // Filter is handled by Foundry permission naturally for the user?
+            // Yes, standard User can only see what they own/observe.
+            // Client.getActors() returns what the socket gives.
 
             const { CompendiumCache } = await import('../core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
             if (!cache.hasLoaded()) await cache.initialize(client);
-
-            for (const actor of rawActors) {
-                const ownership = actor.ownership || {};
-                const isOwner = isGM || (currentUserId && ownership[currentUserId] >= 3);
-                const isObserver = (currentUserId && ownership[currentUserId] >= 2) || ownership.default >= 2;
-
-                if (isOwner) owned.push(actor);
-                else if (isObserver) readOnly.push(actor);
-            }
 
             const normalize = async (actorList: any[]) => Promise.all(actorList.map(async (actor: any) => {
                 if (!actor.computed) actor.computed = {};
@@ -112,10 +153,51 @@ async function startServer() {
                 return adapter.normalizeActorData(actor);
             }));
 
+            // We treat all returned actors as "visible"
+            // Filter by ownership and type
+            const currentUserId = client.userId;
+
+            // DEBUG: Log actor types to identify NPC patterns
+            const actorTypes = new Set(rawActors.map((a: any) => a.type));
+            const actorFolders = new Set(rawActors.map((a: any) => a.folder).filter(Boolean));
+            logger.info(`Core Service | Actor types found: ${Array.from(actorTypes).join(', ')}`);
+            logger.info(`Core Service | Actor folders found: ${Array.from(actorFolders).join(', ')}`);
+            logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
+
+            // Owned actors (ownership level 3 = OWNER)
+            const owned = rawActors.filter((a: any) =>
+                a.ownership?.[currentUserId!] === 3 || a.ownership?.default === 3
+            );
+
+            // Observable actors (ownership level 1 or 2 = LIMITED/OBSERVER)
+            // EXCLUDE NPCs/monsters - only show player characters
+            const observable = rawActors.filter((a: any) => {
+                const isOwned = owned.includes(a);
+                if (isOwned) return false;
+
+                const userPermission = a.ownership?.[currentUserId!] || a.ownership?.default || 0;
+                const isObservable = userPermission >= 1; // LIMITED or OBSERVER
+
+                // CRITICAL: Exclude NPCs - Shadowdark uses 'NPC' (uppercase) and 'Player' types
+                const actorType = (a.type || '').toLowerCase();
+                const isNPC = actorType === 'npc' || actorType === 'monster' || actorType === 'vehicle';
+
+                return isObservable && !isNPC;
+            });
+
+            // Also filter NPCs from owned list for non-GM users
+            const ownedCharacters = owned.filter((a: any) => {
+                const actorType = (a.type || '').toLowerCase();
+                const isNPC = actorType === 'npc' || actorType === 'monster' || actorType === 'vehicle';
+                return !isNPC;
+            });
+
+            logger.info(`Core Service | Filtered actors - Owned: ${ownedCharacters.length}, Observable: ${observable.length}, Total raw: ${rawActors.length}`);
+
             res.json({
-                actors: await normalize(owned),
-                ownedActors: await normalize(owned),
-                readOnlyActors: await normalize(readOnly),
+                actors: await normalize(ownedCharacters), // Legacy field
+                ownedActors: await normalize(ownedCharacters),
+                readOnlyActors: await normalize(observable),
                 system: systemInfo.id
             });
         } catch (error: any) {
@@ -126,6 +208,7 @@ async function startServer() {
 
     appRouter.get('/actors/:id', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const actor = await client.getActor(req.params.id);
             if (!actor || actor.error) {
                 return res.status(actor?.error ? 503 : 404).json({ error: actor?.error || 'Actor not found' });
@@ -172,6 +255,7 @@ async function startServer() {
 
     appRouter.delete('/actors/:id', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             await client.deleteActor(req.params.id);
             res.json({ success: true });
         } catch (error: any) {
@@ -185,6 +269,7 @@ async function startServer() {
 
     appRouter.patch('/actors/:id', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const result = await client.updateActor(req.params.id, req.body);
             res.json({ success: true, result });
         } catch (error: any) {
@@ -194,6 +279,7 @@ async function startServer() {
 
     appRouter.post('/actors/:id/roll', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const { type, key, options } = req.body;
             const actor = await client.getActor(req.params.id);
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
@@ -226,6 +312,7 @@ async function startServer() {
 
     appRouter.post('/actors/:id/items', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const newItemId = await client.createActorItem(req.params.id, req.body);
             res.json({ success: true, id: newItemId });
         } catch (error: any) {
@@ -235,6 +322,7 @@ async function startServer() {
 
     appRouter.put('/actors/:id/items', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             await client.updateActorItem(req.params.id, req.body);
             res.json({ success: true });
         } catch (error: any) {
@@ -244,6 +332,7 @@ async function startServer() {
 
     appRouter.delete('/actors/:id/items', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const itemId = req.query.itemId as string;
             if (!itemId) return res.status(400).json({ success: false, error: 'Missing itemId' });
             await client.deleteActorItem(req.params.id, itemId);
@@ -255,6 +344,7 @@ async function startServer() {
 
     appRouter.get('/actors/:id/predefined-effects', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const actor = await client.getActor(req.params.id);
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
             const adapter = getAdapter(actor.systemId);
@@ -269,6 +359,7 @@ async function startServer() {
 
     appRouter.post('/actors/:id/predefined-effects', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const { effectKey } = req.body;
             const success = await client.toggleStatusEffect(req.params.id, effectKey);
             res.json({ success });
@@ -279,6 +370,7 @@ async function startServer() {
 
     appRouter.post('/actors/:id/effects', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const { effectId, updateData } = req.body;
             await client.updateActorEffect(req.params.id, effectId, updateData);
             res.json({ success: true });
@@ -289,6 +381,7 @@ async function startServer() {
 
     appRouter.delete('/actors/:id/effects', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const effectId = req.query.effectId as string;
             if (!effectId) return res.status(400).json({ success: false, error: 'Missing effectId' });
             await client.deleteActorEffect(req.params.id, effectId);
@@ -300,6 +393,7 @@ async function startServer() {
 
     appRouter.get('/chat', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const limit = parseInt(req.query.limit as string) || config.app.chatHistory || 25;
             const messages = await client.getChatLog(limit);
             res.json({ messages });
@@ -310,6 +404,7 @@ async function startServer() {
 
     appRouter.post('/chat/send', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const { message } = req.body;
             if (!message) return res.status(400).json({ error: 'Message is empty' });
 
@@ -327,6 +422,7 @@ async function startServer() {
 
     appRouter.get('/foundry/document', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const uuid = req.query.uuid as string;
             if (!uuid) return res.status(400).json({ error: 'Missing uuid' });
 
@@ -346,6 +442,7 @@ async function startServer() {
 
     appRouter.get('/users', async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const users = await client.getUsersDetails();
             res.json({ users });
         } catch (error: any) {
@@ -356,6 +453,7 @@ async function startServer() {
     // Modules Catch-all (Regex used to avoid Express 5/path-to-regexp v8 string parsing issues)
     appRouter.all(/\/modules\/([^\/]+)\/(.*)/, async (req, res) => {
         try {
+            const client = (req as any).foundryClient;
             const systemId = (req.params as any)[0];
             const routePath = (req.params as any)[1];
             const { serverModules } = await import('../modules/core/server-modules');
@@ -414,6 +512,8 @@ async function startServer() {
     });
 
     adminRouter.get('/status', async (req, res) => {
+        // Use system client for admin status
+        const client = sessionManager.getSystemClient();
         res.json({
             socket: client.isConnected,
             worldState: (client as any).worldState,
@@ -425,6 +525,8 @@ async function startServer() {
 
     adminRouter.get('/worlds', async (req, res) => {
         try {
+            // Use system client
+            const client = sessionManager.getSystemClient();
             // Try live system info first
             let worlds: any[] = [];
             try {
@@ -473,6 +575,7 @@ async function startServer() {
 
         try {
             const { SetupScraper } = await import('../core/foundry/SetupScraper');
+            const client = sessionManager.getSystemClient();
             logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
 
             // Scrape
@@ -493,6 +596,7 @@ async function startServer() {
     adminRouter.post('/world/launch', async (req, res) => {
         const { worldId } = req.body;
         try {
+            const client = sessionManager.getSystemClient();
             await client.launchWorld(worldId);
             res.json({ success: true, message: `Request to launch world ${worldId} sent.` });
         } catch (error: any) {
@@ -502,6 +606,7 @@ async function startServer() {
 
     adminRouter.post('/world/shutdown', async (req, res) => {
         try {
+            const client = sessionManager.getSystemClient();
             await client.shutdownWorld();
             res.json({ success: true, message: 'Request to shut down current world sent.' });
         } catch (error: any) {
@@ -517,20 +622,6 @@ async function startServer() {
         console.log(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
         console.log(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
         console.log(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);
-
-        // Connect to Foundry in background after listener is up
-        console.log(`Core Service | Initializing Foundry connection to ${config.foundry.url}...`);
-
-        async function connectWithRetry() {
-            try {
-                await client.connect();
-                logger.info('Core Service | Foundry connected successfully.');
-            } catch (e: any) {
-                logger.error(`Core Service | Initial connection failed: ${e.message}. Retrying in 5s...`);
-                setTimeout(connectWithRetry, 5000);
-            }
-        }
-        connectWithRetry();
     });
 }
 

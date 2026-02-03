@@ -12,14 +12,18 @@ interface UserDetail {
     characterName?: string;
 }
 
-export default function PlayerList() {
+export default function PlayerList({ token }: { token: string | null }) {
     const [users, setUsers] = useState<UserDetail[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
     const fetchUsers = async () => {
         try {
-            const res = await fetch('/api/users');
+            const headers: any = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            // /api/users is public-ish but better with token if available? 
+            // Actually /api/users shows status.
+            const res = await fetch('/api/users', { headers });
             const data = await res.json();
             if (data.users) {
                 setUsers(data.users);
@@ -33,10 +37,13 @@ export default function PlayerList() {
         fetchUsers();
         const interval = setInterval(fetchUsers, 5000); // Poll every 5 seconds
         return () => clearInterval(interval);
-    }, []);
+    }, [token]);
 
-    // Click Outside Handler
+    // ...
+
+    // Click Outside Handler logic remains ...
     useEffect(() => {
+        // ...
         const handleClickOutside = (event: MouseEvent) => {
             if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
@@ -64,6 +71,7 @@ export default function PlayerList() {
                 transition-all duration-300 origin-bottom-left
                 ${isOpen ? 'w-[240px] opacity-100 scale-100 mb-0 translate-y-0' : 'w-[0px] h-[0px] opacity-0 scale-90 -mb-10 translate-y-10'}
             `}>
+                {/* ... Header ... */}
                 <div className="bg-neutral-900/50 p-2 border-b border-white/5 flex justify-between items-center">
                     <span className="text-[10px] uppercase font-bold tracking-widest text-neutral-400 pl-1">
                         Players ({activeCount}/{users.length})
@@ -94,7 +102,9 @@ export default function PlayerList() {
                     <button
                         onClick={async () => {
                             try {
-                                await fetch('/api/session/logout', { method: 'POST' });
+                                const headers: any = {};
+                                if (token) headers['Authorization'] = `Bearer ${token}`;
+                                await fetch('/api/logout', { method: 'POST', headers });
                                 window.location.reload();
                             } catch (e) {
                                 console.error(e);

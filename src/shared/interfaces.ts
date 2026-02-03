@@ -51,6 +51,7 @@ export interface AppConfig {
     app: {
         host: string;
         port: number;
+        apiPort: number;
         protocol: string;
         chatHistory: number;
         version: string;
