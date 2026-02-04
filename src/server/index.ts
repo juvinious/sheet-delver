@@ -496,6 +496,60 @@ async function startServer() {
         }
     });
 
+    appRouter.get('/journals', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const currentUserId = client.userId;
+            const allJournals = await client.getJournals();
+
+            // Filter by ownership (1 = Limited, 2 = Observer, 3 = Owner)
+            // GM (role 4) sees all, but client.userId will match their ownership usually.
+            // Wait, standard foundry permission check:
+            // If user is GM -> sees all.
+            // If not GM -> must have ownership[userId] >= 1 OR default >= 1.
+
+            // We can check if current user is GM from client.getUsersDetails() but better to trust ownership map if we map it right?
+            // Actually, for GM users, the ownership map might not explicitly say "3", they just have override.
+
+            // Let's get the user's role to be safe
+            // We can't easily get it synchronously here unless we cache it or fetch it.
+            // client.getUsersDetails() returns cached users.
+
+            const users = await client.getUsersDetails();
+            const currentUser = users.find((u: any) => u.id === currentUserId);
+            const isGM = currentUser?.isGM || false;
+
+            const visibleJournals = allJournals.filter((j: any) => {
+                if (isGM) return true;
+                const level = j.ownership?.[currentUserId] ?? j.ownership?.default ?? 0;
+                return level >= 1; // Show if at least Limited
+            });
+
+            res.json({ journals: visibleJournals });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/journals/:id', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const uuid = req.params.id;
+            // First try by ID from the full list (efficient if cached, but we don't cache journals yet)
+            // Or use dispatch with query
+            const response = await client.dispatchDocumentSocket('JournalEntry', 'get', {
+                query: { _id: uuid },
+                broadcast: false
+            });
+            const doc = response.result?.[0];
+
+            if (!doc) return res.status(404).json({ error: 'Journal not found' });
+            res.json(doc);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     appRouter.get('/foundry/document', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -523,6 +577,24 @@ async function startServer() {
             res.json({ users });
         } catch (error: any) {
             res.status(500).json({ error: error.message });
+        }
+    });
+
+    // --- Shared Content API ---
+    appRouter.get('/shared-content', (req, res) => {
+        try {
+            // CRITICAL: Use the *User's* client to strip out shared content relevant to THEM.
+            // If the GM shares with "User A", only User A's socket receives the event.
+            // The System Client (Service Account) would miss it unless it was the target or it was a broadcast.
+            const client = (req as any).foundryClient || sessionManager.getSystemClient();
+
+            // Note: SocketClient logic stores the last received 'shareImage'/'showEntry' event.
+            // This works perfectly for the specific user's view.
+            const content = (client as any).getSharedContent();
+            res.json(content || { type: null });
+        } catch (error: any) {
+            console.error('Error fetching shared content:', error);
+            res.status(500).json({ error: 'Internal server error' });
         }
     });
 

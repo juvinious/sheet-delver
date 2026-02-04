@@ -23,7 +23,7 @@ export default function PlayerList({ token, onLogout }: { token: string | null; 
             if (token) headers['Authorization'] = `Bearer ${token}`;
             // /api/users is public-ish but better with token if available? 
             // Actually /api/users shows status.
-            const res = await fetch('/api/users', { headers });
+            const res = await fetch('/api/users', { headers, cache: 'no-store' });
             const data = await res.json();
             if (data.users) {
                 setUsers(data.users);

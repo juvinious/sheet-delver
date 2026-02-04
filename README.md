@@ -5,6 +5,13 @@
 
 A modern, external character sheet interface for [Foundry VTT](https://foundryvtt.com/).
 
+## Key Features
+- **Real-Time Interactions**: Instant display of images and journals shared by the GM ("Show to Players"), with support for both broadcast and targeted sharing.
+- **Global Chat**: Integrated chat with roll parsing and dice support, accessible from any view.
+- **User Monitoring**: Real-time list of active players and connection status.
+- **Resilient Connection**: High-stability socket client with auto-reconnection and a dedicated "Reconnecting" overlay for non-disruptive UX.
+- **Mobile Friendly**: Optimized touch targets and responsive layouts.
+
 ## Supported Systems
 
 ### Shadowdark RPG
@@ -15,8 +22,6 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
 - **Character Import**: Import characters via JSON from Shadowdarklings.
-- **Mobile Friendly**: Optimized touch targets and layout.
-- **Resilient Connection**: High-stability socket client with auto-reconnection and a dedicated "Reconnecting" overlay for non-disruptive UX.
 
 ## Planned System Support
 - **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).

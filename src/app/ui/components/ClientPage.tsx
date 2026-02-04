@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import PlayerList from './PlayerList';
+import { SharedContentModal } from './SharedContentModal';
 import { useNotifications, NotificationContainer } from './NotificationSystem';
 import SystemTools from './SystemTools';
 import LoadingModal from './LoadingModal';
@@ -677,6 +678,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         {
           step === 'dashboard' && (
             <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
+              {/* Overlays */}
+              <SharedContentModal token={token} foundryUrl={url} />
+
               {/* Header / Status */}
               <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
                 <div>

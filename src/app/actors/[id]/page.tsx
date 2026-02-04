@@ -10,6 +10,7 @@ import { processHtmlContent } from '@/modules/core/utils';
 import { getMatchingAdapter } from '@/modules/core/registry';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import LoadingModal from '@/app/ui/components/LoadingModal';
+import { SharedContentModal } from '@/app/ui/components/SharedContentModal';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -379,6 +380,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
 
 
+    const handleLogout = () => {
+        sessionStorage.removeItem('sheet-delver-token');
+        setToken(null);
+        router.push('/');
+    };
+
     return (
         <main className="min-h-screen font-sans selection:bg-amber-900 pb-20">
             {/* Navigation Header - Hide for Mork Borg? or Style it? */}
@@ -429,12 +436,15 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     />
 
                     {/* Player List */}
-                    <PlayerList token={token} />
+                    <PlayerList token={token} onLogout={handleLogout} />
                 </>
             )}
 
             {/* Notifications Container */}
             <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
+
+            {/* Shared Content Overlay */}
+            <SharedContentModal token={token} foundryUrl={actor?.foundryUrl || ''} />
 
             {/* Deletion Modal */}
             {showDeleteModal && (

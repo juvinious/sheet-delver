@@ -24,8 +24,7 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-require-imports": "off",
       "react-hooks/set-state-in-effect": "off",
       "@typescript-eslint/no-unsafe-function-type": "off",
-      "prefer-const": "warn",
-      "jsx-a11y/alt-text": "warn"
+      "prefer-const": "warn"
     }
   }
 ]);

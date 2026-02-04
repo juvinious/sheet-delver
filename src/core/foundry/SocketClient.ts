@@ -57,6 +57,23 @@ export class SocketFoundryClient implements FoundryClient {
     private validationFailCount: number = 0;
     private consecutiveFailures: number = 0;
     public isAuthenticating: boolean = false;
+
+    // Shared UI Content State
+    public sharedContent: { type: 'image' | 'journal', data: any, timestamp: number } | null = null;
+
+    public getSharedContent() {
+        if (!this.sharedContent) return null;
+
+        // TTL: 2 Minutes (120000 ms)
+        const TTL = 2 * 60 * 1000;
+        if (Date.now() - this.sharedContent.timestamp > TTL) {
+            this.sharedContent = null; // Expire it
+            return null;
+        }
+
+        return this.sharedContent;
+    }
+
     // Computed state getters
     get isSetupMode(): boolean { return this.worldState === 'setup'; }
     get isWorldReady(): boolean { return this.worldState === 'active'; }
@@ -556,6 +573,16 @@ export class SocketFoundryClient implements FoundryClient {
                     users: users
                 };
 
+                // Initialize User Map from Discovery Data
+                // This ensures we have initial active status from getJoinData probe
+                if (this.cachedWorldData.users) {
+                    this.cachedWorldData.users.forEach((u: any) => {
+                        const id = u._id || u.id;
+                        this.userMap.set(id, u);
+                    });
+                    logger.info(`SocketFoundryClient | Initialized userMap with ${this.userMap.size} users.`);
+                }
+
                 logger.info(`SocketFoundryClient | cachedWorldData set with worldTitle: "${this.cachedWorldData.worldTitle}"`);
 
                 // D. IDENTIFY USER
@@ -734,7 +761,7 @@ export class SocketFoundryClient implements FoundryClient {
 
             // Handle when user is kicked/disconnected from Foundry
             socket.on('userDisconnected', (data: any) => {
-                const id = data.userId || data._id || data.id;
+                const id = typeof data === 'string' ? data : (data.userId || data._id || data.id);
                 logger.warn(`SocketFoundryClient | User disconnected event received: ${id}`);
 
                 const existing = this.userMap.get(id);
@@ -756,6 +783,115 @@ export class SocketFoundryClient implements FoundryClient {
                 logger.info(`SocketFoundryClient | User connected: ${user.name} (${id})`);
                 const existing = this.userMap.get(id) || {};
                 this.userMap.set(id, { ...existing, ...user, active: true });
+            });
+
+            // Maintain User Map Verification (Create/Update/Delete)
+            socket.on('createUser', (user: any) => {
+                const id = user._id || user.id;
+                logger.info(`SocketFoundryClient | User created: ${user.name} (${id})`);
+                this.userMap.set(id, { ...user, active: false }); // Created but maybe not active yet?
+            });
+
+            socket.on('updateUser', (user: any) => {
+                const id = user._id || user.id;
+                // logger.debug(`SocketFoundryClient | User updated: ${id}`);
+                const existing = this.userMap.get(id);
+                if (existing) {
+                    this.userMap.set(id, { ...existing, ...user });
+                } else {
+                    // Start tracking if we didn't have it
+                    this.userMap.set(id, user);
+                }
+            });
+
+            socket.on('deleteUser', (id: string | any) => {
+                const userId = typeof id === 'string' ? id : (id._id || id.id);
+                logger.info(`SocketFoundryClient | User deleted: ${userId}`);
+                this.userMap.delete(userId);
+            });
+
+            // Activity-based status tracking (The real logout signal in V13)
+            socket.on('userActivity', (userId: string, data: any) => {
+                if (userId && data) {
+                    // If active is explicitly false, they are logging out.
+                    // Otherwise, any activity implies they are active.
+                    const isActiveSignal = data.active !== false;
+
+                    const existing = this.userMap.get(userId);
+                    if (existing) {
+                        if (existing.active !== isActiveSignal) {
+                            logger.info(`SocketFoundryClient | User status change via activity: ${existing.name} (${userId}) -> ${isActiveSignal}`);
+                            this.userMap.set(userId, { ...existing, active: isActiveSignal });
+                        }
+                    } else if (isActiveSignal) {
+                        // Discovered an active user we didn't know about (missed join event?)
+                        // Trigger a background sync to get their details.
+                        logger.debug(`SocketFoundryClient | Discovered unknown active user via activity: ${userId}. Syncing...`);
+                        this.getUsers(false).then(users => {
+                            const user = users.find((u: any) => (u._id === userId || u.id === userId));
+                            if (user) {
+                                this.userMap.set(userId, { ...user, active: true });
+                                logger.info(`SocketFoundryClient | Self-healed user from activity: ${user.name}`);
+                            }
+                        }).catch(() => { });
+                    }
+                }
+            });
+
+            // Robust Fallback: Listen for User updates via modifyDocument or similar
+            // Foundry sends "modifyDocument" for document updates.
+            socket.on('modifyDocument', (data: any) => {
+                // If the updated document is a User, update our map
+                // data payload: { type: "User", action: "update", result: [ { _id: "...", active: false, ... } ], ... }
+                if (data.type === 'User' && (data.action === 'update' || data.action === 'create')) {
+                    const users = data.result || [];
+                    users.forEach((u: any) => {
+                        const id = u._id || u.id;
+                        if (id) {
+                            const existing = this.userMap.get(id);
+                            // If 'active' is present in the update, use it. Otherwise use existing.
+                            const isActive = (u.active !== undefined) ? u.active : (existing?.active || false);
+
+                            if (existing) {
+                                this.userMap.set(id, { ...existing, ...u, active: isActive });
+                                logger.info(`SocketFoundryClient | User document updated: ${u.name || existing.name} (${id}) | Active: ${isActive}`);
+                            } else {
+                                this.userMap.set(id, { ...u, active: isActive });
+                                logger.info(`SocketFoundryClient | User document created/tracked: ${u.name} (${id}) | Active: ${isActive}`);
+                            }
+                        }
+                    });
+                }
+            });
+
+            // Shared Content Handling
+            socket.on('shareImage', (data: any) => {
+                logger.info(`SocketFoundryClient | Received shared image: ${data.image}`);
+                this.sharedContent = {
+                    type: 'image',
+                    data: {
+                        url: data.image,
+                        title: data.title
+                    },
+                    timestamp: Date.now()
+                };
+            });
+
+            socket.on('showEntry', (uuid: string, ...args: any[]) => {
+                logger.info(`SocketFoundryClient | Received shared entry: ${uuid}`);
+                // Parse UUID: "JournalEntry.ID"
+                const parts = uuid.split('.');
+                if (parts.length >= 2 && parts[0] === 'JournalEntry') {
+                    const id = parts[1];
+                    this.sharedContent = {
+                        type: 'journal',
+                        data: {
+                            id: id,
+                            uuid: uuid
+                        },
+                        timestamp: Date.now()
+                    };
+                }
             });
 
             socket.onAny((event, ...args) => {
@@ -818,6 +954,43 @@ export class SocketFoundryClient implements FoundryClient {
 
                     this.isSocketConnected = true;
                     logger.info(`SocketFoundryClient | Session established. isSocketConnected = true.`);
+
+                    // DEBUG: Inspect session payload
+                    const payload = args[0] || {};
+                    const sessionActive = payload.activeUsers || payload.userIds || [];
+                    logger.info(`SocketFoundryClient | Session active users: ${JSON.stringify(sessionActive)}`);
+                    logger.info(`SocketFoundryClient | Session Payload keys: ${Object.keys(payload).join(', ')}`);
+                    if (payload.users) {
+                        logger.info(`SocketFoundryClient | Session payload has ${payload.users.length} users.`);
+                    }
+
+                    // Fetch World State via getJoinData (Standard handshake)
+                    this.socket?.emit('getJoinData', (response: any) => {
+                        if (response.users) {
+                            // First populate users
+                            this.userMap.clear(); // Clear existing map before repopulating
+                            response.users.forEach((u: any) => {
+                                const id = u._id || u.id;
+                                const existing = this.userMap.get(id) || {};
+                                // Default active to false initially
+                                this.userMap.set(id, { ...existing, ...u, active: false });
+                            });
+                        }
+
+                        if (response.activeUsers) {
+                            response.activeUsers.forEach((activeId: string) => {
+                                const existing = this.userMap.get(activeId);
+                                if (existing) {
+                                    this.userMap.set(activeId, { ...existing, active: true });
+                                } else {
+                                    // If user not in 'users' list but in 'activeUsers' (rare), create entry
+                                    this.userMap.set(activeId, { id: activeId, active: true });
+                                }
+                            });
+                        }
+                    });
+
+                    this.isJoining = false;
                     resolve();
                 }
 
@@ -926,7 +1099,9 @@ export class SocketFoundryClient implements FoundryClient {
                     }
 
                     const activeUserIds = payload.activeUsers || payload.userIds || [];
-                    logger.info(`SocketFoundryClient | Active users: ${activeUserIds.length}`);
+                    logger.info(`SocketFoundryClient | Active users count: ${activeUserIds.length}`);
+                    logger.info(`SocketFoundryClient | Active User IDs: ${JSON.stringify(activeUserIds)}`);
+                    logger.info(`SocketFoundryClient | Payload keys: ${Object.keys(payload).join(', ')}`);
                     if (payload.users) {
                         logger.info(`SocketFoundryClient | Populating user map with ${payload.users.length} users from ready event.`);
                         this.userMap.clear(); // Clear existing map before repopulating
@@ -940,7 +1115,23 @@ export class SocketFoundryClient implements FoundryClient {
 
                     this.isSocketConnected = true;
                     this.isJoining = false;
-                    resolve();
+
+                    // F. POST-CONNECT SYNC (Users)
+                    // Fetch full user details from DB to enrich the real-time userMap (which has active status)
+                    this.getUsers().then(dbUsers => {
+                        dbUsers.forEach((u: any) => {
+                            const id = u._id || u.id;
+                            const existing = this.userMap.get(id);
+                            // Merge DB data (u) with existing active status
+                            const isActive = existing?.active || false;
+                            this.userMap.set(id, { ...u, active: isActive });
+                        });
+                        logger.info(`SocketFoundryClient | Synced ${dbUsers.length} users from DB.`);
+                    }).catch(e => {
+                        logger.warn(`SocketFoundryClient | Failed to sync users from DB: ${e.message}`);
+                    });
+
+
                 }
 
                 // World Shutdown Detection
@@ -1497,6 +1688,16 @@ export class SocketFoundryClient implements FoundryClient {
             return response?.result || [];
         } catch (e: any) {
             logger.warn(`getActors failed: ${e.message}`);
+            return [];
+        }
+    }
+
+    async getJournals(): Promise<any[]> {
+        try {
+            const response = await this.dispatchDocumentSocket('JournalEntry', 'get', { broadcast: false });
+            return response?.result || [];
+        } catch (e: any) {
+            logger.warn(`getJournals failed: ${e.message}`);
             return [];
         }
     }
