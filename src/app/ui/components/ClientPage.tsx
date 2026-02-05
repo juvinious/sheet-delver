@@ -1,19 +1,24 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PlayerList from './PlayerList';
 import { SharedContentModal } from './SharedContentModal';
 import { useNotifications, NotificationContainer } from './NotificationSystem';
 import SystemTools from './SystemTools';
 import LoadingModal from './LoadingModal';
-import { SystemInfo, ServerConnectionStatus } from '@/shared/interfaces';
+import { SystemInfo } from '@/shared/interfaces';
+import { logger, LOG_LEVEL } from '../logger';
+import { Users, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface User {
   id?: string;
   _id?: string;
   name: string;
+  active?: boolean;
+  isGM?: boolean;
+  color?: string;
+  characterName?: string;
 }
-
 
 interface ClientPageProps {
   initialUrl: string;
@@ -23,15 +28,17 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
 
-  // Centralized State Management with Logging
+  // Dashboard UI State
+  const [isReadOnlyCollapsed, setIsReadOnlyCollapsed] = useState(true);
+
+  // Debug Configuration
+  // We maintain local state for reactivity if needed, but main logic drives the singleton
+  const [debugLevel, setDebugLevel] = useState(LOG_LEVEL.INFO);
+
   const setStepWithLog = (newStep: typeof step, origin: string, reason?: string) => {
+    // Demoted to DEBUG (Level 4) per user request
     const timestamp = new Date().toISOString();
-    const logMessage = `[STATE CHANGE] ${timestamp} | ${step} → ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`;
-    console.log(logMessage);
-
-    // Track the call stack to see where this is coming from
-    console.trace('State change call stack:');
-
+    logger.debug(`[STATE CHANGE] ${timestamp} | ${step} -> ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`);
     setStep(newStep);
   };
 
@@ -68,13 +75,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
   const [loginMessage, setLoginMessage] = useState('');
 
-  // Chat State
-
-
   const handleLogin = async () => {
     setLoading(true);
     setLoginMessage('Logging in...');
-
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -117,12 +120,12 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   };
 
   const handleLogout = async () => {
+    logger.info('[handleLogout] Initiating logout sequence...');
     try {
       const headers: any = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       // CRITICAL: Set step to login BEFORE clearing token
-      // This prevents polling from seeing no auth and transitioning to 'setup'
       setStepWithLog('login', 'handleLogout', 'User logged out, transitioning to login');
 
       await fetch('/api/logout', { method: 'POST', headers });
@@ -131,8 +134,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       setToken(null);
       setSelectedUser('');
       setPassword('');
+      setUsers(prev => prev.map(u => ({ ...u, active: false }))); // Optimistically clear status
     } catch (e: any) {
-      console.error('Logout error:', e);
+      logger.error('Logout error:', e);
       // Even if logout fails, clear local state
       setStepWithLog('login', 'handleLogout error', 'Logout failed, forcing login state');
       setToken(null);
@@ -156,7 +160,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const theme = system?.theme || defaultTheme;
 
   // Resolve background image
-  // Clear background in startup mode or setup mode (to avoid stale images)
   const bgSrc = (step === 'startup' || step === 'setup') ? null : (system?.worldBackground || system?.background);
   const bgStyle = bgSrc
     ? {
@@ -169,52 +172,32 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   // Auto-Connect Effect
   useEffect(() => {
-    // Load Recent Actors (Initial)
-    // Unified State Logic
     const determineStep = (data: any, currentStep: string) => {
       const status = data.system?.status;
       const isAuthenticated = data.isAuthenticated || false;
 
-      // Simple state machine:
       // 1. Are we in setup? -> Show setup screen
-      if (status !== 'active') {
-        return 'setup';
-      }
+      if (status !== 'active') return 'setup';
 
       // 2. If we're authenticating, stay there until backend confirms
       if (currentStep === 'authenticating') {
-        // Only transition to dashboard when backend confirms authentication
-        if (isAuthenticated) {
-          return 'dashboard';
-        }
-        // Stay in authenticating state until confirmed
+        if (isAuthenticated) return 'dashboard';
         return 'authenticating';
       }
 
       // 3. Check if world data is complete before showing login
-      // If world is active but data isn't loaded yet, show loading screen
       const worldTitle = data.system?.worldTitle;
       const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
 
-      if (!hasCompleteWorldData) {
-        // World is active but data isn't ready, show loading
-        return 'startup';
-      }
+      if (!hasCompleteWorldData) return 'startup';
 
       // 4. Authenticated? -> Show dashboard, otherwise login
-      if (isAuthenticated) {
-        return 'dashboard';
-      } else {
-        return 'login';
-      }
+      if (isAuthenticated) return 'dashboard';
+      else return 'login';
     };
 
     const checkConfig = async () => {
-      // CRITICAL: Don't run checkConfig when authenticating
-      // Let the session/connect polling handle the transition to dashboard
-      if (step === 'authenticating') {
-        return;
-      }
+      if (step === 'authenticating') return;
 
       try {
         setLoading(true);
@@ -224,44 +207,39 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const res = await fetch('/api/status', { headers });
-
-        // Handle connection errors (backend not ready yet)
-        if (!res.ok) {
-          throw new Error(`Server returned ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
 
         const data = await res.json();
+
+        // Update Debug Level from Server Config
+        if (data.debug?.level !== undefined) {
+          setDebugLevel(data.debug.level);
+          logger.setLevel(data.debug.level);
+        }
 
         if (data.connected && data.system) {
           setSystem(data.system);
           setUrl(data.url);
-          setUsers(data.users || []);
+          setUsers((data.users || []) as User[]);
 
           // Apply Strict Logic
           const targetStep = determineStep(data, step);
           setStepWithLog(targetStep as any, 'checkConfig polling', `Determined step: ${targetStep}`);
 
-          // Side Effects
-          if (targetStep === 'dashboard') {
-            fetchActors();
-          }
+          // Trigger fetchActors if transitioning to dashboard
+          if (targetStep === 'dashboard') fetchActors();
 
         } else {
-          // Not connected or no system data -> Setup
           setStepWithLog('setup', 'checkConfig polling', 'Not connected or no system data');
         }
 
         if (data.appVersion) setAppVersion(data.appVersion);
 
       } catch (error: any) {
-        // If backend is not ready (ECONNREFUSED), retry after a delay
         if (error.message?.includes('Failed to fetch') || error.message?.includes('500')) {
           setLoginMessage('Server is starting up, please wait...');
-          // Retry after 2 seconds
           setTimeout(() => {
-            if (token !== null) { // Only retry if we're still on the same token state
-              checkConfig();
-            }
+            if (token !== null) checkConfig();
           }, 2000);
         } else {
           setStepWithLog('setup', 'checkConfig error handler', error.message);
@@ -269,7 +247,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           setLoginMessage('');
         }
       } finally {
-        // Don't clear loading/message if we're retrying
         if (!loginMessage.includes('starting up')) {
           setLoading(false);
           setLoginMessage('');
@@ -280,32 +257,36 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
   }, [token]);
 
-
   const fetchActors = useCallback(async () => {
-    if (loading) return;
+    // We cannot block on loading because this might be called during the initial load sequence
+    // explicitly to populate data for the dashboard transition.
+    logger.debug('[fetchActors] Starting fetch...');
     try {
       const headers: any = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const res = await fetch('/api/actors', { headers });
-      if (res.status === 401) {
-        // Rely on Polling to fix state if 401 occurs
-        return;
-      }
+
+      if (res.status === 401) return;
+
       const data = await res.json();
+      logger.debug('[fetchActors] Data received:', {
+        actors: data.actors?.length,
+        owned: data.ownedActors?.length,
+        readOnly: data.readOnlyActors?.length
+      });
+
       if (data.ownedActors || data.actors) {
         setActors(data.actors || []);
         setOwnedActors(data.ownedActors || data.actors || []);
         setReadOnlyActors(data.readOnlyActors || []);
       }
     } catch (error: any) {
-      console.error(error);
+      logger.error('Fetch actors failed:', error.message);
     }
-  }, [loading, token]);
+  }, [loading, token, debugLevel]);
 
-
-  // Polling for System State Changes (e.g. World Shutdown / Startup)
-  // MOVED TO GLOBAL ShutdownWatcher.tsx
+  // Polling for System State Changes
   useEffect(() => {
     const interval = setInterval(async () => {
       if (loading) return;
@@ -316,94 +297,76 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         const res = await fetch('/api/session/connect', { headers, cache: 'no-store' });
         const data = await res.json();
 
+        // Sync debug level on poll too
+        if (data.debug?.level !== undefined && data.debug.level !== debugLevel) {
+          setDebugLevel(data.debug.level);
+          logger.setLevel(data.debug.level);
+        }
+
         if (data.system) {
-          // Always keep explicit system/users state in sync if active
           if (data.system.status === 'active') {
             if (JSON.stringify(data.system) !== JSON.stringify(system)) {
               setSystem(data.system);
             }
-            // Ensure users are populated if we are on login screen
-            if (step === 'login' && (!users || users.length === 0) && data.users) {
-              setUsers(data.users);
+            // Fix: Always sync users if they change, not just if empty
+            // This ensures "Logged In" status updates when users log out
+            if (data.users && JSON.stringify(data.users) !== JSON.stringify(users)) {
+              logger.debug('[Polling] Updating users list:', data.users.length);
+
+              // Setup change detection for notifications (only if we have an existing list)
+              if (users.length > 0) {
+                const oldUserMap = new Map(users.map(u => [u._id || u.id, u]));
+                data.users.forEach((newUser: any) => {
+                  const uid = newUser._id || newUser.id;
+                  const oldUser = oldUserMap.get(uid);
+                  if (oldUser) { // Matching user
+                    if (!oldUser.active && newUser.active) {
+                      addNotification(`${newUser.name} has logged in.`, 'success');
+                    } else if (oldUser.active && !newUser.active) {
+                      addNotification(`${newUser.name} has logged out.`, 'info');
+                    }
+                  }
+                });
+              }
+
+              setUsers(data.users as User[]);
             }
           }
 
-          // Apply State Machine Logic (same as main polling)
           const status = data.system.status;
           const isAuthenticated = data.isAuthenticated;
-
-          // Use the same state machine logic
           let targetStep: string = 'setup';
 
           if (status !== 'active') {
             targetStep = 'setup';
           } else if (step === 'authenticating') {
-            // If we're authenticating, stay there until backend confirms
             targetStep = isAuthenticated ? 'dashboard' : 'authenticating';
           } else {
-            // Check if world data is complete before showing login
             const worldTitle = data.system?.worldTitle;
             const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
 
-            if (!hasCompleteWorldData) {
-              // World is active but data isn't ready, show loading
-              targetStep = 'startup';
-            } else if (isAuthenticated) {
-              targetStep = 'dashboard';
-            } else {
-              targetStep = 'login';
-            }
+            if (!hasCompleteWorldData) targetStep = 'startup';
+            else if (isAuthenticated) targetStep = 'dashboard';
+            else targetStep = 'login';
           }
 
-          // Transition
           if (step !== targetStep) {
-            console.log(`[State] Transitioning ${step} -> ${targetStep}`);
+            logger.debug(`[State] Transitioning ${step} -> ${targetStep}`);
             setStepWithLog(targetStep as any, 'session/connect polling', `Transitioning to ${targetStep}`);
 
-            if (targetStep === 'dashboard') {
-              fetchActors();
-            }
+            // Also reload actors on transition to dashboard
+            if (targetStep === 'dashboard') fetchActors();
           }
         } else {
-          // No system data -> Setup
           if (step !== 'setup') setStepWithLog('setup', 'session/connect polling', 'No system data');
         }
       } catch {
-        // Network error -> Setup (or wait? User said simple... likely Setup implies connection issues too)
-        // But preventing FULL flicker on every missed poll might be desired. 
-        // For strictness: if we can't verify state, we assume connection lost? 
-        // Let's NOT force setup on a single poll fail to avoid extreme jitter,
-        // but if data.connected is explicitly false, we do.
+        // Network error - ignore
       }
-    }, 1000); // 1s poll
+    }, 1000);
     return () => clearInterval(interval);
-  }, [step, loading, system, users, token]);
+  }, [step, loading, system, users, token, debugLevel]);
 
-  // Removed old Polling for User List Recovery (Race Condition Fix) - handled in main poll
-
-
-  const handleRetryConnection = () => {
-    window.location.reload();
-  };
-
-
-
-
-
-  useEffect(() => {
-    if (step !== 'dashboard') return;
-
-    // Initial fetch
-    fetchActors();
-
-    const interval = setInterval(() => {
-      fetchActors();
-    }, 5000); // Poll actors every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [step, fetchActors]);
-
-  // Helper to render an actor card
   const renderActorCard = (actor: any, index: number, clickable: boolean = true) => {
     return (
       <div
@@ -440,7 +403,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               {actor.name}
             </h3>
 
-            {/* Dynamic Subtext based on Module Config */}
             {system?.config?.actorCard?.subtext ? (
               <p className="opacity-60 text-sm mb-2 capitalize truncate">
                 {system.config.actorCard.subtext
@@ -455,7 +417,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               <p className="opacity-60 text-sm mb-2 capitalize truncate">{actor.type}</p>
             )}
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-2 text-sm">
               {actor.hp && (
                 <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
@@ -487,9 +448,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       data-loading={loading}
     >
 
-      {/* Content grows to fill space, pushing footer down */}
       <div className="flex-1 w-full">
-
 
         {step === 'init' && (
           <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
@@ -527,7 +486,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             </div>
           </div>
         )}
-
 
         {
           step === 'login' && (
@@ -578,7 +536,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                         className={`w-full p-2 rounded border outline-none ${theme.input} appearance-none`}
                       >
                         <option value="" disabled>-- Select Player --</option>
-                        {users.map((u: any, idx) => {
+                        {users.map((u: User, idx: number) => {
                           const isGamemaster = u.name === 'Gamemaster';
                           const isDisabled = u.active || isGamemaster;
                           return (
@@ -630,34 +588,32 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           )
         }
 
-        {
-          step === 'setup' && (
-            <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-8 space-y-6 animate-in fade-in duration-700">
-              <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-                SheetDelver
-              </h1>
-              <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
+        {step === 'setup' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] text-center p-8 space-y-6 animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
 
-              <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl w-full">
-                <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
-                <p className="text-lg opacity-80 mb-6 leading-relaxed">
-                  No world is available to login, please check back later.
-                </p>
+            <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl w-full">
+              <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
+              <p className="text-lg opacity-80 mb-6 leading-relaxed">
+                No world is available to login, please check back later.
+              </p>
 
-                <div className="flex justify-center gap-4">
-                  <a
-                    href="https://github.com/juvinious/sheet-delver"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono"
-                  >
-                    <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
-                  </a>
-                </div>
+              <div className="flex justify-center gap-4">
+                <a
+                  href="https://github.com/juvinious/sheet-delver"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity text-sm font-mono"
+                >
+                  <img src="https://img.shields.io/badge/github-repo-blue?logo=github" alt="GitHub Repo" className="opacity-80" />
+                </a>
               </div>
             </div>
-          )
-        }
+          </div>
+        )}
 
         {/* Reconnecting Overlay */}
         {step === 'dashboard' && system?.status !== 'active' && (
@@ -730,13 +686,30 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               {/* Read Only Actors */}
               {readOnlyActors.length > 0 && (
                 <div className="mt-4">
-                  <div className="flex items-center gap-3 mb-4">
-                    <h3 className="text-xl font-bold uppercase tracking-widest opacity-40 text-neutral-400">Other Characters (Read Only)</h3>
-                    <div className="h-px flex-1 bg-white/10"></div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {readOnlyActors.map((actor, idx) => renderActorCard(actor, ownedActors.length + idx, false))}
-                  </div>
+                  <button
+                    onClick={() => setIsReadOnlyCollapsed(!isReadOnlyCollapsed)}
+                    className="flex items-center gap-3 mb-4 group w-full text-left"
+                  >
+                    {isReadOnlyCollapsed ? (
+                      <div className="p-1 rounded bg-white/5 group-hover:bg-white/10 transition-colors">
+                        <ChevronRight className="w-4 h-4 text-neutral-400 group-hover:text-white" />
+                      </div>
+                    ) : (
+                      <div className="p-1 rounded bg-white/5 group-hover:bg-white/10 transition-colors">
+                        <ChevronDown className="w-4 h-4 text-neutral-400 group-hover:text-white" />
+                      </div>
+                    )}
+                    <h3 className="text-xl font-bold uppercase tracking-widest opacity-40 text-neutral-400 group-hover:opacity-80 transition-opacity">
+                      Other Characters (Read Only)
+                    </h3>
+                    <div className="h-px flex-1 bg-white/10 group-hover:bg-white/20 transition-colors"></div>
+                  </button>
+
+                  {!isReadOnlyCollapsed && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in slide-in-from-top-2 fade-in duration-300">
+                      {readOnlyActors.map((actor, idx) => renderActorCard(actor, ownedActors.length + idx, false))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -772,7 +745,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       </div>
 
       {/* Persistent Player List when logged in */}
-      {(step === 'dashboard') && <PlayerList token={token} onLogout={handleLogout} />}
+      {(step === 'dashboard') && <PlayerList users={users} onLogout={handleLogout} />}
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 

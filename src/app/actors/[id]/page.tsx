@@ -28,6 +28,9 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         if (stored) setToken(stored);
     }, []);
 
+    // Users State
+    const [users, setUsers] = useState<any[]>([]);
+
     const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         const currentToken = token || sessionStorage.getItem('sheet-delver-token');
@@ -35,11 +38,30 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         return fetch(input, { ...init, headers });
     }, [token]);
 
+    const fetchUsers = useCallback(async () => {
+        try {
+            const res = await fetchWithAuth('/api/users');
+            const data = await res.json();
+            if (data.users) {
+                setUsers(data.users);
+            }
+        } catch (e) {
+            console.error('Failed to fetch users', e);
+        }
+    }, [fetchWithAuth]);
+
+    useEffect(() => {
+        fetchUsers();
+        // Poll users every 10s
+        const interval = setInterval(fetchUsers, 10000);
+        return () => clearInterval(interval);
+    }, [fetchUsers]);
+
     // Chat State
     const [messages, setMessages] = useState<any[]>([]);
 
     // Notifications
-    const { notifications, addNotification: addToast, removeNotification } = useNotifications(20000);
+    const { notifications, addNotification: addToast, removeNotification } = useNotifications(4000);
 
     const addNotification = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
         // Ensure images in the toast are absolute URLs
@@ -89,43 +111,44 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
 
 
-    const lastSeenTimestamp = useRef<number>(0);
+    const seenMessageIds = useRef<Set<string>>(new Set());
 
     const fetchWithAuthChat = useCallback(async () => {
         try {
             const res = await fetchWithAuth('/api/chat');
             const data = await res.json();
-            if (data.messages) {
+            if (data.messages && Array.isArray(data.messages)) {
                 const msgs = data.messages;
-                if (msgs.length > 0) {
-                    // Chat is now Newest -> Oldest (Index 0 is newest)
-                    const newest = msgs[0];
 
-                    // If we have seen messages before, check for new ones
-                    if (lastSeenTimestamp.current > 0) {
-                        // Find all messages newer than our last seen
-                        const newMsgs = msgs.filter((m: any) => m.timestamp > lastSeenTimestamp.current);
-                        newMsgs.forEach((m: any) => {
+                // On first load (empty set), just populate the set without notifying
+                if (seenMessageIds.current.size === 0 && msgs.length > 0) {
+                    msgs.forEach((m: any) => seenMessageIds.current.add(m._id || m.id));
+                } else if (msgs.length > 0) {
+                    // Check for new messages
+                    // msgs are Newest -> Oldest
+                    // We iterate in reverse (Oldest -> Newest) to notify in order if multiple arrived
+                    [...msgs].reverse().forEach((m: any) => {
+                        const id = m._id || m.id;
+                        if (!seenMessageIds.current.has(id)) {
+                            seenMessageIds.current.add(id);
+
+                            // Skip strictly own messages (optional, based on preference)
                             if (currentUserRef.current && m.user === currentUserRef.current) return;
+
                             if (m.isRoll) {
                                 addNotification(`${m.user} rolled ${m.rollTotal}: ${m.flavor || 'Dice'}`, 'info');
                             } else {
                                 addNotification(`${m.user}: ${m.content || 'Message'}`, 'info');
                             }
-                        });
-                    }
-
-                    // Update our watermark
-                    if (newest.timestamp > lastSeenTimestamp.current) {
-                        lastSeenTimestamp.current = newest.timestamp;
-                    }
+                        }
+                    });
                 }
                 setMessages(data.messages);
             }
         } catch (e) {
             console.error(e);
         }
-    }, [addNotification]);
+    }, [addNotification, fetchWithAuth]);
 
     useEffect(() => {
         // Poll for chat
@@ -380,6 +403,8 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
 
 
+
+
     const handleLogout = () => {
         sessionStorage.removeItem('sheet-delver-token');
         setToken(null);
@@ -411,6 +436,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                             systemId={actor.systemId || 'generic'}
                             actor={actor}
                             foundryUrl={actor?.foundryUrl}
+                            token={token}
                             isOwner={actor?.isOwner ?? true}
                             onRoll={handleRoll}
                             onUpdate={handleUpdate}
@@ -436,7 +462,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     />
 
                     {/* Player List */}
-                    <PlayerList token={token} onLogout={handleLogout} />
+                    <PlayerList users={users} onLogout={handleLogout} />
                 </>
             )}
 

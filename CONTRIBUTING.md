@@ -102,6 +102,45 @@ Each RPG system is implemented as a **Vertical Slice** within `src/modules/<syst
 Modules can define server-side API handlers that are automatically routed via `/api/modules/<systemId>/<route>`.
 For details on implementing module APIs, see [docs/API.md](docs/API.md).
 
+## Logging & Debugging
+
+SheetDelver employs a centralized logging system to maintain clean output across both the server and the browser console.
+
+### Log Levels
+Use the appropriate level for your messages:
+*   **ERROR** (1): Critical failures that require attention (e.g., connection loss, API errors).
+*   **WARN** (2): Non-critical issues or deprecated usage.
+*   **INFO** (3): Standard operational events (e.g., "Connected to World", "User Logged In"). **Default**.
+*   **DEBUG** (4): Verbose dev info (e.g., socket payloads, state transitions).
+
+### Configuration
+The log level is set in `settings.yaml`:
+```yaml
+debug:
+    enabled: true
+    level: 3  # 0=None, 1=Error, 2=Warn, 3=Info, 4=Debug
+```
+Both the backend and frontend respect this setting. The frontend receives this config via the `/api/status` endpoint.
+
+### Backend Usage
+Use the `logger` singleton from `src/core/logger.ts`:
+```typescript
+import { logger } from '../core/logger';
+
+logger.info('System initializing...');
+logger.debug('Payload received:', payload);
+```
+
+### Frontend Usage
+**Do not use `console.log` directly.** Use the frontend `logger` from `src/app/ui/logger.ts`:
+```typescript
+import { logger } from '@/app/ui/logger';
+
+logger.info('Component mounted');
+logger.debug('State updated:', newState);
+```
+Logs below the configured level will be suppressed in the browser console.
+
 ## Development Workflow
 
 1.  **Refactoring Components**: When refactoring, ensure you split large components into smaller files within your module's directory.

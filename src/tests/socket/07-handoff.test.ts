@@ -1,5 +1,5 @@
 
-import { SocketFoundryClient } from '../../core/foundry/SocketClient';
+import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
 import { loadConfig } from '../../core/config';
 import * as readline from 'readline';
 
@@ -73,11 +73,11 @@ export async function testConnectionHandoff() {
 
     // Instance 1: The "Background Poller" (System User)
     console.log('\n1. Starting Background Client (System User)...');
-    const backgroundClient = new SocketFoundryClient(config.foundry);
+    const backgroundClient = new LegacySocketFoundryClient(config.foundry);
 
     // Instance 2: The "Interactive Login" (Player)
     console.log('2. Starting Player Client (Interactive)...');
-    const playerClient = new SocketFoundryClient(config.foundry);
+    const playerClient = new LegacySocketFoundryClient(config.foundry);
 
     try {
         // Step A: Background client connects

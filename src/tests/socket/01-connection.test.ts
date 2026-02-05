@@ -1,4 +1,4 @@
-import { SocketFoundryClient } from '../../core/foundry/SocketClient';
+import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
 import { loadConfig } from '../../core/config';
 
 /**
@@ -13,7 +13,7 @@ export async function testConnection() {
         throw new Error('Failed to load configuration');
     }
 
-    const client = new SocketFoundryClient(config.foundry);
+    const client = new LegacySocketFoundryClient(config.foundry);
 
     try {
         console.log('📡 Connecting...');

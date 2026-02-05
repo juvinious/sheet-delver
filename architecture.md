@@ -108,6 +108,12 @@ graph TD
 4.  `SocketClient` requests Actors (Foundry returns only what this user can see).
 5.  Backend normalizes and returns data.
 
+### 4.4 Compendium Fetching (Hybrid)
+1.  **HTML Scraping**: `SocketClient` fetches the `/game` page over HTTPS using the authenticated session cookie.
+2.  **Pack Discovery**: Parses the `game.data.packs` array from the HTML source to identify available compendiums.
+3.  **Index Retrieval**: Uses the Socket.io connection to fetch indices for each identified compendium.
+4.  **Rationale**: Direct socket commands for listing all compendiums are unreliable or restricted in Foundry V13 for headless clients.
+
 ---
 
 ## 5. Security & Isolation

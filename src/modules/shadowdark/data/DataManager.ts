@@ -35,7 +35,7 @@ class DataManager {
 
                 if (stat.isDirectory()) {
                     scanDirectory(fullPath);
-                } else if (file.endsWith('.json')) {
+                } else if (file.endsWith('.json') && !file.startsWith('!')) {
                     try {
                         const content = fs.readFileSync(fullPath, 'utf-8');
                         const data = JSON.parse(content);
@@ -67,10 +67,14 @@ class DataManager {
                             // 2. Compendium.shadowdark.<pack>.Item.<id> (if it's an item)
 
                             const system = 'shadowdark';
-                            const docType = data.type === 'Actor' ? 'Actor' : 'Item'; // rudimentary type check
+                            const docType = data.type === 'Actor' ? 'Actor' : 'Item';
 
                             const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
                             const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
+
+                            // Attach metadata to the document itself for easier traversal
+                            data.pack = packName;
+                            data.uuid = uuidLong;
 
                             this.index.set(uuidShort, data);
                             this.index.set(uuidLong, data);

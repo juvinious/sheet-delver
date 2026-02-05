@@ -1,10 +1,11 @@
 
-import { SocketFoundryClient } from '../../core/foundry/SocketClient';
+import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
 import { logger } from '../../core/logger';
 import { loadConfig } from '../../core/config';
 import 'dotenv/config';
 
-// Force test env
+// Force test env (Ignore read-only error for test script)
+// @ts-ignore
 process.env.NODE_ENV = 'test';
 
 async function testJournals() {
@@ -16,15 +17,21 @@ async function testJournals() {
         process.exit(1);
     }
 
-    const client = new SocketFoundryClient(config.foundry);
+    // Initialize Stack
+    const { CoreSocket } = require('../../core/foundry/sockets/CoreSocket');
+    const core = new CoreSocket(config.foundry);
+    const client = new ClientSocket(config.foundry, core);
 
     try {
         console.log('📡 Connecting...');
-        await client.connect();
+        // Connect Core Socket (Actual connection)
+        await core.connect();
+
+        // ClientSocket doesn't need explicit connect, but we might want to ensure it's "ready"
 
         // Login as player (doratheexplorer) to test permissions
         // or GM? Let's use the config default (which was doratheexplorer in previous tests)
-        console.log(`👤 Identifying as: ${client.config.username}`);
+        console.log(`👤 Identifying as: ${(client as any).config.username}`);
 
         console.log('📚 Fetching Journals...');
         const journals = await client.getJournals();

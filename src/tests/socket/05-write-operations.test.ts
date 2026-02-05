@@ -1,4 +1,4 @@
-import { SocketFoundryClient } from '../../core/foundry/SocketClient';
+import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
 import { loadConfig } from '../../core/config';
 
 /**
@@ -13,7 +13,7 @@ export async function testWriteOperations() {
         throw new Error('Failed to load configuration');
     }
 
-    const client = new SocketFoundryClient(config.foundry);
+    const client = new LegacySocketFoundryClient(config.foundry);
     const results: any = { tests: [] };
     let tempActorId: string | null = null;
     let tempItemId: string | null = null;

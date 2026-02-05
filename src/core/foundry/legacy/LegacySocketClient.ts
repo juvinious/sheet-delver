@@ -1,17 +1,20 @@
 import io from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
-import { FoundryConfig } from './types';
-import { FoundryClient, SystemInfo } from './interfaces';
+import { FoundryConfig } from '../types';
+import { FoundryClient, SystemInfo } from '../interfaces';
 import { ConnectionStatus, ServerConnectionStatus } from '@/shared/connection';
-import { getAdapter } from '../../modules/core/registry';
-import { SystemAdapter } from '../../modules/core/interfaces';
-import { SetupScraper, WorldData, CacheData } from './SetupScraper';
-import { logger } from '../logger';
-import { CompendiumCache } from './compendium-cache';
+import { getAdapter } from '../../../modules/core/registry';
+import { SystemAdapter } from '../../../modules/core/interfaces';
+import { SetupScraper, WorldData, CacheData } from '../SetupScraper';
+import { logger } from '../../logger';
+import { CompendiumCache } from '../compendium-cache';
 import fs from 'fs';
 import path from 'path';
 
-export class SocketFoundryClient implements FoundryClient {
+/**
+ * @deprecated Use CoreSocket and ClientSocket instead.
+ */
+export class LegacySocketFoundryClient implements FoundryClient {
     private config: FoundryConfig;
     private adapter: SystemAdapter | null = null;
     private socket: Socket | null = null;
@@ -56,7 +59,31 @@ export class SocketFoundryClient implements FoundryClient {
     private worldBackgroundFromHtml: string | null = null;
     private validationFailCount: number = 0;
     private consecutiveFailures: number = 0;
+    private cookieMap = new Map<string, string>();
+
+    private updateCookies(headerVal: string | string[] | null | undefined) {
+        if (!headerVal) return;
+        const cookies = Array.isArray(headerVal) ? headerVal : [headerVal];
+
+        cookies.forEach(c => {
+            // Split multiple cookies if they are comma separated (common in simple fetch)
+            const parts = c.split(/,(?=\s*\w+=)/g);
+            parts.forEach(part => {
+                const [pair] = part.split(';');
+                if (pair.includes('=')) {
+                    const [key, value] = pair.split('=');
+                    this.cookieMap.set(key.trim(), value.trim());
+                }
+            });
+        });
+
+        // Update the main session string
+        this.sessionCookie = Array.from(this.cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
+    }
+
     public isAuthenticating: boolean = false;
+    private activeModules: any[] = [];
+    private gameDataCache: any = null;
 
     // Shared UI Content State
     public sharedContent: { type: 'image' | 'journal', data: any, timestamp: number } | null = null;
@@ -123,7 +150,11 @@ export class SocketFoundryClient implements FoundryClient {
     private async reloadCache() {
         try {
             const cache = await SetupScraper.loadCache();
-            this.cachedWorlds = cache.worlds || {};
+            if (cache.worlds) {
+                this.cachedWorlds = cache.worlds;
+            } else {
+                this.cachedWorlds = {};
+            }
 
             // If we have an active world in memory, update its data too
             if (this.cachedWorldData && this.cachedWorldData.worldId) {
@@ -135,7 +166,7 @@ export class SocketFoundryClient implements FoundryClient {
                         worldDescription: updated.worldDescription || null,
                         systemVersion: updated.systemVersion || updated.data?.version || '0.0.0'
                     };
-                    logger.info(`SocketFoundryClient | Hot-reloaded data for world: ${updated.worldTitle}`);
+                    logger.debug(`SocketFoundryClient | Hot-reloaded data for world: ${updated.worldTitle}`);
                 }
             } else if (!this.cachedWorldData && cache.currentWorldId) {
                 // Initialize from current world if available
@@ -146,7 +177,7 @@ export class SocketFoundryClient implements FoundryClient {
                         worldDescription: current.worldDescription || null,
                         systemVersion: current.systemVersion || current.data?.version || '0.0.0'
                     };
-                    logger.info(`SocketFoundryClient | Initialized from current world: ${current.worldTitle}`);
+                    logger.debug(`SocketFoundryClient | Initialized from current world: ${current.worldTitle}`);
                 }
             }
         } catch (e) {
@@ -185,7 +216,7 @@ export class SocketFoundryClient implements FoundryClient {
     // ... (login, logout methods - ensure they match existing)
 
     get url(): string {
-        return this.config.url;
+        return this.config.url || '';
     }
 
 
@@ -208,17 +239,21 @@ export class SocketFoundryClient implements FoundryClient {
         if (password) this.config.password = password;
 
         this.isAuthenticating = true;
+        this.isExplicitSession = true;
+
         try {
+            // Clear existing session state to force re-auth in connect()
+            this.sessionCookie = null;
+            this.userId = null;
+
             if (this.isConnected) {
-                this.disconnect();
+                this.disconnect('Login requested');
             }
             await this.connect();
 
             // wait for authenticated session AND active status
             const timeout = 30000;
             await this.waitForAuthentication(timeout);
-
-            this.isExplicitSession = true;
         } catch (e: any) {
             logger.error(`SocketFoundryClient | Login exception: ${e.message}`);
             this.disconnect(`Login failure: ${e.message}`);
@@ -405,13 +440,15 @@ export class SocketFoundryClient implements FoundryClient {
 
         // Load Multi-World Cache
         const cache = await SetupScraper.loadCache();
-        this.cachedWorlds = cache.worlds || {};
+        if (cache && cache.worlds) {
+            this.cachedWorlds = cache.worlds;
+        }
 
         // Initialize Compendium Cache in background
         CompendiumCache.getInstance().initialize(this).catch(e => logger.warn(`CompendiumCache init failed: ${e}`));
 
-
-        const baseUrl = this.config.url.endsWith('/') ? this.config.url.slice(0, -1) : this.config.url;
+        const currentUrl = this.config.url || '';
+        const baseUrl = currentUrl.endsWith('/') ? currentUrl.slice(0, -1) : currentUrl;
 
         // 1. Authenticate if username provided
         // 1. Authenticate if username provided
@@ -495,6 +532,7 @@ export class SocketFoundryClient implements FoundryClient {
                                     worldUsers = result.users || [];
                                     systemId = result.system?.id;
                                     backgroundUrl = result.world.background;
+                                    this.activeModules = result.modules || [];
                                     resolve(true);
                                 } else {
                                     resolve(false);
@@ -553,16 +591,16 @@ export class SocketFoundryClient implements FoundryClient {
                 const cached = worldId ? this.cachedWorlds[worldId] : null;
 
                 if (cached) {
-                    logger.info(`SocketFoundryClient | Active world matches cache entry (${worldId}). fusing data.`);
+                    logger.debug(`SocketFoundryClient | Active world matches cache entry (${worldId}). fusing data.`);
                     if (users.length === 0 && cached.users) {
                         users = cached.users; // Use cached users if socket was silent
                     }
                     if (!worldTitle && cached.worldTitle) {
-                        logger.info(`SocketFoundryClient | Using cached worldTitle: "${cached.worldTitle}"`);
+                        logger.debug(`SocketFoundryClient | Using cached worldTitle: "${cached.worldTitle}"`);
                         worldTitle = cached.worldTitle;
                     }
                 } else {
-                    logger.info(`SocketFoundryClient | No cache entry found for world "${worldId}".`);
+                    logger.debug(`SocketFoundryClient | No cache entry found for world "${worldId}".`);
                 }
 
                 this.cachedWorldData = {
@@ -580,76 +618,82 @@ export class SocketFoundryClient implements FoundryClient {
                         const id = u._id || u.id;
                         this.userMap.set(id, u);
                     });
-                    logger.info(`SocketFoundryClient | Initialized userMap with ${this.userMap.size} users.`);
+                    logger.debug(`SocketFoundryClient | Initialized userMap with ${this.userMap.size} users.`);
                 }
 
-                logger.info(`SocketFoundryClient | cachedWorldData set with worldTitle: "${this.cachedWorldData.worldTitle}"`);
+                logger.debug(`SocketFoundryClient | cachedWorldData set with worldTitle: "${this.cachedWorldData.worldTitle}"`);
 
                 // D. IDENTIFY USER
                 let userId: string | null = null;
 
-                // 1. Try to find in (Socket) Users
-                const targetUser = users.find((u: any) => u.name === this.config.username);
-                if (targetUser) {
-                    userId = targetUser._id || (targetUser as any).id;
+                // 1. Try Cache First (In-Memory)
+                if (this.cachedWorldData && this.cachedWorldData.users) {
+                    const cachedUser = this.cachedWorldData.users.find((u: any) => u.name === this.config.username);
+                    if (cachedUser) {
+                        userId = cachedUser._id || cachedUser.name; // In cache we store usually _id but could be legacy
+                        logger.info(`SocketFoundryClient | Resolved User ID from memory cache: ${userId}`);
+                    }
                 }
 
-                // 2. If not found, and we have a cache match, use cached ID
-                if (!userId && cached) {
-                    const cachedUser = cached.users?.find((u: any) => u.name === this.config.username);
-                    if (cachedUser) {
-                        userId = cachedUser._id || (cachedUser as any).id;
-                        logger.info(`SocketFoundryClient | Identified User ID from cache: ${userId}`);
+                // 2. Try Discovery Data (Live)
+                if (!userId) {
+                    const targetUser = users.find((u: any) => u.name === this.config.username);
+                    if (targetUser) {
+                        userId = targetUser._id || (targetUser as any).id;
                     }
                 }
 
                 // 3. Fail if still missing
                 if (!userId) {
-                    throw new Error(`User "${this.config.username}" could not be identified in world "${worldId}". (Socket discovery empty, Cache mismatch).`);
+                    throw new Error(`User "${this.config.username}" could not be identified via cache or discovery.`);
                 }
 
                 this.userId = userId;
-                logger.info(`SocketFoundryClient | Identified User ID: ${this.userId}`);
 
 
                 // E. EXPLICIT AUTHENTICATION (POST /join)
-                if (!csrfToken) logger.warn('SocketFoundryClient | No CSRF Token found. Login might fail.');
+                let finalCsrf: string | null = csrfToken || null;
 
-                logger.info('SocketFoundryClient | Performing Explicit POST Login (Form Encoded)...');
-                const loginBody = new URLSearchParams();
-                loginBody.append('userid', userId);
-                loginBody.append('password', this.config.password || '');
-                loginBody.append('action', 'join');
-                if (csrfToken) loginBody.append('csrfToken', csrfToken); // Try both camelCase
-                if (csrfToken) loginBody.append('csrf-token', csrfToken); // and hyphenated
+                // Check cookies for CSRF (V13 common pattern)
+                if (!finalCsrf && this.cookieMap.has('csrf-token')) finalCsrf = this.cookieMap.get('csrf-token') || null;
+                if (!finalCsrf && this.cookieMap.has('xsrf-token')) finalCsrf = this.cookieMap.get('xsrf-token') || null;
 
+                if (!finalCsrf) logger.warn('SocketFoundryClient | No CSRF Token found. Login might fail.');
+
+                if (finalCsrf === undefined) finalCsrf = null; // Ensure strict null type
+
+                logger.info('SocketFoundryClient | Performing Explicit POST Login (JSON)...');
+
+                // Use JSON body as per successful debug script
                 const loginResponse = await fetch(`${baseUrl}/join`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'Cookie': guestCookie,
-                        'User-Agent': 'SheetDelver/1.0',
-                        'Origin': baseUrl,
-                        'Referer': `${baseUrl}/join`
+                        'Content-Type': 'application/json',
+                        'Cookie': this.sessionCookie || '',
+                        'User-Agent': 'SheetDelver/1.0'
                     },
-                    body: loginBody,
+                    body: JSON.stringify({
+                        userid: userId,
+                        password: this.config.password || '',
+                        action: 'join',
+                        'csrf-token': finalCsrf
+                    }),
                     redirect: 'manual'
                 });
 
-                const loginHeaders = loginResponse.headers.get('set-cookie');
-                logger.info(`SocketFoundryClient | Login POST response: ${loginResponse.status}. Cookies returned: ${!!loginHeaders}`);
-                addCookies(loginHeaders);
-
-                // Verify Login Success
-                const loginText = await loginResponse.text();
                 if (loginResponse.status !== 200 && loginResponse.status !== 302) {
-                    logger.error(`SocketFoundryClient | Authentication Failed (Status ${loginResponse.status}). Body: ${loginText.substring(0, 500)}`);
-                    throw new Error(`Authentication Failed: Server returned status ${loginResponse.status}.`);
+                    const body = await loginResponse.text();
+                    throw new Error(`Login failed with status ${loginResponse.status}: ${body.substring(0, 200)}`);
                 }
 
-                // Final Session Cookie
-                this.sessionCookie = Array.from(cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
-                logger.info(`SocketFoundryClient | Final session cookie established: ${this.sessionCookie.substring(0, 20)}...`);
+                // Update Cookies from Login Response
+                if (typeof (loginResponse.headers as any).getSetCookie === 'function') {
+                    this.updateCookies((loginResponse.headers as any).getSetCookie());
+                } else {
+                    this.updateCookies(loginResponse.headers.get('set-cookie'));
+                }
+
+                logger.info(`SocketFoundryClient | Login Successful (Status: ${loginResponse.status}).`);
 
             } catch (e: any) {
                 // If anything in the discovery/auth flow fails, we must NOT proceed to open the main socket.
@@ -659,7 +703,13 @@ export class SocketFoundryClient implements FoundryClient {
         }
 
 
-        // 2. Establish Socket Connection
+        // 2. Fetch World Data (gameData) if we have a session AND we are the System Client
+        // Optimization: User clients (Frontend via API) don't need this heavy fetch.
+        if (this.isSystemClient && this.sessionCookie && !this.gameDataCache) {
+            await this.fetchGameData();
+        }
+
+        // 3. Establish Socket Connection
         await new Promise<void>((resolve, reject) => {
             this.isJoining = false;
 
@@ -683,10 +733,10 @@ export class SocketFoundryClient implements FoundryClient {
                 }
             }
 
-            const headers = {
+            const headers: { [key: string]: string } = {
                 'Cookie': this.sessionCookie || '',
                 'User-Agent': 'SheetDelver/1.0',
-                'Origin': baseUrl
+                'Origin': baseUrl || ''
             };
 
             logger.info(`SocketFoundryClient | Connecting to socket at ${baseUrl}...`);
@@ -697,8 +747,8 @@ export class SocketFoundryClient implements FoundryClient {
                 transports: ['websocket'],
                 reconnection: true,
                 forceNew: true,
-                query: sessionId ? { session: sessionId } : {},
-                auth: sessionId ? { session: sessionId } : {},
+                query: (sessionId ? { session: sessionId } : {}) as any,
+                auth: (sessionId ? { session: sessionId } : {}) as any,
                 extraHeaders: headers,
                 transportOptions: {
                     websocket: {
@@ -1294,13 +1344,13 @@ export class SocketFoundryClient implements FoundryClient {
 
         return new Promise((resolve, reject) => {
             if (process.env.NODE_ENV !== 'production') {
-                logger.info(`SocketFoundryClient | EMIT [${requestId}]: ${event}`, JSON.stringify(payload));
+                logger.debug(`SocketFoundryClient | EMIT [${requestId}]: ${event}`, JSON.stringify(payload));
             }
 
             socket.emit(event, payload, (response: any) => {
                 if (process.env.NODE_ENV !== 'production') {
                     const responseStr = JSON.stringify(response);
-                    logger.info(`SocketFoundryClient | RESPONSE [${requestId}]: ${event}`, responseStr.length > 500 ? responseStr.substring(0, 500) + "..." : responseStr);
+                    logger.debug(`SocketFoundryClient | RESPONSE [${requestId}]: ${event}`, responseStr.length > 500 ? responseStr.substring(0, 500) + "..." : responseStr);
                 }
 
                 if (response?.error) {
@@ -1718,8 +1768,162 @@ export class SocketFoundryClient implements FoundryClient {
         return await adapter.normalizeActorData(actorData);
     }
 
+    private async fetchManifest(baseUrl: string, type: 'systems' | 'modules', id: string): Promise<any> {
+        try {
+            const url = `${baseUrl}/${type}/${id}/${type === 'systems' ? 'system.json' : 'module.json'}`;
+
+            // We need a session cookie for this. if we don't have it, we might fail.
+            const headers: any = {
+                'User-Agent': 'SheetDelver/1.0'
+            };
+            if (this.sessionCookie) {
+                headers['Cookie'] = this.sessionCookie;
+            }
+
+            const res = await fetch(url, { headers });
+            if (res.ok) return await res.json();
+        } catch (e) {
+            logger.warn(`SocketFoundryClient | Failed to fetch manifest for ${type}/${id}: ${e}`);
+        }
+        return null;
+    }
+
+    async fetchGameData(): Promise<any> {
+        if (this.gameDataCache) return this.gameDataCache;
+        if (!this.sessionCookie) return null;
+
+        const currentUrl = this.config.url || '';
+        const baseUrl = currentUrl.endsWith('/') ? currentUrl.slice(0, -1) : currentUrl;
+        try {
+            logger.info('SocketFoundryClient | Fetching world configuration (gameData)...');
+            const res = await fetch(`${baseUrl}/game`, {
+                headers: {
+                    'Cookie': this.sessionCookie,
+                    'User-Agent': 'SheetDelver/1.0'
+                }
+            });
+
+            if (!res.ok) throw new Error(`Failed to fetch /game: ${res.status}`);
+            const html = await res.text();
+
+            logger.info(`SocketFoundryClient | (V2 DEBUG) gamePage HTML fetched. Length: ${html.length}`);
+            logger.debug(`SocketFoundryClient | (V2 DEBUG) HTML Preview: ${html.substring(0, 500)}`);
+
+            if (html.length < 1000) {
+                logger.warn(`SocketFoundryClient | (V2 DEBUG) HTML suspiciously short. Potential redirect or login page?`);
+            }
+
+            // Extract gameData from script tags
+            // V13 usually uses JSON.parse for efficiency
+            const parseMatch = html.match(/const gameData = JSON\.parse\('(.*?)'\);/);
+            if (parseMatch) {
+                try {
+                    // Foundry escapes single quotes in the JSON string
+                    const rawJson = parseMatch[1].replace(/\\'/g, "'");
+                    this.gameDataCache = JSON.parse(rawJson);
+                    logger.info('SocketFoundryClient | extracted gameData via JSON.parse');
+                } catch (e) {
+                    logger.warn(`Secondary parse failed: ${e}`);
+                }
+            }
+
+            // Fallback for older versions or literal assignment
+            if (!this.gameDataCache) {
+                const literalMatch = html.match(/const gameData = ({[\s\S]*?});\s*$/m);
+                if (literalMatch) {
+                    try {
+                        // This is dangerous but we are in a trusted environment probing our own server
+                        // For safety, let's try to parse as JSON if it looks clean
+                        this.gameDataCache = JSON.parse(literalMatch[1]);
+                        logger.info('SocketFoundryClient | extracted gameData via literal match');
+                    } catch (e) {
+                        logger.warn(`Literal parse failed: ${e}`);
+                    }
+                }
+            }
+
+            if (this.gameDataCache) {
+                // Update active modules list from gameData
+                if (this.gameDataCache.modules) {
+                    this.activeModules = this.gameDataCache.modules;
+                }
+                return this.gameDataCache;
+            }
+        } catch (e) {
+            logger.error(`SocketFoundryClient | Failed to fetch gameData: ${e}`);
+        }
+        return null;
+    }
+
     async getAllCompendiumIndices(): Promise<any[]> {
-        return [];
+        if (!this.isConnected) return [];
+
+        // Only the System Client (Service Account) should perform discovery
+        if (!this.isSystemClient) {
+            logger.debug('SocketFoundryClient | Skipping compendium discovery for user client.');
+            return [];
+        }
+
+        try {
+            // Use Cached World Data (gameData) as the single source of truth
+            const game = this.gameDataCache || await this.fetchGameData();
+            if (!game) {
+                logger.warn('SocketFoundryClient | No gameData available for discovery.');
+                return [];
+            }
+
+            const packs = new Map<string, any>();
+
+            // 1. Discovery from World
+            if (game.world?.packs) {
+                game.world.packs.forEach((p: any) => {
+                    const id = p.id || p._id || `${p.system}.${p.name}` || p.name;
+                    packs.set(id, { ...p, source: 'world' });
+                });
+            }
+
+            // 2. Discovery from System
+            if (game.system?.packs) {
+                game.system.packs.forEach((p: any) => {
+                    const id = p.id || p._id || `${game.system.id}.${p.name}` || p.name;
+                    if (!packs.has(id)) packs.set(id, { ...p, system: game.system.id, source: 'system' });
+                });
+            }
+
+            // 3. Discovery from Modules
+            if (game.modules) {
+                game.modules.forEach((mod: any) => {
+                    if (mod.packs) {
+                        mod.packs.forEach((p: any) => {
+                            const id = p.id || p._id || `${mod.id}.${p.name}` || p.name;
+                            if (!packs.has(id)) packs.set(id, { ...p, module: mod.id, source: 'module' });
+                        });
+                    }
+                });
+            }
+
+            // logger.debug(`SocketFoundryClient | Aggregated ${packs.size} compendium packs from gameData.`);
+
+            // 4. Fetch Indices for each pack
+            const results = [];
+            for (const [packId, metadata] of packs.entries()) {
+                // Determine Document Type (Default to Item if unknown)
+                const docType = metadata.type || metadata.entity || metadata.documentName || 'Item';
+
+                // Fetch index (This still uses the socket, which is efficient)
+                const index = await this.getPackIndex(packId, docType);
+                results.push({
+                    id: packId,
+                    metadata: metadata,
+                    index: index
+                });
+            }
+
+            return results;
+        } catch (e) {
+            logger.warn(`getAllCompendiumIndices failed: ${e}`);
+            return [];
+        }
     }
 
     async updateActor(id: string, data: any): Promise<any> {
@@ -1846,10 +2050,102 @@ export class SocketFoundryClient implements FoundryClient {
         return !!existingEffect;
     }
 
+    async fetchByUuid(uuid: string): Promise<any> {
+        if (!this.isSocketConnected) throw new Error("Socket not connected");
+
+        // 1. Compendium UUIDs
+        if (uuid.startsWith("Compendium.")) {
+            // Format: Compendium.<packName>.<DocumentName>.<ID>
+            // Example: Compendium.system-id.pack-name.DocumentType.ID
+            const parts = uuid.split('.');
+            if (parts.length < 4) throw new Error(`Invalid Compendium UUID format: ${uuid}`);
+
+            const id = parts.pop();
+            const type = parts.pop();
+            // The rest is "Compendium" + packName parts. Slice 1 to remove "Compendium"
+            const pack = parts.slice(1).join('.');
+
+            if (!id || !type || !pack) throw new Error(`Invalid Compendium UUID parts: ${uuid}`);
+
+            const response: any = await this.dispatchDocumentSocket(type, 'get', {
+                pack: pack,
+                query: { _id: id },
+                broadcast: false
+            });
+            return response?.result?.[0] || null;
+        }
+
+        const parts = uuid.split('.');
+
+        // 2. World Document UUIDs (Type.Id) e.g. Actor.xyz
+        if (parts.length === 2) {
+            const [type, id] = parts;
+            const response: any = await this.dispatchDocumentSocket(type, 'get', {
+                query: { _id: id },
+                broadcast: false
+            });
+            return response?.result?.[0] || null;
+        }
+
+        // 3. Embedded (Actor.Id.Item.Id)
+        if (parts.length === 4) {
+            const [parentType, parentId, docType, docId] = parts;
+            const response: any = await this.dispatchDocumentSocket(docType, 'get', {
+                query: { _id: docId },
+                broadcast: false
+            }, { type: parentType, id: parentId });
+            return response?.result?.[0] || null;
+        }
+
+    }
+
+    async getPackIndex(packId: string, type: string): Promise<any[]> {
+        // Fetch all documents from a pack
+        // v13 preferred: getCompendiumIndex
+        try {
+            logger.debug(`SocketFoundryClient | Fetching index for pack ${packId} (type: ${type})...`);
+
+            // Try getCompendiumIndex first as it is more efficient for just the index
+            try {
+                const response: any = await this.emit('getCompendiumIndex', { pack: packId }, 10000);
+                if (Array.isArray(response)) return response;
+                if (response?.result) return response.result;
+            } catch (e) {
+                logger.debug(`SocketFoundryClient | getCompendiumIndex failed for ${packId}, falling back to modifyDocument: ${e}`);
+            }
+
+            // Fallback to modifyDocument with pack arg
+            const response: any = await this.dispatchDocumentSocket(type, 'get', {
+                pack: packId,
+                broadcast: false
+            });
+            return response?.result || [];
+        } catch (e) {
+            logger.warn(`getPackIndex failed for ${packId}: ${e}`);
+            return [];
+        }
+    }
+
     async getChatLog(limit = 100): Promise<any[]> {
         // v13 Protocol: get documents for ChatMessage
         const response: any = await this.dispatchDocumentSocket('ChatMessage', 'get', { broadcast: false });
-        return (response?.result || []).slice(-limit).reverse();
+        const raw = (response?.result || []).slice(-limit).reverse();
+
+        return raw.map((msg: any) => {
+            // Map author ID to Name
+            const authorUser = this.userMap.get(msg.author);
+            const authorName = authorUser?.name || msg.alias || 'Unknown';
+
+            // Normalize for UI
+            return {
+                ...msg,
+                user: authorName,
+                timestamp: msg.timestamp || Date.now(),
+                isRoll: msg.type === 5, // Foundry CONST.CHAT_MESSAGE_TYPES.ROLL is 5
+                rollTotal: msg.rolls?.[0]?.total, // Simplistic extraction
+                flavor: msg.flavor
+            };
+        });
     }
 
     async sendMessage(content: string | any): Promise<any> {
@@ -1882,8 +2178,11 @@ export class SocketFoundryClient implements FoundryClient {
 
     async getWorlds(): Promise<any[]> {
         try {
-            const { SetupScraper } = await import('./SetupScraper');
+            const { SetupScraper } = await import('../SetupScraper');
             const cache = await SetupScraper.loadCache();
+            if (cache.worlds) {
+                this.cachedWorlds = cache.worlds;
+            }
             return Object.values(cache.worlds || {});
         } catch (e) {
             logger.warn(`SocketFoundryClient | Failed to get worlds: ${e}`);
@@ -1910,6 +2209,7 @@ export class SocketFoundryClient implements FoundryClient {
             throw new Error("Socket not connected");
         }
     }
+
     public getSocketState() {
         return {
             connected: this.isSocketConnected,

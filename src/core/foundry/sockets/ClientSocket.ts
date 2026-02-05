@@ -1,0 +1,168 @@
+import { io } from 'socket.io-client';
+import { CoreSocket } from './CoreSocket';
+import { SocketBase } from './SocketBase';
+import { logger } from '../../logger';
+import { FoundryConfig } from '../types';
+
+export class ClientSocket extends SocketBase {
+    public userId: string | null = null;
+    public isExplicitSession: boolean = false;
+    private coreSocket: CoreSocket;
+
+    constructor(config: FoundryConfig, coreSocket: CoreSocket) {
+        super(config);
+        this.coreSocket = coreSocket;
+    }
+
+    async connect(): Promise<void> {
+        if (this.isConnected) return;
+        const baseUrl = this.getBaseUrl();
+        logger.info(`ClientSocket | Connecting Presence Anchor for user ${this.config.username}...`);
+
+        try {
+            // 1. Handshake & CSRF & Scraped Users
+            const { csrfToken, isSetupMatch, users: scrapedUsers } = await this.performHandshake(baseUrl);
+            if (isSetupMatch) {
+                throw new Error("Cannot connect ClientSocket in Setup Mode");
+            }
+
+            // 2. Identification (via Discovery Probe or Scraped Fallback)
+            if (!this.userId) {
+                logger.info('ClientSocket | Identifying user ID...');
+                // Prefer user map from CoreSocket if available
+                const coreData = this.coreSocket.getGameData();
+                const users = coreData?.users || (await this.probeWorldState(baseUrl))?.users || scrapedUsers;
+                const user = users?.find((u: any) => u.name === this.config.username);
+                if (user) {
+                    this.userId = user._id;
+                }
+            }
+
+            if (!this.userId) {
+                throw new Error(`Could not identify user ID for ${this.config.username}`);
+            }
+
+            // 3. Login
+            await this.performLogin(baseUrl, this.userId, csrfToken);
+
+            // 4. Connect Main Socket
+            const sessionId = this.getSessionId();
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error("ClientSocket connection timeout")), 15000);
+
+                this.socket = io(baseUrl, {
+                    path: '/socket.io',
+                    transports: ['websocket'],
+                    upgrade: false,
+                    query: sessionId ? { session: sessionId } : {},
+                    auth: sessionId ? { session: sessionId } : {},
+                    extraHeaders: {
+                        'Cookie': this.sessionCookie || '',
+                        'User-Agent': 'SheetDelver/1.0'
+                    },
+                    transportOptions: {
+                        websocket: {
+                            extraHeaders: {
+                                'Cookie': this.sessionCookie || '',
+                                'User-Agent': 'SheetDelver/1.0'
+                            }
+                        }
+                    }
+                });
+
+                this.socket.on('session', (data: any) => {
+                    if (data && data.userId) {
+                        logger.info(`ClientSocket | Session verified for user ${data.userId}`);
+                        this.userId = data.userId;
+                        this.isSocketConnected = true;
+                        this.setupSharedContentListeners(this.socket!);
+                        clearTimeout(timeout);
+                        this.emit('connect');
+                        resolve();
+                    }
+                });
+
+                this.socket.on('connect', () => {
+                    logger.debug(`ClientSocket | Socket transport connected for ${this.userId}. Waiting for session event...`);
+                });
+
+                this.socket.on('disconnect', (reason: string) => {
+                    logger.info(`ClientSocket | Presence Socket Disconnected: ${reason}`);
+                    this.isSocketConnected = false;
+                    this.emit('disconnect', reason);
+                });
+
+                this.socket.on('connect_error', (err) => {
+                    logger.error(`ClientSocket | Socket connection error: ${err.message}`);
+                    clearTimeout(timeout);
+                    reject(err);
+                });
+            });
+
+        } catch (e: any) {
+            logger.error(`ClientSocket | Connection failed: ${e.message}`);
+            throw e;
+        }
+    }
+
+    public async login(username?: string, password?: string): Promise<void> {
+        if (username) this.config.username = username;
+        if (password) this.config.password = password;
+        this.isExplicitSession = true;
+        await this.connect();
+    }
+
+    public async restoreSession(cookie: string, userId: string): Promise<void> {
+        logger.info(`ClientSocket | Restoring session for user ${userId}...`);
+        this.userId = userId;
+        this.sessionCookie = cookie;
+        this.isExplicitSession = true;
+
+        // Populate cookieMap from existing cookie string
+        const parts = cookie.split(';');
+        parts.forEach(p => {
+            const [k, v] = p.split('=');
+            if (k && v) this.cookieMap.set(k.trim(), v.trim());
+        });
+
+        await this.connect();
+    }
+
+    public async validateSession(expectedWorldId: string): Promise<boolean> {
+        if (!this.isConnected || !this.userId) return false;
+        // Check core for world ID match
+        const currentWorldId = this.coreSocket.getGameData()?.world?.id;
+        return currentWorldId === expectedWorldId;
+    }
+
+    // --- Data Operations (Proxied to CoreSocket with userId filtering) ---
+
+    public async getJournals(): Promise<any[]> {
+        return this.coreSocket.getJournals(this.userId || undefined);
+    }
+
+    public async getChatLog(limit = 100): Promise<any[]> {
+        return this.coreSocket.getChatLog(limit, this.userId || undefined);
+    }
+
+    public async sendMessage(content: string | any): Promise<any> {
+        if (!this.userId) throw new Error("User ID not set on ClientSocket");
+        return this.coreSocket.sendMessage(content, this.userId);
+    }
+
+    public async roll(formula: string, flavor?: string): Promise<any> {
+        return this.coreSocket.roll(formula, flavor, this.userId || undefined);
+    }
+
+    public async getActors(): Promise<any[]> {
+        return this.coreSocket.getActors(this.userId || undefined);
+    }
+
+    public async getActor(id: string): Promise<any> {
+        return this.coreSocket.getActor(id);
+    }
+
+    public async getSystem(): Promise<any> {
+        return this.coreSocket.getSystem();
+    }
+}

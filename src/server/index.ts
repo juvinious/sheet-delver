@@ -13,7 +13,7 @@ async function startServer() {
     }
 
     const { host, port, apiPort } = config.app || { host: 'localhost', port: 3000, apiPort: 3001 };
-    const corePort = process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort;
+    const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
 
     const app = express();
     app.use(express.json());
@@ -43,7 +43,7 @@ async function startServer() {
 
         // Use async restoration
         sessionManager.getOrRestoreSession(sessionId).then(session => {
-            if (!session || !session.client.isLoggedIn) {
+            if (!session || !session.client.userId) {
                 return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
             }
 
@@ -75,7 +75,7 @@ async function startServer() {
             if (authHeader && authHeader.startsWith('Bearer ')) {
                 const token = authHeader.split(' ')[1];
                 userSession = await sessionManager.getOrRestoreSession(token);
-                if (userSession && userSession.client.isLoggedIn) {
+                if (userSession && userSession.client.userId) {
                     isAuthenticated = true;
                 }
             }
@@ -84,21 +84,44 @@ async function startServer() {
             const systemClient = sessionManager.getSystemClient();
 
             // Authentication: Only the user session determines if we are logged in
-            isAuthenticated = !!(userSession && userSession.client.isLoggedIn);
+            isAuthenticated = !!(userSession && userSession.client.userId);
 
-            let system, users;
+            let system: any = {
+                id: null,
+                status: systemClient.worldState,
+                worldTitle: 'Reconnecting...'
+            };
+            let users = [];
             try {
                 // Fetch global state from system client
-                system = await systemClient.getSystem();
-                users = await systemClient.getUsersDetails();
+                const gameData = systemClient.getGameData();
+                if (gameData) {
+                    const usersList = gameData.users || [];
+                    const activeCount = usersList.filter((u: any) => u.active).length;
+                    const totalCount = usersList.length;
 
-                // Add adapter config to system info
-                if (system?.id) {
-                    const sid = system.id.toLowerCase();
-                    const adapter = getAdapter(sid);
-                    if (adapter && typeof (adapter as any).getConfig === 'function') {
-                        const config = (adapter as any).getConfig();
-                        if (config) system.config = config;
+                    system = {
+                        ...gameData.system,
+                        worldTitle: gameData.world?.title || 'Foundry VTT',
+                        worldDescription: gameData.world?.description,
+                        worldBackground: gameData.world?.background,
+                        nextSession: gameData.world?.nextSession,
+                        status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
+                        users: {
+                            active: activeCount,
+                            total: totalCount
+                        }
+                    };
+                    users = usersList;
+
+                    // Add adapter config to system info
+                    if (system.id) {
+                        const sid = system.id.toLowerCase();
+                        const adapter = getAdapter(sid);
+                        if (adapter && typeof (adapter as any).getConfig === 'function') {
+                            const config = (adapter as any).getConfig();
+                            if (config) system.config = config;
+                        }
                     }
                 }
             } catch (e) {
@@ -109,12 +132,12 @@ async function startServer() {
             const connected = systemClient.isConnected;
 
             if (process.env.NODE_ENV !== 'production') {
-                const sysState = (systemClient as any).getSocketState();
-                const userState = userSession ? (userSession.client as any).getSocketState() : null;
+                const sysState = { connected: systemClient.isConnected, worldState: systemClient.worldState };
+                const userState = userSession ? { connected: userSession.client.isConnected, userId: userSession.client.userId } : null;
                 logger.debug(`Status Handler | Auth: ${isAuthenticated} | World: ${system?.status}`);
-                logger.debug(`Status Handler | System: conn=${sysState.connected}, state=${sysState.worldState}, user=${sysState.userId}`);
+                logger.debug(`Status Handler | System: conn=${sysState.connected}, state=${sysState.worldState}`);
                 if (userState) {
-                    logger.debug(`Status Handler | User: conn=${userState.connected}, state=${userState.worldState}, user=${userState.userId}, explicit=${userState.isExplicit}`);
+                    logger.debug(`Status Handler | User: conn=${userState.connected}, user=${userState.userId}`);
                 }
             }
 
@@ -122,9 +145,10 @@ async function startServer() {
                 connected,
                 isAuthenticated,
                 users: users || [],
-                system: system || {},
+                system: system,
                 url: config.foundry.url,
-                appVersion: '0.5.0'
+                appVersion: '0.5.0',
+                debug: config.debug
             });
         } catch (error: any) {
             logger.error(`Status Handler Error: ${error.message}`);
@@ -145,11 +169,12 @@ async function startServer() {
         }
         const token = authHeader.split(' ')[1];
         const session = await sessionManager.getOrRestoreSession(token);
-        if (!session || !session.client.isLoggedIn) return res.status(401).json({ error: 'Unauthorized' });
+        if (!session || !session.client.userId) return res.status(401).json({ error: 'Unauthorized' });
 
         try {
-            const systemInfo = await session.client.getSystem();
-            res.json(systemInfo);
+            // Core Socket is the source of truth for System Info
+            const gameData = sessionManager.getSystemClient().getGameData();
+            res.json(gameData?.system || {});
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
@@ -162,19 +187,20 @@ async function startServer() {
         }
         const token = authHeader.split(' ')[1];
         const session = await sessionManager.getOrRestoreSession(token);
-        if (!session || !session.client.isLoggedIn) return res.status(401).json({ error: 'Unauthorized' });
+        if (!session || !session.client.userId) return res.status(401).json({ error: 'Unauthorized' });
 
         try {
-            const client = session.client;
-            const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            // System Data comes from the Core System Client + Scraper logic
+            const systemClient = sessionManager.getSystemClient();
+            const gameData = systemClient.getGameData();
+            const adapter = systemClient.getSystemAdapter();
 
             if (adapter && typeof (adapter as any).getSystemData === 'function') {
-                const data = await (adapter as any).getSystemData(client);
+                const data = await (adapter as any).getSystemData(systemClient); // Adapter might expect Client interface, careful
                 res.json(data);
             } else {
                 // Fallback: Return raw scraper data if adapter doesn't provide more
-                res.json((client as any).cachedWorldData?.data || {});
+                res.json(gameData?.data || {});
             }
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -556,12 +582,8 @@ async function startServer() {
             const uuid = req.query.uuid as string;
             if (!uuid) return res.status(400).json({ error: 'Missing uuid' });
 
-            // Replicate the evaluation logic for fetching by UUID
-            const data = await client.evaluate(async (uuid: any) => {
-                // @ts-ignore
-                const doc = await fromUuid(uuid);
-                return doc?.toObject() || null;
-            }, uuid);
+            // Use the new headless-compatible fetch method
+            const data = await client.fetchByUuid(uuid);
 
             if (!data) return res.status(404).json({ error: 'Document not found' });
             res.json(data);
@@ -690,7 +712,7 @@ async function startServer() {
                 const { SetupScraper } = await import('../core/foundry/SetupScraper');
 
                 // Try scraping /setup page first (Live Discovery)
-                worlds = await SetupScraper.scrapeAvailableWorlds(client.url);
+                worlds = await SetupScraper.scrapeAvailableWorlds(client.url || '');
 
                 // If scraping failed, fallback to cache
                 if (worlds.length === 0) {
@@ -727,7 +749,7 @@ async function startServer() {
             logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
 
             // Scrape
-            const result = await SetupScraper.scrapeWorldData(client.url, sessionCookie);
+            const result = await SetupScraper.scrapeWorldData(client.url || '', sessionCookie);
 
             // Save to Cache
             await SetupScraper.saveCache(result);
@@ -766,7 +788,7 @@ async function startServer() {
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
 
-    app.listen(corePort, '127.0.0.1', () => {
+    app.listen(corePort, '0.0.0.0', () => {
         console.log(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
         console.log(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
         console.log(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);

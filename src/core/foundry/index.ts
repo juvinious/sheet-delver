@@ -1,26 +1,17 @@
 import { FoundryConfig } from './types';
 import { FoundryClient } from './interfaces';
-import { SocketFoundryClient } from './SocketClient';
+import { ClientSocket } from './sockets/ClientSocket';
+import { CoreSocket } from './sockets/CoreSocket';
 
 export function createFoundryClient(config: FoundryConfig): FoundryClient {
-    const connector = config.connector || 'socket';
-
-    if (connector === 'socket') {
-        return new SocketFoundryClient(config);
-    }
-
-    // Future connectors (e.g. 'api') can be added here
-    // Verify that we are not trying to use removed connectors
-    if (connector === 'playwright' || connector === 'bridge') {
-        throw new Error(`Connector '${connector}' is deprecated. Please use 'socket'.`);
-    }
-
-    // Default fallback
-    return new SocketFoundryClient(config);
+    // Default to User Client, but requires Core
+    const core = new CoreSocket(config);
+    // Note: CoreSocket needs connect() to be useful, but factory just returns instance
+    return new ClientSocket(config, core) as any;
 }
 
 // Export individual clients and interface for flexibility
-export { SocketFoundryClient };
+export { ClientSocket, CoreSocket };
 export type { FoundryClient };
 
 

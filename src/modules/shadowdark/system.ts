@@ -351,264 +351,225 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getSystemData(client: any): Promise<any> {
-        return await client.evaluate(async () => {
-            // @ts-ignore
-            if (!window.game || !window.game.system) return null;
-            // @ts-ignore
-            const s = window.game.system;
-            // @ts-ignore
-            const packs = window.game.packs.contents;
+        const sysInfo = await client.getSystem();
+        const results = {
+            id: sysInfo.id,
+            title: sysInfo.title,
+            version: sysInfo.version,
+            config: {
+                actorCard: {
+                    subtext: ['level.value', 'details.class']
+                }
+            },
+            classes: [] as any[],
+            ancestries: [] as any[],
+            backgrounds: [] as any[],
+            languages: [] as any[],
+            deities: [] as any[],
+            patrons: [] as any[],
+            spells: [] as any[],
+            talents: [] as any[],
+            titles: {},
+            PREDEFINED_EFFECTS: {},
+            debug: [] as any[]
+        };
 
-            const results = {
-                id: s.id,
-                title: s.title,
-                version: s.version,
-                url: s.url,
-                manifest: s.manifest,
-                documentTypes: s.documentTypes,
-                template: s.template,
+        try {
+            const processedUuids = new Set<string>();
 
-                // Dashboard Configuration
-                config: {
-                    actorCard: {
-                        // Subtext paths to display on actor cards
-                        // Format: ["path.to.field", "another.path"]
-                        // For Shadowdark: Show "Level X • ClassName"
-                        subtext: ['level.value', 'details.class']
+            // 1. Fetch from DataManager (Server-side High Reliability)
+            if (typeof window === 'undefined') {
+                try {
+                    const { dataManager } = await import('./data/DataManager');
+                    const localDocs = await dataManager.getAllDocuments();
+
+                    for (const doc of localDocs) {
+                        const type = (typeof doc.type === 'string' ? doc.type : '').toLowerCase();
+                        const uuid = doc.uuid;
+
+                        if (!uuid || processedUuids.has(uuid)) continue;
+                        processedUuids.add(uuid);
+
+                        const baseInfo = { name: doc.name, uuid, img: doc.img };
+
+                        if (type === 'class') {
+                            results.classes.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                            if (doc.system?.titles) {
+                                (results.titles as any)[doc.name] = doc.system.titles;
+                            }
+                        } else if (type === 'ancestry') {
+                            results.ancestries.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                        } else if (type === 'background') {
+                            results.backgrounds.push(baseInfo);
+                        } else if (type === 'language') {
+                            results.languages.push(baseInfo);
+                        } else if (type === 'deity') {
+                            results.deities.push(baseInfo);
+                        } else if (type === 'patron') {
+                            results.patrons.push(baseInfo);
+                        } else if (type === 'talent') {
+                            results.talents.push(baseInfo);
+                        } else if (type === 'spell') {
+                            results.spells.push({
+                                ...baseInfo,
+                                tier: doc.system?.tier || 0,
+                                class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                            });
+                        }
                     }
-                },
-
-                classes: [] as any[],
-                ancestries: [] as any[],
-                backgrounds: [] as any[],
-                languages: [] as any[],
-                deities: [] as any[],
-                patrons: [] as any[],
-                spells: [] as any[],
-                talents: [] as any[],
-                titles: {},
-                PREDEFINED_EFFECTS: {},
-                debug: [] as any[]
-            };
-
-            // @ts-ignore
-            const sdConfig = (typeof CONFIG !== 'undefined' ? CONFIG.SHADOWDARK : null) || window.game?.shadowdark?.config;
-
-            console.log('[DEBUG] SD Config found:', !!sdConfig);
-
-            if (sdConfig?.PREDEFINED_EFFECTS) {
-                // @ts-ignore
-                results.PREDEFINED_EFFECTS = sdConfig.PREDEFINED_EFFECTS;
+                } catch (e) {
+                    console.error("ShadowdarkAdapter | DataManager fallback failed:", e);
+                }
             }
 
+            // 2. Fetch all compendium packs from Socket (If available/different)
+            const packs = await client.getAllCompendiumIndices();
+
             for (const pack of packs) {
-                // @ts-ignore
-                if (pack.documentName !== 'Item') continue;
+                // We only care about Item packs
+                // V13 metadata usually has 'type' or 'documentName' or 'documentClass'
+                const metadata = pack.metadata || {};
+                const docType = metadata.type || metadata.documentName || metadata.documentClass;
+                if (docType !== 'Item') continue;
 
-                // Index with robust fields
-                // @ts-ignore
-                const index = await pack.getIndex({ fields: ['type', 'system.tier', 'system.class', 'system.spellcasting', 'system.patron', 'system.alignment'] });
+                const packId = pack.id;
+                const index = pack.index || [];
 
-                // Helper for case-insensitive check
-                const filterType = (type: string) => index.filter((i: any) => i.type && i.type.toLowerCase() === type.toLowerCase());
+                for (const item of index) {
+                    const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
+                    const uuid = `Compendium.${packId}.Item.${item._id || item.id}`;
 
-                // Index Classes
-                const classIndex = filterType('class');
-                for (const c of classIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(c._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.classes.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${c._id}`,
-                            languages: doc.system?.languages || []
-                        });
+                    if (processedUuids.has(uuid)) continue;
+                    processedUuids.add(uuid);
 
-                        // Index Titles directly from Class items
-                        if (doc.system?.titles) {
-                            // @ts-ignore
-                            results.titles[doc.name] = doc.system.titles;
+                    const baseInfo = { name: item.name, uuid, img: item.img };
+
+                    if (type === 'class') {
+                        // For classes we need languages and titles
+                        // We might need to fetch the full doc if index is just basic
+                        const doc = await client.fetchByUuid(uuid);
+                        if (doc) {
+                            results.classes.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                            if (doc.system?.titles) {
+                                (results.titles as any)[doc.name] = doc.system.titles;
+                            }
+                        }
+                    } else if (type === 'ancestry') {
+                        const doc = await client.fetchByUuid(uuid);
+                        if (doc) {
+                            results.ancestries.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                        }
+                    } else if (type === 'background') {
+                        results.backgrounds.push(baseInfo);
+                    } else if (type === 'language') {
+                        results.languages.push(baseInfo);
+                    } else if (type === 'deity') {
+                        results.deities.push(baseInfo);
+                    } else if (type === 'patron') {
+                        results.patrons.push(baseInfo);
+                    } else if (type === 'talent') {
+                        results.talents.push(baseInfo);
+                    } else if (type === 'spell') {
+                        // Spells need tier and class
+                        // If they aren't in index, fetch full doc (can be slow if many spells)
+                        // Optimization: if index has it, use it
+                        const tier = item.system?.tier ?? item['system.tier'] ?? null;
+                        const classes = item.system?.class ?? item['system.class'] ?? null;
+
+                        if (tier !== null && classes !== null) {
+                            results.spells.push({
+                                ...baseInfo,
+                                tier,
+                                class: Array.isArray(classes) ? classes : [classes]
+                            });
+                        } else {
+                            // Fallback fetch
+                            const doc = await client.fetchByUuid(uuid);
+                            if (doc) {
+                                results.spells.push({
+                                    ...baseInfo,
+                                    tier: doc.system?.tier || 0,
+                                    class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                                });
+                            }
                         }
                     }
                 }
-
-                // Index Ancestries
-                const ancestryIndex = filterType('ancestry');
-                for (const a of ancestryIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(a._id);
-                    if (doc) {
-                        results.ancestries.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${a._id}`,
-                            languages: doc.system?.languages || []
-                        });
-                    }
-                }
-
-                // Backgrounds
-                // @ts-ignore
-                results.backgrounds.push(...filterType('background').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}` })));
-
-                // Talents (Generic or specific)
-                // @ts-ignore
-                results.talents.push(...filterType('talent').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}`, img: i.img })));
-
-                // Index Languages
-                const langIndex = filterType('language');
-                for (const l of langIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(l._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.languages.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${l._id}`,
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
-                            rarity: doc.system?.rarity || 'common'
-                        });
-                    }
-                }
-
-                // Index Deities
-                const deityIndex = filterType('deity');
-                for (const d of deityIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(d._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.deities.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${d._id}`,
-                            alignment: doc.system?.alignment || 'neutral'
-                        });
-                    }
-                }
-
-                // Index Patrons
-                const patronIndex = filterType('patron');
-                for (const p of patronIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(p._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.patrons.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${p._id}`,
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || '',
-                            boonTable: doc.system?.boonTable || ''
-                        });
-                    }
-                }
-
-                // Index Spells
-                const spellIndex = filterType('spell');
-                if (spellIndex.length > 0) {
-                    results.debug.push({
-                        pack: pack.collection,
-                        count: spellIndex.length,
-                        firstEntry: spellIndex[0] ? { name: spellIndex[0].name, type: spellIndex[0].type } : null
-                    });
-                }
-
-                results.spells.push(...spellIndex.map((s: any) => {
-                    // Robust access for flattened or nested index fields
-                    // Check system.tier, system.level, and flat versions
-                    const tier = s.system?.tier !== undefined ? s.system.tier :
-                        (s['system.tier'] !== undefined ? s['system.tier'] :
-                            (s.system?.level !== undefined ? s.system.level :
-                                (s['system.level'] !== undefined ? s['system.level'] : 0)));
-
-                    const classes = s.system?.class || s['system.class'] ||
-                        s.system?.classes || s['system.classes'] || [];
-
-                    return {
-                        name: s.name,
-                        uuid: `Compendium.${pack.collection}.Item.${s._id}`,
-                        tier: tier,
-                        class: classes,
-                        img: s.img,
-                        system: {
-                            duration: s.system?.duration || s['system.duration'],
-                            range: s.system?.range || s['system.range']
-                        },
-                        description: ''
-                    };
-                }));
             }
 
-            // ADDED: Include World Items (for world-defined spells/classes)
-            // @ts-ignore
-            const worldItems = window.game.items.contents;
-            worldItems.forEach((item: any) => {
-                const type = item.type.toLowerCase();
-                const baseInfo = { name: item.name, uuid: item.uuid, img: item.img };
+            // 3. Fetch World Items
+            const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
+            const items = worldItems?.result || [];
+
+            for (const item of items) {
+                const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
+                const uuid = item.uuid || `Item.${item._id || item.id}`;
+
+                if (processedUuids.has(uuid)) continue;
+                processedUuids.add(uuid);
+
+                const baseInfo = { name: item.name, uuid, img: item.img };
 
                 if (type === 'spell') {
                     results.spells.push({
                         ...baseInfo,
                         tier: item.system?.tier || 0,
-                        class: item.system?.class || [],
-                        system: {
-                            duration: item.system?.duration,
-                            range: item.system?.range
-                        },
-                        description: ''
+                        class: Array.isArray(item.system?.class) ? item.system.class : [item.system?.class].filter(Boolean)
                     });
                 } else if (type === 'class') {
                     results.classes.push(baseInfo);
-                    // @ts-ignore
-                    if (item.system?.titles) results.titles[item.name] = item.system.titles;
+                    if (item.system?.titles) (results.titles as any)[item.name] = item.system.titles;
                 } else if (type === 'talent') {
                     results.talents.push(baseInfo);
+                } else if (type === 'ancestry') {
+                    results.ancestries.push(baseInfo);
+                } else if (type === 'background') {
+                    results.backgrounds.push(baseInfo);
                 }
-            });
+            }
 
-            // FINAL PASS: Resolve Class UUIDs to names in Spell Database
-            // This fixes the issue where spells list "Compendium.shadowdark.classes.Item..."
-            // instead of "Wizard" or "Priest". 
-            // We use Case-Insensitive matching.
+            // 3. Resolve Class Names in Spells (Case-Insensitive)
             const classUuidLookup = new Map<string, string>();
             results.classes.forEach((c: any) => {
                 if (c.uuid) classUuidLookup.set(c.uuid.toLowerCase(), c.name.toLowerCase());
             });
-            results.talents.forEach((t: any) => {
-                if (t.uuid) classUuidLookup.set(t.uuid.toLowerCase(), t.name.toLowerCase());
-            });
-
-            results.debug.push({
-                msg: "Resolution Pass",
-                classesIndexed: results.classes.length,
-                lookupSize: classUuidLookup.size
-            });
 
             results.spells = results.spells.map((s: any) => {
-                const rawClasses = Array.isArray(s.class) ? s.class : [s.class];
+                const rawClasses = Array.isArray(s.class) ? s.class : [s.class].filter(Boolean);
                 const resolved = rawClasses.map((c: any) => {
                     const cStr = String(c);
                     const cLower = cStr.toLowerCase();
-
-                    // 1. Exact UUID match (case-insensitive)
                     const found = classUuidLookup.get(cLower);
                     if (found) return found;
 
-                    // 2. Fuzzy match: check if UUID path contains a known class name
                     const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
                     for (const cls of knownClasses) {
                         if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
                             return cls;
                         }
                     }
-
-                    // 3. Fallback: Return original or lowercased if not a UUID
                     return (cStr.includes('.') ? cStr : cLower);
                 });
                 return { ...s, class: resolved };
             });
 
-            return results;
-        });
+        } catch (e) {
+            console.error('ShadowdarkAdapter | getSystemData failed:', e);
+        }
+
+        return results;
     }
 
     async getPredefinedEffects(client: any): Promise<any[]> {

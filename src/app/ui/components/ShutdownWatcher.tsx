@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { logger } from '../logger';
 
 export default function ShutdownWatcher() {
     const router = useRouter();
@@ -44,7 +45,7 @@ export default function ShutdownWatcher() {
                 if (isSetup || lostConnection) {
                     // Check if we are already aware (should be caught by shutdownRef, but double check)
                     if (!shutdownRef.current) {
-                        console.log(`[ShutdownWatcher] Shutdown detected (Setup: ${isSetup}, Lost Connection: ${lostConnection}). Starting countdown.`);
+                        logger.info(`[ShutdownWatcher] Shutdown detected (Setup: ${isSetup}, Lost Connection: ${lostConnection}). Starting countdown.`);
                         shutdownRef.current = true;
                         setShutdownDetected(true);
                         setCountDown(3);
@@ -64,7 +65,7 @@ export default function ShutdownWatcher() {
         if (shutdownDetected && countDown > 0) {
             timer = setTimeout(() => setCountDown(c => c - 1), 1000);
         } else if (shutdownDetected && countDown === 0) {
-            console.log('[ShutdownWatcher] Countdown complete. Redirecting to home/setup.');
+            logger.info('[ShutdownWatcher] Countdown complete. Redirecting to home/setup.');
             shutdownRef.current = false; // Reset for next time (though we are redirecting)
             setShutdownDetected(false);
 

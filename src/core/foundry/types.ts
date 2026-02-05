@@ -7,7 +7,10 @@ export interface ActorData {
 }
 
 export interface FoundryConfig {
-  url: string;
+  url?: string;
+  host?: string;
+  port?: number | string;
+  protocol?: string;
   username?: string;
   password?: string;
   userId?: string;

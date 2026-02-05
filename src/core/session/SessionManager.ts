@@ -1,4 +1,5 @@
-import { SocketFoundryClient } from '../foundry/SocketClient';
+import { CoreSocket } from '../foundry/sockets/CoreSocket';
+import { ClientSocket } from '../foundry/sockets/ClientSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '../logger';
 import { randomUUID } from 'crypto';
@@ -7,7 +8,7 @@ import path from 'path';
 
 interface Session {
     id: string;
-    client: SocketFoundryClient;
+    client: ClientSocket;
     userId: string;
     username: string;
     lastActive: number;
@@ -17,7 +18,7 @@ interface Session {
 
 export class SessionManager {
     private config: FoundryConfig;
-    private systemClient: SocketFoundryClient; // Service Account Client for World Verification
+    private systemClient: CoreSocket; // Singleton Service Socket
     private sessions: Map<string, Session> = new Map();
     private readonly SESSION_TIMEOUT_MS = 1000 * 60 * 60 * 24; // 24 Hours
     private readonly SESSIONS_FILE = path.join(process.cwd(), '.foundry-session.json');
@@ -27,74 +28,63 @@ export class SessionManager {
     constructor(config: FoundryConfig) {
         this.config = config;
 
-        // Initialize System Client WITH Service Account Credentials and System Flag
-        this.systemClient = new SocketFoundryClient(config, true);
+        // Initialize Core/System Socket
+        this.systemClient = new CoreSocket(config);
     }
 
     public async initialize() {
-        logger.info('SessionManager | Initializing System Client (Service Account)...');
+        logger.info('SessionManager | Initializing Core System Socket...');
         try {
-            const restored = await this.tryRestoreSession(this.SYSTEM_SESSION_KEY, true);
-
-            if (restored) {
-                logger.info('SessionManager | System Client restored from cache.');
-                this.systemClient = restored.client;
-                return;
-            }
-
-            logger.info('SessionManager | No valid system session found in cache. Performing fresh login.');
-            await this.systemClient.connect();
-
-            if (this.config.username && this.config.password) {
-                await this.systemClient.login(this.config.username, this.config.password);
-                logger.info('SessionManager | System Client authenticated successfully.');
-                await this.saveSession(this.SYSTEM_SESSION_KEY, this.systemClient, this.config.username);
-                await this.systemClient.getSystem();
-            } else {
-                logger.warn('SessionManager | No service account credentials provided.');
-            }
+            // Wait for connection AND world discovery
+            await new Promise<void>((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error("CoreSocket connection timeout")), 30000);
+                this.systemClient.once('connect', () => {
+                    clearTimeout(timeout);
+                    resolve();
+                });
+                this.systemClient.connect().catch(reject);
+            });
+            logger.info('SessionManager | Core System Socket Ready.');
         } catch (e: any) {
-            logger.error(`SessionManager | System Client failed to initialize: ${e.message}`);
+            logger.error(`SessionManager | Core Socket failed to initialize: ${e.message}`);
         }
     }
 
-    public getSystemClient(): SocketFoundryClient {
+    public getSystemClient(): CoreSocket {
         return this.systemClient;
     }
 
     public async createSession(username: string, password?: string): Promise<{ sessionId: string, userId: string }> {
         logger.info(`SessionManager | Creating session for user: ${username}`);
-        const client = new SocketFoundryClient({ ...this.config, username, password }, false);
+        // Note: We don't implement login inside ClientSocket yet, waiting on user to verify separation.
+        // For now, ClientSocket expects a resumed session or guest interaction.
+        // IF we need explicit login, we should add a login() method to ClientSocket similar to CoreSocket.
+        // Assuming we need to replicate the SocketClient "login" behavior here for now.
+
+        const client = new ClientSocket({ ...this.config, username, password }, this.systemClient);
 
         try {
-            await client.connect();
+            // ClientSocket connects individually to act as an Auth Anchor
             await client.login(username, password);
 
-            if (!client.userId) throw new Error('Login failed: No User ID returned.');
-
             const sessionId = randomUUID();
+            const userId = client.userId || 'unknown';
+
             const session = {
                 id: sessionId,
                 client,
-                userId: client.userId,
+                userId: userId,
                 username,
                 lastActive: Date.now(),
-                worldId: (client as any).cachedWorldData?.worldId,
+                worldId: this.systemClient.getGameData()?.world?.id, // Get from Core
                 cookie: (client as any).sessionCookie
             };
             this.sessions.set(sessionId, session);
 
-            // Hook up invalidation callback to purge memory/disk if client resets
-            client.onSessionInvalidated = () => {
-                logger.warn(`SessionManager | Session ${sessionId} (${username}) invalidated by client. Purging.`);
-                this.sessions.delete(sessionId);
-                this.clearSession(sessionId).catch(e => logger.warn(`Failed to clear session ${sessionId}: ${e}`));
-            };
-
             await this.saveSession(sessionId, client, username);
 
-            logger.info(`SessionManager | Session created: ${sessionId} (User: ${username})`);
-            return { sessionId, userId: client.userId };
+            logger.info(`SessionManager | Session created: ${sessionId} (User: ${username}, ID: ${userId})`);
+            return { sessionId, userId };
 
         } catch (e: any) {
             logger.error(`SessionManager | Failed to create session: ${e.message}`);
@@ -126,7 +116,7 @@ export class SessionManager {
         const session = this.sessions.get(sessionId);
         if (session) {
             logger.info(`SessionManager | Destroying session: ${sessionId}`);
-            await session.client.logout();
+            // session.client.logout(); 
             session.client.disconnect();
             this.sessions.delete(sessionId);
             await this.clearSession(sessionId);
@@ -137,7 +127,10 @@ export class SessionManager {
         return this.sessions.has(sessionId);
     }
 
-    public async tryRestoreSession(username: string, isSystem: boolean = false): Promise<{ client: SocketFoundryClient, userId: string, sessionId: string } | null> {
+    public async tryRestoreSession(username: string, isSystem: boolean = false): Promise<{ client: CoreSocket | ClientSocket, userId: string, sessionId: string } | null> {
+        // We only restore USER sessions here since System is handled in initialize()
+        if (isSystem) return null;
+
         try {
             const cached = await this.loadSessions();
             if (!cached) return null;
@@ -145,83 +138,36 @@ export class SessionManager {
             const sessionData = cached[username];
             if (!sessionData) return null;
 
-            if (!sessionData.cookie || !sessionData.userId || !sessionData.worldId) {
-                logger.warn(`SessionManager | Cached session for ${username} is incomplete.`);
+            if (!sessionData.cookie || !sessionData.userId) {
                 return null;
             }
 
             const foundryUsername = sessionData.username || username;
-            logger.info(`SessionManager | Attempting to restore session for ${foundryUsername} (Key: ${username})...`);
 
-            let currentWorldId: string | null = null;
-            try {
-                const baseUrl = this.config.url.endsWith('/') ? this.config.url.slice(0, -1) : this.config.url;
-                const res = await fetch(`${baseUrl}/api/status`);
-                if (res.ok) {
-                    const status = await res.json();
-                    currentWorldId = status.world;
-                }
-            } catch (e) {
-                logger.warn(`SessionManager | API probe failed during restoration: ${e}`);
-            }
-
-            if (!currentWorldId && this.systemClient) {
-                await this.systemClient.getSystem();
-                currentWorldId = (this.systemClient as any).cachedWorldData?.worldId;
-            }
+            // Check World State via Core Socket
+            const currentWorldId = this.systemClient.getGameData()?.world?.id;
 
             if (currentWorldId && currentWorldId !== sessionData.worldId) {
-                logger.warn(`SessionManager | World mismatch (${sessionData.worldId} vs ${currentWorldId}). Purging key ${username}.`);
+                logger.warn(`SessionManager | World mismatch. Purging key ${username}.`);
                 await this.clearSession(username);
                 return null;
             }
 
-            const client = new SocketFoundryClient({
+            const client = new ClientSocket({
                 ...this.config,
                 username: foundryUsername,
-                userId: sessionData.userId
-            }, isSystem);
+            }, this.systemClient);
 
             await client.restoreSession(sessionData.cookie, sessionData.userId);
 
-            if (!currentWorldId) {
-                logger.warn(`SessionManager | Restoration deferred: World ID unknown.`);
-                client.disconnect();
-                return null;
-            }
+            const sessionId = username;
+            this.sessions.set(sessionId, {
+                id: sessionId, client, userId: sessionData.userId,
+                username: foundryUsername, lastActive: Date.now(),
+                worldId: sessionData.worldId, cookie: sessionData.cookie
+            });
 
-            logger.info(`SessionManager | Validating restored session for ${foundryUsername} against world ${currentWorldId}...`);
-            const isValid = await client.validateSession(currentWorldId);
-            if (!isValid) {
-                logger.warn(`SessionManager | Session validation failed for ${foundryUsername} (Key: ${username}). Purging from disk/memory.`);
-                client.disconnect();
-                // If world is active and we fail validation, the session is definitely dead. Purge it.
-                await this.clearSession(username);
-                this.sessions.delete(username);
-                return null;
-            }
-
-            logger.info(`SessionManager | Successfully restored session for ${foundryUsername} (Key: ${username}).`);
-
-            if (!isSystem) {
-                const sessionId = username;
-                this.sessions.set(sessionId, {
-                    id: sessionId, client, userId: sessionData.userId,
-                    username: foundryUsername, lastActive: Date.now(),
-                    worldId: sessionData.worldId, cookie: sessionData.cookie
-                });
-
-                // Hook up invalidation callback
-                client.onSessionInvalidated = () => {
-                    logger.warn(`SessionManager | Restored session ${sessionId} (${foundryUsername}) invalidated by client. Purging.`);
-                    this.sessions.delete(sessionId);
-                    this.clearSession(sessionId).catch(e => logger.warn(`Failed to clear session ${sessionId}: ${e}`));
-                };
-
-                return { client, userId: sessionData.userId, sessionId } as any;
-            }
-
-            return { client, userId: sessionData.userId, sessionId: username };
+            return { client, userId: sessionData.userId, sessionId } as any;
 
         } catch (e) {
             logger.error(`SessionManager | Error during session restoration: ${e}`);

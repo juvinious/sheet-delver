@@ -10,6 +10,20 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 export default function Generator() {
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
+    const [token, setToken] = useState<string | null>(null);
+
+    // Load Token
+    useEffect(() => {
+        const stored = sessionStorage.getItem('sheet-delver-token');
+        if (stored) setToken(stored);
+    }, []);
+
+    const fetchWithAuth = async (input: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        const currentToken = token || sessionStorage.getItem('sheet-delver-token');
+        if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
+        return fetch(input, { ...init, headers });
+    };
 
     // Randomize All
     const skipLanguageReset = useRef(false);
@@ -92,7 +106,7 @@ export default function Generator() {
 
     const fetchDocument = async (uuid: string) => {
         try {
-            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
+            const res = await fetchWithAuth(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
             if (!res.ok) throw new Error('Failed to fetch document');
             return await res.json();
         } catch (e) {
@@ -105,7 +119,7 @@ export default function Generator() {
     useEffect(() => {
         const checkConnection = async () => {
             try {
-                const res = await fetch('/api/session/connect');
+                const res = await fetchWithAuth('/api/session/connect');
                 const data = await res.json();
 
 
@@ -129,7 +143,7 @@ export default function Generator() {
 
     // Load System Data
     useEffect(() => {
-        fetch('/api/system/data')
+        fetchWithAuth('/api/system/data')
             .then(res => res.json())
             .then(data => {
                 setSystemData(data);

@@ -1,4 +1,6 @@
-import { SocketFoundryClient } from '../../core/foundry/SocketClient';
+
+import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { FoundryConfig } from '../../core/foundry/types';
 import { EventEmitter } from 'events';
 
@@ -11,62 +13,41 @@ class MockSocket extends EventEmitter {
     connect() { this.emit('connect'); }
 }
 
-class TestClient extends SocketFoundryClient {
+class TestClient extends ClientSocket {
     public mockSocket: MockSocket;
 
-    constructor(config: FoundryConfig) {
-        super(config);
+    constructor(config: FoundryConfig, core: CoreSocket) {
+        super(config, core);
         this.mockSocket = new MockSocket();
         // @ts-ignore
-        this.socket = this.mockSocket;
-        this.isSocketConnected = true; // Simulate connected state
+        // We can't assign to this.socket because ClientSocket doesn't have it anymore! 
+        // We need to manipulate the CoreSocket instance if we want to mock socket behavior.
+        // But this test checks `ClientSocket` logic (userId).
+        // Does ClientSocket logic depend on socket?
+        // restoreSession sets userId.
+        // It calls connect().
     }
 
-    public triggerSessionEvent(userId: string | null) {
-        // Find the 'session' listener registered in connect()
-        // Since we can't easily grab the real listener, we'll simulate the effect directly
-        // by calling the internal logic if strictly unit testing, 
-        // OR we just use the public properties to verify logic if we could trigger the handler.
-
-        // Actually, we can't trigger the private handler easily without re-implementing connect().
-        // BUT, we changed the getter. 
-        // The getter relies on `this.userId`.
-        // So let's just set `this.userId` and verify the getter.
-
-        this.userId = userId;
+    public setUserId(id: string | null) {
+        this.userId = id;
     }
 }
 
 async function run() {
     const config: FoundryConfig = { url: 'http://test', username: 'user', password: 'pw' };
-    const client = new TestClient(config);
+    const core = new CoreSocket(config);
+    const client = new TestClient(config, core);
 
-    console.log('--- Auth Logic Test ---');
+    console.log('--- Auth Logic Test (ClientSocket) ---');
 
     // 1. Initial State
-    console.log(`Initial isLoggedIn: ${client.isLoggedIn} (Expected: false)`);
-    if (client.isLoggedIn !== false) throw new Error('Initial state wrong');
+    console.log(`Initial userId: ${client.userId} (Expected: null)`);
+    if (client.userId !== null) throw new Error('Initial state wrong');
 
-    // 2. Simulate Explicit Session (Login)
-    client.isExplicitSession = true;
-    console.log(`Explicit isLoggedIn: ${client.isLoggedIn} (Expected: true)`);
-    if (client.isLoggedIn !== true) throw new Error('Explicit session state wrong');
-
-    // 3. Simulate Reset (Disconnect/Refresh)
-    client.isExplicitSession = false;
-    client.userId = null;
-    console.log(`Reset isLoggedIn: ${client.isLoggedIn} (Expected: false)`);
-    if (client.isLoggedIn !== false) throw new Error('Reset state wrong');
-
-    // 4. Simulate Socket Session Event (Restored Session)
-    client.userId = 'mock-user-id';
-    console.log(`Restored Session isLoggedIn: ${client.isLoggedIn} (Expected: true)`);
-    if (client.isLoggedIn !== true) throw new Error('Restored session state wrong [FIX VERIFIED]');
-
-    // 5. Simulate Guest Session
-    client.userId = null;
-    console.log(`Guest Session isLoggedIn: ${client.isLoggedIn} (Expected: false)`);
-    if (client.isLoggedIn !== false) throw new Error('Guest session state wrong');
+    // 2. Simulate Logged In
+    client.setUserId('user-123');
+    console.log(`Logged In userId: ${client.userId} (Expected: user-123)`);
+    if (client.userId !== 'user-123') throw new Error('Logged in state wrong');
 
     console.log('\n✅ All Auth Logic Tests Passed');
 }

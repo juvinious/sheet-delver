@@ -18,6 +18,7 @@ export interface WorldData {
     backgroundUrl: string | null;
     users: WorldUser[];
     lastUpdated: string;
+    modules?: any[];
     data?: any;
 }
 

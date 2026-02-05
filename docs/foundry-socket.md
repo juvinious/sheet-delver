@@ -1,123 +1,93 @@
 # Foundry V13 Socket Protocol Documentation
 
-This document outlines the socket events and data structures observed for Foundry VTT v13 (via reverse engineering and monitoring).
+This document outlines the socket events and data structures observed for Foundry VTT v13, and details the **SheetDelver Socket Architecture**.
 
-## Connection Sequence
+## Architecture Overview
 
-1.  **Transport Connection**
-    *   Client connects via `socket.io` (v4+).
-    *   URL: `https://<foundry-host>/socket.io/`
-    *   Query Params: `session=<cookie_id>`
+The Socket Architecture uses a hierarchical inheritance model to share connection logic while specializing in data management and presence.
 
-2.  **`session` Event**
-    *   **Direction**: Server -> Client
-    *   **Trigger**: Immediately after connection.
-    *   **Payload**:
-        ```json
-        {
-          "sessionId": "c1879181..."
-          "userId": "vsdS7qJdxmZS4ZAF" // or null if Guest
-        }
-        ```
-    *   **Notes**: Verification of authentication. If `userId` is present, the connection is authenticated.
-
-3.  **`getJoinData` (Handshake)**
-    *   **Direction**: Client -> Server (Emit)
-    *   **Purpose**: Fetch initial world state (active users, system info, world metadata).
-    *   **Response**:
-        ```json
-        {
-          "world": { "id": "...", "title": "...", "background": "..." },
-          "system": { "id": "shadowdark", "version": "..." },
-          "users": [ ... ], // Full user objects
-          "activeUsers": [ "id1", "id2" ] // List of currently online IDs
-        }
-        ```
-
-4.  **`ready` / `init`**
-    *   **Direction**: Server -> Client
-    *   **Payload**: Contains comprehensive world state similar to `getJoinData`.
-    *   **Usage**: Signals the world is fully loaded and ready for interaction.
-
-## Core Events
-
-### `modifyDocument`
-The primary event for all data changes (CRUD). connection/disconnection of entities often triggers this for `User` documents.
-
-*   **Direction**: Server -> Client
-*   **Payload**:
-    ```json
-    {
-      "type": "User", // or "Actor", "Item", "JournalEntry", "Setting"
-      "action": "update", // "create", "delete", "get"
-      "result": [
-        { "_id": "...", "active": true, ... }
-      ],
-      "broadcast": false
+```mermaid
+classDiagram
+    class SocketBase {
+        <<Abstract>>
+        +connect()
+        +login()
+        +handshake()
+        #socket
     }
-    ```
-*   **Notes**: Updates to `User` documents with `active: true/false` are a reliable source of truth for online status if `userDisconnected` is missing.
+    class CoreSocket {
+        +getGameData()
+        +getUsers()
+        #setupRealTimeListeners()
+    }
+    class ClientSocket {
+        +userId
+        +restoreSession()
+        #setupPresenceListeners()
+    }
+    SocketBase <|-- CoreSocket
+    SocketBase <|-- ClientSocket
+```
+
+### 1. SocketBase (Abstract)
+*   **Role**: Connectivity Hub.
+*   **Responsibilities**:
+    *   Manages `socket.io` connection lifecycle.
+    *   Handles cookie persistence and headers.
+    *   Implements the high-level handshake (`handshake`) and login (`login`) workflows.
+*   **Key Files**: `src/core/foundry/sockets/SocketBase.ts`
+
+### 2. CoreSocket (Backend Singleton)
+*   **Role**: System-level Data Hub.
+*   **Responsibilities**:
+    *   Authenticates as a Service Account (System-level access).
+    *   Fetches and caches global `gameData` (Users, Worlds, Systems).
+    *   Listens for global world events (`userConnected`, `userActivity`, `modifyDocument`).
+    *   Maintains the `userMap` and `gameDataCache` used by the system Status Handler.
+*   **Key Files**: `src/core/foundry/sockets/CoreSocket.ts`
+
+### 3. ClientSocket (User Presence)
+*   **Role**: Authenticated User Anchor.
+*   **Responsibilities**:
+    *   Maintains a direct, authenticated socket connection to Foundry for a specific user.
+    *   Handles personal session restoration (`restoreSession`).
+    *   Receives user-specific events (e.g., `shareImage`, `showEntry`).
+    *   Acts as the context for user data operations.
+*   **Key Files**: `src/core/foundry/sockets/ClientSocket.ts`
+
+## Connection Sequences
+
+### Service Account (Boot)
+1.  `SocketBase.connect()` -> Establishes transport.
+2.  `SocketBase.login()` -> Navigates login form and captures session cookie.
+3.  `CoreSocket.getWorldData()` -> Fetches initial state and populates cache.
+4.  `setupSharedContentListeners()` -> Registers for shared media events.
+
+### User Session (Login/Restore)
+1.  `SocketBase.connect()` -> Establishes transport.
+2.  `ClientSocket.restoreSession()` -> Uses existing cookie to bypass login forms.
+3.  `handshake()` -> Performs the v13 `session` and `getJoinData` exchange.
+4.  `setupPresenceListeners()` -> Monitors user-specific activity and heartbeats.
+
+## Core Events (v13 Discovered)
+
+### `session`
+*   **Direction**: Server -> Client
+*   **Payload**: `{ "sessionId": "...", "userId": "..." }`
+*   **Purpose**: Immediate verification of the socket's authentication state.
 
 ### `userActivity`
-High-frequency event broadcasting transient user state (cursor position, ruler measurement, focus). **Crucially, this event also broadcasts `active: false` when a user logs out.**
+*   **Direction**: Server -> Client
+*   **Payload**: `[ "userId", { "active": boolean, "cursor": {x,y}, ... }]`
+*   **Relevance**: Primary signal for real-time presence. Broadcasts `active: false` when a user closes their tab.
 
-*   **Payload**: `[ "userId", { "active": false }]`
-*   **Relevance**: Primary signal for real-time logout/disconnect in V13.
+### `modifyDocument`
+*   **Direction**: Server -> Client
+*   **Payload**: `{ "type": "User", "action": "update", "result": [...] }`
+*   **Usage**: Real-time updates to user roles, avatars, and names.
 
-### `serverTime`
-Heartbeat event syncing server timestamp.
-*   **Payload**: Number (timestamp).
+### `userConnected` / `userDisconnected`
+*   **Reliability**: `userConnected` is stable; `userDisconnected` is often replaced by `userActivity` in v13.
 
-## Legacy/Specific Status Events
-
-### `userConnected`
-*   **Payload**: User object `{ "_id": "...", "name": "...", "active": true, ... }`
-*   **Observed**: Yes.
-
-### `userDisconnected`
-*   **Payload**:
-    *   Object: `{ "userId": "..." }`
-    *   String: `"..."` (Raw ID)
-*   **Observed**: **Unreliable/Missing in V13 logs.** Use `userActivity` active flags or `modifyDocument` as fallback.
-
-### `shutdown`
-*   **Payload**: `{ "world": "..." }`
-*   **Meaning**: The world has been shut down by the GM.
-
-## Additional Discovered Events (Stubs)
-*Events identified in client source but not yet fully profiled.*
-
-### Audio / Video
-*   `playAudio`, `playAudioPosition`, `preloadAudio`: Server triggering audio playback on clients.
-*   `av`: WebRTC/AV communication signaling.
-
-### Scene / Canvas
-*   `pullToScene`: GM forcing clients to view a specific scene.
-*   `preloadScene`: Pre-loading scene assets.
-*   `resetFog`, `syncFog`: Fog of War management.
-*   `regionEvent`: Triggering region behavior.
-
-### System / World
-*   `pause`: Toggling game pause state.
-*   `reload`, `hotReload`: Triggering client refreshes.
-*   `world`, `getWorldStatus`: Fetching world availability/status.
-*   `time`: Server time sync (Heartbeat).
-*   `progress`: Loading bar updates.
-
-### Chat / UI
-*   `chatBubble`: Displaying chat bubbles over tokens.
-*   `userQuery`: Server asking client for input/confirmation?
-
-### Shared Content
-*   `shareImage`: GM sharing an image/media with players.
-    *   **Payload**: `[{ image: "path/to/img.webp", title: "Title", uuid: null }]`
-*   `showEntry`: GM showing a Journal Entry to players.
-    *   **Payload**: `[ "JournalEntry.ID", true ]`
-    *   **Note**: The boolean likely represents a "force show" or "show to all" flag.
-
-### Collaboration (ProseMirror)
-*   `pm.newSteps`, `pm.usersEditing`, `pm.autosave`: Real-time text editing synchronization.
-
-### File / Compendium
-*   `manageFiles`: File system operations.
-*   `manageCompendium`: Compendium management.
+## Real-Time Sync Strategy
+The `CoreSocket` acts as the master sync node. It listens for all documents of type `User` and updates its internal `userMap`. When the frontend polls `/api/status`, the `CoreSocket` provides the most recent "ground truth" for player counts and active status, even if the user's specific `ClientSocket` hasn't received a presence update yet.

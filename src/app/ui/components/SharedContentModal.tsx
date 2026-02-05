@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { logger } from '../logger';
 
 type SharedContent = {
     type: 'image' | 'journal' | null;
@@ -44,14 +45,14 @@ export function SharedContentModal({ token, foundryUrl }: SharedContentModalProp
                     }
 
                     if (data.timestamp > lastTimestampRef.current) {
-                        console.log('Received new shared content:', data);
+                        logger.debug('Received new shared content:', data);
                         lastTimestampRef.current = data.timestamp;
                         setContent(data);
                         setIsVisible(true);
                     }
                 }
             } catch (err) {
-                console.error('Error polling shared content:', err);
+                logger.error('Error polling shared content:', err);
             }
         };
 

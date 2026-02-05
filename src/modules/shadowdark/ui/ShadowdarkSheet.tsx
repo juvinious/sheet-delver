@@ -26,6 +26,9 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 interface ShadowdarkSheetProps {
     actor: any;
     foundryUrl?: string;
+    // ...
+    token?: string | null;
+    // ...
     onRoll: (type: string, key: string, options?: any) => void;
     onUpdate: (path: string, value: any) => void;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
@@ -38,7 +41,8 @@ interface ShadowdarkSheetProps {
     isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+    // ... (State initialization)
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [loadingSystem, setLoadingSystem] = useState(true);
@@ -63,18 +67,17 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     });
 
     const triggerRollDialog = (type: string, key: string) => {
+        // ... (existing implementation)
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
         const defaults: any = {};
 
         if (type === 'ability') {
             dialogType = 'ability';
-            title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`; // e.g. "STR Ability Check"
-            // Find mod
+            title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`;
             const stat = actor.stats?.[key] || {};
             defaults.abilityBonus = stat.mod || 0;
         } else if (type === 'item') {
-            // Find item
             const item = actor.items?.find((i: any) => i.id === key);
             if (item) {
                 if (item.type === 'Spell') {
@@ -84,13 +87,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     const stat = actor.stats?.[statKey] || {};
                     defaults.abilityBonus = stat.mod || 0;
                     defaults.talentBonus = calculateSpellBonus(actor);
-                    defaults.showItemBonus = false; // Hide Item Bonus for known spells
+                    defaults.showItemBonus = false;
                 } else {
                     dialogType = 'attack';
                     title = `Roll Attack with ${item.name}`;
-                    // Attempt to pre-calculate bonuses
                     const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isRanged = item.system?.type === 'ranged'; // Only force DEX if explicitly a ranged weapon
+                    const isRanged = item.system?.type === 'ranged';
 
                     const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
                     const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
@@ -111,19 +113,22 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             type: dialogType,
             defaults,
             callback: (options) => {
-                onRoll(type, key, options); // Pass options back up
+                onRoll(type, key, options);
             }
         });
     };
 
     useEffect(() => {
         setLoadingSystem(true);
-        fetch('/api/system/data')
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        fetch('/api/system/data', { headers })
             .then(res => res.json())
             .then(data => setSystemData(data))
             .catch(err => console.error('Failed to fetch system data:', err))
             .finally(() => setLoadingSystem(false));
-    }, []);
+    }, [token]);
 
     // Dynamic Tabs Logic
     const [tabsOrder, setTabsOrder] = useState([
@@ -245,7 +250,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                         <div>
                             <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                             <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
                             </p>
                         </div>
                         {/* Level displayed inline on mobile for space or block on desktop */}
