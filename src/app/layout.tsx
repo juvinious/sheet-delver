@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Cinzel } from "next/font/google";
 import "./globals.css";
 
 import ShutdownWatcher from "@/app/ui/components/ShutdownWatcher";
+import { ConfigProvider } from "@/app/ui/context/ConfigContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,8 +36,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} antialiased`}
         suppressHydrationWarning
       >
-        <ShutdownWatcher />
-        {children}
+        <ConfigProvider>
+          <ShutdownWatcher />
+          {children}
+        </ConfigProvider>
       </body>
     </html>
   );

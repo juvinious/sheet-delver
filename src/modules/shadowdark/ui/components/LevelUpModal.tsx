@@ -15,6 +15,7 @@ import { SelectionOverlay } from './levelup/sections/SelectionOverlay';
 import { LoadingOverlay } from './levelup/sections/LoadingOverlay';
 import { LevelUpFooter } from './levelup/sections/LevelUpFooter';
 import { ExtraSpellSelectionSection } from './levelup/sections/ExtraSpellSelectionSection';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // ... (imports)
 
@@ -26,7 +27,7 @@ import {
 
 export const LevelUpModal = (props: LevelUpProps) => {
     const { state, actions } = useLevelUp(props);
-    const foundryUrl = props.foundryUrl;
+    const { foundryUrl } = useConfig();
     //const activeClassImage = state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img;
     //dangerouslySetInnerHTML={{ __html: state.activeClassObj.system?.description?.split('.')[0] + '.' || "Class Archetype" }}
     // Common Shadowdark Class Card Style
@@ -62,7 +63,6 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     <SelectionOverlay
                         pendingChoices={state.pendingChoices}
                         onSelect={actions.handleChoiceSelection}
-                        foundryUrl={props.foundryUrl}
                     />
                 )}
 
@@ -80,7 +80,6 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     selectedPatronUuid={state.selectedPatronUuid}
                     onClassChange={actions.setTargetClassUuid}
                     onPatronChange={actions.setSelectedPatronUuid}
-                    foundryUrl={props.foundryUrl}
                     classLocked={!!props.classUuid}
                 />
 

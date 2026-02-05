@@ -3,48 +3,8 @@
 import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from '../rules';
 export { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots };
 
-export const resolveImage = (path: string, foundryUrl?: string) => {
-    if (!path) return '/placeholder.png';
-    if (path.startsWith('http') || path.startsWith('data:')) return path;
-
-    if (foundryUrl) {
-        const cleanPath = path.startsWith('/') ? path.slice(1) : path;
-        const cleanUrl = foundryUrl.endsWith('/') ? foundryUrl : `${foundryUrl}/`;
-        return `${cleanUrl}${cleanPath}`;
-    }
-    return path;
-};
-
-export const processHtmlContent = (html: string, foundryUrl?: string) => {
-    if (!html) return '';
-    let processed = html;
-
-    // Fix relative image src
-    if (foundryUrl) {
-        processed = processed.replace(/src="([^"]+)"/g, (match, src) => {
-            // Skip absolute URLs or data URIs
-            if (src.startsWith('http') || src.startsWith('data:')) return match;
-
-            // Clean paths
-            const cleanPath = src.startsWith('/') ? src.slice(1) : src;
-            const cleanBase = foundryUrl.endsWith('/') ? foundryUrl : `${foundryUrl}/`;
-            return `src="${cleanBase}${cleanPath}"`;
-        });
-    }
-
-    return processed;
-};
-
-export const getSafeDescription = (system: any) => {
-    if (!system) return '';
-    // 1. Try explicit .value property (common for rich text objects)
-    if (system.description?.value) return system.description.value;
-    // 2. Try description as a direct string
-    else if (typeof system.description === 'string' && system.description.trim()) return system.description;
-    // 3. Try legacy .desc property
-    else if (system.desc) return system.desc;
-    return '';
-};
+import { resolveImage, processHtmlContent, getSafeDescription } from '@/modules/core/utils';
+export { resolveImage, processHtmlContent, getSafeDescription };
 
 export const formatDescription = (desc: any) => {
     // Note: getSafeDescription usually ensures this is a string, but we double check.

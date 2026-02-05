@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface Props {
     pendingChoices: {
@@ -8,10 +9,10 @@ interface Props {
         context: 'talent' | 'boon';
     };
     onSelect: (choice: any) => void;
-    foundryUrl?: string;
 }
 
-export const SelectionOverlay = ({ pendingChoices, onSelect, foundryUrl }: Props) => {
+export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
+    const { foundryUrl } = useConfig();
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-neutral-900/90 backdrop-blur-sm"></div>

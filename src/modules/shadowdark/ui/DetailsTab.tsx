@@ -19,7 +19,7 @@ interface DetailsTabProps {
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
 }
 
-export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, onCreateItem, onUpdateItem, onDeleteItem }: DetailsTabProps) {
+export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem }: DetailsTabProps) {
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -401,7 +401,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                                 <div key={item.id} className="grid grid-cols-12 py-3 px-2 text-sm font-serif items-center group hover:bg-neutral-50 transition-colors">
                                     <div className="col-span-5 font-bold flex items-center overflow-hidden">
                                         <img
-                                            src={resolveImage(item.img, foundryUrl)}
+                                            src={item.img || '/placeholder.png'}
                                             alt={item.name}
                                             className="w-8 h-8 object-cover border border-black mr-3 bg-neutral-200 shrink-0"
                                         />
@@ -449,7 +449,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, foundryUrl, on
                         onUpdate={onUpdateItem}
                         initialData={editingItem}
                         systemConfig={systemData}
-                        foundryUrl={foundryUrl}
                     />
                 )
             }

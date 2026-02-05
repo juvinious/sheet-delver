@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Search, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { resolveImage, formatDescription, getSafeDescription } from '../sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface SpellOption {
     name: string;
@@ -20,7 +21,6 @@ interface SpellSelectionModalProps {
     title: string;
     availableSpells: SpellOption[];
     knownSpells: SpellOption[];
-    foundryUrl?: string;
     maxSelections?: number;
 }
 
@@ -31,9 +31,9 @@ export default function SpellSelectionModal({
     title,
     availableSpells,
     knownSpells,
-    foundryUrl,
     maxSelections
 }: SpellSelectionModalProps) {
+    const { foundryUrl } = useConfig();
     const [search, setSearch] = useState('');
     const [selectedUuids, setSelectedUuids] = useState<Set<string>>(new Set());
     const [expandedUuids, setExpandedUuids] = useState<Set<string>>(new Set());

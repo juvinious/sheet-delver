@@ -1,17 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { resolveImage } from './sheet-utils';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 
 interface EffectsTabProps {
     actor: any;
-    foundryUrl?: string;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
 }
 
-export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
+export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
     const [predefinedEffects, setPredefinedEffects] = useState<any[]>([]);
     const [selectedEffect, setSelectedEffect] = useState<string>('');
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
@@ -81,7 +79,7 @@ export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDelete
                     {items.map((e: any, i) => (
                         <tr key={e._id || e.id || i} className="border-b border-neutral-200">
                             <td className="p-2 flex items-center gap-2">
-                                <img src={resolveImage(e.img || e.icon, foundryUrl)} className="w-6 h-6 border border-neutral-400" alt="" />
+                                <img src={e.img || e.icon || '/placeholder.png'} className="w-6 h-6 border border-neutral-400" alt="" />
                                 <span className="font-bold">{e.name || e.label}</span>
                             </td>
                             <td className="p-2 text-neutral-600">
@@ -111,7 +109,7 @@ export default function EffectsTab({ actor, foundryUrl, onToggleEffect, onDelete
                     {items.map((e: any, i) => (
                         <tr key={e._id || e.id || i} className="border-b border-neutral-200">
                             <td className="p-2 flex items-center gap-2">
-                                <img src={resolveImage(e.img || e.icon, foundryUrl)} className="w-6 h-6 border border-neutral-400" alt="" />
+                                <img src={e.img || e.icon || '/placeholder.png'} className="w-6 h-6 border border-neutral-400" alt="" />
                                 <span className="font-bold">{e.name || e.label}</span>
                             </td>
                             <td className="p-2 text-neutral-600">

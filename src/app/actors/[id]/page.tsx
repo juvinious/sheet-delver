@@ -11,6 +11,7 @@ import { getMatchingAdapter } from '@/modules/core/registry';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 import { SharedContentModal } from '@/app/ui/components/SharedContentModal';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -18,7 +19,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
     const [actor, setActor] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const currentUserRef = useRef<string | null>(null);
-    const foundryUrlRef = useRef<string | undefined>(undefined);
+    const { setFoundryUrl, foundryUrl } = useConfig();
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [token, setToken] = useState<string | null>(null);
 
@@ -65,9 +66,9 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const addNotification = useCallback((message: string, type: 'info' | 'success' | 'error' = 'info') => {
         // Ensure images in the toast are absolute URLs
-        const content = processHtmlContent(message, foundryUrlRef.current);
+        const content = processHtmlContent(message, foundryUrl);
         addToast(content, type, { html: true });
-    }, [addToast]);
+    }, [addToast, foundryUrl]);
 
     const fetchWithAuthActor = useCallback(async (id: string, silent = false) => {
         if (!silent) setLoading(true);
@@ -90,7 +91,10 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             if (data && !data.error) {
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
-                if (data.foundryUrl) foundryUrlRef.current = data.foundryUrl;
+                if (data.foundryUrl) {
+                    console.log(`[ActorDetail] Setting foundryUrl: ${data.foundryUrl}`);
+                    setFoundryUrl(data.foundryUrl);
+                }
             } else {
                 if (!silent) setShowDeleteModal(true);
                 else setShowDeleteModal(true);

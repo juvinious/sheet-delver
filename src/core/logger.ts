@@ -1,5 +1,3 @@
-import { loadConfig } from './config';
-
 // 0 = None, 1 = Error, 2 = Warning, 3 = Info, 4 = Debug
 export const LogLevel = {
     NONE: 0,
@@ -10,9 +8,19 @@ export const LogLevel = {
 };
 
 async function getLevel() {
-    const cfg = await loadConfig();
-    if (!cfg?.debug?.enabled) return 0;
-    return cfg.debug.level;
+    if (typeof window !== 'undefined') {
+        // In browser, default to INFO or check some other flag
+        return 3;
+    }
+
+    try {
+        const { loadConfig } = await import('./config');
+        const cfg = await loadConfig();
+        if (!cfg?.debug?.enabled) return 0;
+        return cfg.debug.level;
+    } catch (e) {
+        return 3; // Fallback to INFO
+    }
 }
 
 export const logger = {

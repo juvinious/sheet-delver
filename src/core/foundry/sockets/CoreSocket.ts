@@ -377,7 +377,6 @@ export class CoreSocket extends SocketBase {
 
     public getGameData() { return this.gameDataCache; }
     public getSystemAdapter() { return this.adapter; }
-    public get url() { return this.config.url; }
 
     public async loadSystemAdapter(systemId: string) {
         try {
@@ -422,7 +421,7 @@ export class CoreSocket extends SocketBase {
         // Normalize
         const data = response?.result?.[0];
         if (data && this.adapter) {
-            return await this.adapter.normalizeActorData(data);
+            return await this.adapter.normalizeActorData(data, this);
         }
         return data;
     }

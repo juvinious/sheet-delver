@@ -1,5 +1,6 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from './rules';
+import { logger } from '../../core/logger';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
@@ -323,13 +324,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
         }, { actorId, baseUrl });
 
-        if (actorData && actorData.system) {
-            const abilities = actorData.system.abilities || actorData.system.stats || {};
-            const derived = {
-                ...this.calculateAttacks(actorData, abilities),
-                ...this.categorizeInventory(actorData)
-            };
-            actorData.derived = derived;
+        if (actorData && !actorData.error) {
+            return this.normalizeActorData(actorData, client);
         }
 
         return actorData;
@@ -695,17 +691,38 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         break;
                 }
 
-                console.log(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
+                logger.debug(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
                 setProperty(systemData, path, finalVal);
             }
         }
     }
 
-    normalizeActorData(actor: any): ActorSheetData {
+    normalizeActorData(actor: any, client?: any): ActorSheetData {
         // Clone system data to apply effects without mutating raw data
         const s = typeof structuredClone === 'function'
             ? structuredClone(actor.system)
             : JSON.parse(JSON.stringify(actor.system));
+
+        // Sanitization
+        if (client) {
+            actor.img = client.resolveUrl(actor.img);
+            if (actor.items) {
+                actor.items = actor.items.map((i: any) => ({
+                    ...i,
+                    img: client.resolveUrl(i.img)
+                }));
+            }
+
+            if (s.details?.biography?.value) {
+                s.details.biography.value = client.resolveHtml(s.details.biography.value);
+            }
+            if (s.details?.notes?.value) {
+                s.details.notes.value = client.resolveHtml(s.details.notes.value);
+            }
+            if (s.notes && typeof s.notes === 'string') {
+                s.notes = client.resolveHtml(s.notes);
+            }
+        }
 
         // Apply Active Effects to the cloned system data
         // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true

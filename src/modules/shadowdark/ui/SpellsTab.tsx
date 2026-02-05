@@ -15,13 +15,12 @@ interface SpellsTabProps {
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
     systemData?: any;
     onDeleteItem?: (itemId: string) => void;
     addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl, systemData, onDeleteItem, addNotification }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification }: SpellsTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTier, setEditingTier] = useState<number | null>(null);
@@ -105,12 +104,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // REMOVE: Currently known but not selected
             const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; }) => !selectedNames.has(s.name));
 
-            console.log('DEBUG: Managing spells', {
-                source: modalFilterClass,
-                tier: editingTier,
-                toAdd: toAdd.map((s: any) => s.name),
-                toRemove: toRemove.map((s: any) => s.name)
-            });
 
             // Execute ADDs
             for (const spell of toAdd) {
@@ -271,19 +264,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // Check for source key (e.g. 'wizard') OR the source name if we could find it
             const classMatch = spellClasses.includes(filterKey);
 
-            // SURGICAL DEBUG FOR 'FOG'
-            if (s.name === 'Fog' || s.name?.toLowerCase().includes('fog')) {
-                console.log('DEBUG: Fog Filter Trace', {
-                    name: s.name,
-                    spellTier,
-                    editingTier,
-                    tierMatch,
-                    spellClassesRaw: classData,
-                    spellClassesProcesssed: spellClasses,
-                    filterKey,
-                    classMatch
-                });
-            }
 
             if (!tierMatch || !classMatch) return false;
 
@@ -292,14 +272,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             return true;
         });
 
-        console.log('DEBUG: Filtering Summary', {
-            tier: editingTier,
-            source: modalFilterClass,
-            totalAvailable: systemData.spells.length,
-            matches: results.length,
-            systemDebugKeys: systemData.debug ? 'Present' : 'Missing',
-            sampleSpells: results.slice(0, 2).map((s: any) => s.name)
-        });
 
         return results;
     }, [systemData, editingTier, modalFilterClass]);
@@ -398,7 +370,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
                                             {spell.img ? (
-                                                <img src={resolveImage(spell.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                                <img src={spell.img || '/placeholder.png'} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
                                             )}
@@ -544,7 +516,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                 <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                            <img src={resolveImage(item.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                            <img src={item.img || '/placeholder.png'} alt="" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="flex-1">
                                             <div className="font-serif font-bold text-lg leading-none">{item.name}</div>
@@ -589,7 +561,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     knownSpells={knownSpellsForModal}
                     onSave={handleManageSpells}
                     onClose={() => setIsAddModalOpen(false)}
-                    foundryUrl={foundryUrl}
                     maxSelections={maxSelections}
                 />
             )}

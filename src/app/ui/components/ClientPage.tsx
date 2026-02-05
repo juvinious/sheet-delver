@@ -9,6 +9,7 @@ import LoadingModal from './LoadingModal';
 import { SystemInfo } from '@/shared/interfaces';
 import { logger, LOG_LEVEL } from '../logger';
 import { Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface User {
   id?: string;
@@ -27,6 +28,7 @@ interface ClientPageProps {
 export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
+  const { setFoundryUrl, foundryUrl: configUrl } = useConfig();
 
   // Dashboard UI State
   const [isReadOnlyCollapsed, setIsReadOnlyCollapsed] = useState(true);
@@ -163,7 +165,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const bgSrc = (step === 'startup' || step === 'setup') ? null : (system?.worldBackground || system?.background);
   const bgStyle = bgSrc
     ? {
-      backgroundImage: `url(${bgSrc.startsWith('http') ? bgSrc : `${url}/${bgSrc}`})`,
+      backgroundImage: `url(${bgSrc})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat'
@@ -220,6 +222,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         if (data.connected && data.system) {
           setSystem(data.system);
           setUrl(data.url);
+          setFoundryUrl(data.url);
           setUsers((data.users || []) as User[]);
 
           // Apply Strict Logic
@@ -387,11 +390,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         <div className="flex items-start gap-4">
           <div className="relative">
             <img
-              src={actor.img ? (actor.img.startsWith('http') ? actor.img : `${url}/${actor.img}`) : `${url}/icons/svg/mystery-man.svg`}
+              src={actor.img || '/icons/svg/mystery-man.svg'}
               alt={actor.name}
               className="w-16 h-16 rounded-lg bg-black/40 object-cover border border-white/10 group-hover:border-amber-500/30 transition-colors"
               onError={(e) => {
-                (e.target as HTMLImageElement).src = `${url}/icons/svg/mystery-man.svg`;
+                (e.target as HTMLImageElement).src = '/icons/svg/mystery-man.svg';
               }}
             />
             {clickable && (
@@ -635,7 +638,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           step === 'dashboard' && (
             <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
               {/* Overlays */}
-              <SharedContentModal token={token} foundryUrl={url} />
+              <SharedContentModal token={token} foundryUrl={configUrl || url} />
 
               {/* Header / Status */}
               <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">

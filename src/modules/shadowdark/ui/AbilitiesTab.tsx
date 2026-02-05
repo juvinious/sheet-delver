@@ -2,16 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { resolveImage, resolveEntityName } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface AbilitiesTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     onRoll?: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
 }
 
-export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: AbilitiesTabProps) {
+export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll }: AbilitiesTabProps) {
+    const { foundryUrl } = useConfig();
 
     // Common container style for standard sheet feel
     const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";

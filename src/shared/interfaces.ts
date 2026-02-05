@@ -78,7 +78,7 @@ export interface AppConfig {
  */
 export interface SystemAdapter {
     systemId: string;
-    normalizeActorData(actor: any): ActorSheetData;
+    normalizeActorData(actor: any, client?: any): ActorSheetData;
     getRollData(actor: any, type: string, key: string, options?: any): any;
     match(actor: any): boolean;
     renderNavigation?: boolean;

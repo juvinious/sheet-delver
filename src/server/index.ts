@@ -104,7 +104,8 @@ async function startServer() {
                         ...gameData.system,
                         worldTitle: gameData.world?.title || 'Foundry VTT',
                         worldDescription: gameData.world?.description,
-                        worldBackground: gameData.world?.background,
+                        worldBackground: systemClient.resolveUrl(gameData.world?.background),
+                        background: systemClient.resolveUrl(gameData.system?.background || gameData.system?.worldBackground),
                         nextSession: gameData.world?.nextSession,
                         status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
                         users: {
@@ -252,7 +253,7 @@ async function startServer() {
                 if (!actor.computed) actor.computed = {};
                 if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
                 if (adapter.resolveActorNames) adapter.resolveActorNames(actor, cache);
-                return adapter.normalizeActorData(actor);
+                return adapter.normalizeActorData(actor, client);
             }));
 
             // We treat all returned actors as "visible"
@@ -341,7 +342,7 @@ async function startServer() {
             const resolvedActor = resolveUUIDs(actor);
             const { getMatchingAdapter } = await import('../modules/core/registry');
             const adapter = getMatchingAdapter(resolvedActor);
-            const normalizedActor = adapter.normalizeActorData(resolvedActor);
+            const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
 
             res.json({
                 ...normalizedActor,

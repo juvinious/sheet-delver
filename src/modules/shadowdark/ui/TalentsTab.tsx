@@ -10,10 +10,9 @@ import {
 interface TalentsTabProps {
     actor: any;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string; // Added prop
 }
 
-export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProps) {
+export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -64,7 +63,6 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
 
     // Group: Level (talentClass === 'level')
     const levelTalents = allTalents.filter((i: any) => {
-        //console.log(allTalents);
         return i.system?.talentClass?.toLowerCase() === 'level' || i.system?.talentClass?.toLowerCase() === 'patronboon';
     });
 
@@ -89,7 +87,7 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
                                 {/* Image / Fallback */}
                                 <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
                                     {item.img ? (
-                                        <img src={resolveImage(item.img, foundryUrl)} alt={item.name} className="w-full h-full object-cover" />
+                                        <img src={item.img || '/placeholder.png'} alt={item.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-white font-serif font-bold text-lg">{item.name.charAt(0)}</span>
                                     )}

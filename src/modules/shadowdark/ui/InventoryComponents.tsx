@@ -8,6 +8,7 @@ import {
     getSafeDescription,
     formatDescription
 } from './sheet-utils';
+import GemBagModal from './components/GemBagModal';
 
 export interface QuantityControlProps {
     value: number;
@@ -71,11 +72,10 @@ export interface ItemRowProps {
     expandedItems: Set<string>;
     toggleItem: (id: string) => void;
     onUpdate: (path: string, value: any) => void;
-    foundryUrl?: string;
     onDelete?: (itemId: string) => void;
 }
 
-export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl, onDelete }: ItemRowProps) {
+export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }: ItemRowProps) {
     // Optimistic States
     const [equipped, setEquipped] = useState(item.system?.equipped || false);
     const [stashed, setStashed] = useState(item.system?.stashed || false);
@@ -158,7 +158,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
                 <div className="col-span-6 font-bold flex items-center">
                     {/* Thumbnail */}
                     <img
-                        src={resolveImage(item.img, foundryUrl)}
+                        src={item.img || '/placeholder.png'}
                         alt={item.name}
                         className="w-8 h-8 object-cover border border-black mr-2 bg-neutral-200"
                     />

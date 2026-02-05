@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Settings, Power } from 'lucide-react';
 import { resolveImage } from '../sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface CustomBoonModalProps {
     isOpen: boolean;
@@ -10,7 +11,6 @@ interface CustomBoonModalProps {
     initialData?: any;
     systemConfig?: any;
     predefinedEffects?: Record<string, any>;
-    foundryUrl?: string;
 }
 
 // Fallback if config is missing
@@ -29,7 +29,8 @@ const MODES = [
     { value: 4, label: 'DOWNGRADE' },
 ];
 
-export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, initialData, systemConfig, predefinedEffects, foundryUrl }: CustomBoonModalProps) {
+export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, initialData, systemConfig, predefinedEffects }: CustomBoonModalProps) {
+    const { foundryUrl } = useConfig();
     const [name, setName] = useState('');
     const [boonType, setBoonType] = useState('blessing');
     const [level, setLevel] = useState(1);

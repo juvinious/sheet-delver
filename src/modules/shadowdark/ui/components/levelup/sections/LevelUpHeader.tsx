@@ -12,7 +12,6 @@ interface Props {
     selectedPatronUuid: string;
     onClassChange: (uuid: string) => void;
     onPatronChange: (uuid: string) => void;
-    foundryUrl?: string;
     actorName?: string;
 }
 

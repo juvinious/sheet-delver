@@ -27,7 +27,6 @@ export default function NotesTab({ actor, onUpdate }: NotesTabProps) {
                 <RichTextEditor
                     content={notesContent}
                     onSave={(html) => {
-                        console.log('[NOTES TAB] onSave called, path:', updatePath, 'length:', html.length);
                         onUpdate(updatePath, html);
                     }}
                 />

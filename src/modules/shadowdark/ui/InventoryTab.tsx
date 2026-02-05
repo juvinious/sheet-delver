@@ -17,13 +17,11 @@ interface InventoryTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
     onDeleteItem?: (itemId: string) => void;
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any) => Promise<void>;
 }
-
-export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl, onCreateItem, onUpdateItem }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isGemModalOpen, setIsGemModalOpen] = useState(false);
 
@@ -146,7 +144,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {equippedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(equippedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
@@ -167,7 +165,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {carriedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(carriedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
@@ -188,7 +186,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {stashedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(stashedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>

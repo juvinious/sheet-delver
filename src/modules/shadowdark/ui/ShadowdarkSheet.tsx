@@ -17,15 +17,12 @@ import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
-
-// Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 
 interface ShadowdarkSheetProps {
     actor: any;
-    foundryUrl?: string;
     // ...
     token?: string | null;
     // ...
@@ -41,7 +38,7 @@ interface ShadowdarkSheetProps {
     isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
     // ... (State initialization)
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
@@ -242,7 +239,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
                 <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
                     <img
-                        src={resolveImage(actor.img, foundryUrl)}
+                        src={actor.img || '/placeholder.png'}
                         alt={actor.name}
                         className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
                     />
@@ -404,7 +401,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                         actor={actor}
                         systemData={systemData}
                         onUpdate={onUpdate}
-                        foundryUrl={foundryUrl}
                         onCreateItem={onCreateItem}
                         onUpdateItem={onUpdateItem}
                         onDeleteItem={onDeleteItem}
@@ -420,7 +416,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                         />
                     )
                 }
@@ -433,7 +428,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                             onDeleteItem={onDeleteItem}
                             addNotification={addNotification}
                         />
@@ -445,7 +439,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                         <TalentsTab
                             actor={actor}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                         />
                     )
                 }
@@ -456,7 +449,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                             actor={actor}
                             onUpdate={onUpdate}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                             onDeleteItem={onDeleteItem}
                             onCreateItem={onCreateItem}
                             onUpdateItem={onUpdateItem}
@@ -477,7 +469,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                     activeTab === 'effects' && (
                         <EffectsTab
                             actor={actor}
-                            foundryUrl={foundryUrl}
                             onToggleEffect={onToggleEffect}
                             onDeleteEffect={onDeleteEffect}
                         />
@@ -523,7 +514,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, token, onRoll, onUp
                     spells={levelUpData.spells}
                     availableClasses={systemData?.classes || []}
                     availableLanguages={systemData?.languages || []}
-                    foundryUrl={foundryUrl}
                     onComplete={async (data) => {
                         try {
                             // Update Gold if rerolled (Level 0)

@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from 'react';
+import { logger } from '@/app/ui/logger';
 
 interface ShadowdarkImportModalProps {
     onClose: () => void;
@@ -34,7 +35,7 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
                 if (token) headers['Authorization'] = `Bearer ${token}`;
                 await fetch(`/api/actors/${importedId}`, { method: 'DELETE', headers });
             } catch (e) {
-                console.error("Failed to cleanup actor", e);
+                logger.error("Failed to cleanup actor", e);
             }
         }
         onClose();
@@ -77,12 +78,10 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
             });
 
             const data = await res.json();
-            console.log('[Import Modal] API Response:', data);
+            logger.debug('[Import Modal] API Response:', data);
 
             if (data.debug && Array.isArray(data.debug)) {
-                console.groupCollapsed('[Importer Debug Logs]');
-                data.debug.forEach((log: string) => console.log(log));
-                console.groupEnd();
+                data.debug.forEach((log: string) => logger.debug(`[Importer] ${log}`));
             }
 
             if (!res.ok) {
