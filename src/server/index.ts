@@ -21,6 +21,7 @@ async function startServer() {
 
     // Initialize Session Manager with Service Account
     const { SessionManager } = await import('../core/session/SessionManager');
+    const { UserRole } = await import('../shared/constants');
     const sessionManager = new SessionManager({
         ...config.foundry
         // Service account credentials from settings.yaml are used for system client
@@ -142,11 +143,37 @@ async function startServer() {
                 }
             }
 
+            // Centralized User Sanitization Helper
+            // Ensures consistent data shape for PlayerList and other UI components
+            const sanitizeUser = (u: any, client: any) => {
+                return {
+                    _id: u._id || u.id,
+                    name: u.name,
+                    role: u.role,
+                    isGM: u.role >= UserRole.ASSISTANT, // Roles 3 (Assistant) and 4 (GM)
+                    active: u.active,
+                    color: u.color,
+                    characterId: u.character,
+                    img: client.resolveUrl(u.avatar || u.img)
+                };
+            }
+
+            // Fetch authoritative user list from System Client
+            let sanitizedUsers: any[] = [];
+            if (users && users.length > 0) {
+                // Map using the centralized helper
+                // Note: 'users' passed into statusHandler might be raw from getGameData()
+                // We prefer fetching fresh if possible, but statusHandler uses cached gameData for speed.
+                // Let's assume 'users' is raw data.
+                // We need a client context to resolve URLs. System client is best.
+                sanitizedUsers = users.map((u: any) => sanitizeUser(u, systemClient));
+            }
+
             res.json({
                 connected,
                 isAuthenticated,
                 initialized: sessionManager.isCacheReady(),
-                users: users || [],
+                users: sanitizedUsers,
                 system: system,
                 url: config.foundry.url,
                 appVersion: '0.5.0',
@@ -605,13 +632,30 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/users', async (req, res) => {
+    appRouter.get('/session/users', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
-            const users = await client.getUsersDetails();
-            res.json({ users });
+            // Use System Client to fetch users (CoreSocket has the data methods)
+            const users = await sessionManager.getSystemClient().getUsers();
+
+            // Sanitize and Map (Consistent with statusHandler)
+            const sanitizedUsers = users.map((u: any) => {
+                return {
+                    _id: u._id || u.id,
+                    name: u.name,
+                    role: u.role,
+                    isGM: u.role >= UserRole.ASSISTANT, // Roles 3 & 4
+                    active: u.active,
+                    color: u.color,
+                    characterId: u.character,
+                    img: client.resolveUrl(u.avatar || u.img)
+                };
+            });
+
+            res.json({ users: sanitizedUsers });
         } catch (error: any) {
-            res.status(500).json({ error: error.message });
+            logger.error(`User Fetch Error: ${error.message}`);
+            res.status(500).json({ error: 'Failed to retrieve users' });
         }
     });
 

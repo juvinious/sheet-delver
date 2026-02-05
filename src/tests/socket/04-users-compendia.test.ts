@@ -27,6 +27,9 @@ export async function testUsersAndCompendia() {
         try {
             const users = await client.getUsers();
             console.log(`   ✅ Found ${users.length} users`);
+            users.forEach((u: any) => {
+                console.log(`      - ${u.name}: Role ${u.role} (${typeof u.role})`);
+            });
             results.tests.push({ name: 'getUsers', success: true, data: { count: users.length } });
         } catch (error: any) {
             console.log(`   ❌ Failed: ${error.message}`);
