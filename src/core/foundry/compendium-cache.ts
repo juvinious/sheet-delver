@@ -1,4 +1,4 @@
-import { FoundryClient } from './interfaces';
+import { FoundryMetadataClient } from './interfaces';
 
 export class CompendiumCache {
     private static instance: CompendiumCache;
@@ -19,7 +19,7 @@ export class CompendiumCache {
         return this.initialized;
     }
 
-    public async initialize(client: FoundryClient) {
+    public async initialize(client: FoundryMetadataClient) {
         if (this.initialized) return;
         if (this.loadingPromise) return this.loadingPromise;
 
@@ -28,9 +28,17 @@ export class CompendiumCache {
             try {
                 const packs = await client.getAllCompendiumIndices();
                 for (const pack of packs) {
+                    const packId = pack.id;
+                    const docType = pack.metadata?.type || pack.metadata?.entity || pack.metadata?.documentName || 'Item';
+                    if (!packId || !Array.isArray(pack.index)) continue;
+
                     for (const item of pack.index) {
-                        if (item.uuid) {
-                            this.cache.set(item.uuid, item.name);
+                        const id = item._id || item.id;
+                        const name = item.name;
+                        if (id && name) {
+                            // Standardize: Compendium.{packId}.{Type}.{Id}
+                            const uuid = `Compendium.${packId}.${docType}.${id}`;
+                            this.cache.set(uuid, name);
                         }
                     }
                 }
@@ -50,6 +58,10 @@ export class CompendiumCache {
         const val = this.cache.get(uuid);
         // if (!val) console.log(`[CompendiumCache] Miss: ${uuid}`);
         return val;
+    }
+
+    public getKeys(): string[] {
+        return Array.from(this.cache.keys());
     }
 
     public resolve(text: string): string {

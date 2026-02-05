@@ -425,6 +425,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // 2. Fetch all compendium packs from Socket (If available/different)
+            // Optimization: If we have client-side cache, we might skip full re-fetch here
+            // But getSystemData is often used to BUILD the UI list.
             const packs = await client.getAllCompendiumIndices();
 
             for (const pack of packs) {

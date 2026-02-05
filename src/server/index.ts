@@ -145,6 +145,7 @@ async function startServer() {
             res.json({
                 connected,
                 isAuthenticated,
+                initialized: sessionManager.isCacheReady(),
                 users: users || [],
                 system: system,
                 url: config.foundry.url,
@@ -157,6 +158,17 @@ async function startServer() {
         }
     };
 
+
+    // Middleware to check if system is initialized
+    const ensureInitialized = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        if (!sessionManager.isCacheReady()) {
+            return res.status(503).json({
+                status: 'initializing',
+                message: 'Compendium cache is warming up, please wait.'
+            });
+        }
+        next();
+    };
 
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
@@ -181,7 +193,7 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/system/data', async (req, res) => {
+    appRouter.get('/system/data', authenticateSession, ensureInitialized, async (req: any, res: any) => {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return res.status(401).json({ error: 'Unauthorized' });
@@ -247,7 +259,7 @@ async function startServer() {
 
             const { CompendiumCache } = await import('../core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
-            if (!cache.hasLoaded()) await cache.initialize(client);
+            // Note: CompendiumCache is now initialized by SessionManager on startup.
 
             const normalize = async (actorList: any[]) => Promise.all(actorList.map(async (actor: any) => {
                 if (!actor.computed) actor.computed = {};
@@ -319,7 +331,7 @@ async function startServer() {
 
             const { CompendiumCache } = await import('../core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
-            if (!cache.hasLoaded()) await cache.initialize(client);
+            // Note: CompendiumCache is now initialized by SessionManager on startup.
 
             // Recursively resolve UUIDs
             const resolveUUIDs = (obj: any): any => {

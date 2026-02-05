@@ -3,7 +3,14 @@ import { SystemInfo } from '@/shared/interfaces';
 
 export type { SystemInfo };
 
-export interface FoundryClient {
+export interface FoundryMetadataClient {
+    getAllCompendiumIndices(): Promise<any[]>;
+    getSystem(): Promise<SystemInfo>;
+    getUsers(): Promise<any[]>;
+    url: string;
+}
+
+export interface FoundryClient extends Partial<FoundryMetadataClient> {
     // Legacy support (to be deprecated or aliased)
     isConnected: boolean;
     isLoggedIn: boolean;
@@ -32,7 +39,8 @@ export interface FoundryClient {
     getActors(): Promise<any[]>;
     getActor(id: string, forceSystemId?: string): Promise<any>;
 
-    getAllCompendiumIndices(): Promise<any[]>;
+    // Removed getAllCompendiumIndices from base FoundryClient for user-level sockets
+    // It is now in FoundryMetadataClient (implemented by CoreSocket)
 
     updateActor(id: string, data: any): Promise<any>;
     createActor(data: any): Promise<any>;

@@ -7,6 +7,7 @@ import { FoundryConfig } from '../types';
 export class ClientSocket extends SocketBase {
     public userId: string | null = null;
     public isExplicitSession: boolean = false;
+    private isRestored: boolean = false;
     private coreSocket: CoreSocket;
 
     constructor(config: FoundryConfig, coreSocket: CoreSocket) {
@@ -20,8 +21,16 @@ export class ClientSocket extends SocketBase {
         logger.info(`ClientSocket | Connecting Presence Anchor for user ${this.config.username}...`);
 
         try {
+            const restoredCookie = this.isRestored ? this.sessionCookie : null;
+
             // 1. Handshake & CSRF & Scraped Users
             const { csrfToken, isSetupMatch, users: scrapedUsers } = await this.performHandshake(baseUrl);
+
+            if (this.isRestored && restoredCookie) {
+                this.updateCookies(restoredCookie);
+                logger.debug(`ClientSocket | Restored authenticated cookie after handshake`);
+            }
+
             if (isSetupMatch) {
                 throw new Error("Cannot connect ClientSocket in Setup Mode");
             }
@@ -42,8 +51,12 @@ export class ClientSocket extends SocketBase {
                 throw new Error(`Could not identify user ID for ${this.config.username}`);
             }
 
-            // 3. Login
-            await this.performLogin(baseUrl, this.userId, csrfToken);
+            // 3. Login (Skip if we already have a session cookie from restoration)
+            if (!this.isRestored) {
+                await this.performLogin(baseUrl, this.userId, csrfToken);
+            } else {
+                logger.info(`ClientSocket | Bypassing login, using restored session cookie for ${this.userId}`);
+            }
 
             // 4. Connect Main Socket
             const sessionId = this.getSessionId();
@@ -117,6 +130,7 @@ export class ClientSocket extends SocketBase {
         this.userId = userId;
         this.sessionCookie = cookie;
         this.isExplicitSession = true;
+        this.isRestored = true;
 
         // Populate cookieMap from existing cookie string
         const parts = cookie.split(';');

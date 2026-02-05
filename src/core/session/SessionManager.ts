@@ -24,6 +24,7 @@ export class SessionManager {
     private readonly SESSIONS_FILE = path.join(process.cwd(), '.foundry-session.json');
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
+    private cacheInstance: any = null;
 
     constructor(config: FoundryConfig) {
         this.config = config;
@@ -45,6 +46,18 @@ export class SessionManager {
                 this.systemClient.connect().catch(reject);
             });
             logger.info('SessionManager | Core System Socket Ready.');
+
+            // Initialize Compendium Cache (System Level) - Non-blocking background task
+            (async () => {
+                try {
+                    const { CompendiumCache } = await import('../foundry/compendium-cache');
+                    this.cacheInstance = CompendiumCache.getInstance();
+                    await this.cacheInstance.initialize(this.systemClient);
+                } catch (e: any) {
+                    logger.error(`SessionManager | Compendium Cache failed to initialize: ${e.message}`);
+                }
+            })();
+
         } catch (e: any) {
             logger.error(`SessionManager | Core Socket failed to initialize: ${e.message}`);
         }
@@ -52,6 +65,10 @@ export class SessionManager {
 
     public getSystemClient(): CoreSocket {
         return this.systemClient;
+    }
+
+    public isCacheReady(): boolean {
+        return this.cacheInstance?.hasLoaded() || false;
     }
 
     public async createSession(username: string, password?: string): Promise<{ sessionId: string, userId: string }> {
@@ -189,7 +206,7 @@ export class SessionManager {
                 username: foundryUsername || key,
                 userId: client.userId,
                 cookie: (client as any).sessionCookie,
-                worldId: (client as any).cachedWorldData?.worldId,
+                worldId: this.systemClient.getGameData()?.world?.id,
                 lastSaved: Date.now()
             };
 

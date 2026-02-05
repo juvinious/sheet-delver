@@ -4,13 +4,14 @@ import { SocketBase } from './SocketBase';
 import { logger } from '../../logger';
 import { WorldData, CacheData, SetupScraper } from '../SetupScraper';
 import { FoundryConfig } from '../types';
+import { FoundryMetadataClient } from '../interfaces';
 import { getAdapter } from '../../../modules/core/registry';
 import { SystemAdapter } from '../../../modules/core/interfaces';
 import { CompendiumCache } from '../compendium-cache';
 import path from 'path';
 import fs from 'fs';
 
-export class CoreSocket extends SocketBase {
+export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public worldState: 'offline' | 'setup' | 'active' = 'offline';
     public cachedWorldData: WorldData | null = null;
     public cachedWorlds: Record<string, WorldData> = {};
@@ -360,7 +361,6 @@ export class CoreSocket extends SocketBase {
 
     public async dispatchDocumentSocket(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }, failHard: boolean = true): Promise<any> {
         if (!this.socket?.connected) throw new Error('Socket not connected');
-        operation.action = action;
         if (parent) operation.parentUuid = `${parent.type}.${parent.id}`;
 
         try {
@@ -370,6 +370,131 @@ export class CoreSocket extends SocketBase {
         } catch (error: any) {
             if (failHard) this.consecutiveFailures++;
             throw error;
+        }
+    }
+
+    public async getPackIndex(packId: string, type: string): Promise<any[]> {
+        try {
+            logger.debug(`CoreSocket | Fetching index for pack ${packId} (type: ${type})...`);
+
+            // Try 1: getCompendiumIndex (v12/v13)
+            // String payload is the preferred v13 way
+            try {
+                const response: any = await this.emitSocketEvent('getCompendiumIndex', packId, 3000);
+                if (Array.isArray(response)) {
+                    return response;
+                }
+                if (response?.result && Array.isArray(response.result)) {
+                    return response.result;
+                }
+            } catch (e) {
+                // Silently fallback
+            }
+
+            // Try 2: getDocuments (v13 Standard)
+            // Try both singular and plural (v13 often prefers plural collection names)
+            const typesToTry = [type];
+            if (type === 'RollTable') typesToTry.push('Tables', 'RollTables');
+            else if (type === 'Item') typesToTry.push('Items');
+            else if (type === 'JournalEntry') typesToTry.push('Journal');
+
+            for (const t of typesToTry) {
+                try {
+                    const response: any = await this.emitSocketEvent('getDocuments', {
+                        type: t,
+                        operation: { pack: packId, index: true }
+                    }, 2000);
+                    if (response?.result && Array.isArray(response.result)) {
+                        return response.result;
+                    }
+                } catch (e) {
+                    // Try next type
+                }
+            }
+
+            // Fallback: modifyDocument (Legacy)
+            try {
+                const response: any = await this.dispatchDocumentSocket(type, 'get', {
+                    pack: packId,
+                    index: true,
+                    broadcast: false
+                }, undefined, false); // Do not fail hard on this
+                const finalIndex = response?.result || [];
+                if (finalIndex.length > 0) {
+                    return finalIndex;
+                }
+            } catch (e: any) {
+                // Ignore packData errors
+            }
+
+            return [];
+        } catch (e) {
+            logger.warn(`CoreSocket | getPackIndex failed for ${packId}: ${e}`);
+            return [];
+        }
+    }
+
+    public async getAllCompendiumIndices(): Promise<any[]> {
+        if (!this.isConnected) return [];
+        if (this.gameDataCache?.indices) return this.gameDataCache.indices; // Return cached if already available
+
+        // Deduplication Guard
+        const { CompendiumCache } = await import('../compendium-cache');
+        if (CompendiumCache.getInstance().hasLoaded()) {
+            // We still want to return the indices if they exist
+            // But we need to make sure they are stored in gameDataCache or we re-fetch once and store.
+            // For now, let's just let it run if not loaded, but we should eventually skip if already warming up.
+        }
+
+        try {
+            const game = this.gameDataCache || await this.fetchGameData();
+            if (!game) {
+                logger.warn('CoreSocket | No gameData available for discovery.');
+                return [];
+            }
+            logger.debug(`CoreSocket | gameData keys: ${Object.keys(game).join(', ')}`);
+            if (game.packs) logger.debug(`CoreSocket | game.packs found, count: ${game.packs.length}`);
+
+            const packs = new Map<string, any>();
+
+            // 0. Top-level Packs (v13 prefers this)
+            // Use this as the definitive list of IDs
+            if (Array.isArray(game.packs)) {
+                game.packs.forEach((p: any) => {
+                    const id = p.id || p._id;
+                    if (id) packs.set(id, { ...p, source: 'game.packs' });
+                });
+            }
+
+            // 1. Fallback Discovery (Aggregate from metadata if top-level packs missing)
+            const fallbackPacks = [
+                ...(game.world?.packs || []).map((p: any) => ({ ...p, source: 'world' })),
+                ...(game.system?.packs || []).map((p: any) => ({ ...p, source: 'system' })),
+                ...(game.modules || []).flatMap((m: any) => (m.packs || []).map((p: any) => ({ ...p, source: 'module', moduleId: m.id })))
+            ];
+
+            fallbackPacks.forEach((p: any) => {
+                const id = p.id || p._id || (p.moduleId ? `${p.moduleId}.${p.name}` : `${game.system.id}.${p.name}`);
+                if (!packs.has(id)) packs.set(id, p);
+            });
+
+            logger.info(`CoreSocket | Discovering indices for ${packs.size} packs in parallel...`);
+            const results = await Promise.all(Array.from(packs.entries()).map(async ([packId, metadata]) => {
+                const docType = metadata.type || metadata.entity || metadata.documentName || 'Item';
+                const index = await this.getPackIndex(packId, docType);
+                return {
+                    id: packId,
+                    metadata: metadata,
+                    index: index
+                };
+            }));
+
+            logger.info(`CoreSocket | Compendium discovery complete (${results.length} packs indexed)`);
+            if (this.gameDataCache) this.gameDataCache.indices = results;
+            return results;
+        } catch (e) {
+            logger.warn(`CoreSocket | getAllCompendiumIndices failed: ${e}`);
+            return [];
         }
     }
 
@@ -424,6 +549,53 @@ export class CoreSocket extends SocketBase {
             return await this.adapter.normalizeActorData(data, this);
         }
         return data;
+    }
+
+    public async fetchByUuid(uuid: string): Promise<any> {
+        if (!uuid || typeof uuid !== 'string') return null;
+
+        // 1. World Document (e.g. Actor.ID, Item.ID)
+        if (!uuid.startsWith('Compendium.')) {
+            const [type, id] = uuid.split('.');
+            if (type && id) {
+                const response = await this.dispatchDocumentSocket(type, 'get', { query: { _id: id }, broadcast: false });
+                return response?.result?.[0];
+            }
+            return null;
+        }
+
+        // 2. Compendium Document (e.g. Compendium.pack.Type.ID)
+        const parts = uuid.split('.');
+        if (parts.length < 4) return null;
+
+        const packId = `${parts[1]}.${parts[2]}`;
+        const type = parts[3];
+        const id = parts[4];
+
+        try {
+            const response: any = await this.emitSocketEvent('getDocuments', {
+                type: type,
+                operation: { pack: packId, query: { _id: id } }
+            }, 3000);
+
+            if (response?.result && Array.isArray(response.result)) {
+                return response.result[0];
+            }
+        } catch (e) {
+            // Fallback for RollTables or other specific v13 behaviors
+            try {
+                const response = await this.dispatchDocumentSocket(type, 'get', {
+                    pack: packId,
+                    query: { _id: id },
+                    broadcast: false
+                }, undefined, false);
+                return response?.result?.[0];
+            } catch (inner) {
+                logger.warn(`CoreSocket | fetchByUuid failed for ${uuid}: ${inner}`);
+            }
+        }
+
+        return null;
     }
 
     async updateActor(id: string, data: any): Promise<any> {

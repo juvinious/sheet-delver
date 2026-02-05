@@ -3,84 +3,6 @@ import { loadConfig } from '../../core/config';
 import { logger } from '../../core/logger';
 import { CompendiumCache } from '../../core/foundry/compendium-cache';
 
-async function getAllCompendiumIndices(client: CoreSocket): Promise<any[]> {
-    if (!client.isConnected) return [];
-
-    try {
-        // Use Cached World Data (gameData) as the single source of truth
-        const game = client.getGameData() || await client.fetchGameData();
-        if (!game) {
-            logger.warn('SocketFoundryClient | No gameData available for discovery.');
-            return [];
-        }
-
-        const packs = new Map<string, any>();
-
-        // 1. Discovery from World
-        if (game.world?.packs) {
-            game.world.packs.forEach((p: any) => {
-                const id = p.id || p._id || `${p.system}.${p.name}` || p.name;
-                packs.set(id, { ...p, source: 'world' });
-            });
-        }
-
-        // 2. Discovery from System
-        if (game.system?.packs) {
-            game.system.packs.forEach((p: any) => {
-                const id = p.id || p._id || `${game.system.id}.${p.name}` || p.name;
-                if (!packs.has(id)) packs.set(id, { ...p, system: game.system.id, source: 'system' });
-            });
-        }
-
-        // 3. Discovery from Modules
-        if (game.modules) {
-            game.modules.forEach((mod: any) => {
-                if (mod.packs) {
-                    mod.packs.forEach((p: any) => {
-                        const id = p.id || p._id || `${mod.id}.${p.name}` || p.name;
-                        if (!packs.has(id)) packs.set(id, { ...p, module: mod.id, source: 'module' });
-                    });
-                }
-            });
-        }
-
-        // logger.debug(`SocketFoundryClient | Aggregated ${packs.size} compendium packs from gameData.`);
-
-        // 4. Fetch Indices for each pack
-        const results = [];
-        for (const [packId, metadata] of packs.entries()) {
-            // Determine Document Type (Default to Item if unknown)
-            const docType = metadata.type || metadata.entity || metadata.documentName || 'Item';
-
-            // Fetch index (This still uses the socket, which is efficient)
-            /*const index = await client.getPackIndex(packId, docType);
-            results.push({
-                id: packId,
-                metadata: metadata,
-                index: index
-            });*/
-            /*const index = await cache.getPackIndex(packId, docType);
-            results.push({
-                id: packId,
-                metadata: metadata,
-                index: index
-            });*/
-            const index = await client.getGameData();
-            results.push({
-                id: packId,
-                metadata: metadata,
-                index: index
-            });
-        }
-
-        return results;
-    } catch (e) {
-        logger.warn(`getAllCompendiumIndices failed: ${e}`);
-        return [];
-    }
-}
-
-
 /**
  * Test 4: User and Compendium Data
  * Tests user list and compendium access
@@ -125,7 +47,7 @@ export async function testUsersAndCompendia() {
         // Test 4c: getAllCompendiumIndices()
         console.log('\n4c. Testing getAllCompendiumIndices()...');
         try {
-            const indices = await getAllCompendiumIndices(client);
+            const indices = await client.getAllCompendiumIndices();
             console.log(`   ✅ Found ${indices.length} compendium packs`);
             results.tests.push({ name: 'getAllCompendiumIndices', success: true, data: { count: indices.length } });
         } catch (error: any) {

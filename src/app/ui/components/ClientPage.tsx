@@ -26,7 +26,7 @@ interface ClientPageProps {
 }
 
 export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating'>('init');
+  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing'>('init');
   const { notifications, addNotification, removeNotification } = useNotifications();
   const { setFoundryUrl, foundryUrl: configUrl } = useConfig();
 
@@ -180,6 +180,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
       // 1. Are we in setup? -> Show setup screen
       if (status !== 'active') return 'setup';
+
+      // 1b. Are we initializing system data? -> Show splash
+      if (data.initialized === false) return 'initializing';
 
       // 2. If we're authenticating, stay there until backend confirms
       if (currentStep === 'authenticating') {
@@ -477,6 +480,19 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           </div>
         )}
 
+        {step === 'initializing' && (
+          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
+            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
+              SheetDelver
+            </h1>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Booting System...</p>
+              <p className="text-white/30 text-xs font-mono">Warming up Compendium Cache</p>
+            </div>
+          </div>
+        )}
+
         {step === 'startup' && (
           <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
             <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
@@ -726,7 +742,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         <div className="text-4xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4" style={{ fontFamily: 'var(--font-cinzel), serif' }}>
           SheetDelver
         </div>
-        {system && step !== 'setup' && step !== 'startup' && step !== 'init' && (
+        {system && step !== 'setup' && step !== 'startup' && step !== 'init' && step !== 'initializing' && (
           <div className={`text-sm font-bold tracking-widest opacity-80 mb-2 ${theme.accent}`}>
             {system.title.toUpperCase()} ({system.version.toString().toUpperCase()})
           </div>
