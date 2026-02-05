@@ -427,6 +427,61 @@ export class CoreSocket extends SocketBase {
         return data;
     }
 
+    async updateActor(id: string, data: any): Promise<any> {
+        // Update uses 'updates' array in operation
+        return await this.dispatchDocumentSocket('Actor', 'update', { updates: [{ _id: id, ...data }] });
+    }
+
+    async createActor(data: any): Promise<any> {
+        // Create uses 'data' array in operation
+        const response = await this.dispatchDocumentSocket('Actor', 'create', { data: [data] });
+        // Response.result is array of created docs
+        return response?.result?.[0];
+    }
+
+    async deleteActor(id: string): Promise<any> {
+        // Delete uses 'ids' array in operation
+        return await this.dispatchDocumentSocket('Actor', 'delete', { ids: [id] });
+    }
+
+    async updateActorEffect(actorId: string, effectId: string, updateData: any): Promise<any> {
+        return await this.dispatchDocumentSocket('ActiveEffect', 'update',
+            { updates: [{ _id: effectId, ...updateData }] },
+            { type: 'Actor', id: actorId }
+        );
+    }
+
+    async deleteActorEffect(actorId: string, effectId: string): Promise<any> {
+        return await this.dispatchDocumentSocket('ActiveEffect', 'delete',
+            { ids: [effectId] },
+            { type: 'Actor', id: actorId }
+        );
+    }
+
+    async createActorItem(actorId: string, itemData: any): Promise<any> {
+        const response = await this.dispatchDocumentSocket('Item', 'create',
+            { data: [itemData] },
+            { type: 'Actor', id: actorId }
+        );
+        return response?.result?.[0]?._id;
+    }
+
+    async updateActorItem(actorId: string, itemData: any): Promise<any> {
+        const { _id, id, ...updates } = itemData;
+        const targetId = _id || id;
+        return await this.dispatchDocumentSocket('Item', 'update',
+            { updates: [{ _id: targetId, ...updates }] },
+            { type: 'Actor', id: actorId }
+        );
+    }
+
+    async deleteActorItem(actorId: string, itemId: string): Promise<any> {
+        return await this.dispatchDocumentSocket('Item', 'delete',
+            { ids: [itemId] },
+            { type: 'Actor', id: actorId }
+        );
+    }
+
     public async getChatLog(limit = 100, userId?: string): Promise<any[]> {
         const response: any = await this.dispatchDocumentSocket('ChatMessage', 'get', { broadcast: false });
         let raw = (response?.result || []).slice(-limit).reverse();
@@ -480,6 +535,10 @@ export class CoreSocket extends SocketBase {
     public async getUsers(failHard: boolean = false): Promise<any[]> {
         const response: any = await this.dispatchDocumentSocket('User', 'get', { broadcast: false }, undefined, failHard);
         return response?.result || [];
+    }
+
+    async evaluate<T>(): Promise<T> {
+        return this.gameDataCache as any;
     }
 
     /**

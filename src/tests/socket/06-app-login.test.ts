@@ -1,5 +1,6 @@
 
-import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
+import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
 
 /**
@@ -13,12 +14,14 @@ export async function testAppLogin() {
     if (!config) {
         throw new Error('Failed to load configuration');
     }
-
-    const client = new LegacySocketFoundryClient(config.foundry);
+    const core = new CoreSocket(config.foundry);
+    const client = new ClientSocket(config.foundry, core);
     const results: any = { tests: [] };
 
     try {
         // 1. Initial Connection
+        await core.connect();
+        console.log('✅ Core Connected\n');
         console.log('6a. Establishing initial connection...');
         await client.connect();
 
@@ -56,6 +59,7 @@ export async function testAppLogin() {
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
+        await core.disconnect();
         console.log('📡 Disconnected\n');
     }
 }

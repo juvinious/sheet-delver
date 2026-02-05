@@ -1,4 +1,4 @@
-import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
 
 /**
@@ -13,7 +13,7 @@ export async function testUserStatus() {
         throw new Error('Failed to load configuration');
     }
 
-    const client = new LegacySocketFoundryClient(config.foundry);
+    const client = new CoreSocket(config.foundry);
 
     try {
         console.log('📡 Connecting...');
@@ -25,7 +25,7 @@ export async function testUserStatus() {
         console.log('🔍 Fetching Users...');
 
         // Use getUsersDetails() to check the internal state map which should be identifying active users
-        const users = await client.getUsersDetails();
+        const users = await client.getUsers();
 
         console.log(`✅ Fetched ${users.length} Users`);
 

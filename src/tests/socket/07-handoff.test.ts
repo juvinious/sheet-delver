@@ -1,5 +1,6 @@
 
-import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
+import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
 import { loadConfig } from '../../core/config';
 import * as readline from 'readline';
 
@@ -73,16 +74,16 @@ export async function testConnectionHandoff() {
 
     // Instance 1: The "Background Poller" (System User)
     console.log('\n1. Starting Background Client (System User)...');
-    const backgroundClient = new LegacySocketFoundryClient(config.foundry);
+    const core = new CoreSocket(config.foundry);
 
     // Instance 2: The "Interactive Login" (Player)
     console.log('2. Starting Player Client (Interactive)...');
-    const playerClient = new LegacySocketFoundryClient(config.foundry);
+    const client = new ClientSocket(config.foundry, core);
 
     try {
         // Step A: Background client connects
         console.log('   [Background] Connecting...');
-        await backgroundClient.connect();
+        await core.connect();
         console.log('   [Background] ✅ Connected');
 
         // Step B: Simulate background polling while player tries to login
@@ -90,8 +91,8 @@ export async function testConnectionHandoff() {
 
         const backgroundPoll = setInterval(async () => {
             try {
-                const sys = await backgroundClient.getSystem();
-                console.log(`   [Background] Polling status | isLoggedIn: ${sys.isLoggedIn}`);
+                const sys = await core;
+                console.log(`   [Background] Polling status | worldState: ${sys.worldState}`);
             } catch (e: any) {
                 console.log(`   [Background] ⚠️ Poll failed: ${e.message}`);
             }
@@ -100,15 +101,15 @@ export async function testConnectionHandoff() {
         console.log(`\n4. [Player] Logging in as "${username}"...`);
         console.log('   (Background poll should continue without killing the player session)');
 
-        await playerClient.login(username, password);
+        await client.login(username, password);
 
-        if (playerClient.isLoggedIn) {
-            console.log(`   [Player] ✅ Successfully logged in as ${playerClient.userId}`);
+        if (client.isExplicitSession) {
+            console.log(`   [Player] ✅ Successfully logged in as ${client.userId}`);
 
             console.log('\n5. Verifying Stability (Waiting 10 seconds)...');
             await new Promise(r => setTimeout(r, 10000));
 
-            if (playerClient.isConnected && playerClient.isLoggedIn) {
+            if (client.isConnected && client.isExplicitSession) {
                 console.log('   ✅ Player session is still stable after 10 seconds of background polling.');
             } else {
                 throw new Error('Player session was lost during background polling!');
@@ -124,8 +125,8 @@ export async function testConnectionHandoff() {
         console.error('\n❌ Test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
-        await backgroundClient.disconnect();
-        await playerClient.disconnect();
+        await core.disconnect();
+        await client.disconnect();
         console.log('\n📡 All clients disconnected\n');
     }
 }

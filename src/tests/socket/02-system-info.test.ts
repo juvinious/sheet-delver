@@ -1,4 +1,4 @@
-import { LegacySocketFoundryClient } from '../../core/foundry/legacy/LegacySocketClient';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
 
 /**
@@ -13,7 +13,7 @@ export async function testSystemInfo() {
         throw new Error('Failed to load configuration');
     }
 
-    const client = new LegacySocketFoundryClient(config.foundry);
+    const client = new CoreSocket(config.foundry);
     const results: any = { tests: [] };
 
     try {
@@ -34,7 +34,7 @@ export async function testSystemInfo() {
         // Test 2b: getSystemData()
         console.log('\n2b. Testing getSystemData()...');
         try {
-            await client.getSystemData();
+            await client.getGameData();
             console.log('   ✅ Retrieved system data\n');
             results.tests.push({ name: 'getSystemData', success: true });
         } catch (error: any) {
@@ -46,9 +46,9 @@ export async function testSystemInfo() {
         console.log('\n2c. Testing evaluate() for world info...');
         try {
             // @ts-ignore
-            const worldId = await client.evaluate(() => (game as any).world.id);
+            const worldId = await client.evaluate(() => (world as any).id);
             // @ts-ignore
-            const worldTitle = await client.evaluate(() => (game as any).world.title);
+            const worldTitle = await client.evaluate(() => (world as any).title);
             console.log(`   ✅ World: ${worldTitle} (${worldId})`);
             results.tests.push({ name: 'evaluate-world', success: true, data: { worldId, worldTitle } });
         } catch (error: any) {

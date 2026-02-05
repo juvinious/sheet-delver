@@ -1,5 +1,5 @@
-
 import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { logger } from '../../core/logger';
 import { loadConfig } from '../../core/config';
 import 'dotenv/config';
@@ -18,7 +18,6 @@ async function testJournals() {
     }
 
     // Initialize Stack
-    const { CoreSocket } = require('../../core/foundry/sockets/CoreSocket');
     const core = new CoreSocket(config.foundry);
     const client = new ClientSocket(config.foundry, core);
 
