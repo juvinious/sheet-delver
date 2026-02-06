@@ -1,3 +1,4 @@
+import { logger } from '@/core/logger';
 
 
 class DataManager {
@@ -89,10 +90,10 @@ class DataManager {
             }
         };
 
-        console.time('[DataManager] Indexing');
+        logger.time('[DataManager] Indexing');
         scanDirectory(packsDir);
-        console.timeEnd('[DataManager] Indexing');
-        console.log(`[DataManager] Indexed ${this.index.size} entries.`);
+        logger.timeEnd('[DataManager] Indexing');
+        logger.debug(`[DataManager] Indexed ${this.index.size} entries.`);
         this.initialized = true;
     }
 

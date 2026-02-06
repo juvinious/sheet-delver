@@ -2,10 +2,10 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import {
-    resolveImage,
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
@@ -21,6 +21,7 @@ interface SpellsTabProps {
 }
 
 export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification }: SpellsTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTier, setEditingTier] = useState<number | null>(null);
@@ -361,16 +362,16 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                             );
                         }
 
-                        return allSpells.map((spell: any) => {
-                            const isExpanded = expandedItems.has(spell.id);
+                        return allSpells.map((spell: any, idx: number) => {
+                            const isExpanded = expandedItems.has(spell.id || spell._id);
                             const lost = isLost(spell);
 
                             return (
-                                <div key={spell.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                                <div key={spell.id || spell._id || `spell-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
                                             {spell.img ? (
-                                                <img src={spell.img || '/placeholder.png'} alt="" className="w-full h-full object-cover" />
+                                                <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
                                             )}
@@ -510,13 +511,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 <div className="space-y-2">
                     {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type))
                         .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                        .map((item: any) => {
-                            const isExpanded = expandedItems.has(item.id);
+                        .map((item: any, idx: number) => {
+                            const isExpanded = expandedItems.has(item.id || item._id);
                             return (
-                                <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div key={item.id || item._id || `magic-item-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                            <img src={item.img || '/placeholder.png'} alt="" className="w-full h-full object-cover" />
+                                            <img src={resolveImageUrl(item.img)} alt="" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="flex-1">
                                             <div className="font-serif font-bold text-lg leading-none">{item.name}</div>

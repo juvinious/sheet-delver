@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { LevelUpModal } from '../components/LevelUpModal';
+import { logger } from '@/app/ui/logger';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -18,12 +19,12 @@ export default function Generator() {
         if (stored) setToken(stored);
     }, []);
 
-    const fetchWithAuth = async (input: string, init?: RequestInit) => {
+    const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
         const currentToken = token || sessionStorage.getItem('sheet-delver-token');
         if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
         return fetch(input, { ...init, headers });
-    };
+    }, [token]);
 
     // Randomize All
     const skipLanguageReset = useRef(false);
@@ -104,16 +105,16 @@ export default function Generator() {
         }));
     };
 
-    const fetchDocument = async (uuid: string) => {
+    const fetchDocument = useCallback(async (uuid: string) => {
         try {
-            const res = await fetchWithAuth(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
-            if (!res.ok) throw new Error('Failed to fetch document');
+            const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
+            if (!res.ok) return null;
             return await res.json();
         } catch (e) {
-            console.error(e);
+            console.error('Fetch error:', e);
             return null;
         }
-    };
+    }, [fetchWithAuth]);
 
     // Verify Connection on Mount
     useEffect(() => {
@@ -139,7 +140,7 @@ export default function Generator() {
             }
         };
         checkConnection();
-    }, []);
+    }, [fetchWithAuth]);
 
     // Load System Data
     useEffect(() => {
@@ -150,7 +151,7 @@ export default function Generator() {
                 setLoading(false);
             })
             .catch(err => console.error('Failed to load system data', err));
-    }, []);
+    }, [fetchWithAuth]);
 
 
 
@@ -163,7 +164,7 @@ export default function Generator() {
         fetchDocument(formData.class).then(data => {
             setClassDetails(data);
         });
-    }, [formData.class]);
+    }, [formData.class, fetchDocument]);
 
     // Fetch Patron Details on change
     useEffect(() => {
@@ -172,7 +173,7 @@ export default function Generator() {
             return;
         }
         fetchDocument(formData.patron).then(data => setPatronDetails(data));
-    }, [formData.patron]);
+    }, [formData.patron, fetchDocument]);
 
     // Roll Stats (3d6 down the line)
     const rollStats = () => {
@@ -711,7 +712,7 @@ export default function Generator() {
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData]);
+    }, [formData.ancestry, systemData, fetchDocument]);
 
 
 
@@ -889,7 +890,7 @@ export default function Generator() {
         };
 
         loadDetails();
-    }, [classDetails, formData.level0]);
+    }, [classDetails, formData.level0, fetchDocument]);
 
     // Combined Language Effect
     useEffect(() => {
@@ -945,14 +946,13 @@ export default function Generator() {
 
             setLanguageConfig({ common, rare, ancestry: ancestryPool, class: classPool, fixed: fixedUuids });
             setKnownLanguages(prev => ({
-                ...prev,
                 fixed: fixedResolved,
                 selected: { common: [], rare: [], ancestry: [], class: [] } // Reset selections on reload
             }));
         };
 
         loadLanguages();
-    }, [ancestryDetails, classDetails, formData.level0]);
+    }, [ancestryDetails, classDetails, formData.level0, fetchDocument]);
 
 
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
@@ -1199,14 +1199,14 @@ export default function Generator() {
                 const choiceMatch = name.match(choiceRegex);
                 if (choiceMatch) {
                     const amount = parseInt(choiceMatch[1] || choiceMatch[2]);
-                    console.log(`Generator: Detected 'Any Stat' choice for ${name}. Prompting user...`);
+                    logger.debug(`Generator: Detected 'Any Stat' choice for ${name}. Prompting user...`);
 
                     // Prompt User
                     const selectedStat = await promptStatChoice(amount);
 
                     if (selectedStat) {
                         const statRaw = selectedStat.toLowerCase();
-                        console.log(`Generator: User chose ${statRaw}`);
+                        logger.debug(`Generator: User chose ${statRaw}`);
 
                         const effect = {
                             label: `${name} (${selectedStat.toUpperCase()})`,

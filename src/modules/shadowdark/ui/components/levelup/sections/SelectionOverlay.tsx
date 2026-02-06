@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
-    const { foundryUrl } = useConfig();
+    const { resolveImageUrl } = useConfig();
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-neutral-900/90 backdrop-blur-sm"></div>
@@ -35,12 +35,10 @@ export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
 
                     <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
                         {pendingChoices.options.map((choice, idx) => {
-                            let imgSrc = choice.img || "/icons/dice-d20.svg";
+                            let imgSrc = resolveImageUrl(choice.img || "icons/dice-d20.svg");
 
-                            // Fix specific known bad asset or relative paths
+                            // Fix specific known bad asset
                             if (imgSrc.includes('d20-black.svg')) imgSrc = "/icons/dice-d20.svg";
-                            else if (imgSrc.startsWith('systems/shadowdark')) imgSrc = `${foundryUrl || ''}/${imgSrc}`;
-                            else if (imgSrc.startsWith('icons/') && !imgSrc.startsWith('/')) imgSrc = `${foundryUrl || ''}/${imgSrc}`;
 
                             return (
                                 <button

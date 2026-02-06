@@ -40,6 +40,18 @@ class FrontendLogger {
             console.log('[DEBUG]', message, ...args);
         }
     }
+
+    time(label: string) {
+        if (this.level >= LOG_LEVEL.DEBUG) {
+            console.time(label);
+        }
+    }
+
+    timeEnd(label: string) {
+        if (this.level >= LOG_LEVEL.DEBUG) {
+            console.timeEnd(label);
+        }
+    }
 }
 
 export const logger = new FrontendLogger();

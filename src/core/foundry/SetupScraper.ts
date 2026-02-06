@@ -69,12 +69,12 @@ export class SetupScraper {
         // Keeping HTML is usually better for rich text descriptions
         if (worldDescription) {
             worldDescription = worldDescription.replace(/\s+/g, ' ');
-            console.log(`[SetupScraper] Found description: ${worldDescription.substring(0, 50)}...`);
+            logger.debug(`[SetupScraper] Found description: ${worldDescription.substring(0, 50)}...`);
         } else {
-            console.log('[SetupScraper] HTML Preview (Description not found) - Writing to scrape_debug.html');
+            logger.debug('[SetupScraper] HTML Preview (Description not found) - Writing to scrape_debug.html');
             try {
                 await fs.writeFile(path.join(process.cwd(), 'scrape_debug.html'), html);
-                console.log('[SetupScraper] Wrote scrape_debug.html');
+                logger.debug('[SetupScraper] Wrote scrape_debug.html');
             } catch (e) {
                 console.error('Failed to write debug html', e);
             }
@@ -101,33 +101,33 @@ export class SetupScraper {
         const socket = await this.connectSocket(baseUrl, sessionCookie);
 
         try {
-            console.log('[SetupScraper] Socket connected, waiting for session event...');
+            logger.debug('[SetupScraper] Socket connected, waiting for session event...');
 
             // Wait for session event (this confirms authentication)
             const sessionData = await new Promise<any>((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    console.error('[SetupScraper] Session event timeout');
+                    logger.error('[SetupScraper] Session event timeout');
                     reject(new Error('Session timeout - authentication may have failed'));
                 }, 15000);
 
                 socket.on('session', (data) => {
-                    console.log('[SetupScraper] Session event received:', data);
+                    logger.debug('[SetupScraper] Session event received:', data);
                     clearTimeout(timeout);
                     resolve(data);
                 });
             });
 
-            console.log('[SetupScraper] Emitting getJoinData...');
+            logger.debug('[SetupScraper] Emitting getJoinData...');
 
             // Emit getJoinData to fetch user list and world info
             const joinData = await new Promise<any>((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    console.error('[SetupScraper] getJoinData timeout');
+                    logger.error('[SetupScraper] getJoinData timeout');
                     reject(new Error('getJoinData timeout - server may not be responding'));
                 }, 15000);
 
                 socket.emit('getJoinData', (data: any) => {
-                    console.log('[SetupScraper] getJoinData response received');
+                    logger.debug('[SetupScraper] getJoinData response received');
                     clearTimeout(timeout);
                     resolve(data);
                 });
@@ -148,7 +148,7 @@ export class SetupScraper {
                 role: u.role
             }));
 
-            console.log(`[SetupScraper] Successfully scraped: ${users.length} users from world ${worldId}`);
+            logger.debug(`[SetupScraper] Successfully scraped: ${users.length} users from world ${worldId}`);
 
             socket.disconnect();
 
@@ -164,7 +164,7 @@ export class SetupScraper {
                 data: joinData.world // Store the entire world object
             };
         } catch (error) {
-            console.error('[SetupScraper] Error during scraping:', error);
+            logger.error('[SetupScraper] Error during scraping:', error);
             socket.disconnect();
             throw error;
         }
@@ -377,14 +377,14 @@ export class SetupScraper {
 
             socket.on('connect', () => {
                 clearTimeout(timeout);
-                console.log('[SetupScraper] Socket connected successfully');
+                logger.info('[SetupScraper] Socket connected successfully');
                 resolve(socket);
             });
 
             socket.on('connect_error', (err) => {
                 clearTimeout(timeout);
                 socket.disconnect();
-                console.error('[SetupScraper] Socket connection error:', err.message);
+                logger.error('[SetupScraper] Socket connection error:', err.message);
                 reject(err);
             });
         });

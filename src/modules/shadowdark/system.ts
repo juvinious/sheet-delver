@@ -46,6 +46,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     async getActor(client: any, actorId: string): Promise<any> {
         const baseUrl = client.url;
+        logger.debug(`[ShadowdarkAdapter] getActor baseUrl: ${baseUrl}`);
 
         const actorData = await client.evaluate(async ({ actorId, baseUrl }: any) => {
 
@@ -73,6 +74,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 if (!actor) return null;
 
                 // --- SHADOWDARK ITEM PROCESSING ---
+                logger.debug(`[ShadowdarkAdapter] normalizing Actor: ${actor.name} (Type: ${actor.type})`);
                 const freeCarrySeen: Record<string, number> = {};
                 // @ts-ignore
                 const items = (actor.items?.contents || []).map((i: any) => {
@@ -195,19 +197,59 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 if (actor.type === "Player") {
                     try {
                         computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
-                    } catch (err) { console.error('Error calculating AC:', err); computed.ac = 10; }
+                    } catch (err) { logger.error('Error calculating AC:', err); computed.ac = 10; }
 
                     try {
                         computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
-                    } catch (err) { console.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+                    } catch (err) { logger.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
 
-                    try {
-                        computed.isSpellCaster = (typeof actor.isSpellCaster === 'function') ? await actor.isSpellCaster() : false;
-                    } catch (err) { console.error('Error checking isSpellCaster:', err); computed.isSpellCaster = false; }
 
+                    // --- ROBUST SPELLCASTER CHECK ---
+                    // 1. Check for Class Spellcasting (foundry system data)
+                    const classItem = actor.items?.find((i: any) => i.type === 'Class');
+                    let isCaster = false;
+                    let canMagic = false;
+
+                    if (classItem) {
+                        // Check explicit ability or spellcasting property
+                        if (classItem.system?.spellcasting?.ability) isCaster = true;
+                        // Also check for 'class' property in spellcasting object just in case
+                        if (classItem.system?.spellcasting?.class) isCaster = true;
+                        // Name fallback
+                        const clsName = (classItem.name || "").toLowerCase();
+                        if (["wizard", "priest", "seer", "shaman", "witch", "druid"].some(c => clsName.includes(c))) {
+                            isCaster = true;
+                        }
+                    }
+
+                    // 2. Check for "Spell" items present
+                    const hasSpells = actor.items?.some((i: any) => i.type === 'Spell');
+                    if (hasSpells) isCaster = true;
+
+                    // 3. Browser Fallback (if available)
                     try {
-                        computed.canUseMagicItems = (typeof actor.canUseMagicItems === 'function') ? await actor.canUseMagicItems() : false;
-                    } catch (err) { console.error('Error checking canUseMagicItems:', err); computed.canUseMagicItems = false; }
+                        if (typeof actor.isSpellCaster === 'function') {
+                            const sysCaster = await actor.isSpellCaster();
+                            if (sysCaster) isCaster = true;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    computed.isSpellCaster = isCaster;
+
+                    // --- MAGIC ITEM CHECK ---
+                    // 1. Check for Scrolls/Wands
+                    const hasMagicItems = actor.items?.some((i: any) => ['Scroll', 'Wand'].includes(i.type));
+                    if (hasMagicItems) canMagic = true;
+
+                    // 2. Browser Fallback
+                    try {
+                        if (typeof actor.canUseMagicItems === 'function') {
+                            const sysMagic = await actor.canUseMagicItems();
+                            if (sysMagic) canMagic = true;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    computed.canUseMagicItems = canMagic;
 
                     computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
 
@@ -404,7 +446,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         } else if (type === 'background') {
                             results.backgrounds.push(baseInfo);
                         } else if (type === 'language') {
-                            results.languages.push(baseInfo);
+                            results.languages.push({
+                                ...baseInfo,
+                                rarity: doc.system?.rarity || 'common'
+                            });
                         } else if (type === 'deity') {
                             results.deities.push(baseInfo);
                         } else if (type === 'patron') {
@@ -472,7 +517,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     } else if (type === 'background') {
                         results.backgrounds.push(baseInfo);
                     } else if (type === 'language') {
-                        results.languages.push(baseInfo);
+                        // For languages we want rarity
+                        const doc = await client.fetchByUuid(uuid);
+                        results.languages.push({
+                            ...baseInfo,
+                            rarity: doc?.system?.rarity || 'common'
+                        });
                     } else if (type === 'deity') {
                         results.deities.push(baseInfo);
                     } else if (type === 'patron') {
@@ -570,18 +620,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         return results;
     }
 
-    async getPredefinedEffects(client: any): Promise<any[]> {
-        return await client.evaluate(() => {
-            // @ts-ignore
-            const effects = CONFIG.statusEffects || [];
-            return effects.map((e: any) => ({
-                id: e.id, // Shadowdark usually uses 'blinded' etc. as ID
-                label: e.label, // Name of the condition
-                icon: e.icon,
-                changes: e.changes
-            }));
-        });
-    }
+
 
     // ... existing normalizeActorData below ...
 
@@ -700,6 +739,17 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     normalizeActorData(actor: any, client?: any): ActorSheetData {
+        const actorName = actor.name || 'Unknown Actor';
+        logger.debug(`[ShadowdarkAdapter] Normalizing Actor Data: ${actorName} (${actor.id || actor._id})`);
+
+        // Log all item types for debugging
+        if (actor.items) {
+            const types = [...new Set(actor.items.map((i: any) => i.type))];
+            logger.debug(`[ShadowdarkAdapter] Found items with types: ${types.join(', ')}`);
+        } else {
+            logger.debug(`[ShadowdarkAdapter] No items found on actor.`);
+        }
+
         // Clone system data to apply effects without mutating raw data
         const s = typeof structuredClone === 'function'
             ? structuredClone(actor.system)
@@ -729,7 +779,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Apply Active Effects to the cloned system data
         // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true
 
-        const classItem = (actor.items || []).find((i: any) => i.type === 'Class');
+        const classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
+        if (classItem) {
+            logger.debug(`[ShadowdarkAdapter] Found Class item: ${classItem.name}`);
+        } else {
+            logger.debug(`[ShadowdarkAdapter] No Class item found.`);
+        }
 
         // Shadowdark Schema:
         // system.attributes.hp: { value, max, base, bonus }
@@ -796,6 +851,59 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const ancestryName = findItemName('Ancestry', s.ancestry || s.details?.ancestry) || resolved.ancestry || s.ancestry || s.details?.ancestry || '';
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
 
+        // Calculate computed properties for frontend if not already present
+        // Calculate computed properties
+        // We force recalculation of showSpellsTab to ensure it's accurate based on current state
+        let isCaster = false;
+        let canMagic = false;
+
+        const items = actor.items || [];
+
+        // 1. Check Class Item
+        if (classItem) {
+            const spellcasting = classItem.system?.spellcasting;
+            if (spellcasting?.ability || spellcasting?.class) {
+                isCaster = true;
+                logger.debug(`[ShadowdarkAdapter] Detected caster via system.spellcasting`);
+            }
+
+            const clsName = (classItem.name || "").toLowerCase();
+            if (["wizard", "priest", "seer", "shaman", "witch", "druid", "warlock"].some(c => clsName.includes(c))) {
+                isCaster = true;
+                logger.debug(`[ShadowdarkAdapter] Detected caster via class name: ${classItem.name}`);
+            }
+        }
+
+        // 2. Check for "Spell" items
+        if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) {
+            isCaster = true;
+            logger.debug(`[ShadowdarkAdapter] Detected caster via existing Spell items`);
+        }
+
+        // 3. Check for specific talents (Spellcasting)
+        if (items.some((i: any) => i.type === 'Talent' && (i.name || "").toLowerCase().includes('spellcasting'))) {
+            isCaster = true;
+            logger.debug(`[ShadowdarkAdapter] Detected caster via Spellcasting talent`);
+        }
+
+        // 4. Check for Magic Items (Scrolls/Wands)
+        // Note: Types might be 'Basic' or 'Weapon' but names usually contain the words
+        if (items.some((i: any) => {
+            const type = (i.type || "").toLowerCase();
+            const name = (i.name || "").toLowerCase();
+            return type === 'scroll' || type === 'wand' || name.includes('scroll') || name.includes('wand');
+        })) {
+            canMagic = true;
+            logger.debug(`[ShadowdarkAdapter] Detected magic item usage capability`);
+        }
+
+        const computed = {
+            ...(actor.computed || {}),
+            isSpellCaster: isCaster,
+            canUseMagicItems: canMagic,
+            showSpellsTab: isCaster || canMagic
+        };
+
         const sheetData: ActorSheetData = {
             id: actor.id || actor._id,
             name: actor.name,
@@ -806,7 +914,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
             ac: ac,
             attributes: abilities,
             stats: abilities,
-            items: actor.items || [],
+            items: (actor.items || []).map((i: any) => ({
+                ...i,
+                id: i.id || i._id
+            })),
             level: {
                 value: s.level?.value || 1,
                 xp: s.level?.xp || 0,
@@ -827,7 +938,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             luck: s.luck,
             coins: s.coins,
             effects: actor.effects || [],
-            computed: actor.computed,
+            computed: computed,
             choices: {
                 alignments: actor.systemConfig?.ALIGNMENTS ? Object.values(actor.systemConfig.ALIGNMENTS) : ['Lawful', 'Neutral', 'Chaotic'],
                 ancestries: [], // Placeholder, populate if cached or passed
@@ -838,6 +949,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 ...this.categorizeInventory(actor)
             }
         };
+
+        logger.debug(`[ShadowdarkAdapter] Normalized Data for ${actor.name}: isSpellCaster=${computed.isSpellCaster}, showSpellsTab=${computed.showSpellsTab}`);
 
         // Title Resolution
 
@@ -1215,7 +1328,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             if (!name) {
                 // Attempt Normalization for mismatched casing (e.g. Shadowdark -> shadowdark, Classes -> classes)
                 const parts = uuid.split('.');
-                console.log(`[ShadowdarkAdapter] Resolving: ${uuid}`);
+                logger.debug(`[ShadowdarkAdapter] Resolving: ${uuid}`);
 
                 if (parts.length >= 5 && parts[0] === 'Compendium') {
                     // parts[1] = System, parts[2] = Pack
@@ -1231,8 +1344,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     const normalized = `Compendium.${system}.${pack}.${type}.${id}`;
                     name = cache.getName(normalized);
 
-                    if (!name) console.log(`[ShadowdarkAdapter] Failed normalized: ${normalized}`);
-                    else console.log(`[ShadowdarkAdapter] Success normalized: ${normalized} -> ${name}`);
+                    if (!name) logger.debug(`[ShadowdarkAdapter] Failed normalized: ${normalized}`);
+                    else logger.debug(`[ShadowdarkAdapter] Success normalized: ${normalized} -> ${name}`);
                 }
             }
             return name;
@@ -1254,9 +1367,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 try {
                     const { dataManager } = await import('./data/DataManager');
                     index = await dataManager.getIndex();
-                    console.log(`[ShadowdarkAdapter] Loaded ${Object.keys(index).length} local entries via DataManager (Server-side).`);
+                    logger.debug(`[ShadowdarkAdapter] Loaded ${Object.keys(index).length} local entries via DataManager (Server-side).`);
                 } catch (err) {
-                    console.error('[ShadowdarkAdapter] Failed to import DataManager', err);
+                    logger.error('[ShadowdarkAdapter] Failed to import DataManager', err);
                     return;
                 }
             } else {
@@ -1273,10 +1386,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 count++;
             }
             if (typeof window !== 'undefined') {
-                console.log(`[ShadowdarkAdapter] Loaded ${count} local index entries (Client-side).`);
+                logger.debug(`[ShadowdarkAdapter] Loaded ${count} local index entries (Client-side).`);
             }
         } catch (e) {
-            console.error('[ShadowdarkAdapter] Failed to load local data', e);
+            logger.error('[ShadowdarkAdapter] Failed to load local data', e);
         }
     }
 }

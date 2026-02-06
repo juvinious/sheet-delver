@@ -7,6 +7,7 @@ import {
     calculateCoinSlots,
     calculateGemSlots,
 } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 import { useOptimisticOverrides } from '@/app/ui/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
@@ -22,6 +23,7 @@ interface InventoryTabProps {
     onUpdateItem?: (itemData: any) => Promise<void>;
 }
 export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isGemModalOpen, setIsGemModalOpen] = useState(false);
 
@@ -143,8 +145,8 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateIt
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {equippedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                        {equippedItems.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `equipped-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(equippedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
@@ -164,8 +166,8 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateIt
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {carriedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                        {carriedItems.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `carried-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(carriedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
@@ -185,8 +187,8 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateIt
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {stashedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                        {stashedItems.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `stashed-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
                         {(stashedItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>

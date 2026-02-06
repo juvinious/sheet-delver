@@ -148,6 +148,19 @@ Logs below the configured level will be suppressed in the browser console.
 3.  **Testing**: Verify your changes against a live Foundry instance running the target system.
 4.  **Common Utilities**: Use `src/modules/core/utils.ts` for common helpers like `resolveImage` and `processHtmlContent` to ensure consistency.
 
+### Asset Resolution
+
+To ensure assets (images, icons) load correctly from the Foundry server, do not use direct path concatenation or hardcoded URLs.
+
+1.  **Centralized Resolution**: Use the `resolveImageUrl` helper from the `ConfigContext`.
+2.  **Hook Usage**: All module UI components should consume this via the `useConfig()` hook:
+    ```tsx
+    const { resolveImageUrl } = useConfig();
+    // ...
+    <img src={resolveImageUrl(item.img)} />
+    ```
+3.  **Avoid Manual Resolve**: Do not manually pass `foundryUrl` to the `resolveImage` utility unless working outside the React component tree.
+
 ## Reusable UI Components
 
 We provide several core UI components (RichTextEditor, Toast, Modal, DiceTray) to ensure a consistent UI.

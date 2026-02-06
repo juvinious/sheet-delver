@@ -21,13 +21,12 @@ import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // ... (inside component)
 
-import {
-    resolveImage
-} from '../sheet-utils';
+// ... (imports deleted)
+
 
 export const LevelUpModal = (props: LevelUpProps) => {
     const { state, actions } = useLevelUp(props);
-    const { foundryUrl } = useConfig();
+    const { resolveImageUrl } = useConfig();
     //const activeClassImage = state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img;
     //dangerouslySetInnerHTML={{ __html: state.activeClassObj.system?.description?.split('.')[0] + '.' || "Class Archetype" }}
     // Common Shadowdark Class Card Style
@@ -36,7 +35,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
         <div className="bg-white border-2 border-black p-4 flex items-center gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
             <div className="w-12 h-12 bg-black flex-shrink-0 flex items-center justify-center border border-black overflow-hidden">
                 <img
-                    src={resolveImage(state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img, foundryUrl)}
+                    src={resolveImageUrl(state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img)}
                     className="w-full h-full object-cover"
                     alt={state.activeClassObj.name}
                 />

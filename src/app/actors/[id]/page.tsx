@@ -12,6 +12,7 @@ import { useNotifications, NotificationContainer } from '@/app/ui/components/Not
 import LoadingModal from '@/app/ui/components/LoadingModal';
 import { SharedContentModal } from '@/app/ui/components/SharedContentModal';
 import { useConfig } from '@/app/ui/context/ConfigContext';
+import { logger } from '@/app/ui/logger';
 
 export default function ActorDetail({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -92,7 +93,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 setActor(data);
                 if (data.currentUser) currentUserRef.current = data.currentUser;
                 if (data.foundryUrl) {
-                    console.log(`[ActorDetail] Setting foundryUrl: ${data.foundryUrl}`);
+                    logger.debug(`[ActorDetail] Setting foundryUrl: ${data.foundryUrl}`);
                     setFoundryUrl(data.foundryUrl);
                 }
             } else {

@@ -124,8 +124,8 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                     className="flex-1 overflow-y-auto space-y-4 pr-2"
                     onClick={handleChatClick}
                 >
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
+                    {messages.map((msg, idx) => (
+                        <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={s.user}>{msg.user}</span>
                                 <span className={s.time}>{new Date(msg.timestamp).toLocaleTimeString()}</span>

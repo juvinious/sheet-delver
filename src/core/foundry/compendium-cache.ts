@@ -1,3 +1,4 @@
+import { logger } from '../logger';
 import { FoundryMetadataClient } from './interfaces';
 
 export class CompendiumCache {
@@ -23,7 +24,7 @@ export class CompendiumCache {
         if (this.initialized) return;
         if (this.loadingPromise) return this.loadingPromise;
 
-        console.log('Initializing Compendium Cache...');
+        logger.debug('Initializing Compendium Cache...');
         this.loadingPromise = (async () => {
             try {
                 const packs = await client.getAllCompendiumIndices();
@@ -43,9 +44,9 @@ export class CompendiumCache {
                     }
                 }
                 this.initialized = true;
-                console.log(`Compendium Cache initialized with ${this.cache.size} items.`);
+                logger.debug(`Compendium Cache initialized with ${this.cache.size} items.`);
             } catch (e) {
-                console.error('Failed to initialize Compendium Cache', e);
+                logger.error('Failed to initialize Compendium Cache', e);
             } finally {
                 this.loadingPromise = null;
             }

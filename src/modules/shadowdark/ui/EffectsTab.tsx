@@ -2,14 +2,17 @@
 
 import { useState, useEffect } from 'react';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface EffectsTabProps {
     actor: any;
+    token?: string | null;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
 }
 
-export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
+export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [predefinedEffects, setPredefinedEffects] = useState<any[]>([]);
     const [selectedEffect, setSelectedEffect] = useState<string>('');
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
@@ -18,7 +21,10 @@ export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: Ef
     useEffect(() => {
         const fetchPredefinedEffects = async () => {
             try {
-                const res = await fetch(`/api/actors/${actor.id}/predefined-effects`);
+                const headers: any = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/predefined-effects`, { headers });
                 const data = await res.json();
 
                 // Ensure we have a valid array
@@ -37,7 +43,7 @@ export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: Ef
         if (actor?.id) {
             fetchPredefinedEffects();
         }
-    }, [actor?.id]);
+    }, [actor?.id, token]);
     // Separate effects into conditions (with statuses) and other effects
     const allEffects = (actor.effects || []).sort((a: any, b: any) => (a.name || a.label || '').localeCompare(b.name || b.label || ''));
     const conditions = allEffects.filter((e: any) => e.statuses && e.statuses.length > 0);
@@ -79,7 +85,7 @@ export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: Ef
                     {items.map((e: any, i) => (
                         <tr key={e._id || e.id || i} className="border-b border-neutral-200">
                             <td className="p-2 flex items-center gap-2">
-                                <img src={e.img || e.icon || '/placeholder.png'} className="w-6 h-6 border border-neutral-400" alt="" />
+                                <img src={resolveImageUrl(e.img || e.icon)} className="w-6 h-6 border border-neutral-400" alt="" />
                                 <span className="font-bold">{e.name || e.label}</span>
                             </td>
                             <td className="p-2 text-neutral-600">
@@ -109,7 +115,7 @@ export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: Ef
                     {items.map((e: any, i) => (
                         <tr key={e._id || e.id || i} className="border-b border-neutral-200">
                             <td className="p-2 flex items-center gap-2">
-                                <img src={e.img || e.icon || '/placeholder.png'} className="w-6 h-6 border border-neutral-400" alt="" />
+                                <img src={resolveImageUrl(e.img || e.icon)} className="w-6 h-6 border border-neutral-400" alt="" />
                                 <span className="font-bold">{e.name || e.label}</span>
                             </td>
                             <td className="p-2 text-neutral-600">
@@ -193,9 +199,12 @@ export default function EffectsTab({ actor, onToggleEffect, onDeleteEffect }: Ef
                         onClick={async () => {
                             if (selectedEffect) {
                                 try {
-                                    const res = await fetch(`/api/actors/${actor.id}/predefined-effects`, {
+                                    const headers: any = { 'Content-Type': 'application/json' };
+                                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                                    const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/predefined-effects`, {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
+                                        headers,
                                         body: JSON.stringify({ effectKey: selectedEffect })
                                     });
                                     const data = await res.json();

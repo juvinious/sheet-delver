@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { resolveImage, resolveEntityName } from './sheet-utils';
+import { resolveEntityName } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
@@ -20,6 +21,7 @@ interface DetailsTabProps {
 }
 
 export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem }: DetailsTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -336,36 +338,56 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     </div>
                     <div className="p-1 flex flex-wrap gap-2">
                         {(() => {
+                            const RARE_LANGS = ['celestial', 'diabolic', 'draconic', 'primordial', 'abyssal', 'undercommon'];
                             const actorLangsRaw = actor.system?.languages || [];
                             const resolvedLangs = actorLangsRaw.filter((l: any) => l != null).map((l: any) => {
                                 const isObj = typeof l === 'object';
                                 const val = isObj ? l.name : l;
-                                const match = systemData?.languages?.find((sl: any) => sl.uuid === val || sl.name === val);
+                                // Find match in systemData.languages (compendium data)
+                                const match = systemData?.languages?.find((sl: any) =>
+                                    sl.uuid === val || sl.name === val || sl.uuid === l.uuid
+                                );
+
+                                // Robust rarity detection
+                                let rarity = match ? match.rarity : (isObj ? l.rarity : null);
+                                if (!rarity && val) {
+                                    const lowerVal = val.toString().toLowerCase();
+                                    if (RARE_LANGS.some(rl => lowerVal.includes(rl))) {
+                                        rarity = 'rare';
+                                    }
+                                }
+
                                 return {
-                                    raw: val, // Keep track of the actual specific value in the array to remove it correctly
+                                    raw: val,
                                     original: l,
-                                    name: match ? match.name : val,
-                                    desc: match ? match.description : (isObj ? l.description : 'Description unavailable.'),
-                                    rarity: match ? match.rarity : 'common',
-                                    uuid: match ? match.uuid : null
+                                    name: match ? match.name : (isObj ? l.name : l),
+                                    desc: match ? (match.description || match.desc) : (isObj ? (l.description || l.desc) : 'Description unavailable.'),
+                                    rarity: rarity || 'common',
+                                    uuid: match ? match.uuid : (isObj ? l.uuid : null)
                                 };
                             });
 
                             return resolvedLangs.sort((a: any, b: any) => a.name.localeCompare(b.name))
                                 .map((lang: any, i: number) => {
-                                    const isCommon = lang.rarity?.toLowerCase() === 'common';
-                                    const bgColor = isCommon ? 'bg-[#78557e]' : 'bg-black';
+                                    const isRare = lang.rarity?.toLowerCase() === 'rare';
+                                    const bgColor = isRare ? 'bg-black' : 'bg-[#78557e]';
 
-                                    let tooltip = lang.desc && lang.desc !== '<p></p>' ? lang.desc.replace(/<[^>]*>?/gm, '') : 'No description.';
-                                    if (lang.rarity) tooltip += ` (${lang.rarity})`;
+                                    // Scrub HTML tags for tooltip
+                                    let tooltip = lang.desc && lang.desc !== '<p></p>'
+                                        ? lang.desc.replace(/<[^>]*>?/gm, '').trim()
+                                        : 'No description.';
+
+                                    if (lang.rarity && lang.rarity !== 'common') {
+                                        tooltip += ` (${lang.rarity.charAt(0).toUpperCase() + lang.rarity.slice(1)})`;
+                                    }
 
                                     return (
                                         <div
-                                            key={i}
-                                            className={`group relative flex items-center font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm ${bgColor}`}
+                                            key={`${lang.name}-${i}`}
+                                            className={`group relative flex items-center font-serif text-sm font-medium px-2 py-0.5 text-white shadow-sm border border-white/20 hover:border-white/50 transition-colors ${bgColor}`}
                                             title={tooltip}
                                         >
-                                            <span className="cursor-help">{lang.name}</span>
+                                            <span className="cursor-help whitespace-nowrap">{lang.name}</span>
                                         </div>
                                     );
                                 });
@@ -396,12 +418,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     </div>
                     <div className="divide-y divide-neutral-200">
                         {(actor.items?.filter((i: any) => i.type?.toLowerCase() === 'boon') || [])
-                            .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                            .map((item: any) => (
-                                <div key={item.id} className="grid grid-cols-12 py-3 px-2 text-sm font-serif items-center group hover:bg-neutral-50 transition-colors">
+                            .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''))
+                            .map((item: any, i: number) => (
+                                <div key={item.id || item._id || `boon-${i}`} className="grid grid-cols-12 py-3 px-2 text-sm font-serif items-center group hover:bg-neutral-50 transition-colors">
                                     <div className="col-span-5 font-bold flex items-center overflow-hidden">
                                         <img
-                                            src={item.img || '/placeholder.png'}
+                                            src={resolveImageUrl(item.img)}
                                             alt={item.name}
                                             className="w-8 h-8 object-cover border border-black mr-3 bg-neutral-200 shrink-0"
                                         />

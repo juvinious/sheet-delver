@@ -78,3 +78,69 @@ export async function handleGetSpellsBySource(request: Request) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+/**
+ * GET /api/modules/shadowdark/actors/[id]/spellcaster
+ */
+export async function handleGetSpellcasterInfo(actorId: string, clientOverride?: any) {
+    try {
+        const client = clientOverride || getClient();
+        if (!client || !client.isConnected) {
+            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+        }
+
+        const actor = await client.getActor(actorId);
+        if (!actor) {
+            return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+        }
+
+        // Logical check similar to system.ts normalizeActorData
+        let isCaster = false;
+        let canMagic = false;
+
+        const items = actor.items || [];
+        const classItem = items.find((i: any) => i.type === 'Class');
+
+        // Heuristics for detection
+        if (classItem) {
+            const spellcasting = classItem.system?.spellcasting;
+            if (spellcasting?.ability || spellcasting?.class) {
+                isCaster = true;
+            }
+
+            const clsName = (classItem.name || "").toLowerCase();
+            const casterClasses = ["wizard", "priest", "seer", "shaman", "witch", "druid", "warlock"];
+            if (casterClasses.some(c => clsName.includes(c))) {
+                isCaster = true;
+            }
+        }
+
+        // Check for spells
+        if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) {
+            isCaster = true;
+        }
+
+        // Check for specific talents (Spellcasting)
+        if (items.some((i: any) => i.type === 'Talent' && (i.name || "").toLowerCase().includes('spellcasting'))) {
+            isCaster = true;
+        }
+
+        // Check for Magic Items (Scrolls/Wands)
+        if (items.some((i: any) => {
+            const type = (i.type || "").toLowerCase();
+            const name = (i.name || "").toLowerCase();
+            return type === 'scroll' || type === 'wand' || name.includes('scroll') || name.includes('wand');
+        })) {
+            canMagic = true;
+        }
+
+        return NextResponse.json({
+            isSpellcaster: isCaster,
+            canUseMagicItems: canMagic,
+            showSpellsTab: isCaster || canMagic
+        });
+
+    } catch (error: any) {
+        console.error('[API] Spellcaster Info Error:', error);
+        return NextResponse.json({ error: error.message || 'Failed to get spellcaster info' }, { status: 500 });
+    }
+}

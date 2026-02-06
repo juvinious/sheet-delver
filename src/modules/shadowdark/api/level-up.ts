@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@/core/foundry/instance';
 import { dataManager } from '../data/DataManager';
+import { logger } from '@/app/ui/logger';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data
@@ -114,10 +115,10 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
 
         // 3. Fallback to Foundry (Slow Path)
         // Used if Class/Patron are custom items not in our cache
-        console.log('[API] Slow Path: Fetching full data from Foundry for', classUuid);
+        logger.debug('[API] Slow Path: Fetching full data from Foundry for', classUuid);
         // 3. Fallback to Foundry (Slow Path)
         // Used if Class/Patron are custom items not in our cache
-        console.log('[API] Slow Path: Fetching full data from Foundry for', classUuid);
+        logger.debug('[API] Slow Path: Fetching full data from Foundry for', classUuid);
         return NextResponse.json({ error: 'Fetching uncached Class/Patron data from Foundry is not supported in Socket mode. Please ensure Compendiums are synced.' }, { status: 501 });
 
         /*
@@ -131,7 +132,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
         return NextResponse.json({ success: true, data: actorData });
 
     } catch (error: any) {
-        console.error('[API] Level-Up Data Error:', error);
+        logger.error('[API] Level-Up Data Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to fetch level-up data' }, { status: 500 });
     }
 }

@@ -238,8 +238,8 @@ export default function GemBagModal({
                             <div className="text-right">Actions</div>
                         </div>
                         <div className="divide-y divide-neutral-200">
-                            {gems.map((gem: any) => (
-                                <div key={gem.id} className="grid grid-cols-[1fr_80px_130px] items-center p-2 hover:bg-neutral-50 transition-colors">
+                            {gems.map((gem: any, idx: number) => (
+                                <div key={gem.id || gem._id || `gem-${idx}`} className="grid grid-cols-[1fr_80px_130px] items-center p-2 hover:bg-neutral-50 transition-colors">
                                     <div className="font-serif text-sm font-bold truncate pr-2">{gem.name}</div>
                                     <div className="text-right font-mono text-sm">{gem.system?.cost?.gp || 0}</div>
                                     <div className="flex justify-end gap-1">

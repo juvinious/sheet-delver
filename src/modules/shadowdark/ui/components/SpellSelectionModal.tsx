@@ -33,7 +33,7 @@ export default function SpellSelectionModal({
     knownSpells,
     maxSelections
 }: SpellSelectionModalProps) {
-    const { foundryUrl } = useConfig();
+    const { resolveImageUrl } = useConfig();
     const [search, setSearch] = useState('');
     const [selectedUuids, setSelectedUuids] = useState<Set<string>>(new Set());
     const [expandedUuids, setExpandedUuids] = useState<Set<string>>(new Set());
@@ -186,7 +186,7 @@ export default function SpellSelectionModal({
 
                     {/* Spell List */}
                     <div className="flex-1 overflow-y-auto space-y-0 pr-2 custom-scrollbar border-t-2 border-black">
-                        {filteredSpells.map(spell => {
+                        {filteredSpells.map((spell, idx) => {
                             const isSelected = selectedUuids.has(spell.uuid);
                             const isExpanded = expandedUuids.has(spell.uuid);
                             const disabled = !isSelected && isMaxReached;
@@ -195,7 +195,7 @@ export default function SpellSelectionModal({
                             const isLoading = loadingUuids.has(spell.uuid);
 
                             return (
-                                <div key={spell.uuid} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'}`}>
+                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'}`}>
                                     <div
                                         className={`flex items-center gap-3 py-1.5 px-2 cursor-pointer transition-colors`}
                                         onClick={() => toggleExpand(spell)}
@@ -203,7 +203,7 @@ export default function SpellSelectionModal({
                                         {/* Image */}
                                         <div className="w-10 h-10 border border-black bg-black flex-shrink-0 flex items-center justify-center overflow-hidden">
                                             {spell.img ? (
-                                                <img src={resolveImage(spell.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                                <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
                                             )}

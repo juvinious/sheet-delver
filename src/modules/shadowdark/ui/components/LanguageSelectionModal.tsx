@@ -114,17 +114,17 @@ export default function LanguageSelectionModal({
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {commonLanguages.map(lang => {
+                                {commonLanguages.map((lang, idx) => {
                                     const isSelected = selected.includes(lang.uuid) || selected.includes(lang.name);
                                     const disabled = !isSelected && selectedCommonCount >= maxCommon;
                                     return (
                                         <button
-                                            key={lang.uuid}
+                                            key={lang.uuid || `common-lang-${idx}`}
                                             onClick={() => toggleLanguage(lang.uuid)}
                                             disabled={disabled}
                                             className={`px-3 py-2 text-left text-[10px] font-black uppercase transition-all border-2 ${isSelected
-                                                    ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                                                    : 'bg-white text-black border-neutral-200 hover:border-black'
+                                                ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                                : 'bg-white text-black border-neutral-200 hover:border-black'
                                                 } ${disabled ? 'opacity-20 grayscale' : ''}`}
                                         >
                                             <span className="truncate">{lang.name}</span>
@@ -145,17 +145,17 @@ export default function LanguageSelectionModal({
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {rareLanguages.map(lang => {
+                                {rareLanguages.map((lang, idx) => {
                                     const isSelected = selected.includes(lang.uuid) || selected.includes(lang.name);
                                     const disabled = !isSelected && selectedRareCount >= maxRare;
                                     return (
                                         <button
-                                            key={lang.uuid}
+                                            key={lang.uuid || `rare-lang-${idx}`}
                                             onClick={() => toggleLanguage(lang.uuid)}
                                             disabled={disabled}
                                             className={`px-3 py-2 text-left text-[10px] font-black uppercase transition-all border-2 ${isSelected
-                                                    ? 'bg-purple-900 text-white border-purple-900 shadow-[2px_2px_0px_0px_rgba(88,28,135,1)]'
-                                                    : 'bg-white text-purple-900 border-purple-200 hover:border-purple-900'
+                                                ? 'bg-purple-900 text-white border-purple-900 shadow-[2px_2px_0px_0px_rgba(88,28,135,1)]'
+                                                : 'bg-white text-purple-900 border-purple-200 hover:border-purple-900'
                                                 } ${disabled ? 'opacity-20 grayscale' : ''}`}
                                         >
                                             <span className="truncate">{lang.name}</span>

@@ -5,8 +5,9 @@ import RollDialog from '@/app/ui/components/RollDialog';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage, resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
+import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { Menu, X } from 'lucide-react';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -39,6 +40,7 @@ interface ShadowdarkSheetProps {
 }
 
 export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+    const { resolveImageUrl } = useConfig();
     // ... (State initialization)
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
@@ -48,6 +50,29 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
+
+    const [serverSideCasterInfo, setServerSideCasterInfo] = useState<{
+        isSpellcaster: boolean;
+        canUseMagicItems: boolean;
+        showSpellsTab: boolean;
+    } | null>(null);
+
+    useEffect(() => {
+        const fetchCasterInfo = async () => {
+            try {
+                const id = actor._id || actor.id;
+                const res = await fetch(`/api/modules/shadowdark/actors/${id}/spellcaster`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setServerSideCasterInfo(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch caster info:', err);
+            }
+        };
+
+        fetchCasterInfo();
+    }, [actor._id, actor.id]);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -120,11 +145,29 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         const headers: any = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        fetch('/api/system/data', { headers })
-            .then(res => res.json())
-            .then(data => setSystemData(data))
-            .catch(err => console.error('Failed to fetch system data:', err))
-            .finally(() => setLoadingSystem(false));
+        const fetchData = async (retries = 3, delay = 1000) => {
+            try {
+                const res = await fetch('/api/system/data', { headers });
+                if (res.status === 503 && retries > 0) {
+                    console.warn(`System initializing (503), retrying in ${delay / 1000}s...`);
+                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
+                    return;
+                }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                setSystemData(data);
+                setLoadingSystem(false);
+            } catch (err) {
+                console.error('Failed to fetch system data:', err);
+                if (retries > 0) {
+                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
+                } else {
+                    setLoadingSystem(false);
+                }
+            }
+        };
+
+        fetchData();
     }, [token]);
 
     // Dynamic Tabs Logic
@@ -154,7 +197,8 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             let currentTabs = [...tabsOrder];
 
             // Filter out Spells tab if not applicable
-            if (!actor.computed?.showSpellsTab) {
+            const showSpells = serverSideCasterInfo ? serverSideCasterInfo.showSpellsTab : actor.computed?.showSpellsTab;
+            if (!showSpells) {
                 currentTabs = currentTabs.filter(t => t.id !== 'spells');
             }
 
@@ -169,7 +213,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount]);
+    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount, serverSideCasterInfo]);
 
     // Auto-close Level Up Modal when level effectively changes
     useEffect(() => {
@@ -239,7 +283,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
                 <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
                     <img
-                        src={actor.img || '/placeholder.png'}
+                        src={resolveImageUrl(actor.img)}
                         alt={actor.name}
                         className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
                     />
@@ -469,6 +513,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                     activeTab === 'effects' && (
                         <EffectsTab
                             actor={actor}
+                            token={token}
                             onToggleEffect={onToggleEffect}
                             onDeleteEffect={onDeleteEffect}
                         />

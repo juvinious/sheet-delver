@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Settings, Power } from 'lucide-react';
-import { resolveImage } from '../sheet-utils';
+import { resolveEntityName } from '../sheet-utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface CustomBoonModalProps {
@@ -30,7 +30,7 @@ const MODES = [
 ];
 
 export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, initialData, systemConfig, predefinedEffects }: CustomBoonModalProps) {
-    const { foundryUrl } = useConfig();
+    const { resolveImageUrl } = useConfig();
     const [name, setName] = useState('');
     const [boonType, setBoonType] = useState('blessing');
     const [level, setLevel] = useState(1);
@@ -321,7 +321,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
 
                                         {/* Effect Column (Dynamic based on 'custom') */}
                                         <div className="flex items-center gap-3 overflow-hidden pr-2">
-                                            <img src={resolveImage(eff.icon, foundryUrl)} alt="" className="w-6 h-6 object-cover bg-neutral-800 rounded-sm shrink-0" />
+                                            <img src={resolveImageUrl(eff.icon)} alt="" className="w-6 h-6 object-cover bg-neutral-800 rounded-sm shrink-0" />
 
                                             {eff.key === 'custom' ? (
                                                 <div className="flex flex-col gap-1 w-full">

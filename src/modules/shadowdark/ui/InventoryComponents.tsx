@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
-    resolveImage,
     calculateItemSlots,
     getSafeDescription,
     formatDescription
 } from './sheet-utils';
-import GemBagModal from './components/GemBagModal';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+
 
 export interface QuantityControlProps {
     value: number;
@@ -76,6 +76,7 @@ export interface ItemRowProps {
 }
 
 export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }: ItemRowProps) {
+    const { resolveImageUrl } = useConfig();
     // Optimistic States
     const [equipped, setEquipped] = useState(item.system?.equipped || false);
     const [stashed, setStashed] = useState(item.system?.stashed || false);
@@ -158,7 +159,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
                 <div className="col-span-6 font-bold flex items-center">
                     {/* Thumbnail */}
                     <img
-                        src={item.img || '/placeholder.png'}
+                        src={resolveImageUrl(item.img)}
                         alt={item.name}
                         className="w-8 h-8 object-cover border border-black mr-2 bg-neutral-200"
                     />
@@ -263,8 +264,8 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
                             <span className="bg-neutral-200 px-1 rounded">{item.type}</span>
                             {isWeapon && <span>{weaponType} • {range} • {damage}</span>}
                             {isArmor && <span>AC +{item.system?.ac?.base || 0}</span>}
-                            {propertiesDisplay.map(p => (
-                                <span key={p} className="bg-neutral-200 px-1 rounded">{p}</span>
+                            {propertiesDisplay.map((p, pIdx) => (
+                                <span key={`${p}-${pIdx}`} className="bg-neutral-200 px-1 rounded">{p}</span>
                             ))}
                         </div>
 

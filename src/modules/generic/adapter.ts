@@ -50,6 +50,6 @@ export class GenericSystemAdapter implements SystemAdapter {
             attributes: actor.system
         };
     }
-
-
 }
+
+

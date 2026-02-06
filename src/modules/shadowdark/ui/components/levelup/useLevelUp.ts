@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { resolveGear } from './resolveGear';
 import { TALENT_HANDLERS } from './talent-handlers';
 import { findEffectUuid } from '../../../data/talent-effects';
+import { logger } from '@/app/ui/logger';
 
 export interface LevelUpProps {
     actorId: string;
@@ -323,7 +324,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 const newItems = resolved.filter(r => {
                     const name = r.name || r.text || r.description;
                     const exists = existingItems.some((i: any) => i.name === name);
-                    if (exists) console.log(`[LevelUp] Duplicate Talent rolled: ${name}, strictly disallowed.`);
+                    if (exists) logger.debug(`[LevelUp] Duplicate Talent rolled: ${name}, strictly disallowed.`);
                     return !exists;
                 });
 
@@ -341,7 +342,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                     if (newItems.length === 0) {
                         // addNotification("Rolled a duplicate Talent. Please roll again.", "warn"); // We need access to notifications?
                         // Check if addNotification is available. It is not passed to useLevelUp.
-                        console.warn("Rolled duplicate talent.");
+                        logger.warn("Rolled duplicate talent.");
                     }
                 }
 
@@ -349,7 +350,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 for (const item of newItems) {
                     for (const handler of TALENT_HANDLERS) {
                         if (handler.matches(item) && handler.onRoll) {
-                            console.log(`[LevelUp] Triggering handler: ${handler.id}`);
+                            logger.debug(`[LevelUp] Triggering handler: ${handler.id}`);
                             handler.onRoll({
                                 setStatSelection,
                                 setArmorMasterySelection,
@@ -385,7 +386,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 for (const item of resolved) {
                     for (const handler of TALENT_HANDLERS) {
                         if (handler.matches(item) && handler.onRoll) {
-                            console.log(`[LevelUp] Triggering Boon handler: ${handler.id}`);
+                            logger.debug(`[LevelUp] Triggering Boon handler: ${handler.id}`);
                             handler.onRoll({
                                 setStatSelection,
                                 setArmorMasterySelection,
@@ -423,15 +424,15 @@ export const useLevelUp = (props: LevelUpProps) => {
                         description: r.description || r.text || "",
                         isManual: true
                     });
-                    console.log("Resolved Manual Doc:", resolvedDocs[resolvedDocs.length - 1]);
+                    logger.debug("Resolved Manual Doc:", resolvedDocs[resolvedDocs.length - 1]);
                 } else if (r.documentUuid || r.documentId) {
                     const uuid = r.documentUuid || `Compendium.${r.collection}.${r.documentId}`;
-                    console.log("Fetching document for choice:", uuid);
+                    logger.debug("Fetching document for choice:", uuid);
                     const doc = await fetchDocument(uuid);
                     if (doc) {
                         resolvedDocs.push(doc);
                     } else {
-                        console.warn("Failed to fetch document, falling back to manual creation:", r);
+                        logger.warn("Failed to fetch document, falling back to manual creation:", r);
                         // Fallback using the data we have
                         resolvedDocs.push({
                             type: context === 'boon' ? 'Boon' : 'Talent', // Best guess based on context
@@ -450,7 +451,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             for (const item of docs) {
                 for (const handler of TALENT_HANDLERS) {
                     if (handler.matches(item) && handler.onRoll) {
-                        console.log(`[LevelUp] Triggering Selection handler: ${handler.id}`);
+                        logger.debug(`[LevelUp] Triggering Selection handler: ${handler.id}`);
                         handler.onRoll({
                             setStatSelection,
                             setArmorMasterySelection,

@@ -7,33 +7,54 @@ export const LogLevel = {
     DEBUG: 4
 };
 
-async function getLevel() {
+let cachedLevel: number | null = null;
+
+async function getLevel(): Promise<number> {
+    if (cachedLevel !== null) return cachedLevel;
+
     if (typeof window !== 'undefined') {
-        // In browser, default to INFO or check some other flag
-        return 3;
+        cachedLevel = 3; // In browser, default to INFO
+        return cachedLevel;
     }
 
     try {
         const { loadConfig } = await import('./config');
         const cfg = await loadConfig();
-        if (!cfg?.debug?.enabled) return 0;
-        return cfg.debug.level;
+        if (!cfg?.debug?.enabled) {
+            cachedLevel = 0;
+        } else {
+            cachedLevel = cfg.debug.level || 3;
+        }
+        return cachedLevel;
     } catch (e) {
         return 3; // Fallback to INFO
     }
 }
 
+// Initialize level at startup
+if (typeof window === 'undefined') {
+    getLevel().then(lvl => {
+        console.log(`[Logger] Initialized at level: ${lvl}`);
+    });
+}
+
 export const logger = {
-    error: async (...args: any[]) => {
-        if (await getLevel() >= LogLevel.ERROR) console.error('[ERROR]', ...args);
+    error: (...args: any[]) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.ERROR) console.error('[ERROR]', ...args); });
     },
-    warn: async (...args: any[]) => {
-        if (await getLevel() >= LogLevel.WARN) console.warn('[WARN]', ...args);
+    warn: (...args: any[]) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.WARN) console.warn('[WARN]', ...args); });
     },
-    info: async (...args: any[]) => {
-        if (await getLevel() >= LogLevel.INFO) console.log('[INFO]', ...args);
+    info: (...args: any[]) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.INFO) console.log('[INFO]', ...args); });
     },
-    debug: async (...args: any[]) => {
-        if (await getLevel() >= LogLevel.DEBUG) console.log('[DEBUG]', ...args);
+    debug: (...args: any[]) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.DEBUG) console.log('[DEBUG]', ...args); });
+    },
+    time: (label: string) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.DEBUG) console.time(label); });
+    },
+    timeEnd: (label: string) => {
+        getLevel().then(lvl => { if (lvl >= LogLevel.DEBUG) console.timeEnd(label); });
     }
 };

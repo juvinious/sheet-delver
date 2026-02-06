@@ -34,15 +34,11 @@ async function startServer() {
     const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            // For now, fail open? No, strictly require session for data.
-            // Exception: If we want to support the "Global Service Account" legacy mode...
-            // User requested BYPASSING it. So strict error.
             return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
         }
 
         const sessionId = authHeader.split(' ')[1];
 
-        // Use async restoration
         sessionManager.getOrRestoreSession(sessionId).then(session => {
             if (!session || !session.client.userId) {
                 return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
@@ -56,6 +52,24 @@ async function startServer() {
             logger.error(`Authentication Error: ${err.message}`);
             res.status(500).json({ error: 'Internal Authentication Error' });
         });
+    };
+
+    // --- Middleware: Optional Session Authentication (Try-Auth) ---
+    const tryAuthenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return next();
+        }
+
+        const sessionId = authHeader.split(' ')[1];
+
+        sessionManager.getOrRestoreSession(sessionId).then(session => {
+            if (session && session.client.userId) {
+                (req as any).foundryClient = session.client;
+                (req as any).userSession = session;
+            }
+            next();
+        }).catch(() => next());
     };
 
     // --- App API (Public/Proxy-bound) ---
@@ -489,11 +503,19 @@ async function startServer() {
             const client = (req as any).foundryClient;
             const actor = await client.getActor(req.params.id);
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
-            const adapter = getAdapter(actor.systemId);
-            if (!adapter) throw new Error(`Adapter ${actor.systemId} not found`);
-            // @ts-ignore
-            const effects = await adapter.getPredefinedEffects(client);
-            res.json({ effects });
+
+            // Use getMatchingAdapter to ensure we get the correct module adapter 
+            // even if systemId is missing in raw data.
+            const { getMatchingAdapter } = await import('../modules/core/registry');
+            const adapter = getMatchingAdapter(actor);
+
+            if (adapter && typeof (adapter as any).getPredefinedEffects === 'function') {
+                const effects = await (adapter as any).getPredefinedEffects(client);
+                res.json({ effects });
+            } else {
+                logger.warn(`[Server] Adapter ${adapter.constructor.name} (ID: ${adapter.systemId}) does not implement getPredefinedEffects.`);
+                res.json({ effects: [] });
+            }
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
@@ -531,6 +553,85 @@ async function startServer() {
         } catch (error: any) {
             res.status(500).json({ success: false, error: error.message });
         }
+    });
+
+    appRouter.post('/actors/:id/update', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const body = req.body;
+
+            // Handle both { path, value } and { [path]: value }
+            if (body.path !== undefined && body.value !== undefined) {
+                await client.updateActor(req.params.id, body.path, body.value);
+            } else {
+                // Bulk update or direct object
+                await client.updateActor(req.params.id, body);
+            }
+
+            res.json({ success: true });
+        } catch (error: any) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+
+        /*
+        export async function POST(
+    request: Request,
+    { params }: { params: Promise<{ id: string }> }
+    ) {
+    const { id } = await params;
+    try {
+        const client = getClient();
+        if (!client || !client.isConnected) {
+            return NextResponse.json(
+                { error: 'Not connected to Foundry' },
+                { status: 503 }
+            );
+        }
+    
+        const body = await request.json();
+    
+        const result = await client.updateActor(id, body);
+    
+        if (result.error) {
+            return NextResponse.json({ error: result.error }, { status: 404 });
+        }
+    
+        return NextResponse.json({ success: true, result });
+    } catch (error: any) {
+        return NextResponse.json(
+            { error: error.message || 'Internal Server Error' },
+            { status: 500 }
+        );
+    }
+    }
+        */
+    });
+
+    // Debug route - allow using system client if no session provided for easier dev access
+    app.get('/api/debug/actor/:id', async (req, res) => {
+        try {
+            let client = sessionManager.getSystemClient();
+
+            // Try to use user session if available for better data accuracy
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                const token = authHeader.split(' ')[1];
+                const session = await sessionManager.getOrRestoreSession(token);
+                if (session) client = session.client as any;
+            }
+
+            const actor = await client.getActor(req.params.id);
+            res.json(actor);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/actors/:id/predefined-effects', async (req, res) => {
+        // Redirect to module-specific route if it exists, or return empty?
+        // Actually, the user wants it moved to shadowdark/server.ts.
+        // The frontend will be updated to call /api/modules/shadowdark/actors/:id/predefined-effects.
+        res.status(410).json({ error: 'This endpoint has been moved to module-specific API.' });
     });
 
     appRouter.get('/chat', async (req, res) => {
@@ -677,20 +778,26 @@ async function startServer() {
         }
     });
 
-    // Modules Catch-all (Regex used to avoid Express 5/path-to-regexp v8 string parsing issues)
-    appRouter.all(/\/modules\/([^\/]+)\/(.*)/, async (req, res) => {
+    // --- Module Router (Permissive Auth) ---
+    // Mounted before the global auth middleware to allow module-specific permissive routes
+    const moduleRouter = express.Router();
+    moduleRouter.use(tryAuthenticateSession);
+
+    // Express 5: String wildcards (*) must be named or used via RegExp. 
+    // Named capturing groups (?<name>) populate req.params.name
+    moduleRouter.all(/^\/(?<systemId>[^\/]+)\/(?<route>.*)/, async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
-            const systemId = (req.params as any)[0];
-            const routePath = (req.params as any)[1];
+            const { systemId, route } = req.params as any;
+            const routePath = route;
             const { serverModules } = await import('../modules/core/server-modules');
             const sysModule = serverModules[systemId];
 
             if (!sysModule || !sysModule.apiRoutes) {
+                logger.warn(`Module Routing | Module ${systemId} not found or missing apiRoutes`);
                 return res.status(404).json({ error: `Module ${systemId} not found` });
             }
 
-            // Find matching handler (similar to Next.js catch-all logic)
+            // Find matching handler
             const routes = Object.keys(sysModule.apiRoutes);
             const matchedPattern = routes.find(pattern => {
                 const patternSegments = pattern.split('/');
@@ -699,7 +806,10 @@ async function startServer() {
                 return patternSegments.every((p, i) => p.startsWith('[') || p === actualSegments[i]);
             });
 
-            if (!matchedPattern) return res.status(404).json({ error: `Route ${routePath} not found` });
+            if (!matchedPattern) {
+                logger.warn(`Module Routing | No handler found for ${systemId}/${routePath}. Available routes: ${routes.join(', ')}`);
+                return res.status(404).json({ error: `Route ${routePath} not found` });
+            }
 
             const handler = sysModule.apiRoutes[matchedPattern];
             // Mock Next.js Request/Params for compatibility
@@ -707,19 +817,24 @@ async function startServer() {
                 json: async () => req.body,
                 method: req.method,
                 url: req.url,
-                headers: req.headers
+                headers: req.headers,
+                // CRITICAL: Inject foundryClient. Use session's client if authenticated,
+                // otherwise fall back to the system client (service account) for permissive data access.
+                foundryClient: (req as any).foundryClient || sessionManager.getSystemClient(),
+                userSession: (req as any).userSession
             } as any;
             const nextParams = { params: Promise.resolve({ systemId, route: routePath.split('/') }) };
 
             const result = await handler(nextRequest, nextParams);
 
             // Handle NextResponse
-            if (result.json) {
+            if (result && result.json) {
                 const data = await result.json();
                 return res.status(result.status || 200).json(data);
             }
             res.json(result);
         } catch (error: any) {
+            logger.error(`Module Routing Error (${req.path}): ${error.message}`);
             res.status(500).json({ error: error.message });
         }
     });
@@ -841,18 +956,18 @@ async function startServer() {
         }
     });
 
-    // Mount Routers
+    app.use('/api/modules', moduleRouter);
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
 
     app.listen(corePort, '0.0.0.0', () => {
-        console.log(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
-        console.log(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
-        console.log(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);
+        logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
+        logger.info(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
+        logger.info(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);
     });
 }
 
 startServer().catch(err => {
-    console.error('Core Service | Unhandled startup error:', err);
+    logger.error('Core Service | Unhandled startup error:', err);
     process.exit(1);
 });

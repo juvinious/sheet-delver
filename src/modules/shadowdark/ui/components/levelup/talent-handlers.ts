@@ -1,3 +1,4 @@
+import { logger } from '@/app/ui/logger';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 
 export interface TalentHandler {
@@ -60,7 +61,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return text.includes("+1 point to two stats") || text.includes("+1 to two stats");
         },
         onRoll: (actions: any) => {
-            console.log("[TalentHandler] Triggering Stat Selection");
+            logger.debug("[TalentHandler] Triggering Stat Selection");
             if (actions.setStatSelection) {
                 actions.setStatSelection({ required: 2, selected: [] });
             }
