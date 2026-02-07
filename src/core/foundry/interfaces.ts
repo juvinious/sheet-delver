@@ -38,6 +38,7 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
     getSystemData(): Promise<any>;
     getActors(): Promise<any[]>;
     getActor(id: string, forceSystemId?: string): Promise<any>;
+    getActorRaw(id: string): Promise<any>;
 
     // Removed getAllCompendiumIndices from base FoundryClient for user-level sockets
     // It is now in FoundryMetadataClient (implemented by CoreSocket)
@@ -46,14 +47,11 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
     createActor(data: any): Promise<any>;
     deleteActor(id: string): Promise<any>;
 
-    updateActorEffect(actorId: string, effectId: string, updateData: any): Promise<any>;
-    deleteActorEffect(actorId: string, effectId: string): Promise<any>;
-
     createActorItem(actorId: string, itemData: any): Promise<any>;
     updateActorItem(actorId: string, itemData: any): Promise<any>;
     deleteActorItem(actorId: string, itemId: string): Promise<any>;
 
-    toggleStatusEffect(actorId: string, effectId: string, active?: boolean, overlay?: boolean): Promise<any>;
+    dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any>;
 
     getChatLog(limit?: number): Promise<any[]>;
     sendMessage(content: string | any): Promise<any>;

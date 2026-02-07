@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@/core/foundry/instance';
 import { dataManager } from '../data/DataManager';
+import { getConfig } from '@/core/config';
 
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn
@@ -42,7 +43,7 @@ export async function handleLearnSpell(actorId: string, request: Request) {
  */
 export async function handleGetSpellsBySource(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
+        const { searchParams } = new URL(request.url, getConfig().app.url);
         const source = searchParams.get('source'); // e.g. "Wizard", "Priest"
 
         if (!source) {

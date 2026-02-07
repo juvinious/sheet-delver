@@ -12,7 +12,7 @@ async function startServer() {
         process.exit(1);
     }
 
-    const { host, port, apiPort } = config.app || { host: 'localhost', port: 3000, apiPort: 3001 };
+    const { host, port, apiPort } = config.app;
     const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
 
     const app = express();
@@ -498,62 +498,7 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/actors/:id/predefined-effects', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const actor = await client.getActor(req.params.id);
-            if (!actor) return res.status(404).json({ error: 'Actor not found' });
 
-            // Use getMatchingAdapter to ensure we get the correct module adapter 
-            // even if systemId is missing in raw data.
-            const { getMatchingAdapter } = await import('../modules/core/registry');
-            const adapter = getMatchingAdapter(actor);
-
-            if (adapter && typeof (adapter as any).getPredefinedEffects === 'function') {
-                const effects = await (adapter as any).getPredefinedEffects(client);
-                res.json({ effects });
-            } else {
-                logger.warn(`[Server] Adapter ${adapter.constructor.name} (ID: ${adapter.systemId}) does not implement getPredefinedEffects.`);
-                res.json({ effects: [] });
-            }
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.post('/actors/:id/predefined-effects', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const { effectKey } = req.body;
-            const success = await client.toggleStatusEffect(req.params.id, effectKey);
-            res.json({ success });
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
-        }
-    });
-
-    appRouter.post('/actors/:id/effects', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const { effectId, updateData } = req.body;
-            await client.updateActorEffect(req.params.id, effectId, updateData);
-            res.json({ success: true });
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
-        }
-    });
-
-    appRouter.delete('/actors/:id/effects', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const effectId = req.query.effectId as string;
-            if (!effectId) return res.status(400).json({ success: false, error: 'Missing effectId' });
-            await client.deleteActorEffect(req.params.id, effectId);
-            res.json({ success: true });
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
-        }
-    });
 
     appRouter.post('/actors/:id/update', async (req, res) => {
         try {
@@ -627,12 +572,6 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/actors/:id/predefined-effects', async (req, res) => {
-        // Redirect to module-specific route if it exists, or return empty?
-        // Actually, the user wants it moved to shadowdark/server.ts.
-        // The frontend will be updated to call /api/modules/shadowdark/actors/:id/predefined-effects.
-        res.status(410).json({ error: 'This endpoint has been moved to module-specific API.' });
-    });
 
     appRouter.get('/chat', async (req, res) => {
         try {

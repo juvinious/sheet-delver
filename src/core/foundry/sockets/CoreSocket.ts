@@ -551,6 +551,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         return data;
     }
 
+    public async getActorRaw(id: string): Promise<any> {
+        const response: any = await this.dispatchDocumentSocket('Actor', 'get', { query: { _id: id }, broadcast: false });
+        return response?.result?.[0];
+    }
+
     public async fetchByUuid(uuid: string): Promise<any> {
         if (!uuid || typeof uuid !== 'string') return null;
 
@@ -615,18 +620,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         return await this.dispatchDocumentSocket('Actor', 'delete', { ids: [id] });
     }
 
-    async updateActorEffect(actorId: string, effectId: string, updateData: any): Promise<any> {
-        return await this.dispatchDocumentSocket('ActiveEffect', 'update',
-            { updates: [{ _id: effectId, ...updateData }] },
-            { type: 'Actor', id: actorId }
-        );
-    }
-
-    async deleteActorEffect(actorId: string, effectId: string): Promise<any> {
-        return await this.dispatchDocumentSocket('ActiveEffect', 'delete',
-            { ids: [effectId] },
-            { type: 'Actor', id: actorId }
-        );
+    async dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any> {
+        return await this.dispatchDocumentSocket(type, action, operation, parent);
     }
 
     async createActorItem(actorId: string, itemData: any): Promise<any> {
@@ -693,6 +688,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async roll(formula: string, flavor?: string, userId?: string): Promise<any> {
         return await this.sendMessage(`Rolling ${formula}: ${flavor || ''}`, userId);
+    }
+
+    async useItem(actorId: string, itemId: string): Promise<any> {
+        const actor = await this.getActor(actorId);
+        const item = actor.items?.find((i: any) => i._id === itemId || i.id === itemId);
+        if (!item) return false;
+        await this.sendMessage(`<b>${actor.name}</b> uses <b>${item.name}</b>`, this.userId || undefined);
+        return true;
     }
 
     // Admin / World Control

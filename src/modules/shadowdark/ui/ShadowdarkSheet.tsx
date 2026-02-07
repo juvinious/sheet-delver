@@ -439,7 +439,6 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
             {/* Content Area */}
             <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
-
                 {activeTab === 'details' && (
                     <DetailsTab
                         actor={actor}
@@ -448,7 +447,19 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         onCreateItem={onCreateItem}
                         onUpdateItem={onUpdateItem}
                         onDeleteItem={onDeleteItem}
-                        onToggleEffect={onToggleEffect}
+                        onToggleEffect={async (effId, enabled) => {
+                            try {
+                                const id = actor._id || actor.id;
+                                await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ _id: effId, disabled: !enabled })
+                                });
+                                // Notification handled by parent or assumed polling
+                            } catch (e) {
+                                console.error('Failed to toggle effect:', e);
+                            }
+                        }}
                     />
                 )
                 }
@@ -514,8 +525,28 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         <EffectsTab
                             actor={actor}
                             token={token}
-                            onToggleEffect={onToggleEffect}
-                            onDeleteEffect={onDeleteEffect}
+                            onToggleEffect={async (effId, enabled) => {
+                                try {
+                                    const id = actor._id || actor.id;
+                                    await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ _id: effId, disabled: !enabled })
+                                    });
+                                } catch (e) {
+                                    console.error('Failed to toggle effect:', e);
+                                }
+                            }}
+                            onDeleteEffect={async (effId) => {
+                                try {
+                                    const id = actor._id || actor.id;
+                                    await fetch(`/api/modules/shadowdark/actors/${id}/effects/delete?effectId=${effId}`, {
+                                        method: 'DELETE'
+                                    });
+                                } catch (e) {
+                                    console.error('Failed to delete effect:', e);
+                                }
+                            }}
                         />
                     )
                 }
@@ -544,65 +575,67 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             />
 
             {/* Level-Up Modal */}
-            {showLevelUpModal && levelUpData && (
-                <LevelUpModal
-                    actorId={actor._id || actor.id}
-                    actorName={actor.name}
-                    currentLevel={levelUpData.currentLevel}
-                    targetLevel={levelUpData.targetLevel}
-                    ancestry={levelUpData.ancestry}
-                    classObj={levelUpData.classObj}
-                    classUuid={levelUpData.classUuid}
-                    patron={levelUpData.patron}
-                    patronUuid={levelUpData.patronUuid}
-                    abilities={levelUpData.abilities}
-                    spells={levelUpData.spells}
-                    availableClasses={systemData?.classes || []}
-                    availableLanguages={systemData?.languages || []}
-                    onComplete={async (data) => {
-                        try {
-                            // Update Gold if rerolled (Level 0)
-                            if (typeof data.gold === 'number' && data.gold >= 0) {
-                                await onUpdate('system.coins.gp', data.gold);
+            {
+                showLevelUpModal && levelUpData && (
+                    <LevelUpModal
+                        actorId={actor._id || actor.id}
+                        actorName={actor.name}
+                        currentLevel={levelUpData.currentLevel}
+                        targetLevel={levelUpData.targetLevel}
+                        ancestry={levelUpData.ancestry}
+                        classObj={levelUpData.classObj}
+                        classUuid={levelUpData.classUuid}
+                        patron={levelUpData.patron}
+                        patronUuid={levelUpData.patronUuid}
+                        abilities={levelUpData.abilities}
+                        spells={levelUpData.spells}
+                        availableClasses={systemData?.classes || []}
+                        availableLanguages={systemData?.languages || []}
+                        onComplete={async (data) => {
+                            try {
+                                // Update Gold if rerolled (Level 0)
+                                if (typeof data.gold === 'number' && data.gold >= 0) {
+                                    await onUpdate('system.coins.gp', data.gold);
+                                }
+
+                                const id = actor._id || actor.id;
+                                const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        hpRoll: data.hpRoll,
+                                        items: data.items,
+                                        languages: data.languages
+                                    })
+                                });
+                                const result = await res.json();
+                                if (result.success) {
+                                    // Show success message and wait for data to stabilize
+                                    addNotification('Level Up Successful! Updating sheet...', 'success');
+
+                                    // Wait for a moment to let the backend process and the UI to acknowledge
+                                    await new Promise(resolve => setTimeout(resolve, 1500));
+
+                                    // Close modal manually after delay, assuming parent will update via polling/socket
+                                    setShowLevelUpModal(false);
+                                    setLevelUpData(null);
+
+                                    // Trigger a soft data refresh if possible (parent handles polling)
+                                } else {
+                                    addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
+                                }
+                            } catch (e: any) {
+                                console.error('Level-up error:', e);
+                                addNotification('Level-up failed: ' + e.message, 'error');
                             }
-
-                            const id = actor._id || actor.id;
-                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    hpRoll: data.hpRoll,
-                                    items: data.items,
-                                    languages: data.languages
-                                })
-                            });
-                            const result = await res.json();
-                            if (result.success) {
-                                // Show success message and wait for data to stabilize
-                                addNotification('Level Up Successful! Updating sheet...', 'success');
-
-                                // Wait for a moment to let the backend process and the UI to acknowledge
-                                await new Promise(resolve => setTimeout(resolve, 1500));
-
-                                // Close modal manually after delay, assuming parent will update via polling/socket
-                                setShowLevelUpModal(false);
-                                setLevelUpData(null);
-
-                                // Trigger a soft data refresh if possible (parent handles polling)
-                            } else {
-                                addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
-                            }
-                        } catch (e: any) {
-                            console.error('Level-up error:', e);
-                            addNotification('Level-up failed: ' + e.message, 'error');
-                        }
-                    }}
-                    onCancel={() => {
-                        setShowLevelUpModal(false);
-                        setLevelUpData(null);
-                    }}
-                />
-            )}
+                        }}
+                        onCancel={() => {
+                            setShowLevelUpModal(false);
+                            setLevelUpData(null);
+                        }}
+                    />
+                )
+            }
             <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
         </div >
     );

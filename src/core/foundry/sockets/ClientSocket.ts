@@ -179,4 +179,40 @@ export class ClientSocket extends SocketBase {
     public async getSystem(): Promise<any> {
         return this.coreSocket.getSystem();
     }
+
+    public async updateActor(id: string, data: any): Promise<any> {
+        return this.coreSocket.updateActor(id, data);
+    }
+
+    public async createActor(data: any): Promise<any> {
+        return this.coreSocket.createActor(data);
+    }
+
+    public async deleteActor(id: string): Promise<any> {
+        return this.coreSocket.deleteActor(id);
+    }
+
+    public async createActorItem(actorId: string, itemData: any): Promise<any> {
+        return this.coreSocket.createActorItem(actorId, itemData);
+    }
+
+    public async updateActorItem(actorId: string, itemData: any): Promise<any> {
+        return this.coreSocket.updateActorItem(actorId, itemData);
+    }
+
+    public async deleteActorItem(actorId: string, itemId: string): Promise<any> {
+        return this.coreSocket.deleteActorItem(actorId, itemId);
+    }
+
+    public async fetchByUuid(uuid: string): Promise<any> {
+        return this.coreSocket.fetchByUuid(uuid);
+    }
+
+    public async useItem(actorId: string, itemId: string): Promise<any> {
+        return this.coreSocket.useItem(actorId, itemId);
+    }
+
+    public async dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any> {
+        return this.coreSocket.dispatchDocument(type, action, operation, parent);
+    }
 }

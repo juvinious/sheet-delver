@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 import { useConfig } from '@/app/ui/context/ConfigContext';
+import { logger } from '@/app/ui/logger';
 
 interface EffectsTabProps {
     actor: any;
@@ -24,43 +25,36 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                 const headers: any = {};
                 if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/predefined-effects`, { headers });
+                const res = await fetch(`/api/modules/shadowdark/effects/predefined-effects`, { headers });
                 const data = await res.json();
 
-                // Ensure we have a valid array
-                if (data.effects && Array.isArray(data.effects)) {
-                    setPredefinedEffects(data.effects);
-                } else {
-                    console.warn('Predefined effects API returned invalid format:', data);
-                    setPredefinedEffects([]);
+                if (data && Array.isArray(data)) {
+                    setPredefinedEffects(data);
                 }
             } catch (error) {
                 console.error('Failed to fetch predefined effects:', error);
-                setPredefinedEffects([]);
             }
         };
 
-        if (actor?.id) {
+        if (actor?.id || actor?._id) {
             fetchPredefinedEffects();
         }
-    }, [actor?.id, token]);
-    // Separate effects into conditions (with statuses) and other effects
-    const allEffects = (actor.effects || []).sort((a: any, b: any) => (a.name || a.label || '').localeCompare(b.name || b.label || ''));
+    }, [actor?.id, actor?._id, token]);
+
+    // Single source of truth: the actor prop (now robustly merged in the adapter)
+    const allEffects = [...(actor.effects || [])].sort((a: any, b: any) => (a.name || a.label || '').localeCompare(b.name || b.label || ''));
     const conditions = allEffects.filter((e: any) => e.statuses && e.statuses.length > 0);
     const otherEffects = allEffects.filter((e: any) => !e.statuses || e.statuses.length === 0);
 
     const formatDuration = (effect: any) => {
         if (!effect.duration) return '∞';
-        // If label is present and not an empty string or "None", use it
         if (effect.duration.label && effect.duration.label.trim() !== '' && effect.duration.label !== 'None') return effect.duration.label;
 
         const d = effect.duration;
-        // Check numeric values
         if (d.rounds > 0) return `${d.rounds} rounds`;
         if (d.seconds > 0) return `${d.seconds}s`;
         if (d.turns > 0) return `${d.turns} turns`;
 
-        // Default fallback if no specific duration is set
         return '∞';
     };
 
@@ -125,7 +119,6 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                                 {formatDuration(e)}
                             </td>
                             <td className="p-2 flex justify-center gap-2">
-                                {/* Toggle */}
                                 <button
                                     onClick={() => onToggleEffect(e._id || e.id, !!e.disabled)}
                                     title={e.disabled ? "Enable Effect" : "Disable Effect"}
@@ -133,7 +126,6 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                                 >
                                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                                 </button>
-                                {/* Delete */}
                                 <button
                                     onClick={() => setEffectToDelete(e._id || e.id)}
                                     title="Delete Effect"
@@ -151,7 +143,6 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
 
     return (
         <div className="space-y-8 pb-20">
-            {/* Effects and Conditions Section */}
             <div className="space-y-4">
                 {renderHeader("Effects and Conditions")}
 
@@ -174,13 +165,11 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                 </div>
             </div>
 
-            {/* Active Effects Section */}
             <div className="space-y-4">
                 <div className="flex items-center gap-2 bg-black text-white p-2 shadow-md">
                     <span className="font-serif font-bold text-xl uppercase tracking-wider">Active Effects</span>
                 </div>
 
-                {/* Pre-defined Effects Dropdown */}
                 <div className="flex items-center gap-2 p-2 bg-transparent">
                     <span className="font-bold">Pre-defined Effects</span>
                     <select
@@ -202,26 +191,14 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                                     const headers: any = { 'Content-Type': 'application/json' };
                                     if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                                    const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/predefined-effects`, {
+                                    const res = await fetch(`/api/modules/shadowdark/actors/${actor.id || actor._id}/effects/toggle`, {
                                         method: 'POST',
                                         headers,
-                                        body: JSON.stringify({ effectKey: selectedEffect })
+                                        body: JSON.stringify({ effectId: selectedEffect })
                                     });
                                     const data = await res.json();
                                     if (data.success) {
-                                        // Trigger a reload of the actor or optimistic update?
-                                        // The parent ShadowdarkSheet handles updates via prop, but we just bypassed it.
-                                        // We might need to trigger a refresh.
-                                        // Since we don't have a 'refresh' prop, we rely on the Page's polling or we should add a refresh callback?
-                                        // Actually, EffectsTab receives 'actor'. If we change it server side, we need to wait for polling.
-                                        // BETTER: call onToggleEffect with a dummy to trigger update? No.
-                                        // We'll just wait for polling or call a reload if available.
-                                        // Ideally, we move this logic to a context or hook, but for now:
-
-                                        // We can assume the page polls. 
                                         setSelectedEffect('');
-                                    } else {
-                                        console.error('Failed to add effect:', data.error);
                                     }
                                 } catch (e) {
                                     console.error('Error adding effect:', e);
@@ -240,7 +217,6 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                 </div>
             </div>
 
-            {/* Confirmation Modal */}
             <ConfirmationModal
                 isOpen={!!effectToDelete}
                 title="Delete Effect"

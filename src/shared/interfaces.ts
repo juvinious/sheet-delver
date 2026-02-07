@@ -55,6 +55,7 @@ export interface AppConfig {
         protocol: string;
         chatHistory: number;
         version: string;
+        url: string;
     };
     foundry: {
         host: string;

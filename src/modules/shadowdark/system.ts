@@ -146,16 +146,124 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     return itemData;
                 }).filter((i: any) => i !== null);
                 // --- SHADOWDARK EFFECTS PROCESSING ---
-                let effects = [];
+                let effects: any[] = [];
                 try {
+                    // Collect all applicable effects
+                    // @ts-ignore
+                    const allFoundryEffects = [];
                     // @ts-ignore
                     if (typeof actor.allApplicableEffects === 'function') {
                         // @ts-ignore
-                        effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
-                            _id: e.id,
-                            name: e.name,
-                            img: resolveUrl(e.img),
-                            disabled: e.disabled,
+                        for (const e of actor.allApplicableEffects()) allFoundryEffects.push(e);
+                    } else if (actor.effects) {
+                        // @ts-ignore
+                        const actorEffects = actor.effects.contents || Array.from(actor.effects || []);
+                        for (const e of actorEffects) allFoundryEffects.push(e);
+                    }
+
+                    // Also crawl items for any effects NOT already captured (just in case)
+                    // @ts-ignore
+                    const itemsToCrawl = actor.items?.contents || Array.from(actor.items || []);
+                    for (const item of itemsToCrawl) {
+                        const itemEffects = item.effects?.contents || Array.from(item.effects || []);
+                        for (const e of itemEffects) {
+                            const eId = e.id || e._id;
+                            const isDuplicate = allFoundryEffects.some(ae => {
+                                const aeId = ae.id || ae._id;
+                                if (aeId === eId) return true;
+                                if (ae.name === (e.name || e.label) && ae.origin && ae.origin.includes(item.id || item._id)) return true;
+                                return false;
+                            });
+
+                            if (!isDuplicate) {
+                                if (item.name) (e as any)._parentName = item.name;
+                                allFoundryEffects.push(e);
+                            }
+                        }
+                    }
+
+                    for (const e of allFoundryEffects) {
+                        const eId = e.id || e._id;
+                        let sourceName = e.sourceName || (e as any)._parentName || "Unknown";
+
+                        // Try to resolve source from parent first if it's an Item
+                        if (sourceName === "Unknown" && e.parent && e.parent.documentName === "Item") {
+                            sourceName = e.parent.name;
+                        }
+
+                        // Try resolving from origin UUID (Slow but robust)
+                        if (sourceName === "Unknown" && e.origin) {
+                            try {
+                                // @ts-ignore
+                                const originDoc = await fromUuid(e.origin);
+                                if (originDoc) {
+                                    if (originDoc.documentName === "Item") {
+                                        // If same actor, use item name. If different, use actor name.
+                                        if (originDoc.actor && originDoc.actor.id === actor.id) {
+                                            sourceName = originDoc.name;
+                                        } else {
+                                            sourceName = originDoc.actor?.name || actor.name;
+                                        }
+                                    } else {
+                                        sourceName = originDoc.name;
+                                    }
+                                } else {
+                                    // Manually parse origin if fromUuid fails (e.g. Actor ID mismatch)
+                                    const parts = e.origin.split('.');
+                                    const actorIdx = parts.indexOf('Actor');
+                                    const itemIdx = parts.indexOf('Item');
+                                    if (actorIdx !== -1 && parts[actorIdx + 1]) {
+                                        const originActorId = parts[actorIdx + 1];
+                                        if (originActorId === actor.id) {
+                                            if (itemIdx !== -1 && parts[itemIdx + 1]) {
+                                                const itemId = parts[itemIdx + 1];
+                                                // @ts-ignore
+                                                const sourceItem = itemsToCrawl.find(it => (it.id || it._id) === itemId);
+                                                if (sourceItem) sourceName = sourceItem.name;
+                                            }
+                                        } else {
+                                            sourceName = actor.name; // Fallback to current actor name as per user guidance
+                                        }
+                                    } else {
+                                        sourceName = e.origin;
+                                    }
+                                }
+                            } catch (err) { /* ignore */ }
+                        }
+
+                        // Fallback: Check if ANY item on actor has this effect by ID
+                        if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                            // @ts-ignore
+                            for (const it of itemsToCrawl) {
+                                const itEffects = it.effects?.contents || Array.from(it.effects || []);
+                                // @ts-ignore
+                                if (itEffects.some((ie: any) => (ie.id || ie._id) === eId)) {
+                                    sourceName = it.name;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Final fallbacks from flags or labels
+                        if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                            sourceName = e.flags?.shadowdark?.sourceName || e.source || e.origin || "Unknown";
+                        }
+
+                        if (sourceName === "Unknown" && e.label && e.label.includes(':')) {
+                            sourceName = e.label.split(':')[0].trim();
+                        }
+
+                        // Ensure we don't have "undefined" as a string
+                        if (sourceName === "undefined" || sourceName === "null") sourceName = "Unknown";
+
+                        // Only deduplicate by UNIQUE ID to allow identical effects from different sources
+                        if (effects.some(ef => ef._id === eId)) continue;
+
+                        effects.push({
+                            _id: eId,
+                            name: e.name || e.label,
+                            img: resolveUrl(e.img || e.icon),
+                            disabled: !!e.disabled,
                             duration: {
                                 type: e.duration?.type,
                                 remaining: e.duration?.remaining,
@@ -167,19 +275,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             },
                             changes: e.changes,
                             origin: e.origin,
-                            sourceName: e.parent?.name ?? "Unknown",
+                            sourceName: sourceName,
                             transfer: e.transfer,
                             statuses: Array.from(e.statuses ?? [])
-                        }));
-                    } else if (actor.effects) {
-                        // @ts-ignore
-                        effects = actor.effects.contents.map((e: any) => ({
-                            _id: e.id,
-                            name: e.name,
-                            img: resolveUrl(e.img),
-                            disabled: e.disabled,
-                            changes: e.changes
-                        }));
+                        });
                     }
                 } catch (err) {
                     console.error('Error processing effects:', err);
@@ -904,6 +1003,107 @@ export class ShadowdarkAdapter implements SystemAdapter {
             showSpellsTab: isCaster || canMagic
         };
 
+        // --- ROBUST EFFECT MERGING ---
+        const effects: any[] = [];
+        const allFoundryEffects: any[] = [];
+
+        // 1. Collect Actor Effects
+        const actorEffects = actor.effects?.contents || Array.from(actor.effects || []);
+        for (const e of actorEffects) allFoundryEffects.push(e);
+
+        // 2. Crawl Items for any effects NOT already captured
+        const itemsToCrawl = actor.items?.contents || Array.from(actor.items || []);
+        for (const item of itemsToCrawl) {
+            const itemEffects = item.effects?.contents || Array.from(item.effects || []);
+            for (const e of itemEffects) {
+                const eId = e.id || e._id;
+                const isDuplicate = allFoundryEffects.some(ae => {
+                    const aeId = ae.id || ae._id;
+                    if (aeId === eId) return true;
+                    if (ae.name === (e.name || e.label) && ae.origin && ae.origin.includes(item.id || item._id)) return true;
+                    return false;
+                });
+
+                if (!isDuplicate) {
+                    if (item.name) (e as any)._parentName = item.name;
+                    allFoundryEffects.push(e);
+                }
+            }
+        }
+
+        // 3. Process and Resolve Sources
+        for (const e of allFoundryEffects) {
+            const eId = e.id || e._id;
+            let sourceName = e.sourceName || (e as any)._parentName || "Unknown";
+
+            // Try to resolve from origin UUID if Unknown
+            if (sourceName === "Unknown" && e.origin) {
+                // Manually parse origin if possible (since we can't async await easily here)
+                const parts = e.origin.split('.');
+                const actorIdx = parts.indexOf('Actor');
+                const itemIdx = parts.indexOf('Item');
+
+                if (actorIdx !== -1 && parts[actorIdx + 1]) {
+                    const originActorId = parts[actorIdx + 1];
+                    const isSameActor = originActorId === (actor.id || actor._id);
+
+                    if (itemIdx !== -1 && parts[itemIdx + 1]) {
+                        const itemId = parts[itemIdx + 1];
+                        if (isSameActor) {
+                            // @ts-ignore
+                            const sourceItem = itemsToCrawl.find(it => (it.id || it._id) === itemId);
+                            if (sourceItem) {
+                                sourceName = sourceItem.name;
+                            } else {
+                                sourceName = e.origin;
+                            }
+                        } else {
+                            sourceName = actor.name; // User verification: Different actor ID resolved to "Zaldini the Red"
+                        }
+                    } else {
+                        sourceName = actor.name;
+                    }
+                } else {
+                    sourceName = e.origin;
+                }
+            }
+
+            // Final fallback check
+            if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                sourceName = e.flags?.shadowdark?.sourceName || e.source || e.origin || "Unknown";
+            }
+
+            if (sourceName === "Unknown" && e.label && e.label.includes(':')) {
+                sourceName = e.label.split(':')[0].trim();
+            }
+
+            if (sourceName === "undefined" || sourceName === "null") sourceName = "Unknown";
+
+            // Deduplicate by ID
+            if (effects.some(ef => ef._id === eId)) continue;
+
+            effects.push({
+                _id: eId,
+                name: e.name || e.label,
+                img: client ? client.resolveUrl(e.img || e.icon) : (e.img || e.icon),
+                disabled: !!e.disabled,
+                duration: {
+                    type: e.duration?.type,
+                    remaining: e.duration?.remaining,
+                    label: e.duration?.label,
+                    startTime: e.duration?.startTime,
+                    seconds: e.duration?.seconds,
+                    rounds: e.duration?.rounds,
+                    turns: e.duration?.turns
+                },
+                changes: e.changes,
+                origin: e.origin,
+                sourceName: sourceName,
+                transfer: e.transfer,
+                statuses: Array.from(e.statuses ?? [])
+            });
+        }
+
         const sheetData: ActorSheetData = {
             id: actor.id || actor._id,
             name: actor.name,
@@ -937,7 +1137,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             },
             luck: s.luck,
             coins: s.coins,
-            effects: actor.effects || [],
+            effects: effects, // Use robustly merged effects
             computed: computed,
             choices: {
                 alignments: actor.systemConfig?.ALIGNMENTS ? Object.values(actor.systemConfig.ALIGNMENTS) : ['Lawful', 'Neutral', 'Chaotic'],

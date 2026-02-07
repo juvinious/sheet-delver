@@ -20,8 +20,9 @@ export async function loadConfig(): Promise<AppConfig | null> {
         const version = packageJson.version || '0.0.0';
 
         if (doc) {
+            if (!doc.app) throw new Error('Missing "app" section in settings.yaml');
+            const app = doc.app;
             const foundry = doc.foundry || {};
-            const app = doc.app || {};
             const debug = doc.debug || {};
 
             const envUrl = process.env.FOUNDRY_URL;
@@ -31,22 +32,39 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const envUsername = process.env.FOUNDRY_USERNAME;
             const envPassword = process.env.FOUNDRY_PASSWORD;
 
-            const protocol = envProtocol || foundry.protocol || 'http';
-            const host = envHost || foundry.host || 'localhost';
-            const port = envPort || foundry.port || 30000;
+            const protocol = envProtocol || foundry.protocol;
+            const host = envHost || foundry.host;
+            const port = envPort || foundry.port;
+
+            if (!protocol || !host || !port) {
+                throw new Error('Missing mandatory "foundry" fields (protocol, host, port) in settings.yaml');
+            }
+
             const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
 
             // Priority: Env URL -> Constructed from Env Host/Port -> Config URL -> Constructed from Config Host/Port
             const foundryUrl = envUrl || (envHost ? `${protocol}://${host}${isStandardPort ? '' : `:${port}`}` : null) || foundry.url || `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
 
+            const appProtocol = app.protocol;
+            const appHost = app.host;
+            const appPort = app.port;
+
+            if (!appProtocol || !appHost || !appPort) {
+                throw new Error('Missing mandatory "app" fields (protocol, host, port) in settings.yaml');
+            }
+
+            const isStandardAppPort = (appProtocol === 'http' && appPort === 80) || (appProtocol === 'https' && appPort === 443);
+            const appUrl = `${appProtocol}://${appHost}${isStandardAppPort ? '' : `:${appPort}`}`;
+
             _cachedConfig = {
                 app: {
-                    host: app.host || 'localhost',
-                    port: app.port || 3000,
-                    apiPort: app['api-port'] || 3001,
-                    protocol: app.protocol || 'http',
-                    chatHistory: app['chat-history'] || 100,
-                    version: version
+                    host: appHost,
+                    port: appPort,
+                    apiPort: app['api-port'],
+                    protocol: appProtocol,
+                    chatHistory: app['chat-history'],
+                    version: version,
+                    url: appUrl
                 },
                 foundry: {
                     host: host,

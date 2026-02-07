@@ -2,8 +2,10 @@
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } from './api/spells';
+import { handleEffects } from './api/effects';
 import { handleIndex } from './api/index';
 import { dataManager } from './data/DataManager';
+import { getConfig } from '@/core/config';
 
 // Initialize data cache
 dataManager.initialize();
@@ -18,6 +20,47 @@ export const apiRoutes = {
     },
     'actors/level-up/data': async (request: Request) => {
         return handleGetLevelUpData(undefined, (request as any).foundryClient || request);
+    },
+    'actors/[id]/effects': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        const result = await handleEffects(actorId, client, 'list');
+        return Response.json(result);
+    },
+    'actors/[id]/effects/create': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        const data = await request.json();
+        const result = await handleEffects(actorId, client, 'create', data);
+        return Response.json({ success: true, result });
+    },
+    'actors/[id]/effects/update': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        const data = await request.json();
+        const result = await handleEffects(actorId, client, 'update', data);
+        return Response.json({ success: true, result });
+    },
+    'actors/[id]/effects/delete': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        const url = new URL(request.url, getConfig().app.url);
+        const effectId = url.searchParams.get('effectId');
+        if (!effectId) return Response.json({ error: 'Missing effectId' }, { status: 400 });
+        const result = await handleEffects(actorId, client, 'delete', { effectId });
+        return Response.json({ success: true, result });
+    },
+    'actors/[id]/effects/toggle': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        const { effectId } = await request.json();
+        const result = await handleEffects(actorId, client, 'toggle', { effectId });
+        return Response.json(result);
     },
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -50,19 +93,7 @@ export const apiRoutes = {
         const actorId = route[1];
         return handleGetSpellcasterInfo(actorId, (request as any).foundryClient);
     },
-    'actors/[id]/predefined-effects': async (request: Request, { params }: any) => {
-        const { route } = await params;
-        const actorId = route[1];
-
-        if (request.method === 'POST') {
-            const { effectKey } = await request.json();
-            const client = (request as any).foundryClient;
-            if (!client) return Response.json({ error: 'No client' }, { status: 500 });
-
-            const success = await client.toggleStatusEffect(actorId, effectKey);
-            return Response.json({ success });
-        }
-
+    'effects/predefined-effects': async (request: Request) => {
         const { PREDEFINED_EFFECTS } = await import('./data/effects');
         return Response.json(PREDEFINED_EFFECTS);
     },

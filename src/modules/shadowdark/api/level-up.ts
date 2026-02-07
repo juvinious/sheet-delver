@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getClient } from '@/core/foundry/instance';
 import { dataManager } from '../data/DataManager';
 import { logger } from '@/app/ui/logger';
+import { getConfig } from '@/core/config';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data
@@ -18,7 +19,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
         // Get optional params from request URL
         let queryClassUuid: string | undefined;
         if (request) {
-            const url = new URL(request.url);
+            const url = new URL(request.url, getConfig().app.url);
             queryClassUuid = url.searchParams.get('classId') || undefined;
         }
 
