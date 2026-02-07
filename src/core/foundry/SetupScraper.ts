@@ -1,7 +1,24 @@
 import { io, Socket } from 'socket.io-client';
-import fs from 'fs/promises';
-import path from 'path';
 import { logger } from '../logger';
+import { persistentCache } from '../cache/PersistentCache';
+
+const isBrowser = typeof window !== 'undefined';
+let fs: any = null;
+let path: any = null;
+
+async function loadDeps() {
+    if (isBrowser) return false;
+    if (fs && path) return true;
+    try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        fs = fsMod.default || fsMod;
+        path = pathMod.default || pathMod;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 export interface WorldUser {
     _id: string;
@@ -27,7 +44,9 @@ export interface CacheData {
     currentWorldId: string | null;
 }
 
-const CACHE_FILE = path.join(process.cwd(), '.foundry-cache.json');
+const CACHE_NS = 'core';
+const CACHE_KEY = 'worlds';
+const LEGACY_CACHE_FILE = !isBrowser && path ? path.join(process.cwd(), '.foundry-cache.json') : '';
 const CACHE_MAX_AGE_DAYS = 7;
 
 export class SetupScraper {
@@ -394,57 +413,63 @@ export class SetupScraper {
      * Save world data to cache
      */
     static async saveCache(worldData: WorldData, setActive: boolean = true): Promise<void> {
-        let cache: CacheData;
-
-        try {
-            const existing = await fs.readFile(CACHE_FILE, 'utf-8');
-            cache = JSON.parse(existing);
-        } catch {
-            cache = { worlds: {}, currentWorldId: null };
-        }
+        let cache = await this.loadCache();
 
         cache.worlds[worldData.worldId] = worldData;
         if (setActive) {
             cache.currentWorldId = worldData.worldId;
         }
 
-        await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8');
+        await persistentCache.set(CACHE_NS, CACHE_KEY, cache);
     }
 
     /**
      * Save multiple worlds to cache without changing active world
      */
     static async saveBatchCache(worldsData: WorldData[]): Promise<void> {
-        let cache: CacheData;
-
-        try {
-            const existing = await fs.readFile(CACHE_FILE, 'utf-8');
-            cache = JSON.parse(existing);
-        } catch {
-            cache = { worlds: {}, currentWorldId: null };
-        }
+        let cache = await this.loadCache();
 
         for (const w of worldsData) {
             cache.worlds[w.worldId] = w;
         }
 
-        await fs.writeFile(CACHE_FILE, JSON.stringify(cache, null, 2), 'utf-8');
+        await persistentCache.set(CACHE_NS, CACHE_KEY, cache);
     }
 
     /**
      * Load all cached worlds
      */
     static async loadCache(): Promise<CacheData> {
+        if (isBrowser) return { worlds: {}, currentWorldId: null };
+        await loadDeps();
+        if (!fs || !path) return { worlds: {}, currentWorldId: null };
+
+        // 1. Check for legacy migration
+        if (LEGACY_CACHE_FILE && fs.existsSync(LEGACY_CACHE_FILE)) {
+            try {
+                logger.info('SetupScraper | Migrating legacy cache to PersistentCache...');
+                const content = fs.readFileSync(LEGACY_CACHE_FILE, 'utf-8');
+                const legacyData = JSON.parse(content);
+                await persistentCache.set(CACHE_NS, CACHE_KEY, legacyData.worlds || {});
+                if (legacyData.currentWorldId) {
+                    await persistentCache.set(CACHE_NS, 'currentWorld', legacyData.currentWorldId);
+                }
+                logger.info('SetupScraper | Legacy cache migration complete.');
+            } catch (e) {
+                logger.error('SetupScraper | Legacy migration failed:', e);
+            }
+        }
+
         try {
-            const data = await fs.readFile(CACHE_FILE, 'utf-8');
-            const cache = JSON.parse(data);
+            const cache = await persistentCache.get<CacheData>(CACHE_NS, CACHE_KEY);
+            if (!cache) return { worlds: {}, currentWorldId: null };
 
             // Validate that the current world actually has users
             if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
                 const world = cache.worlds[cache.currentWorldId];
                 if (!world.users || world.users.length === 0) {
                     console.warn(`[SetupScraper] Cache exists for ${world.worldTitle} but has 0 users. Treating as invalid/setup-required.`);
-                    // We don't delete the file, but we treat it as "no current world" so the app redirects to setup
+                    // We don't delete the data, but we treat it as "no current world" so the app redirects to setup
                     return { ...cache, currentWorldId: null };
                 }
             }

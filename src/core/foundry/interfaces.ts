@@ -39,6 +39,7 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
     getActors(): Promise<any[]>;
     getActor(id: string, forceSystemId?: string): Promise<any>;
     getActorRaw(id: string): Promise<any>;
+    getSystemConfig(): Promise<any>;
 
     // Removed getAllCompendiumIndices from base FoundryClient for user-level sockets
     // It is now in FoundryMetadataClient (implemented by CoreSocket)

@@ -2,9 +2,28 @@ import { CoreSocket } from '../foundry/sockets/CoreSocket';
 import { ClientSocket } from '../foundry/sockets/ClientSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '../logger';
-import { randomUUID } from 'crypto';
-import fs from 'fs';
-import path from 'path';
+
+const isBrowser = typeof window !== 'undefined';
+let fs: any = null;
+let path: any = null;
+let crypto: any = null;
+
+async function loadDeps() {
+    if (isBrowser) return false;
+    if (fs && path && crypto) return true;
+    try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        const cryptoMod = await import('node:crypto');
+        fs = fsMod.default || fsMod;
+        path = pathMod.default || pathMod;
+        crypto = cryptoMod.default || cryptoMod;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+import { persistentCache } from '../cache/PersistentCache';
 
 interface Session {
     id: string;
@@ -21,7 +40,9 @@ export class SessionManager {
     private systemClient: CoreSocket; // Singleton Service Socket
     private sessions: Map<string, Session> = new Map();
     private readonly SESSION_TIMEOUT_MS = 1000 * 60 * 60 * 24; // 24 Hours
-    private readonly SESSIONS_FILE = path.join(process.cwd(), '.foundry-session.json');
+    private readonly CACHE_NS = 'core';
+    private readonly CACHE_KEY = 'sessions';
+    private LEGACY_SESSIONS_FILE = '';
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
     private cacheInstance: any = null;
@@ -34,7 +55,29 @@ export class SessionManager {
     }
 
     public async initialize() {
+        if (!isBrowser) {
+            await loadDeps();
+            if (path) {
+                this.LEGACY_SESSIONS_FILE = path.join(process.cwd(), '.foundry-session.json');
+            }
+        }
+
         logger.info('SessionManager | Initializing Core System Socket...');
+
+        // 1. Check for legacy migration
+        if (!isBrowser && fs && fs.existsSync(this.LEGACY_SESSIONS_FILE)) {
+            try {
+                logger.info('SessionManager | Migrating legacy sessions to PersistentCache...');
+                const raw = fs.readFileSync(this.LEGACY_SESSIONS_FILE, 'utf-8');
+                const legacyData = JSON.parse(raw);
+                await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, legacyData);
+                // We keep the file for now, will delete in cleanup step
+                logger.info('SessionManager | Legacy session migration complete.');
+            } catch (e) {
+                logger.error('SessionManager | Legacy migration failed:', e);
+            }
+        }
+
         try {
             // Wait for connection AND world discovery
             await new Promise<void>((resolve, reject) => {
@@ -84,7 +127,7 @@ export class SessionManager {
             // ClientSocket connects individually to act as an Auth Anchor
             await client.login(username, password);
 
-            const sessionId = randomUUID();
+            const sessionId = crypto ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36));
             const userId = client.userId || 'unknown';
 
             const session = {
@@ -196,11 +239,7 @@ export class SessionManager {
         while (this.isSaving) await new Promise(r => setTimeout(r, 50));
         this.isSaving = true;
         try {
-            const sessions = await this.loadSessions();
-            if (sessions === null) {
-                logger.error(`SessionManager | Aborting save for ${key}: Could not reliably load existing sessions.`);
-                return;
-            }
+            const sessions = (await this.loadSessions()) || {};
 
             sessions[key] = {
                 username: foundryUsername || key,
@@ -210,7 +249,7 @@ export class SessionManager {
                 lastSaved: Date.now()
             };
 
-            this.atomicWriteSync(this.SESSIONS_FILE, sessions);
+            await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, sessions);
             logger.info(`SessionManager | Saved session for ${foundryUsername || key} (Key: ${key}) to disk. Total: ${Object.keys(sessions).length}`);
         } catch (e) {
             logger.warn(`SessionManager | Failed to save session: ${e}`);
@@ -221,12 +260,9 @@ export class SessionManager {
 
     private async loadSessions(): Promise<Record<string, any> | null> {
         try {
-            if (!fs.existsSync(this.SESSIONS_FILE)) return {};
-            const content = fs.readFileSync(this.SESSIONS_FILE, 'utf-8');
-            if (!content.trim()) return {};
-            return JSON.parse(content);
+            return await persistentCache.get<Record<string, any>>(this.CACHE_NS, this.CACHE_KEY) || {};
         } catch (e) {
-            logger.error(`SessionManager | CRITICAL: Failed to parse sessions file: ${e}`);
+            logger.error(`SessionManager | CRITICAL: Failed to load sessions: ${e}`);
             return null; // Signals failure, do not overwrite
         }
     }
@@ -238,17 +274,11 @@ export class SessionManager {
             const sessions = await this.loadSessions();
             if (sessions && sessions[key]) {
                 delete sessions[key];
-                this.atomicWriteSync(this.SESSIONS_FILE, sessions);
+                await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, sessions);
                 logger.info(`SessionManager | Cleared key ${key} from disk.`);
             }
         } finally {
             this.isSaving = false;
         }
-    }
-
-    private atomicWriteSync(filePath: string, data: any) {
-        const tempPath = `${filePath}.tmp`;
-        fs.writeFileSync(tempPath, JSON.stringify(data, null, 2));
-        fs.renameSync(tempPath, filePath);
     }
 }

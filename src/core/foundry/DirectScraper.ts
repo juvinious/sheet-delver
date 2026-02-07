@@ -1,6 +1,23 @@
-import { ClassicLevel } from 'classic-level';
-import fs from 'fs';
-import path from 'path';
+const isBrowser = typeof window !== 'undefined';
+let fs: any = null;
+let path: any = null;
+let ClassicLevel: any = null;
+
+async function loadDeps() {
+    if (isBrowser) return false;
+    if (fs && path && ClassicLevel) return true;
+    try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        const clMod = await import('classic-level');
+        fs = fsMod.default || fsMod;
+        path = pathMod.default || pathMod;
+        ClassicLevel = clMod.ClassicLevel;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 export interface ScrapedUser {
     id: string;
@@ -22,6 +39,7 @@ export class DirectScraper {
     private worldPath: string;
 
     static async scrape(worldPath: string): Promise<ScrapedWorldData> {
+        await loadDeps();
         return new DirectScraper(worldPath).process();
     }
 
@@ -30,6 +48,8 @@ export class DirectScraper {
      * Looks for <dataRoot>/Data/worlds/ OR <dataRoot>/worlds/
      */
     static async discover(dataRoot: string): Promise<{ id: string; title: string; path: string; system: string }[]> {
+        await loadDeps();
+        if (!fs || !path) return [];
         // 1. Check if the path ITSELF is a world
         const directWorldJson = path.join(dataRoot, 'world.json');
         if (fs.existsSync(directWorldJson)) {
@@ -59,7 +79,7 @@ export class DirectScraper {
             // Check if directory exists AND has subdirectories that contain world.json
             if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
                 // Quick validation: does it contain at least one world-like folder?
-                const hasWorld = fs.readdirSync(p).some(sub =>
+                const hasWorld = (fs.readdirSync(p) as string[]).some((sub: string) =>
                     fs.existsSync(path.join(p, sub, 'world.json'))
                 );
                 if (hasWorld) {
@@ -109,6 +129,7 @@ export class DirectScraper {
     }
 
     async process(): Promise<ScrapedWorldData> {
+        await loadDeps();
         const worldJsonPath = path.join(this.worldPath, 'world.json');
         if (!fs.existsSync(worldJsonPath)) {
             throw new Error(`world.json not found in: ${this.worldPath}`);

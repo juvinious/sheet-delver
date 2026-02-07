@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
     calculateItemSlots,
     getSafeDescription,
@@ -128,9 +127,8 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
     const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
 
     // Description
-    const title = item.name in SHADOWDARK_EQUIPMENT ? SHADOWDARK_EQUIPMENT[item.name] : '';
     const rawDesc = getSafeDescription(item.system);
-    const description = rawDesc || title;
+    const description = rawDesc;
 
     // Properties Logic
     const rawProps = item.system?.properties;

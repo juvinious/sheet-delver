@@ -94,8 +94,14 @@ export const apiRoutes = {
         return handleGetSpellcasterInfo(actorId, (request as any).foundryClient);
     },
     'effects/predefined-effects': async (request: Request) => {
-        const { PREDEFINED_EFFECTS } = await import('./data/effects');
-        return Response.json(PREDEFINED_EFFECTS);
+        const client = (request as any).foundryClient;
+        if (!client) return Response.json({ error: 'Not authenticated' }, { status: 401 });
+
+        const adapter = client.getSystemAdapter ? client.getSystemAdapter() : null;
+        if (!adapter) return Response.json({ error: 'Adapter not found' }, { status: 500 });
+
+        const systemData = await adapter.getSystemData(client);
+        return Response.json(systemData.PREDEFINED_EFFECTS || {});
     },
     'spells/list': async (request: Request) => {
         return handleGetSpellsBySource(request);

@@ -4,6 +4,9 @@ import { logger } from '../../core/logger';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
+    private systemConfig: any = null;
+    private readonly CACHE_NS = 'shadowdark';
+    private readonly CACHE_KEY = 'system-config';
 
     theme = {
         bg: 'bg-neutral-900',
@@ -488,6 +491,30 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getSystemData(client: any): Promise<any> {
+        // 1. Fetch System Config (Live)
+        if (!this.systemConfig) {
+            // Server-only dynamic import
+            const { persistentCache } = await import('../../core/cache/PersistentCache');
+
+            // Try cache first
+            this.systemConfig = await persistentCache.get(this.CACHE_NS, this.CACHE_KEY);
+
+            // If no cache or first run, fetch from client
+            if (!this.systemConfig && client.getSystemConfig) {
+                try {
+                    logger.info('ShadowdarkAdapter | Fetching official system configuration...');
+                    const liveConfig = await client.getSystemConfig();
+                    if (liveConfig && Object.keys(liveConfig).length > 0) {
+                        this.systemConfig = liveConfig;
+                        await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, liveConfig);
+                        logger.info('ShadowdarkAdapter | Official system configuration cached.');
+                    }
+                } catch (e) {
+                    logger.error('ShadowdarkAdapter | Failed to fetch system config:', e);
+                }
+            }
+        }
+
         const sysInfo = await client.getSystem();
         const results = {
             id: sysInfo.id,
@@ -507,7 +534,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             spells: [] as any[],
             talents: [] as any[],
             titles: {},
-            PREDEFINED_EFFECTS: {},
+            PREDEFINED_EFFECTS: this.systemConfig?.PREDEFINED_EFFECTS || {},
             debug: [] as any[]
         };
 
@@ -789,7 +816,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     'wis.value': 'abilities.wis.value',
                     'cha.value': 'abilities.cha.value',
                     'hp.max': 'attributes.hp.max',
-                    'hp.bonus': 'attributes.hp.bonus'
+                    'hp.bonus': 'attributes.hp.bonus',
+                    'bonuses.acBonus': 'attributes.ac.bonus',
+                    'bonuses.attackBonus': 'attributes.attack.bonus',
+                    'bonuses.meleeAttackBonus': 'attributes.attack.melee.bonus',
+                    'bonuses.rangedAttackBonus': 'attributes.attack.ranged.bonus',
+                    'bonuses.spellAttackBonus': 'attributes.attack.spell.bonus'
                 };
 
                 if (SHORTHANDS[path]) {

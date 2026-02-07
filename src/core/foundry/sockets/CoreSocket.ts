@@ -8,8 +8,23 @@ import { FoundryMetadataClient } from '../interfaces';
 import { getAdapter } from '../../../modules/core/registry';
 import { SystemAdapter } from '../../../modules/core/interfaces';
 import { CompendiumCache } from '../compendium-cache';
-import path from 'path';
-import fs from 'fs';
+const isBrowser = typeof window !== 'undefined';
+let fs: any = null;
+let path: any = null;
+
+async function loadDeps() {
+    if (isBrowser) return false;
+    if (fs && path) return true;
+    try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        fs = fsMod.default || fsMod;
+        path = pathMod.default || pathMod;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public worldState: 'offline' | 'setup' | 'active' = 'offline';
@@ -502,6 +517,24 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public getGameData() { return this.gameDataCache; }
     public getSystemAdapter() { return this.adapter; }
+
+    public async getSystemConfig(): Promise<any> {
+        // Return from cache if available
+        if (this.gameDataCache?.system) {
+            return this.gameDataCache.system;
+        }
+
+        // Otherwise, probe for it
+        if (!this.socket || !this.socket.connected) return null;
+
+        return new Promise((resolve) => {
+            const t = setTimeout(() => resolve(null), 5000);
+            this.socket!.emit('getSystemConfig', (config: any) => {
+                clearTimeout(t);
+                resolve(config);
+            });
+        });
+    }
 
     public async loadSystemAdapter(systemId: string) {
         try {

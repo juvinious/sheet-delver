@@ -1,3 +1,4 @@
+// @ts-nocheck
 import io from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { FoundryConfig } from '../types';
@@ -8,13 +9,28 @@ import { SystemAdapter } from '../../../modules/core/interfaces';
 import { SetupScraper, WorldData, CacheData } from '../SetupScraper';
 import { logger } from '../../logger';
 import { CompendiumCache } from '../compendium-cache';
-import fs from 'fs';
-import path from 'path';
+const isBrowser = typeof window !== 'undefined';
+let fs: any = null;
+let path: any = null;
+
+async function loadDeps() {
+    if (isBrowser) return false;
+    if (fs && path) return true;
+    try {
+        const fsMod = await import('node:fs');
+        const pathMod = await import('node:path');
+        fs = fsMod.default || fsMod;
+        path = pathMod.default || pathMod;
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
 
 /**
  * @deprecated Use CoreSocket and ClientSocket instead.
  */
-export class LegacySocketFoundryClient implements FoundryClient {
+export class LegacySocketFoundryClient {
     private config: FoundryConfig;
     private adapter: SystemAdapter | null = null;
     private socket: Socket | null = null;
