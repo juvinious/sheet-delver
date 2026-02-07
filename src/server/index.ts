@@ -503,22 +503,55 @@ async function startServer() {
     appRouter.post('/actors/:id/update', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
+            const actorId = req.params.id;
             const body = req.body;
 
-            // Handle both { path, value } and { [path]: value }
+            const actorUpdates: any = {};
+            const itemUpdates: Map<string, any> = new Map();
+
+            // Normalize body to an object of path-value pairs
+            let updatesToProcess: any = {};
             if (body.path !== undefined && body.value !== undefined) {
-                await client.updateActor(req.params.id, body.path, body.value);
+                updatesToProcess[body.path] = body.value;
             } else {
-                // Bulk update or direct object
-                await client.updateActor(req.params.id, body);
+                updatesToProcess = body;
+            }
+
+            // Split updates into Actor-level and Item-level
+            for (const [path, value] of Object.entries(updatesToProcess)) {
+                if (path.startsWith('items.')) {
+                    const parts = path.split('.');
+                    if (parts.length >= 2) {
+                        const itemId = parts[1];
+                        // Extract property path relative to item (e.g., "system.equipped")
+                        const itemProp = parts.slice(2).join('.');
+                        if (itemProp) {
+                            if (!itemUpdates.has(itemId)) itemUpdates.set(itemId, {});
+                            itemUpdates.get(itemId)![itemProp] = value;
+                        }
+                    }
+                } else {
+                    actorUpdates[path] = value;
+                }
+            }
+
+            // 1. Process Item Updates
+            for (const [itemId, updates] of itemUpdates.entries()) {
+                logger.debug(`Core Service | Routing update to item ${itemId}: ${JSON.stringify(updates)}`);
+                await client.updateActorItem(actorId, { _id: itemId, ...updates });
+            }
+
+            // 2. Process Actor Updates
+            if (Object.keys(actorUpdates).length > 0) {
+                await client.updateActor(actorId, actorUpdates);
             }
 
             res.json({ success: true });
         } catch (error: any) {
+            logger.error(`Core Service | Actor/Item update failed: ${error.message}`);
             res.status(500).json({ success: false, error: error.message });
         }
-
-        /*
+    });     /*
         export async function POST(
     request: Request,
     { params }: { params: Promise<{ id: string }> }
@@ -550,7 +583,7 @@ async function startServer() {
     }
     }
         */
-    });
+
 
     // Debug route - allow using system client if no session provided for easier dev access
     app.get('/api/debug/actor/:id', async (req, res) => {
