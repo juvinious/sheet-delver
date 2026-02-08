@@ -10,9 +10,10 @@ interface EffectsTabProps {
     token?: string | null;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
     onDeleteEffect: (effectId: string) => void;
+    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
 }
 
-export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffect }: EffectsTabProps) {
+export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffect, onAddPredefinedEffect }: EffectsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [predefinedEffects, setPredefinedEffects] = useState<any[]>([]);
     const [selectedEffect, setSelectedEffect] = useState<string>('');
@@ -122,9 +123,11 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                                 <button
                                     onClick={() => onToggleEffect(e._id || e.id, !!e.disabled)}
                                     title={e.disabled ? "Enable Effect" : "Disable Effect"}
-                                    className={`w-6 h-6 rounded flex items-center justify-center border ${!e.disabled ? 'bg-black text-white border-black' : 'bg-white text-neutral-300 border-neutral-300'}`}
+                                    className={`w-6 h-6 rounded flex items-center justify-center border transition-all ${!e.disabled ? 'bg-black text-white border-black' : 'bg-white text-neutral-300 border-neutral-300 hover:border-black'}`}
                                 >
-                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    </svg>
                                 </button>
                                 <button
                                     onClick={() => setEffectToDelete(e._id || e.id)}
@@ -186,23 +189,23 @@ export default function EffectsTab({ actor, token, onToggleEffect, onDeleteEffec
                     </select>
                     <button
                         onClick={async () => {
-                            if (selectedEffect) {
-                                try {
+                            if (!selectedEffect) return;
+                            try {
+                                if (onAddPredefinedEffect) {
+                                    await onAddPredefinedEffect(selectedEffect);
+                                } else {
+                                    const id = actor.id || actor._id;
                                     const headers: any = { 'Content-Type': 'application/json' };
                                     if (token) headers['Authorization'] = `Bearer ${token}`;
-
-                                    const res = await fetch(`/api/modules/shadowdark/actors/${actor.id || actor._id}/effects/toggle`, {
+                                    await fetch(`/api/modules/shadowdark/actors/${id}/effects/toggle`, {
                                         method: 'POST',
                                         headers,
                                         body: JSON.stringify({ effectId: selectedEffect })
                                     });
-                                    const data = await res.json();
-                                    if (data.success) {
-                                        setSelectedEffect('');
-                                    }
-                                } catch (e) {
-                                    console.error('Error adding effect:', e);
                                 }
+                                setSelectedEffect('');
+                            } catch (e) {
+                                console.error('Failed to toggle effect:', e);
                             }
                         }}
                         disabled={!selectedEffect}

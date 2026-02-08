@@ -40,6 +40,7 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
     getActor(id: string, forceSystemId?: string): Promise<any>;
     getActorRaw(id: string): Promise<any>;
     getSystemConfig(): Promise<any>;
+    getSystemAdapter(): any;
 
     // Removed getAllCompendiumIndices from base FoundryClient for user-level sockets
     // It is now in FoundryMetadataClient (implemented by CoreSocket)
@@ -53,6 +54,9 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
     deleteActorItem(actorId: string, itemId: string): Promise<any>;
 
     dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any>;
+    dispatchDocumentSocket(type: string, action: string, data?: any, parent?: any): Promise<any>;
+    getAllCompendiumIndices(): Promise<any[]>;
+    fetchByUuid(uuid: string): Promise<any>;
 
     getChatLog(limit?: number): Promise<any[]>;
     sendMessage(content: string | any): Promise<any>;

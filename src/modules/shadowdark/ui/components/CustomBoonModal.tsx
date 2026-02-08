@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Trash2, Settings, Power } from 'lucide-react';
+import { X, Trash2, Settings, Power, Search } from 'lucide-react';
 import { resolveEntityName } from '../sheet-utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
@@ -219,150 +219,153 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-neutral-900 border border-neutral-700 w-full max-w-2xl shadow-2xl rounded-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-neutral-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white border-4 border-black w-full max-w-2xl shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[90vh] overflow-hidden rounded-none text-neutral-900">
 
                 {/* Header */}
-                <div className="bg-neutral-800 p-4 border-b border-neutral-700 flex justify-between items-center">
-                    <h2 className="text-xl font-serif text-amber-500 font-bold tracking-wide">
+                <div className="bg-black p-6 border-b-2 border-white flex justify-between items-center">
+                    <h2 className="text-2xl font-black font-serif text-white uppercase tracking-widest">
                         {initialData ? 'Edit Boon' : 'Create Custom Boon'}
                     </h2>
-                    <button onClick={onClose} className="text-neutral-400 hover:text-white transition-colors">
-                        <X size={24} />
+                    <button onClick={onClose} className="text-white/50 hover:text-white transition-colors p-2 text-xl">
+                        <X size={28} />
                     </button>
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-8">
 
                     {/* Basic Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-neutral-50 p-6 border-2 border-dashed border-neutral-200">
                         <div className="md:col-span-2">
-                            <label className="block text-xs uppercase tracking-widest text-neutral-500 font-bold mb-1">Boon Name</label>
+                            <label className="block text-xs uppercase tracking-[0.2em] text-neutral-500 font-black mb-2">Boon Name</label>
                             <input
                                 type="text"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
-                                className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-serif text-lg"
+                                className="w-full bg-white border-2 border-black text-black px-4 py-3 focus:bg-neutral-50 outline-none font-serif text-xl font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 placeholder="e.g. Titan's Grip"
                                 autoFocus
                             />
                         </div>
 
                         <div>
-                            <label className="block text-xs uppercase tracking-widest text-neutral-500 font-bold mb-1">Type</label>
-                            <select
-                                value={boonType}
-                                onChange={e => setBoonType(e.target.value)}
-                                className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-sans"
-                            >
-                                {Object.entries(predefinedEffects || {}).map(([_key, effect]) => (
-                                    <option key={_key} value={_key}>{effect.name}</option>
-                                ))}
-                            </select>
+                            <label className="block text-xs uppercase tracking-[0.2em] text-neutral-500 font-black mb-2">Type</label>
+                            <div className="relative">
+                                <select
+                                    value={boonType}
+                                    onChange={e => setBoonType(e.target.value)}
+                                    className="w-full bg-white border-2 border-black text-black px-4 py-3 focus:bg-neutral-50 outline-none font-black uppercase text-xs appearance-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+                                >
+                                    {Object.entries(predefinedEffects || {}).map(([_key, effect]) => (
+                                        <option key={_key} value={_key}>{effect.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div>
-                            <label className="block text-xs uppercase tracking-widest text-neutral-500 font-bold mb-1">Level Gained</label>
+                            <label className="block text-xs uppercase tracking-[0.2em] text-neutral-500 font-black mb-2">Level Gained</label>
                             <input
                                 type="number"
                                 value={level}
                                 onChange={e => setLevel(Number(e.target.value))}
-                                className="w-full bg-neutral-950 border border-neutral-700 text-white px-3 py-2 focus:border-amber-500 outline-none font-mono [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                className="w-full bg-white border-2 border-black text-black px-4 py-3 focus:bg-neutral-50 outline-none font-serif text-xl font-bold shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
                     </div>
 
-                    <hr className="border-neutral-800" />
-
                     {/* Effects Section */}
                     <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-sm font-bold uppercase tracking-widest text-neutral-300">Effects</h3>
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <h3 className="text-xl font-black font-serif uppercase tracking-widest text-black border-b-4 border-black pb-1">Effects</h3>
 
                             {/* Dropdown Adder */}
-                            <div className="relative w-64">
+                            <div className="relative w-full sm:w-72">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 w-4 h-4 z-10" />
                                 <select
                                     value=""
                                     onChange={e => handleAddEffect(e.target.value)}
-                                    className="w-full bg-neutral-950 border border-neutral-700 text-white text-xs px-2 py-1.5 pl-8 focus:border-amber-500 outline-none appearance-none rounded"
+                                    className="w-full bg-white border-2 border-black text-black text-xs font-black uppercase py-3 pl-10 pr-4 focus:bg-neutral-50 outline-none appearance-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
                                 >
-                                    <option value="" disabled>Add Effect...</option>
-                                    <optgroup label="Custom">
-                                        <option value="custom_custom_new">+ Create Custom Effect</option>
+                                    <option value="" disabled>+ Add Effect...</option>
+                                    <optgroup label="Custom" className="bg-neutral-100 italic">
+                                        <option value="custom_custom_new" className="not-italic">+ Create Custom Effect</option>
                                     </optgroup>
-                                    <optgroup label="Predefined">
+                                    <optgroup label="Predefined" className="bg-neutral-100 italic">
                                         {effectOptions.map(opt => (
-                                            <option key={opt.key} value={opt.key}>{opt.label}</option>
+                                            <option key={opt.key} value={opt.key} className="not-italic">{opt.label}</option>
                                         ))}
                                     </optgroup>
                                 </select>
-                                <Settings className="absolute left-2.5 top-2 text-neutral-500 pointer-events-none" size={14} />
                             </div>
                         </div>
 
-                        <div className="bg-neutral-950 border border-neutral-800 rounded overflow-hidden">
+                        <div className="bg-white border-2 border-black overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                             {/* List Header */}
-                            <div className="grid grid-cols-[1fr_80px_80px] text-[10px] uppercase font-bold text-neutral-500 bg-neutral-900 border-b border-neutral-800 px-3 py-2">
-                                <div>Effect / Key</div>
-                                <div className="text-center">Changes</div>
-                                <div className="text-right">Options</div>
+                            <div className="grid grid-cols-[1fr_100px_100px] text-[10px] uppercase font-black tracking-widest text-white bg-black px-4 py-3">
+                                <div>Effect / Configuration</div>
+                                <div className="text-center">Value / Mode</div>
+                                <div className="text-right pr-2">Options</div>
                             </div>
 
                             {/* List Body */}
-                            <div className="divide-y divide-neutral-800">
+                            <div className="divide-y-2 divide-neutral-100">
                                 {selectedEffects.length === 0 && (
-                                    <div className="p-4 text-center text-neutral-600 text-xs italic">
-                                        No effects added. Select one above.
+                                    <div className="p-8 text-center text-neutral-400 text-xs font-black uppercase tracking-widest italic flex flex-col gap-2">
+                                        <span className="text-3xl not-italic">?</span>
+                                        No effects added.
                                     </div>
                                 )}
                                 {selectedEffects.map(eff => (
-                                    <div key={eff.id} className="grid grid-cols-[1fr_80px_80px] items-center px-3 py-2 text-sm hover:bg-neutral-900/50 transition-colors">
+                                    <div key={eff.id} className="grid grid-cols-[1fr_100px_100px] items-start px-4 py-4 text-sm hover:bg-neutral-50 transition-colors group">
 
                                         {/* Effect Column (Dynamic based on 'custom') */}
-                                        <div className="flex items-center gap-3 overflow-hidden pr-2">
-                                            <img src={resolveImageUrl(eff.icon)} alt="" className="w-6 h-6 object-cover bg-neutral-800 rounded-sm shrink-0" />
+                                        <div className="flex items-start gap-4 overflow-hidden pr-2">
+                                            <div className="relative shrink-0">
+                                                <img src={resolveImageUrl(eff.icon)} alt="" className="w-10 h-10 object-cover bg-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]" />
+                                                {!eff.enabled && <div className="absolute inset-0 bg-neutral-900/40 border-2 border-black flex items-center justify-center"><Power className="text-white w-4 h-4" /></div>}
+                                            </div>
 
                                             {eff.key === 'custom' ? (
-                                                <div className="flex flex-col gap-1 w-full">
+                                                <div className="flex flex-col gap-2 w-full">
                                                     <input
                                                         type="text"
-                                                        className="bg-black border border-neutral-700 text-white text-xs px-1 py-0.5 w-full placeholder-neutral-600"
+                                                        className="bg-white border-2 border-black text-black text-xs font-black uppercase px-2 py-1.5 w-full shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:bg-neutral-50 outline-none"
                                                         placeholder="Name / Label"
                                                         value={eff.label}
                                                         onChange={e => handleUpdateEffect(eff.id, { label: e.target.value })}
                                                     />
                                                     <input
                                                         type="text"
-                                                        className="bg-black border border-neutral-700 text-amber-500 font-mono text-[10px] px-1 py-0.5 w-full placeholder-neutral-600"
+                                                        className="bg-white border-2 border-neutral-200 text-neutral-400 font-mono text-[9px] px-2 py-1 w-full focus:border-black focus:text-black outline-none"
                                                         placeholder="system.key..."
                                                         value={eff.effectKey}
                                                         onChange={e => handleUpdateEffect(eff.id, { effectKey: e.target.value })}
                                                     />
                                                 </div>
                                             ) : (
-                                                <div className="flex flex-col overflow-hidden">
-                                                    <span className="truncate font-medium text-neutral-200" title={eff.label}>{eff.label}</span>
-                                                    <span className="truncate text-[10px] text-neutral-500 font-mono" title={eff.effectKey}>
-                                                        {eff.effectKey.split('.').slice(-2).join('.')}
+                                                <div className="flex flex-col overflow-hidden py-0.5">
+                                                    <span className="truncate font-serif font-black uppercase tracking-wider text-black" title={eff.label}>{eff.label}</span>
+                                                    <span className="truncate text-[10px] text-neutral-500 font-mono mt-1" title={eff.effectKey}>
+                                                        {eff.effectKey}
                                                     </span>
                                                 </div>
                                             )}
                                         </div>
 
                                         {/* Changes Column (Value & Mode) */}
-                                        <div className="flex flex-col gap-1 justify-center items-center">
+                                        <div className="flex flex-col gap-2 justify-center items-center">
                                             <input
                                                 type="text"
                                                 value={eff.value}
                                                 onChange={e => handleUpdateEffect(eff.id, { value: e.target.value })}
-                                                className="w-16 bg-black border border-neutral-700 text-center text-white text-xs py-1 rounded focus:border-amber-500 outline-none"
+                                                className="w-16 bg-white border-2 border-black text-center text-black font-black text-xs py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:bg-neutral-50 outline-none"
                                             />
-                                            {/* Mode Select for Custom (or all?) - Let's allow overriding mode even for predefined */}
                                             <select
                                                 value={eff.mode}
                                                 onChange={e => handleUpdateEffect(eff.id, { mode: Number(e.target.value) })}
-                                                className="w-16 bg-neutral-800 border-none text-[10px] text-neutral-400 py-0 h-4 text-center rounded cursor-pointer"
+                                                className="w-full max-w-[80px] bg-neutral-100 border-none text-[9px] font-black uppercase text-neutral-600 py-1 text-center cursor-pointer hover:bg-neutral-200 transition-colors"
                                             >
                                                 {MODES.map(m => (
                                                     <option key={m.value} value={m.value}>{m.label}</option>
@@ -371,20 +374,23 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                         </div>
 
                                         {/* Options Column */}
-                                        <div className="flex justify-end gap-2">
+                                        <div className="flex justify-end gap-1 pt-1">
                                             <button
                                                 onClick={() => handleToggleEffect(eff.id)}
-                                                className={`p-1.5 rounded transition-colors ${eff.enabled ? 'text-green-500 hover:bg-neutral-800' : 'text-neutral-600 hover:bg-neutral-800'}`}
+                                                className={`p-2 border-2 transition-all ${eff.enabled
+                                                    ? 'bg-neutral-100 border-neutral-200 text-neutral-400 hover:bg-black hover:border-black hover:text-white'
+                                                    : 'bg-black border-black text-white hover:bg-neutral-800'
+                                                    }`}
                                                 title={eff.enabled ? 'Enabled' : 'Disabled'}
                                             >
-                                                <Power size={14} />
+                                                <Power size={18} strokeWidth={3} />
                                             </button>
                                             <button
                                                 onClick={() => handleRemoveEffect(eff.id)}
-                                                className="p-1.5 text-neutral-500 hover:text-red-500 hover:bg-neutral-800 rounded transition-colors"
+                                                className="p-2 border-2 border-neutral-100 text-neutral-300 hover:border-black hover:text-red-600 transition-all"
                                                 title="Remove"
                                             >
-                                                <Trash2 size={14} />
+                                                <Trash2 size={18} strokeWidth={3} />
                                             </button>
                                         </div>
                                     </div>
@@ -395,12 +401,11 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
 
                 </div>
 
-                {/* Footer */}
-                <div className="bg-neutral-800 p-4 border-t border-neutral-700 flex justify-end gap-3">
+                {/* Footer (Consistency with Language modal) */}
+                <div className="p-6 bg-neutral-100 border-t-4 border-black flex justify-between items-center">
                     <button
-                        type="button"
                         onClick={onClose}
-                        className="px-4 py-2 text-sm font-bold uppercase tracking-widest text-neutral-400 hover:text-white transition-colors"
+                        className="h-12 bg-neutral-200 text-black border-2 border-black px-8 font-black font-serif uppercase tracking-widest text-xs hover:bg-neutral-300 transition-all active:translate-x-[2px] active:translate-y-[2px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
                     >
                         Cancel
                     </button>
@@ -408,9 +413,9 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                         onClick={handleSubmit}
                         disabled={loading || !name}
                         className={`
-                            px-6 py-2 bg-amber-700 text-white text-sm font-bold uppercase tracking-widest shadow-lg 
-                            hover:bg-amber-600 active:translate-y-0.5 transition-all
-                            ${(loading || !name) ? 'opacity-50 cursor-not-allowed' : ''}
+                            px-10 py-3 bg-black text-white font-serif font-black text-lg uppercase tracking-[0.2em] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] 
+                            hover:bg-neutral-800 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none transition-all
+                            ${(loading || !name) ? 'opacity-30 grayscale cursor-not-allowed' : ''}
                         `}
                     >
                         {loading ? 'Saving...' : (initialData ? 'Save Changes' : 'Create Boon')}

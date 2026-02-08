@@ -1,6 +1,8 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from './rules';
 import { logger } from '../../core/logger';
+import { dataManager } from './data/DataManager';
+import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
@@ -490,7 +492,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
     }
 
-    async getSystemData(client: any): Promise<any> {
+    async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
         // 1. Fetch System Config (Live)
         if (!this.systemConfig) {
             // Server-only dynamic import
@@ -534,9 +536,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
             spells: [] as any[],
             talents: [] as any[],
             titles: {},
-            PREDEFINED_EFFECTS: this.systemConfig?.PREDEFINED_EFFECTS || {},
-            debug: [] as any[]
+            PREDEFINED_EFFECTS: {
+                ...SYSTEM_PREDEFINED_EFFECTS,
+                ...(this.systemConfig?.PREDEFINED_EFFECTS || {})
+            },
         };
+
+        if (options?.minimal) return results;
 
         try {
             const processedUuids = new Set<string>();
@@ -596,9 +602,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // 2. Fetch all compendium packs from Socket (If available/different)
-            // Optimization: If we have client-side cache, we might skip full re-fetch here
-            // But getSystemData is often used to BUILD the UI list.
             const packs = await client.getAllCompendiumIndices();
+            const discoveryTasks: Promise<void>[] = [];
 
             for (const pack of packs) {
                 // We only care about Item packs
@@ -620,35 +625,39 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     const baseInfo = { name: item.name, uuid, img: item.img };
 
                     if (type === 'class') {
-                        // For classes we need languages and titles
-                        // We might need to fetch the full doc if index is just basic
-                        const doc = await client.fetchByUuid(uuid);
-                        if (doc) {
-                            results.classes.push({
-                                ...baseInfo,
-                                languages: doc.system?.languages || []
-                            });
-                            if (doc.system?.titles) {
-                                (results.titles as any)[doc.name] = doc.system.titles;
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            if (doc) {
+                                results.classes.push({
+                                    ...baseInfo,
+                                    languages: doc.system?.languages || [],
+                                    spellcasting: doc.system?.spellcasting || null
+                                });
+                                if (doc.system?.titles) {
+                                    (results.titles as any)[doc.name] = doc.system.titles;
+                                }
                             }
-                        }
+                        })());
                     } else if (type === 'ancestry') {
-                        const doc = await client.fetchByUuid(uuid);
-                        if (doc) {
-                            results.ancestries.push({
-                                ...baseInfo,
-                                languages: doc.system?.languages || []
-                            });
-                        }
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            if (doc) {
+                                results.ancestries.push({
+                                    ...baseInfo,
+                                    languages: doc.system?.languages || []
+                                });
+                            }
+                        })());
                     } else if (type === 'background') {
                         results.backgrounds.push(baseInfo);
                     } else if (type === 'language') {
-                        // For languages we want rarity
-                        const doc = await client.fetchByUuid(uuid);
-                        results.languages.push({
-                            ...baseInfo,
-                            rarity: doc?.system?.rarity || 'common'
-                        });
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            results.languages.push({
+                                ...baseInfo,
+                                rarity: doc?.system?.rarity || 'common'
+                            });
+                        })());
                     } else if (type === 'deity') {
                         results.deities.push(baseInfo);
                     } else if (type === 'patron') {
@@ -670,18 +679,23 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             });
                         } else {
                             // Fallback fetch
-                            const doc = await client.fetchByUuid(uuid);
-                            if (doc) {
-                                results.spells.push({
-                                    ...baseInfo,
-                                    tier: doc.system?.tier || 0,
-                                    class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
-                                });
-                            }
+                            discoveryTasks.push((async () => {
+                                const doc = await client.fetchByUuid(uuid);
+                                if (doc) {
+                                    results.spells.push({
+                                        ...baseInfo,
+                                        tier: doc.system?.tier || 0,
+                                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                                    });
+                                }
+                            })());
                         }
                     }
                 }
             }
+
+            // Wait for all discovered items to be fully fetched
+            await Promise.all(discoveryTasks);
 
             // 3. Fetch World Items
             const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
@@ -910,11 +924,37 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Apply Active Effects to the cloned system data
         // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true
 
-        const classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
+        let classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
+
+        // If no Class item found, try to resolve from system.class (UUID or name)
+        if (!classItem && actor.system?.class && typeof window === 'undefined') {
+            const classRef = actor.system.class;
+            if (typeof classRef === 'string') {
+                // 1. Try UUID lookup
+                let doc = dataManager.index.get(classRef) ||
+                    dataManager.index.get(`Compendium.${classRef.replace('Compendium.', '')}`);
+
+                // 2. Try Name lookup fallback
+                if (!doc) {
+                    const normalized = classRef.toLowerCase();
+                    for (const d of dataManager.index.values()) {
+                        if (d.type === 'Class' && d.name.toLowerCase() === normalized) {
+                            doc = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (doc) {
+                    classItem = doc;
+                    logger.debug(`[ShadowdarkAdapter] Resolved missing Class item from Ref: ${classRef} -> ${doc.name}`);
+                }
+            }
+        }
         if (classItem) {
             logger.debug(`[ShadowdarkAdapter] Found Class item: ${classItem.name}`);
         } else {
-            logger.debug(`[ShadowdarkAdapter] No Class item found.`);
+            logger.debug(`[ShadowdarkAdapter] No Class item found. actor.system.class: ${actor.system?.class}`);
         }
 
         // Shadowdark Schema:
@@ -1032,7 +1072,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             ...(actor.computed || {}),
             isSpellCaster: isCaster,
             canUseMagicItems: canMagic,
-            showSpellsTab: isCaster || canMagic
+            showSpellsTab: isCaster || canMagic,
+            classDetails: classItem
         };
 
         // --- ROBUST EFFECT MERGING ---
@@ -1480,8 +1521,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (options.abilityBonus !== undefined) {
                         totalBonus += Number(options.abilityBonus);
                     } else {
-                        // Fallback logic
-                        const statKey = item.system?.ability || 'int';
+                        const statKey = item.system?.ability || actor.computed?.spellcastingAbility?.toLowerCase() || 'int';
                         totalBonus += actor.system.abilities?.[statKey]?.mod || 0;
                     }
                 } else if (item.type === 'Weapon') {
@@ -1588,6 +1628,19 @@ export class ShadowdarkAdapter implements SystemAdapter {
             actor.computed.resolvedNames.ancestry = resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
             actor.computed.resolvedNames.background = resolve(actor.system.background, actor.computed.resolvedNames.background);
         }
+    }
+
+    async resolveDocument(client: any, uuid: string): Promise<any | null> {
+        if (typeof window === 'undefined' && uuid.startsWith('Compendium.shadowdark.')) {
+            try {
+                const { dataManager } = await import('./data/DataManager');
+                const doc = await dataManager.getDocument(uuid);
+                return doc;
+            } catch (e) {
+                logger.warn(`ShadowdarkAdapter | resolveDocument failed for ${uuid}: ${e}`);
+            }
+        }
+        return null;
     }
 
     async loadSupplementaryData(cache: any): Promise<void> {

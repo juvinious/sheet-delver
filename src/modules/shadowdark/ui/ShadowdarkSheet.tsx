@@ -34,12 +34,13 @@ interface ShadowdarkSheetProps {
     onDeleteItem?: (itemId: string) => void;
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
 
     onToggleDiceTray?: () => void;
     isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onAddPredefinedEffect, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
     const { resolveImageUrl } = useConfig();
     // ... (State initialization)
     const [activeTab, setActiveTab] = useState('details');
@@ -447,19 +448,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         onCreateItem={onCreateItem}
                         onUpdateItem={onUpdateItem}
                         onDeleteItem={onDeleteItem}
-                        onToggleEffect={async (effId, enabled) => {
-                            try {
-                                const id = actor._id || actor.id;
-                                await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ _id: effId, disabled: !enabled })
-                                });
-                                // Notification handled by parent or assumed polling
-                            } catch (e) {
-                                console.error('Failed to toggle effect:', e);
-                            }
-                        }}
+                        onToggleEffect={onToggleEffect}
                     />
                 )
                 }
@@ -485,6 +474,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                             onRoll={onRoll}
                             onDeleteItem={onDeleteItem}
                             addNotification={addNotification}
+                            token={token}
                         />
                     )
                 }
@@ -525,28 +515,9 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         <EffectsTab
                             actor={actor}
                             token={token}
-                            onToggleEffect={async (effId, enabled) => {
-                                try {
-                                    const id = actor._id || actor.id;
-                                    await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ _id: effId, disabled: !enabled })
-                                    });
-                                } catch (e) {
-                                    console.error('Failed to toggle effect:', e);
-                                }
-                            }}
-                            onDeleteEffect={async (effId) => {
-                                try {
-                                    const id = actor._id || actor.id;
-                                    await fetch(`/api/modules/shadowdark/actors/${id}/effects/delete?effectId=${effId}`, {
-                                        method: 'DELETE'
-                                    });
-                                } catch (e) {
-                                    console.error('Failed to delete effect:', e);
-                                }
-                            }}
+                            onToggleEffect={onToggleEffect}
+                            onDeleteEffect={onDeleteEffect}
+                            onAddPredefinedEffect={onAddPredefinedEffect}
                         />
                     )
                 }

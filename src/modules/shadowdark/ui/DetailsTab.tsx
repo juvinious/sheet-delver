@@ -6,7 +6,6 @@ import { useConfig } from '@/app/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
-import { Trash2, Pencil } from 'lucide-react';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 
 interface DetailsTabProps {
@@ -146,8 +145,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Level</span>
-                            {/* Level is not editable via modal usually, handled by XP? Or maybe direct edit if needed */}
-                            {/* Keeping level display-only or XP driven for now as per previous logic */}
                             <div className="w-3" />
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
@@ -167,9 +164,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Title</span>
-                            <div className="w-3" /> {/* Spacer instead of edit icon */}
+                            <div className="w-3" />
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white">
+                        <div className="p-2 font-serif text-lg bg-white font-bold">
                             {(() => {
                                 const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
                                 const lvl = actor.system?.level?.value ?? 1;
@@ -184,10 +181,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Class</span>
-                            <div className="w-3" /> {/* Spacer instead of edit icon */}
+                            <div className="w-3" />
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white flex items-center gap-2">
-                            <i className="fas fa-book text-neutral-400"></i>
+                        <div className="p-2 font-serif text-lg bg-white flex items-center gap-2 font-bold">
                             <span className="w-full">
                                 {resolveEntityName(actor.system?.class, actor, systemData, 'classes') || '-'}
                             </span>
@@ -217,7 +213,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                     if (val.toString() !== e.target.value) e.target.value = val.toString();
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
-                                className={`w-12 bg-neutral-200/50 border-b border-black text-center outline-none rounded px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                className={`w-12 bg-neutral-100 border-b border-black text-center outline-none px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                             />
                             <span className="text-neutral-400">/</span>
                             <span>{(actor.system?.level?.value || 1) * 10}</span>
@@ -228,12 +224,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Ancestry</span>
-                            <div className="w-3" /> {/* Spacer instead of edit icon */}
+                            <div className="w-3" />
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white">
-                            <span>
-                                {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries') || '-'}
-                            </span>
+                        <div className="p-2 font-serif text-lg bg-white font-bold">
+                            {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries') || '-'}
                         </div>
                     </div>
 
@@ -243,15 +237,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             <span className="font-serif font-bold text-lg uppercase">Background</span>
                             <button
                                 onClick={() => openSelection('system.background', 'Background', 'backgrounds')}
-                                className="text-white/50 hover:text-white transition-colors"
+                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                             >
-                                <Pencil size={14} />
+                                Edit
                             </button>
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white">
-                            <span>
-                                {resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds') || '-'}
-                            </span>
+                        <div className="p-2 font-serif text-lg bg-white font-bold">
+                            {resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds') || '-'}
                         </div>
                     </div>
 
@@ -262,11 +254,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                             <span className="font-serif font-bold text-lg uppercase">Alignment</span>
-                            {/* Kept as select for now as it makes more sense than a modal for 3 options */}
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white">
+                        <div className="p-1 bg-white">
                             <select
-                                className="w-full bg-transparent outline-none cursor-pointer"
+                                className="w-full bg-neutral-50 outline-none cursor-pointer font-serif font-bold text-lg px-1 border border-dashed border-neutral-200"
                                 defaultValue={actor.system?.alignment || 'neutral'}
                                 onChange={(e) => onUpdate('system.alignment', e.target.value)}
                             >
@@ -286,13 +277,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             <span className="font-serif font-bold text-lg uppercase">Deity</span>
                             <button
                                 onClick={() => openSelection('system.deity', 'Deity', 'deities')}
-                                className="text-white/50 hover:text-white transition-colors"
+                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                             >
-                                <Pencil size={14} />
+                                Edit
                             </button>
                         </div>
-                        <div className="p-2 font-serif text-lg bg-white">
-                            <span>{resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}</span>
+                        <div className="p-2 font-serif text-lg bg-white font-bold">
+                            {resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}
                         </div>
                     </div>
 
@@ -303,20 +294,19 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 <span className="font-serif font-bold text-lg uppercase">Patron</span>
                                 <button
                                     onClick={() => openSelection('system.patron', 'Patron', 'patrons')}
-                                    className="text-white/50 hover:text-white transition-colors"
+                                    className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                                 >
-                                    <Pencil size={14} />
+                                    Edit
                                 </button>
                             </div>
-                            <div className="p-2 font-serif text-lg bg-white">
+                            <div className="p-2 font-serif text-lg bg-white font-bold">
                                 {(() => {
                                     const patronItem = (actor.items || []).find((i: any) => i.type?.toLowerCase() === 'patron');
-                                    // Resolving Logic
                                     const val = actor.system?.patron;
                                     const resolvedName = resolveEntityName(val, actor, systemData, 'patrons');
                                     const displayName = patronItem ? patronItem.name : (resolvedName || '-');
 
-                                    return <span>{displayName}</span>;
+                                    return displayName;
                                 })()}
                             </div>
                         </div>
@@ -330,10 +320,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         <span className="font-serif font-bold text-lg uppercase">Languages</span>
                         <button
                             onClick={() => setIsLanguageModalOpen(true)}
-                            className="w-6 h-6 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+                            className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                             title="Edit Languages"
                         >
-                            <Pencil size={14} />
+                            Edit
                         </button>
                     </div>
                     <div className="p-1 flex flex-wrap gap-2">
@@ -398,15 +388,15 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
 
                 {/* Boons */}
                 <div className={cardStyle}>
-                    <div className="bg-black text-white p-2 mb-2 -mx-4 -mt-4 border-b-2 border-white flex justify-between items-center pl-4">
-                        <span className="font-bold font-serif uppercase tracking-widest text-lg">Boons</span>
+                    <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white flex justify-between items-center">
+                        <span className="font-serif font-bold text-lg uppercase">Boons</span>
                         {onCreateItem && (
                             <button
                                 onClick={() => setIsCreatingBoon(true)}
-                                className="w-10 h-10 flex items-center justify-center text-white hover:text-amber-400 transition-colors active:scale-95 touch-manipulation"
+                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                                 title="Add Boon"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                Add
                             </button>
                         )}
                     </div>
@@ -436,20 +426,20 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                         {onUpdateItem && (
                                             <button
                                                 onClick={() => setEditingItem(item)}
-                                                className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-amber-500 hover:bg-neutral-800 rounded transition-colors touch-manipulation"
+                                                className="bg-black text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-800 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
                                                 title="Edit Boon"
                                             >
-                                                <Pencil size={16} className="opacity-75 group-hover:opacity-100" />
+                                                Edit
                                             </button>
                                         )}
                                         {/* Delete Item */}
                                         {onDeleteItem && (
                                             <button
                                                 onClick={() => setItemToDelete({ id: item.id, name: item.name })}
-                                                className="w-10 h-10 flex items-center justify-center text-neutral-400 hover:text-red-500 hover:bg-neutral-800 rounded transition-colors touch-manipulation"
+                                                className="bg-white text-black px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                                                 title="Delete Boon"
                                             >
-                                                <Trash2 size={18} />
+                                                Del
                                             </button>
                                         )}
                                     </div>

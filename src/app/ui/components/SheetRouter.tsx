@@ -17,6 +17,7 @@ interface SheetRouterProps {
     onRoll: (type: string, key: string, options?: any) => Promise<void>;
     onUpdate: (path: string, value: any) => Promise<void>;
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
 }
 
 export default function SheetRouter(props: SheetRouterProps) {

@@ -83,9 +83,10 @@ export interface SystemAdapter {
     getRollData(actor: any, type: string, key: string, options?: any): any;
     match(actor: any): boolean;
     renderNavigation?: boolean;
-    getSystemData(client: any): Promise<any>;
+    getSystemData(client: any, options?: { minimal?: boolean }): Promise<any>;
     postCreate?(client: any, actorId: string, sourceData: any): Promise<void>;
     getActor?(client: any, actorId: string): Promise<any>;
+    resolveDocument?(client: any, uuid: string): Promise<any | null>;
     resolveActorNames?(actor: any, cache: any): void;
     loadSupplementaryData?(cache: any): Promise<void>;
     theme?: {

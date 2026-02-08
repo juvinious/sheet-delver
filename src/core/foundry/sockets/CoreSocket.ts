@@ -610,26 +610,34 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         const type = parts[3];
         const id = parts[4];
 
-        try {
-            const response: any = await this.emitSocketEvent('getDocuments', {
-                type: type,
-                operation: { pack: packId, query: { _id: id } }
-            }, 3000);
+        // 2a. System Fallback (Try first for speed & reliability)
+        if (this.adapter?.resolveDocument) {
+            const resolved = await this.adapter.resolveDocument(this, uuid);
+            if (resolved) return resolved;
+        }
 
-            if (response?.result && Array.isArray(response.result)) {
-                return response.result[0];
-            }
-        } catch (e) {
-            // Fallback for RollTables or other specific v13 behaviors
+        // 2b. Foundry Network Fetch
+        // 2b. Foundry Network Fetch
+        // Try both singular and plural collection names if needed
+        const typesToTry = [type];
+        if (type === 'Item') typesToTry.push('Items');
+        else if (type === 'JournalEntry') typesToTry.push('JournalEntries');
+        else if (type === 'Actor') typesToTry.push('Actors');
+
+        for (const t of typesToTry) {
             try {
-                const response = await this.dispatchDocumentSocket(type, 'get', {
-                    pack: packId,
-                    query: { _id: id },
-                    broadcast: false
-                }, undefined, false);
-                return response?.result?.[0];
-            } catch (inner) {
-                logger.warn(`CoreSocket | fetchByUuid failed for ${uuid}: ${inner}`);
+                // Fetch using the standard 'ids' operation
+                const response: any = await this.emitSocketEvent('getDocuments', {
+                    type: t,
+                    operation: { pack: packId, ids: [id] }
+                }, 1500); // Shorter timeout for faster iteration
+
+                if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
+                    return response.result[0];
+                }
+            } catch (e) {
+                // Try next type
+                continue;
             }
         }
 

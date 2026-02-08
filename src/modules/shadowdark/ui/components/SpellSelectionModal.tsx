@@ -22,6 +22,7 @@ interface SpellSelectionModalProps {
     availableSpells: SpellOption[];
     knownSpells: SpellOption[];
     maxSelections?: number;
+    token?: string | null;
 }
 
 export default function SpellSelectionModal({
@@ -31,7 +32,8 @@ export default function SpellSelectionModal({
     title,
     availableSpells,
     knownSpells,
-    maxSelections
+    maxSelections,
+    token
 }: SpellSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
     const [search, setSearch] = useState('');
@@ -57,7 +59,12 @@ export default function SpellSelectionModal({
     const loadDescription = async (spell: SpellOption) => {
         setLoadingUuids(prev => new Set(prev).add(spell.uuid));
         try {
-            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(spell.uuid)}`);
+            const headers: any = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(spell.uuid)}`, {
+                headers
+            });
             if (res.ok) {
                 const doc = await res.json();
                 const desc = getSafeDescription(doc.system);
@@ -225,7 +232,12 @@ export default function SpellSelectionModal({
                                                     toggleSpell(spell.uuid);
                                                 }}
                                                 disabled={disabled}
-                                                className={`w-8 h-8 rounded-full border-2 border-black flex items-center justify-center transition-all ${isSelected ? 'bg-black text-white' : 'bg-white hover:border-amber-500'}`}
+                                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                                                        ? 'bg-black text-white border-black'
+                                                        : disabled
+                                                            ? 'bg-neutral-50 border-neutral-300 cursor-not-allowed'
+                                                            : 'bg-white border-black hover:border-amber-500'
+                                                    }`}
                                             >
                                                 {isSelected && <Check className="w-5 h-5" />}
                                             </button>

@@ -334,7 +334,7 @@ async function startServer() {
                 const userPermission = a.ownership?.[currentUserId!] || a.ownership?.default || 0;
                 const isObservable = userPermission >= 1; // LIMITED or OBSERVER
 
-                // CRITICAL: Exclude NPCs - Shadowdark uses 'NPC' (uppercase) and 'Player' types
+                // CRITICAL: Exclude NPCs - Systems often use 'npc', 'monster', or 'vehicle' types
                 const actorType = (a.type || '').toLowerCase();
                 const isNPC = actorType === 'npc' || actorType === 'monster' || actorType === 'vehicle';
 

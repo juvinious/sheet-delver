@@ -22,10 +22,11 @@ export async function handleEffects(
     const rawPredefined = systemData.PREDEFINED_EFFECTS || {};
     const PREDEFINED_EFFECTS_LIST = Object.entries(rawPredefined).map(([id, data]: [string, any]) => ({
         id,
-        name: data.name,
-        img: data.img,
-        effectKey: data.effectKey,
-        defaultValue: data.defaultValue,
+        name: data.label || data.name,
+        label: data.label || data.name,
+        img: data.icon || data.img,
+        effectKey: data.key || data.effectKey,
+        defaultValue: data.value || data.defaultValue,
         mode: data.mode
     }));
 
@@ -86,12 +87,15 @@ export async function handleEffects(
             const effectData = PREDEFINED_EFFECTS_LIST.find(e => e.id === effectId);
             if (!effectData) throw new Error(`Predefined effect ${effectId} not found`);
 
-            const existing = (actor.effects || []).find((e: any) =>
-                e.flags?.core?.statusId === effectId ||
-                e.statuses?.includes(effectId) ||
-                e.label === effectData.name ||
-                e.name === effectData.name
-            );
+            const existing = (actor.effects || []).find((e: any) => {
+                const eStatusId = e.flags?.core?.statusId;
+                const eStatuses = e.statuses || [];
+                const eName = e.name || e.label;
+
+                return (eStatusId && eStatusId === effectId) ||
+                    (eStatuses.includes(effectId)) ||
+                    (effectData.name && eName === effectData.name);
+            });
 
             if (existing) {
                 return await handleEffects(actorId, client, 'delete', { effectId: existing._id || existing.id });

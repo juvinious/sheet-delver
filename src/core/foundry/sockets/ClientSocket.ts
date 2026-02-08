@@ -41,6 +41,7 @@ export class ClientSocket extends SocketBase {
                 // Prefer user map from CoreSocket if available
                 const coreData = this.coreSocket.getGameData();
                 const users = coreData?.users || (await this.probeWorldState(baseUrl))?.users || scrapedUsers;
+
                 const user = users?.find((u: any) => u.name === this.config.username);
                 if (user) {
                     this.userId = user._id;
@@ -212,7 +213,23 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.useItem(actorId, itemId);
     }
 
+    public async getAllCompendiumIndices(): Promise<any[]> {
+        return this.coreSocket.getAllCompendiumIndices();
+    }
+
     public async dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any> {
         return this.coreSocket.dispatchDocument(type, action, operation, parent);
+    }
+
+    public async getActorRaw(id: string): Promise<any> {
+        return this.coreSocket.getActorRaw(id);
+    }
+
+    public getSystemAdapter() {
+        return this.coreSocket.getSystemAdapter();
+    }
+
+    public async getSystemConfig(): Promise<any> {
+        return this.coreSocket.getSystemConfig();
     }
 }

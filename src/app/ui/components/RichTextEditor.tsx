@@ -172,16 +172,15 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                 <EditorContent editor={editor} className="h-full" />
             </div>
 
-            {/* Hover to Edit Overlay */}
+            {/* Edit Button - Visible when not editing */}
             {!isEditing && (
-                <div
-                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-black shadow-sm rounded-full p-2 cursor-pointer hover:bg-neutral-100"
-                    onClick={() => setIsEditing(true)}
-                    title="Edit Notes"
-                >
-                    <svg className="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
+                <div className="absolute bottom-4 right-4 z-10">
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        className="bg-black text-white px-6 py-2 font-serif font-bold uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2"
+                    >
+                        Edit Notes
+                    </button>
                 </div>
             )}
         </div>

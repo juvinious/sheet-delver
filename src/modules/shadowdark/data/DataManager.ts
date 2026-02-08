@@ -3,7 +3,7 @@ import { logger } from '@/core/logger';
 
 class DataManager {
     private static instance: DataManager;
-    private index: Map<string, any> = new Map();
+    public index: Map<string, any> = new Map();
     private initialized = false;
 
     private constructor() { }
@@ -17,9 +17,20 @@ class DataManager {
 
     public async initialize() {
         if (this.initialized) return;
+        if (typeof window !== 'undefined') {
+            this.initialized = true; // Mark as "done" but empty in browser
+            return;
+        }
 
-        const path = (await import('path')).default;
-        const fs = (await import('fs')).default;
+        let path: any;
+        let fs: any;
+        try {
+            path = (await import('node:path')).default;
+            fs = (await import('node:fs')).default;
+        } catch (e) {
+            console.error('[DataManager] Failed to load Node.js modules:', e);
+            return;
+        }
 
         const packsDir = path.join(process.cwd(), 'src/modules/shadowdark/data/packs');
 

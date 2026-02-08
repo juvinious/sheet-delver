@@ -6,6 +6,7 @@ import { handleEffects } from './api/effects';
 import { handleIndex } from './api/index';
 import { dataManager } from './data/DataManager';
 import { getConfig } from '@/core/config';
+import { ShadowdarkAdapter } from './system';
 
 // Initialize data cache
 dataManager.initialize();
@@ -60,7 +61,7 @@ export const apiRoutes = {
         const client = (request as any).foundryClient;
         const { effectId } = await request.json();
         const result = await handleEffects(actorId, client, 'toggle', { effectId });
-        return Response.json(result);
+        return Response.json({ success: true, result });
     },
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -86,7 +87,7 @@ export const apiRoutes = {
     'actors/[id]/spells/learn': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
-        return handleLearnSpell(actorId, request);
+        return handleLearnSpell(actorId, request, (request as any).foundryClient);
     },
     'actors/[id]/spellcaster': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -97,11 +98,15 @@ export const apiRoutes = {
         const client = (request as any).foundryClient;
         if (!client) return Response.json({ error: 'Not authenticated' }, { status: 401 });
 
-        const adapter = client.getSystemAdapter ? client.getSystemAdapter() : null;
-        if (!adapter) return Response.json({ error: 'Adapter not found' }, { status: 500 });
+        const shadowDarkAdapter = new ShadowdarkAdapter();
+        const systemData = await shadowDarkAdapter.getSystemData(client, { minimal: true });
 
-        const systemData = await adapter.getSystemData(client);
-        return Response.json(systemData.PREDEFINED_EFFECTS || {});
+        const effects = Object.entries(systemData.PREDEFINED_EFFECTS || {}).map(([id, effect]: [string, any]) => ({
+            id,
+            ...effect
+        }));
+
+        return Response.json(effects);
     },
     'spells/list': async (request: Request) => {
         return handleGetSpellsBySource(request);

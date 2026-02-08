@@ -281,17 +281,49 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const handleToggleEffect = async (effectId: string, enabled: boolean) => {
         if (!actor) return;
+
+        // Optimistic Update
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+        const effect = (optimisticActor.effects || []).find((e: any) => (e._id || e.id) === effectId);
+        if (effect) {
+            effect.disabled = !enabled;
+            setActor(optimisticActor);
+        }
+
         try {
-            const res = await fetchWithAuth(`/api/actors/${actor.id}/effects`, {
+            const id = actor.id || actor._id;
+            const res = await fetchWithAuth(`/api/modules/shadowdark/actors/${id}/effects/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ effectId, updateData: { disabled: !enabled } })
+                body: JSON.stringify({ _id: effectId, disabled: !enabled })
             });
             const data = await res.json();
             if (data.success) {
-                // Update local state optimistically
                 fetchWithAuthActor(actor.id, true);
                 addNotification(enabled ? 'Effect Enabled' : 'Effect Disabled', 'success');
+            } else {
+                addNotification('Failed to toggle effect: ' + data.error, 'error');
+                fetchWithAuthActor(actor.id, true); // Revert
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+            fetchWithAuthActor(actor.id, true); // Revert
+        }
+    };
+
+    const handleTogglePredefinedEffect = async (effectId: string) => {
+        if (!actor) return;
+        try {
+            const id = actor.id || actor._id;
+            const res = await fetchWithAuth(`/api/modules/shadowdark/actors/${id}/effects/toggle`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ effectId })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchWithAuthActor(id, true);
+                addNotification('Effect toggled', 'success');
             } else {
                 addNotification('Failed to toggle effect: ' + data.error, 'error');
             }
@@ -302,6 +334,20 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const handleCreateItem = async (itemData: any) => {
         if (!actor) return;
+
+        // Optimistic Update
+        const tempId = 'temp-' + Date.now();
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+        // Ensure items is an array.
+        if (!Array.isArray(optimisticActor.items)) optimisticActor.items = [];
+        optimisticActor.items.push({
+            ...itemData,
+            id: tempId,
+            _id: tempId,
+            img: itemData.img || '/icons/svg/item-bag.svg'
+        });
+        setActor(optimisticActor);
+
         try {
             const res = await fetchWithAuth(`/api/actors/${actor.id}/items`, {
                 method: 'POST',
@@ -311,22 +357,39 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             const data = await res.json();
             if (data.success) {
                 fetchWithAuthActor(actor.id, true);
-                addNotification(`Created ${itemData.name}`, 'success');
+                if (itemData.name) addNotification(`Created ${itemData.name}`, 'success');
             } else {
                 addNotification('Failed to create item: ' + data.error, 'error');
+                fetchWithAuthActor(actor.id, true); // Revert
             }
         } catch (e: any) {
             addNotification('Error: ' + e.message, 'error');
+            fetchWithAuthActor(actor.id, true); // Revert
         }
     };
 
     const handleUpdateItem = async (itemData: any, deletedEffectIds: string[] = []) => {
         if (!actor) return;
+
+        // Optimistic Update
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+        const itemIdx = (optimisticActor.items || []).findIndex((i: any) => (i._id || i.id) === (itemData._id || itemData.id));
+        if (itemIdx > -1) {
+            optimisticActor.items[itemIdx] = { ...optimisticActor.items[itemIdx], ...itemData };
+
+            // Handle optimistic deletion of effects if any
+            if (deletedEffectIds.length > 0) {
+                optimisticActor.effects = (optimisticActor.effects || []).filter((e: any) => !deletedEffectIds.includes(e._id || e.id));
+            }
+
+            setActor(optimisticActor);
+        }
+
         try {
             // 1. Handle Deleted Effects first (if any)
             if (deletedEffectIds && deletedEffectIds.length > 0) {
                 await Promise.all(deletedEffectIds.map(effId =>
-                    fetchWithAuth(`/api/actors/${actor.id}/effects?effectId=${effId}`, { method: 'DELETE' })
+                    fetchWithAuth(`/api/modules/shadowdark/actors/${actor.id || actor._id}/effects/delete?effectId=${effId}`, { method: 'DELETE' })
                 ));
             }
 
@@ -340,55 +403,67 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
             if (data.success) {
                 fetchWithAuthActor(actor.id, true);
-                addNotification(`Updated ${itemData.name}`, 'success');
+                if (itemData.name) addNotification(`Updated ${itemData.name}`, 'success');
             } else {
                 addNotification('Failed to update item: ' + data.error, 'error');
+                fetchWithAuthActor(actor.id, true); // Revert
             }
         } catch (e: any) {
             addNotification('Error: ' + e.message, 'error');
+            fetchWithAuthActor(actor.id, true); // Revert
         }
     };
 
     const handleDeleteEffect = async (effectId: string) => {
         if (!actor) return;
-        // Confirmation is handled by UI component now
+
+        // Optimistic Update
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+        optimisticActor.effects = (optimisticActor.effects || []).filter((e: any) => (e._id || e.id) !== effectId);
+        setActor(optimisticActor);
+
         try {
-            const res = await fetchWithAuth(`/api/actors/${actor.id}/effects?effectId=${effectId}`, {
+            const id = actor.id || actor._id;
+            const res = await fetchWithAuth(`/api/modules/shadowdark/actors/${id}/effects/delete?effectId=${effectId}`, {
                 method: 'DELETE'
             });
             const data = await res.json();
             if (data.success) {
-                const newEffects = actor.effects.filter((e: any) => e.id !== effectId);
-                setActor({ ...actor, effects: newEffects });
                 fetchWithAuthActor(actor.id, true);
                 addNotification('Effect Deleted', 'success');
             } else {
                 addNotification('Failed to delete effect: ' + data.error, 'error');
+                fetchWithAuthActor(actor.id, true); // Revert
             }
         } catch (e: any) {
             addNotification('Error: ' + e.message, 'error');
+            fetchWithAuthActor(actor.id, true); // Revert
         }
     };
 
     const handleDeleteItem = async (itemId: string) => {
         if (!actor) return;
-        // Confirmation is handled by UI component now
+
+        // Optimistic Update
+        const optimisticActor = JSON.parse(JSON.stringify(actor));
+        optimisticActor.items = (optimisticActor.items || []).filter((i: any) => (i._id || i.id) !== itemId);
+        setActor(optimisticActor);
+
         try {
             const res = await fetchWithAuth(`/api/actors/${actor.id}/items?itemId=${itemId}`, {
                 method: 'DELETE'
             });
             const data = await res.json();
             if (data.success) {
-                // Optimistic update locally if possible, or just re-fetchWithAuth
-                // const newItems = actor.items?.filter((i: any) => i.id !== itemId);
-                // setActor({...actor, items: newItems}); // Shallow might not work with complex struct
                 fetchWithAuthActor(actor.id, true);
                 addNotification('Item Deleted', 'success');
             } else {
                 addNotification('Failed to delete item: ' + data.error, 'error');
+                fetchWithAuthActor(actor.id, true); // Revert
             }
         } catch (e: any) {
             addNotification('Error: ' + e.message, 'error');
+            fetchWithAuthActor(actor.id, true); // Revert
         }
     };
 
@@ -450,6 +525,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                             onDeleteItem={handleDeleteItem}
                             onCreateItem={handleCreateItem}
                             onUpdateItem={handleUpdateItem}
+                            onAddPredefinedEffect={handleTogglePredefinedEffect}
                             onToggleDiceTray={toggleDiceTray}
                             isDiceTrayOpen={isDiceTrayOpen}
                         />

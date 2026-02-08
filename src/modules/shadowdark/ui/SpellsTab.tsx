@@ -18,9 +18,10 @@ interface SpellsTabProps {
     systemData?: any;
     onDeleteItem?: (itemId: string) => void;
     addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
+    token?: string | null;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification, token }: SpellsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -106,17 +107,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; }) => !selectedNames.has(s.name));
 
 
-            // Execute ADDs
-            for (const spell of toAdd) {
-                await handleAddSpell(spell);
-            }
+            // Execute ADDs & REMOVEs in parallel for better performance
+            const tasks = [
+                ...toAdd.map((spell: any) => handleAddSpell(spell)),
+                ...(onDeleteItem ? toRemove.map((spell: any) => onDeleteItem(spell.id || spell._id)) : [])
+            ];
 
-            // Execute REMOVEs
-            if (onDeleteItem && toRemove.length > 0) {
-                for (const spell of toRemove) {
-                    onDeleteItem(spell.id || spell._id);
-                }
-            }
+            await Promise.all(tasks);
 
             addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
             setIsAddModalOpen(false);
@@ -131,9 +128,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
     const handleAddSpell = async (spell: any) => {
         try {
+            const headers: any = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             await fetch(`/api/modules/shadowdark/actors/${actor._id || actor.id}/spells/learn`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ spellUuid: spell.uuid })
             });
         } catch (e) {
@@ -145,9 +145,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         const sources: Map<string, any> = new Map();
 
         // 1. Primary Class
-        const classItem = actor.items?.find((i: any) => i.type === 'Class');
+        const classItem = actor.computed?.classDetails || actor.items?.find((i: any) => i.type === 'Class');
         if (classItem?.system?.spellcasting?.ability) {
-            const classKey = classItem.name.toLowerCase();
+            const classKey = (classItem.name || "").toLowerCase();
             sources.set(classKey, {
                 name: classItem.name,
                 type: 'class',
@@ -155,6 +155,24 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 spellcasting: classItem.system.spellcasting,
                 bonusSpells: 0
             });
+        } else if (actor.system?.class && systemData?.classes) {
+            // Fallback: Resolve via systemData if class identified by UUID
+            const classRef = actor.system.class;
+            const resolvedClass = systemData.classes.find((c: any) => c.uuid === classRef || c.name.toLowerCase() === classRef.toLowerCase());
+            if (resolvedClass?.spellcasting?.ability) {
+                const classKey = resolvedClass.name.toLowerCase();
+                sources.set(classKey, {
+                    name: resolvedClass.name,
+                    type: 'class',
+                    classKey: classKey,
+                    spellcasting: resolvedClass.spellcasting,
+                    bonusSpells: 0
+                });
+            } else {
+                console.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!resolvedClass?.spellcasting?.ability}`);
+            }
+        } else {
+            console.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
         }
 
         // 2. Talents/Boons that grant spellcasting (Formal field OR Name heuristic)
@@ -195,7 +213,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     }
                 }
             }
-
             classKeys.forEach((key: string) => {
                 const existing = sources.get(key);
                 if (existing) {
@@ -211,12 +228,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 }
             });
         });
-
         return Array.from(sources.values());
-    }, [actor.items]);
+    }, [actor.items, actor.computed?.classDetails, systemData]);
 
     const getAccessibleTiers = (source: any) => {
-        const level = actor.system?.level?.value || 0;
+        const level = actor.level?.value || actor.system?.level?.value || 0;
         const tiers = [];
 
         if (source.type === 'class' && source.spellcasting?.spellsknown) {
@@ -563,6 +579,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     onSave={handleManageSpells}
                     onClose={() => setIsAddModalOpen(false)}
                     maxSelections={maxSelections}
+                    token={token}
                 />
             )}
 
