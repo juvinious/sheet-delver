@@ -1300,9 +1300,13 @@ export default function Generator() {
             };
 
             // 3. Send to API
+            const headers: any = { 'Content-Type': 'application/json' };
+            const token = sessionStorage.getItem('sheet-delver-token');
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const res = await fetch('/api/actors', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(actorData)
             });
 

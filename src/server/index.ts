@@ -19,6 +19,12 @@ async function startServer() {
     app.use(express.json());
     app.use(cors());
 
+    // DEBUG: Global Request Logger
+    app.use((req, res, next) => {
+        console.error(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
+        next();
+    });
+
     // Initialize Session Manager with Service Account
     const { SessionManager } = await import('../core/session/SessionManager');
     const { UserRole } = await import('../shared/constants');
@@ -409,6 +415,23 @@ async function startServer() {
         }
     });
 
+    // Create new actor
+    appRouter.post('/actors', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const actorData = req.body;
+            const newActor = await client.createActor(actorData);
+
+            // Handle potential error from socket
+            if (!newActor) throw new Error("Failed to create actor");
+
+            res.json({ success: true, id: newActor._id || newActor.id, actor: newActor });
+        } catch (error: any) {
+            logger.error(`Core Service | Create Actor failed: ${error.message}`);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
     appRouter.delete('/actors/:id', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -784,15 +807,13 @@ async function startServer() {
             }
 
             let matchedPattern: string | undefined;
-            console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
+            // console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
             const routes = Object.keys(sysModule.apiRoutes || {});
 
             for (const pattern of routes) {
                 const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
                 const isMatch = regex.test(routePath);
-                // console.error(`[DEBUG] Testing pattern: ${pattern} (Regex: ${regex}) -> ${isMatch}`);
                 if (isMatch) {
-                    logger.info(`[ModuleRouter] Matched ${routePath} to pattern ${pattern}`);
                     matchedPattern = pattern;
                     break;
                 }

@@ -70,6 +70,7 @@ export const apiRoutes = {
     'actors/level-up/roll-hp': async (request: Request) => {
         return handleRollHP(undefined, request, (request as any).foundryClient);
     },
+    // /api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-hp
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];

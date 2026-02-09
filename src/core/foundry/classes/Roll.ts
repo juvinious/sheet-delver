@@ -68,6 +68,7 @@ export class Roll {
 
                 for (let i = 0; i < count; i++) {
                     let res = Math.floor(Math.random() * faces) + 1;
+                    // console.log(`[Roll] DEBUG: 1d${faces} raw result: ${res} (min:${minimize}, max:${maximize})`);
                     if (minimize) res = 1;
                     if (maximize) res = faces;
                     results.push({ result: res, active: true });

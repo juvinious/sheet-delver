@@ -96,25 +96,35 @@ export async function handleRollHP(actorId: string | undefined, request: Request
 
         logger.info(`[API] Rolling HP with formula: ${hitDie}`);
 
-        // Roll using modern Roll class
-        const roll = new Roll(hitDie);
-        await roll.evaluate();
-        // Shadowdark Rule: Minimum 1 HP gain (safe guard, though usually 1dX >= 1)
-        const total = Math.max(1, roll.total || 0);
+        logger.info(`[API] Rolling HP with formula: ${hitDie}`);
 
-        // Optional: Send to chat to mimic legacy behavior behavior if desired, or just return.
-        // For now, we just return the value as the UI handles display.
-        // If we want to persist the roll to chat, we can do it here:
-        /*
-        if (client.userId) {
-            await client.sendMessage({
-                content: String(total),
-                type: 5, // ROLL
-                rolls: [JSON.stringify(roll.toJSON())],
-                flavor: `Hit Point Roll (Level Up)`
-            });
+        // Roll using Foundry Client (Socket)
+        // This ensures the roll is performed by Foundry's logic/modules and sent to chat
+        const chatMessage = await client.roll(hitDie, "Hit Point Roll (Level Up)");
+
+        if (!chatMessage) {
+            throw new Error("Failed to execute roll via Foundry Client");
         }
-        */
+
+        // Parse result from Chat Message
+        // content is usually the total string
+        let total = parseInt(chatMessage.content);
+
+        // Fallback: Check rolls array
+        if (isNaN(total) && chatMessage.rolls && chatMessage.rolls.length > 0) {
+            try {
+                // In v12/v13 rolls might be JSON strings or objects
+                const rollData = typeof chatMessage.rolls[0] === 'string'
+                    ? JSON.parse(chatMessage.rolls[0])
+                    : chatMessage.rolls[0];
+                total = rollData.total;
+            } catch (e) {
+                logger.warn(`[API] Failed to parse roll data from message: ${e}`);
+            }
+        }
+
+        // Shadowdark Rule: Minimum 1 HP gain (safe guard, though usually 1dX >= 1)
+        total = Math.max(1, total || 0);
 
         return NextResponse.json({
             success: true,
