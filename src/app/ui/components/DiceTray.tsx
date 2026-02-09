@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SystemAdapter } from '@/modules/core/interfaces';
 
 interface DiceTrayProps {
@@ -34,13 +34,82 @@ export default function DiceTray({ onSend, adapter }: DiceTrayProps) {
 
     const s = { ...defaultStyles, ...(adapter?.componentStyles?.diceTray || {}) };
 
+    // --- Reactive Formula Logic ---
+
+    // Constants for regex
+    // Matches 1d20, 2d20kh, 2d20kl, 1d4, 2d4kh, etc.
+    const DICE_REGEX = /(\d+)d(\d+)([a-z]*)/g;
+
+    const updateFormulaForMode = (currentFormula: string, mode: 'normal' | 'adv' | 'dis') => {
+        if (!currentFormula) return currentFormula;
+
+        return currentFormula.replace(DICE_REGEX, (match, count, faces, suffix) => {
+            const facesInt = parseInt(faces);
+
+            // Only apply to d20? User said "1d4... advantage... /r 2d4kh".
+            // So applies to ALL dice.
+
+            if (mode === 'normal') {
+                // Revert to 1dX if it looks like an advantage roll (2dXkh/kl)
+                // Heuristic: If count is 2 and suffix is kh/kl, revert to 1.
+                // Or simply strip modifiers and reset count? 
+                // "1d4" -> "2d4kh" -> "1d4"
+                if (count === '2' && (suffix === 'kh' || suffix === 'kl')) {
+                    return `1d${faces}`;
+                }
+                // If it was already 1d4, leave it.
+                // If user typed 3d6 manually, we shouldn't touch it unless it fits our pattern.
+                return match;
+            }
+
+            if (mode === 'adv') {
+                // 1d4 -> 2d4kh
+                // 2d4kl -> 2d4kh
+                if (count === '1' && !suffix) {
+                    return `2d${faces}kh`;
+                }
+                if (count === '2' && suffix === 'kl') {
+                    return `2d${faces}kh`; // Switch from dis to adv
+                }
+                return match;
+            }
+
+            if (mode === 'dis') {
+                // 1d4 -> 2d4kl
+                // 2d4kh -> 2d4kl
+                if (count === '1' && !suffix) {
+                    return `2d${faces}kl`;
+                }
+                if (count === '2' && suffix === 'kh') {
+                    return `2d${faces}kl`; // Switch from adv to dis
+                }
+                return match;
+            }
+
+            return match;
+        });
+    };
+
+    // Effect: Update formula when advMode changes
+    useEffect(() => {
+        setFormula(prev => updateFormulaForMode(prev, advMode));
+    }, [advMode]);
+
     const addTerm = (term: string) => {
+        // Prepare terms based on mode
+        let finalTerm = term;
+        // Check if term is a die (e.g. "1d20")
+        if (term.match(/^\d+d\d+$/)) {
+            // Let the helper transform it immediately
+            finalTerm = updateFormulaForMode(term, advMode);
+        }
+
         setFormula(prev => {
             // If empty, start with /r 
             const newFormula = prev || '/r ';
             // Simple check to avoid double spaces or weird joins
             const spacer = newFormula.endsWith(' ') ? '' : ' + ';
-            return newFormula + spacer + term;
+            return newFormula + spacer + finalTerm;
         });
     };
 
@@ -52,20 +121,10 @@ export default function DiceTray({ onSend, adapter }: DiceTrayProps) {
 
     const roll = () => {
         if (!formula) return;
-        // Apply adv/dis logic if not manually present?
-        // For simplicity, we just send what's in the box, but user might expect buttons to handle it.
-        // If adv/dis is selected, we might want to wrap d20s? 
-        // The requested UI separates them. Let's just send the formula string.
-        let finalFormula = formula;
-
-        // Basic ADV/DIS handling if the user just clicked "d20" and "ADV"
-        if (advMode === 'adv' && finalFormula.includes('1d20')) {
-            finalFormula = finalFormula.replace(/1d20/g, '2d20kh');
-        } else if (advMode === 'dis' && finalFormula.includes('1d20')) {
-            finalFormula = finalFormula.replace(/1d20/g, '2d20kl');
-        }
-
-        onSend(finalFormula);
+        // Formula is already reactive, so just send it.
+        onSend(formula);
+        setFormula('');
+        setAdvMode('normal');
     };
 
     return (

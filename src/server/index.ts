@@ -623,7 +623,9 @@ async function startServer() {
             if (!message) return res.status(400).json({ error: 'Message is empty' });
 
             if (message.trim().match(/^\/(r|roll)\s/)) {
-                const result = await client.roll(message);
+                // Strip the command prefix so Roll class gets a clean formula
+                const cleanFormula = message.replace(/^\/(r|roll)\s+/i, '');
+                const result = await client.roll(cleanFormula);
                 res.json({ success: true, type: 'roll', result });
             } else {
                 await client.sendMessage(message);
@@ -716,6 +718,7 @@ async function startServer() {
             const client = (req as any).foundryClient;
             // Use System Client to fetch users (CoreSocket has the data methods)
             const users = await sessionManager.getSystemClient().getUsers();
+            logger.debug(`[API] /session/users: Found ${users.length} users via System Client`);
 
             // Sanitize and Map (Consistent with statusHandler)
             const sanitizedUsers = users.map((u: any) => {

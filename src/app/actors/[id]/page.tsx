@@ -42,7 +42,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const fetchUsers = useCallback(async () => {
         try {
-            const res = await fetchWithAuth('/api/session/users');
+            const res = await fetchWithAuth('/api/session/connect');
             const data = await res.json();
             if (data.users) {
                 setUsers(data.users);
