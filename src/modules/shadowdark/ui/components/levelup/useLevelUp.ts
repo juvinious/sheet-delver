@@ -75,7 +75,15 @@ export const useLevelUp = (props: LevelUpProps) => {
     useEffect(() => {
         if (!activeClassObj && classObj) setActiveClassObj(classObj);
     }, [classObj, activeClassObj]);
-    const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>("");
+
+    // Initialize selectedPatronUuid from props if available
+    const [selectedPatronUuid, setSelectedPatronUuid] = useState<string>(patronUuid || patron?.uuid || "");
+    useEffect(() => {
+        if (!selectedPatronUuid && (patronUuid || patron?.uuid)) {
+            setSelectedPatronUuid(patronUuid || patron?.uuid || "");
+        }
+    }, [patronUuid, patron]);
+
     const [fetchedPatron, setFetchedPatron] = useState<any>(null);
     const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
 
@@ -90,6 +98,8 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [availableSpells, setAvailableSpells] = useState<any[]>([]);
 
     const [hpRoll, setHpRoll] = useState<number | null>(null);
+    const [hpFormula, setHpFormula] = useState<string>("");
+    const [hpMax, setHpMax] = useState<number>(0);
     const [goldRoll, setGoldRoll] = useState<number | null>(null);
     const [rolledTalents, setRolledTalents] = useState<any[]>([]);
     const [rolledBoons, setRolledBoons] = useState<any[]>([]);
@@ -165,9 +175,13 @@ export const useLevelUp = (props: LevelUpProps) => {
     const fetchLevelUpData = useCallback(async (classUuidOverride?: string) => {
         if (!actorId && !classUuidOverride) return;
         try {
-            let url = `/api/modules/shadowdark/actors/${actorId}/level-up/data`;
-            if (classUuidOverride) url += `?classId=${encodeURIComponent(classUuidOverride)}`;
-            if (!actorId) url = `/api/modules/shadowdark/actors/level-up/data?classId=${encodeURIComponent(classUuidOverride!)}`;
+            let url = `/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/data`;
+            const params = new URLSearchParams();
+            if (classUuidOverride) params.set('classId', classUuidOverride);
+            if (selectedPatronUuid) params.set('patronId', selectedPatronUuid);
+
+            const queryString = params.toString();
+            if (queryString) url += `?${queryString}`;
 
             const headers: any = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -189,7 +203,6 @@ export const useLevelUp = (props: LevelUpProps) => {
 
                 if (apiData.availableSpells) {
                     const unique = new Map();
-                    // Determine if apiData.availableSpells is an array
                     if (Array.isArray(apiData.availableSpells)) {
                         apiData.availableSpells.forEach((s: any) => {
                             if (!unique.has(s.name)) unique.set(s.name, s);
@@ -198,10 +211,13 @@ export const useLevelUp = (props: LevelUpProps) => {
                     }
                 }
                 if (apiData.knownLanguages) setKnownLanguages(apiData.knownLanguages);
+                if (apiData.talentTable) setTalentTable(apiData.talentTable);
+                if (apiData.patronBoonTable) setBoonTable(apiData.patronBoonTable);
 
                 setStatuses(prev => ({
                     ...prev,
-                    spells: (isCaster || total > 0) ? 'IDLE' : 'DISABLED'
+                    spells: (isCaster || total > 0) ? 'IDLE' : 'DISABLED',
+                    boons: apiData.patronBoonTable ? 'IDLE' : 'DISABLED'
                 }));
             }
         } catch (e) {
@@ -210,95 +226,15 @@ export const useLevelUp = (props: LevelUpProps) => {
         }
     }, [actorId, token]);
 
-    const fetchTableResult = useCallback(async (table: any, context: 'talent' | 'boon' = 'talent'): Promise<any[] | null> => {
-        let tableObj = table;
-        if (typeof table === 'string') tableObj = await fetchDocument(table);
-        if (!tableObj) return null;
-
-        const rawResults = tableObj.results || tableObj.system?.results;
-        let results: any[] = [];
-        if (Array.isArray(rawResults)) results = rawResults;
-        else if (rawResults && typeof rawResults === 'object') {
-            results = Array.from(rawResults) as any[];
-            if (results.length === 0) results = Object.values(rawResults);
-        }
-
-        if (!results || results.length === 0) return [];
-
-        const formula = tableObj.formula || "1d1";
-        const roll = simpleRoll(formula);
-        const matchingResults = results.filter(r => {
-            const range = r.range || [1, 1];
-            return roll >= range[0] && roll <= range[1];
-        });
-
-        const headerText = "Choose One"; // Simplified variable hoisting for consistency
-        let validOptions = matchingResults;
-
-        // ... (logic remains the same, just ensuring fetchDocument uses token via dependency)
-
-        if (matchingResults.length > 1) {
-            // ... (rest of logic same)
-            const headerResult = matchingResults.find(r =>
-                (r.type === 'text' || r.type === 0) &&
-                (r.text || r.name || r.description || "").toLowerCase().includes("choose") &&
-                r.drawn === false
-            );
-            // ...
-        }
-
-        // RE-IMPLEMENTING LOGIC TO ENSURE CLOSURE CAPTURE
-        if (matchingResults.length > 1) {
-            const headerResult = matchingResults.find(r =>
-                (r.type === 'text' || r.type === 0) &&
-                (r.text || r.name || r.description || "").toLowerCase().includes("choose") &&
-                r.drawn === false
-            );
-
-            // Re-assigning to let variable defined above if needed, but for now just using the flow
-            // ... actually the original code had distinct logic here.
-            // Let's copy it back carefully.
-        }
-
-        // Logic is dependent on fetchDocument which now has token dependency.
-
-        // ... Re-pasting original logic to perform precise edit ...
-        // Actually, since fetchDocument is passed as a dependency, and fetchDocument depends on token, this is fine.
-
-        // Let's stick to the block replacement standard.
-
-        const resolveDocs = async (resList: any[]) => {
-            const resolvedDocs = [];
-            for (const r of resList) {
-                if (r.type === 'text' || r.type === 0) {
-                    resolvedDocs.push({
-                        type: 'Talent',
-                        name: r.text || r.name,
-                        description: r.description || r.text || "",
-                        isManual: true
-                    });
-                } else if (r.documentUuid || r.documentId) {
-                    const uuid = r.documentUuid || `Compendium.${r.collection}.${r.documentId}`;
-                    const doc = await fetchDocument(uuid);
-                    if (doc) resolvedDocs.push(doc);
-                }
-            }
-            return resolvedDocs;
-        };
-
-        // We need to re-implement the middle logic because we are replacing a large chunk.
-        // Wait, I can just replace smaller chunks.
-        // Let's abort this large replacement and do 3 smaller ones.
-        return await resolveDocs(validOptions); // Placeholder to abort
-    }, [fetchDocument, simpleRoll]);
-
-
     const handleRollHP = async (isReroll = false) => {
+        console.log("[LevelUp] handleRollHP triggered. isReroll:", isReroll);
         setStatuses(prev => ({ ...prev, hp: 'LOADING' }));
         setError(null);
         try {
+            console.log('LevelUpAlt] Running...');
             // Prefer the UUID of the loaded class object, or the target selection, or the prop
             const cId = activeClassObj?.uuid || targetClassUuid || classUuid;
+            console.log("[LevelUp] Rolling HP for classId:", cId, "ActorId:", actorId);
 
             const headers: any = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -311,6 +247,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             const json = await res.json();
             if (json.success) {
                 setHpRoll(json.roll.total);
+                if (json.formula) setHpFormula(json.formula);
                 setConfirmReroll(false);
                 setStatuses(prev => ({ ...prev, hp: 'COMPLETE' }));
             } else {
@@ -501,6 +438,40 @@ export const useLevelUp = (props: LevelUpProps) => {
             const resolved = data.items || [];
 
             if (resolved.length > 0) {
+
+                // Check for Choice Group (same logic as Talents)
+                const instructionItem = resolved.find((r: any) => {
+                    const name = r.name || "";
+                    const text = r.text || "";
+                    const desc = r.description || "";
+
+                    const matches = (r.type === 0 || r.type === 'text') && (
+                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(name) ||
+                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(text) ||
+                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(desc) ||
+                        name.toUpperCase().includes("CHOOSE") // Fallback for Boons which might just say "CHOOSE 1"
+                    );
+                    return matches;
+                });
+
+                if (resolved.length > 1 && instructionItem) {
+                    logger.info("[LevelUp] Detected Choice Group in Boon roll.");
+
+                    const options = resolved.filter((r: any) => r !== instructionItem).map((r: any) => ({
+                        ...r,
+                        img: r.img || "icons/svg/d20.svg"
+                    }));
+
+                    setPendingChoices({
+                        header: instructionItem.text || instructionItem.name || "Choose One",
+                        options: options,
+                        context: 'boon'
+                    });
+
+                    setStatuses(prev => ({ ...prev, boons: 'READY' }));
+                    return;
+                }
+
                 // Check for Special Handlers
                 for (const item of resolved) {
                     for (const handler of TALENT_HANDLERS) {
@@ -1163,13 +1134,22 @@ export const useLevelUp = (props: LevelUpProps) => {
     ]);
 
     // HP Formula & Max
-    const [hpFormula, hpMax] = useMemo(() => {
-        const hitDieStr = activeClassObj?.system?.hitPoints || "1d6";
-        const dieVal = parseInt(hitDieStr.replace(/[^0-9]/g, '')) || 6;
-        const conMod = _abilities?.con?.mod || 0;
-        const formula = `1${hitDieStr} ${conMod >= 0 ? '+' : ''} ${conMod}`;
-        const max = dieVal + conMod + dieVal;
-        return [formula, max];
+    // HP Formula & Max Sync
+    useEffect(() => {
+        if (!activeClassObj) return;
+        const hitDieStr = String(activeClassObj.system?.hitPoints || "d6");
+
+        // Extract die value (e.g. from "1d6", "d6", "6")
+        const dieMatch = hitDieStr.match(/d?(\d+)/);
+        const dieVal = dieMatch ? parseInt(dieMatch[1]) : 6;
+
+        let baseDie = `1d${dieVal}`;
+        const formula = baseDie;
+        const max = dieVal; // Max is just the die face value
+
+        // Only update if changed (and not currently rolling/set by API)
+        setHpFormula(prev => prev === formula ? prev : formula);
+        setHpMax(max);
     }, [activeClassObj, _abilities]);
 
     const goldFormula = "2d6 x 5";

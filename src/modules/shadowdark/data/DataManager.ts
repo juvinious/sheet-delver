@@ -1,7 +1,7 @@
-import { logger } from '@/core/logger';
+import { logger } from '../../../core/logger';
 
 
-class DataManager {
+export class DataManager {
     private static instance: DataManager;
     public index: Map<string, any> = new Map();
     private initialized = false;
@@ -39,6 +39,8 @@ class DataManager {
             return;
         }
 
+        const resultsMap: Map<string, any[]> = new Map();
+
         const scanDirectory = (dir: string) => {
             const files = fs.readdirSync(dir);
             for (const file of files) {
@@ -52,75 +54,74 @@ class DataManager {
                         const content = fs.readFileSync(fullPath, 'utf-8');
                         const data = JSON.parse(content);
 
-                        // Handle embedded documents (files starting with '!')
-                        // Example: !tables.results!RQ0vogfVtJGuT9oT.TlVUTCMj9MkYslL5.json
-                        // This is shadowdark-specific caching, but improves performance
-                        if (file.startsWith('!')) {
-                            // Parse embedded document key
-                            // Format: !tables.results!{tableId}.{resultId}.json
-                            if (file.startsWith('!tables.results!') && data._id) {
-                                const parentDir = path.basename(dir);
-                                const packName = parentDir.replace('.db', '');
-                                const system = 'shadowdark';
+                        // Handle embedded documents (files starting with '!' or having certain _key patterns)
+                        const internalKey = data._key || '';
+                        const parentDir = path.basename(dir);
+                        const packName = parentDir.replace('.db', '');
+                        const system = 'shadowdark';
 
-                                // Extract table ID from filename
-                                const match = file.match(/!tables\.results!([^.]+)\.([^.]+)\.json/);
+                        if (file.startsWith('!') || internalKey.startsWith('!')) {
+                            // Example: !tables.results!RQ0vogfVtJGuT9oT.TlVUTCMj9MkYslL5.json
+                            // Example: !tables!yVogBTQYwjpWB7YI.json
+
+                            if ((file.startsWith('!tables.results!') || internalKey.startsWith('!tables.results!')) && data._id) {
+                                // Extract table ID from filename or key
+                                const keyToMatch = file.startsWith('!tables.results!') ? file : internalKey;
+                                const match = keyToMatch.match(/!tables\.results!([^.]+)\.([^.]+)/);
+
                                 if (match) {
                                     const tableId = match[1];
                                     const resultId = match[2];
 
-                                    // Index by result ID for direct lookup
+                                    // Index by result ID
                                     this.index.set(resultId, data);
 
                                     // Also index by full embedded UUID format
                                     const embeddedUuid = `Compendium.${system}.${packName}.${tableId}.TableResult.${resultId}`;
                                     this.index.set(embeddedUuid, data);
+
+                                    // Collect for hydration
+                                    if (!resultsMap.has(tableId)) resultsMap.set(tableId, []);
+                                    resultsMap.get(tableId)?.push(data);
+
+                                    continue; // Skip regular indexing
                                 }
+                            } else if ((file.startsWith('!tables!') || internalKey.startsWith('!tables!')) && data._id) {
+                                // This is an actual RollTable document
+                                const docType = 'RollTable';
+                                const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
+                                const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
+
+                                data.pack = packName;
+                                data.uuid = uuidLong;
+                                data.documentType = docType;
+
+                                this.index.set(uuidShort, data);
+                                this.index.set(uuidLong, data);
+
+                                continue; // Skip regular indexing
                             }
-                            continue; // Skip regular indexing for embedded docs
                         }
 
-                        // Regular document indexing (non-embedded)
-                        // Index by UUID if available
-                        // Foundry exports usually have _id. The Full UUID is Compendium.<pack>.<type>.<id>
-                        // But here we might just have the raw exported object.
-                        // Let's see how our lookups are formed. 
-                        // Usually: Compendium.shadowdark.spells.Item.123456
-
-                        // We will try to construct the UUID from the file path or content?
-                        // The file system structure is `.../packs/spells.db/item.json`
-                        // So pack = `spells` (from spells.db)
-                        // Type is usually Item or Actor.
-                        // ID is data._id
-
-                        // Let's deduce pack name from parent directory
-                        const parentDir = path.basename(dir);
-                        // e.g. "spells.db" -> "spells"
-                        const packName = parentDir.replace('.db', '');
-
+                        // Regular Indexing
                         if (data._id) {
-                            // Construct canonical UUID
-                            // Note: Foundry UUIDs can be tricky. "Compendium.shadowdark.spells.12345" or "Compendium.shadowdark.spells.Item.12345"
-                            // If we look at `talent-effects.ts`, it uses: 'Compendium.shadowdark.talents.IDGFaxKnYJWWuWQ7'
-                            // It seems to omit the Type? Or depends on how it was referenced.
-                            // Let's support both formats to be safe: 
-                            // 1. Compendium.shadowdark.<pack>.<id>
-                            // 2. Compendium.shadowdark.<pack>.Item.<id> (if it's an item)
+                            let docType = data.type === 'Actor' ? 'Actor' : 'Item';
+                            if (packName === 'rollable-tables') docType = 'RollTable';
 
-                            const system = 'shadowdark';
-                            const docType = data.type === 'Actor' ? 'Actor' : 'Item';
+                            // If we missed a RollTable because of missing prefix/key (unlikely but safe)
+                            if (docType === 'RollTable' && data.results) {
+                                // Already handled in the hydration loop later
+                            }
 
                             const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
                             const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
 
-                            // Attach metadata to the document itself for easier traversal
                             data.pack = packName;
                             data.uuid = uuidLong;
+                            data.documentType = docType;
 
                             this.index.set(uuidShort, data);
                             this.index.set(uuidLong, data);
-
-                            // specific for our usage: if `data.uuid` is present (ex: from an export), use it too?
                         }
 
                     } catch (e) {
@@ -132,6 +133,50 @@ class DataManager {
 
         logger.time('[DataManager] Indexing');
         scanDirectory(packsDir);
+
+        // Hydrate tables with their results
+        let hydratedCount = 0;
+        for (const [uuid, doc] of this.index.entries()) {
+            if (doc.documentType === 'RollTable' && doc._id) {
+                const hydratedResults = resultsMap.get(doc._id);
+                if (hydratedResults && hydratedResults.length > 0) {
+                    // Sort by range start to be safe
+                    doc.results = hydratedResults.sort((a, b) => (a.range?.[0] || 0) - (b.range?.[0] || 0));
+                    hydratedCount++;
+                } else if (doc.results && Array.isArray(doc.results) && typeof doc.results[0] === 'string') {
+                    // FALLBACK: Synthetic Hydration for tables with string IDs but no external result docs found
+                    // Search for those IDs in the index
+                    const syntheticResults: any[] = [];
+                    doc.results.forEach((id: string, index: number) => {
+                        const resultDoc = this.index.get(id);
+                        if (resultDoc) {
+                            // If it's already a TableResult (has range), use it
+                            if (resultDoc.range) {
+                                syntheticResults.push(resultDoc);
+                            } else {
+                                // Create a synthetic TableResult wrapper
+                                syntheticResults.push({
+                                    _id: id,
+                                    type: 'document',
+                                    documentUuid: resultDoc.uuid || `Compendium.shadowdark.${doc.pack}.Item.${id}`,
+                                    name: resultDoc.name,
+                                    range: [index + 1, index + 1],
+                                    weight: 1
+                                });
+                            }
+                        }
+                    });
+
+                    if (syntheticResults.length > 0) {
+                        doc.results = syntheticResults;
+                        hydratedCount++;
+                    }
+                }
+            }
+        }
+        if (hydratedCount > 0) {
+            logger.info(`DataManager | Hydrated ${hydratedCount} RollTables with results.`);
+        }
         logger.timeEnd('[DataManager] Indexing');
         logger.debug(`[DataManager] Indexed ${this.index.size} entries.`);
         this.initialized = true;
@@ -142,6 +187,38 @@ class DataManager {
         if (!this.initialized) await this.initialize();
 
         return this.index.get(uuid) || null;
+    }
+
+    /**
+     * Roll on a table using the hydrated index.
+     * This conforms to the "new methods" by using the range property on result objects.
+     */
+    async rollTable(uuid: string): Promise<{ total: number, results: any[] } | null> {
+        const table = await this.getDocument(uuid);
+        if (!table || !table.results || !Array.isArray(table.results)) {
+            return null;
+        }
+
+        // Calculate max range
+        let maxRange = 0;
+        table.results.forEach((r: any) => {
+            if (r.range && Array.isArray(r.range) && r.range[1] > maxRange) {
+                maxRange = r.range[1];
+            }
+        });
+
+        if (maxRange === 0) return null;
+
+        const roll = Math.floor(Math.random() * maxRange) + 1;
+        const matched = table.results.filter((r: any) => {
+            const range = r.range || [1, 1];
+            return roll >= range[0] && roll <= range[1];
+        });
+
+        return {
+            total: roll,
+            results: matched
+        };
     }
 
     public async getSpellsBySource(className: string): Promise<any[]> {

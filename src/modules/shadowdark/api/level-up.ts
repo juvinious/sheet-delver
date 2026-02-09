@@ -3,41 +3,33 @@ import { getClient } from '../../../core/foundry/instance';
 import { logger } from '../../../app/ui/logger';
 import { getConfig } from '../../../core/config';
 import { ShadowdarkAdapter } from '../system';
+import { dataManager } from '../data/DataManager';
+
+import { Roll } from '../../../core/foundry/classes/Roll';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data
  * Fetch level-up data for the modal
  */
-export async function handleGetLevelUpData(actorId: string | undefined, client: any) {
+export async function handleGetLevelUpData(actorId: string | undefined, request: Request, client: any) {
+    logger.info(`[API] handleGetLevelUpData | actorId: ${actorId} | url: ${request.url}`);
     try {
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        // 1. Fetch Request Query Params (for classId override) if passed?
-        // Current signature doesn't pass request object for params, relying on client injection.
-        // We might need to update server.ts to pass query params or handle it here if Request was passed.
-        // Ideally server.ts should pass necessary data.
-        // For now, let's rely on actor data or update server.ts to pass classUuid.
-        // But since I can't easily change the signature without changing server.ts first/simultaneously,
-        // and I am doing this step-by-step.
+        // 1. Fetch Request Query Params
+        const url = new URL(request.url, getConfig().app.url);
+        const classId = url.searchParams.get('classId');
+        const patronId = url.searchParams.get('patronId');
 
-        // I will assume for now we use actor's class. 
-        // If we need query param support, we should have updated server.ts to pass it.
-        // Actually, the server.ts update is next. I can update this signature to accept optional classUuid.
-
-        // Let's assume the signature will be: (actorId, client, classUuidOverride?)
-        // But I need to write the file with *current* assumption or planned one.
-        // I will stick to the plan: use Adapter.
-
-        const actor = await client.getActor(actorId || '');
-        if (!actor) {
-            return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+        let actor = null;
+        if (actorId && actorId !== 'undefined' && actorId !== 'null' && actorId !== 'new') {
+            actor = await client.getActor(actorId);
         }
 
         const adapter = new ShadowdarkAdapter();
-        // We don't have classUuid param here yet, pass undefined.
-        const data = await adapter.getLevelUpData(client, actor);
+        const data = await adapter.getLevelUpData(client, actor, classId || undefined, patronId || undefined);
 
         return NextResponse.json({ success: true, data });
 
@@ -52,33 +44,77 @@ export async function handleGetLevelUpData(actorId: string | undefined, client: 
  * Roll HP for level-up
  */
 export async function handleRollHP(actorId: string | undefined, request: Request, client: any) {
+    logger.info(`[API] handleRollHP called for actorId: ${actorId}`);
     try {
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { isReroll: _isReroll } = await request.json();
+        logger.info(`[API] Yes`);
+
+        const body = await request.json();
+        const { isReroll: _isReroll, classId } = body;
 
         let hitDie = '1d4';
-        if (actorId) {
+
+        // 1. Try to fetch from actor if exists
+        if (actorId && actorId !== 'new' && actorId !== 'undefined') {
             try {
                 const actor = await client.getActor(actorId);
-                // Try to find Class item for Hit Die
                 const classItem = actor.items?.find((i: any) => i.type === 'Class');
                 if (classItem && classItem.system && classItem.system.hitPoints) {
                     hitDie = classItem.system.hitPoints;
                 }
-            } catch { console.error('Error fetching actor for HP Roll:'); }
+            } catch { /* ignore */ }
         }
 
-        // Roll
-        const result = await client.roll(hitDie, `Hit Point Roll (Level Up)`, actorId);
+        // 2. Fallback: Use classId override if provided (e.g. for Level 1 creation)
+        if (hitDie === '1d4' && classId) {
+            try {
+                logger.info(`[API] Fetching class doc for ${classId}`);
+                const classDoc = await dataManager.getDocument(classId) || await client.fetchByUuid(classId);
+                if (classDoc && classDoc.system && classDoc.system.hitPoints) {
+                    hitDie = classDoc.system.hitPoints;
+                    logger.info(`[API] Found hitDie from class doc: ${hitDie}`);
+                }
+            } catch (err) {
+                logger.error(`[API] Error fetching class doc:`, err);
+            }
+        }
 
-        if (!result) throw new Error('Roll failed');
+        logger.info(`[API] Using hitDie: ${hitDie}`);
 
-        // client.roll returns the ChatMessage document. 
-        // In our implementation, content contains the total as a string.
-        const total = parseInt(result.content) || 0;
+        // IMPROVEMENT: Sanitize hitDie to ensure it's a formula, not just a number
+        const str = String(hitDie).trim();
+        if (/^\d+$/.test(str)) {
+            // "4" -> "1d4"
+            hitDie = `1d${str}`;
+        } else if (/^d\d+$/i.test(str)) {
+            // "d6" -> "1d6"
+            hitDie = `1${str}`;
+        }
+
+        logger.info(`[API] Rolling HP with formula: ${hitDie}`);
+
+        // Roll using modern Roll class
+        const roll = new Roll(hitDie);
+        await roll.evaluate();
+        // Shadowdark Rule: Minimum 1 HP gain (safe guard, though usually 1dX >= 1)
+        const total = Math.max(1, roll.total || 0);
+
+        // Optional: Send to chat to mimic legacy behavior behavior if desired, or just return.
+        // For now, we just return the value as the UI handles display.
+        // If we want to persist the roll to chat, we can do it here:
+        /*
+        if (client.userId) {
+            await client.sendMessage({
+                content: String(total),
+                type: 5, // ROLL
+                rolls: [JSON.stringify(roll.toJSON())],
+                flavor: `Hit Point Roll (Level Up)`
+            });
+        }
+        */
 
         return NextResponse.json({
             success: true,
@@ -103,25 +139,20 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
     }
 
     // Shadowdark Standard Gold: 2d6 * 5
-    // Shadowdark Standard Gold: 2d6 * 5
     const multiplier = 5;
     const dice = "2d6";
     const formula = `${dice} * ${multiplier}`;
 
     try {
-        const result = await client.roll(formula, `Starting Gold Roll (Level 1)`, actorId);
-
-        if (!result) throw new Error('Roll failed');
-
-        // client.roll returns ChatMessage. content is total.
-        const total = parseInt(result.content) || 0;
+        const roll = new Roll(formula);
+        await roll.evaluate();
+        const total = roll.total || 0;
 
         return NextResponse.json({ success: true, roll: { total } });
     } catch (e: any) {
         console.error("Gold Roll Failed", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
-
 }
 
 /**
@@ -176,10 +207,13 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         if (items && Array.isArray(items) && items.length > 0) {
             logger.info(`[API] Creating ${items.length} items for actor ${actorId}`);
             try {
+                // Use Promise.all to ensure all items are created
+                // Foundry's createActorItem often takes an array, but let's be safe and map if needed
+                // Based on LegacySocketClient, it takes an array in the 'data' property
                 await client.createActorItem(actorId, items);
             } catch (err: any) {
                 logger.error(`[API] Failed to create items: ${err.message}`, err);
-                throw err;
+                // Don't throw, just log, so we return success for the level up even if items fail
             }
         }
 

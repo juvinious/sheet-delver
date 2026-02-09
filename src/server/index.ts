@@ -766,57 +766,66 @@ async function startServer() {
 
     // Express 5: String wildcards (*) must be named or used via RegExp. 
     // Named capturing groups (?<name>) populate req.params.name
-    moduleRouter.all(/^\/(?<systemId>[^\/]+)\/(?<route>.*)/, async (req, res) => {
+    moduleRouter.all(/^(.*)$/, async (req, res) => {
         try {
-            const { systemId, route } = req.params as any;
-            const routePath = route;
+            const parts = req.path.split('/').filter(Boolean);
+            const systemId = parts[0];
+            const routePath = parts.slice(1).join('/');
+
+            if (!systemId) return res.status(404).json({ error: 'No system specified' });
+
             const { serverModules } = await import('../modules/core/server-modules');
-            const sysModule = serverModules[systemId];
+            const sysModule = (serverModules as any)[systemId];
 
             if (!sysModule || !sysModule.apiRoutes) {
-                logger.warn(`Module Routing | Module ${systemId} not found or missing apiRoutes`);
+                logger.warn(`Module Routing | Module ${systemId} not found or missing apiRoutes. Registered modules: ${Object.keys(serverModules).join(', ')}`);
+                console.error(`[DEBUG] sysModule for ${systemId}:`, sysModule ? 'exists but missing routes' : 'not found');
                 return res.status(404).json({ error: `Module ${systemId} not found` });
             }
 
-            // Find matching handler
-            const routes = Object.keys(sysModule.apiRoutes);
-            const matchedPattern = routes.find(pattern => {
-                const patternSegments = pattern.split('/');
-                const actualSegments = routePath.split('/');
-                if (patternSegments.length !== actualSegments.length) return false;
-                return patternSegments.every((p, i) => p.startsWith('[') || p === actualSegments[i]);
-            });
+            let matchedPattern: string | undefined;
+            console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
+            const routes = Object.keys(sysModule.apiRoutes || {});
+
+            for (const pattern of routes) {
+                const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
+                const isMatch = regex.test(routePath);
+                // console.error(`[DEBUG] Testing pattern: ${pattern} (Regex: ${regex}) -> ${isMatch}`);
+                if (isMatch) {
+                    logger.info(`[ModuleRouter] Matched ${routePath} to pattern ${pattern}`);
+                    matchedPattern = pattern;
+                    break;
+                }
+            }
 
             if (!matchedPattern) {
                 logger.warn(`Module Routing | No handler found for ${systemId}/${routePath}. Available routes: ${routes.join(', ')}`);
+                console.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
                 return res.status(404).json({ error: `Route ${routePath} not found` });
             }
 
             const handler = sysModule.apiRoutes[matchedPattern];
-            // Mock Next.js Request/Params for compatibility
             const nextRequest = {
                 json: async () => req.body,
                 method: req.method,
                 url: req.url,
                 headers: req.headers,
-                // CRITICAL: Inject foundryClient. Use session's client if authenticated,
-                // otherwise fall back to the system client (service account) for permissive data access.
                 foundryClient: (req as any).foundryClient || sessionManager.getSystemClient(),
                 userSession: (req as any).userSession
             } as any;
             const nextParams = { params: Promise.resolve({ systemId, route: routePath.split('/') }) };
 
+            logger.info(`Module Router | Calling handler for ${matchedPattern} with actorId: ${routePath.split('/')[1]}`);
             const result = await handler(nextRequest, nextParams);
 
-            // Handle NextResponse
             if (result && result.json) {
                 const data = await result.json();
                 return res.status(result.status || 200).json(data);
             }
-            res.json(result);
+            return res.json(result);
         } catch (error: any) {
             logger.error(`Module Routing Error (${req.path}): ${error.message}`);
-            res.status(500).json({ error: error.message });
+            return res.status(500).json({ error: error.message });
         }
     });
 
@@ -937,42 +946,11 @@ async function startServer() {
         }
     });
 
-    // --- Shadowdark Module API ---
-    const shadowdarkRouter = express.Router();
-
-    shadowdarkRouter.get('/actors/:id/level-up/data', async (req, res) => {
-        const { handleGetLevelUpData } = await import('../modules/shadowdark/api/level-up');
-        const nextRes = await handleGetLevelUpData(req.params.id, (req as any).foundryClient);
-        const data = await nextRes.json();
-        res.status(nextRes.status).json(data);
-    });
-
-    shadowdarkRouter.post('/actors/:id/level-up/roll-hp', async (req, res) => {
-        const { handleRollHP } = await import('../modules/shadowdark/api/level-up');
-        const nextRes = await handleRollHP(req.params.id, req as any, (req as any).foundryClient);
-        const data = await nextRes.json();
-        res.status(nextRes.status).json(data);
-    });
-
-    shadowdarkRouter.post('/actors/:id/level-up/roll-gold', async (req, res) => {
-        const { handleRollGold } = await import('../modules/shadowdark/api/level-up');
-        const nextRes = await handleRollGold(req.params.id, req as any, (req as any).foundryClient);
-        const data = await nextRes.json();
-        res.status(nextRes.status).json(data);
-    });
-
-    shadowdarkRouter.post('/actors/:id/level-up/finalize', async (req, res) => {
-        const { handleFinalizeLevelUp } = await import('../modules/shadowdark/api/level-up');
-        const nextRes = await handleFinalizeLevelUp(req.params.id, req as any, (req as any).foundryClient);
-        const data = await nextRes.json();
-        res.status(nextRes.status).json(data);
-    });
 
     // --- Mount Routers ---
     app.use('/api/modules', moduleRouter); // Mount before global auth middleware for permissive routes
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
-    app.use('/api/shadowdark', shadowdarkRouter);
 
     app.listen(corePort, '0.0.0.0', () => {
         logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
@@ -982,6 +960,6 @@ async function startServer() {
 }
 
 startServer().catch(err => {
-    logger.error('Core Service | Unhandled startup error:', err);
+    console.error('Core Service | Unhandled startup error:', err);
     process.exit(1);
 });

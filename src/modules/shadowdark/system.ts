@@ -1715,17 +1715,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
     /**
      * Fetch and normalize Level Up data
      */
-    async getLevelUpData(client: any, actor: any, classUuidOverride?: string) {
-        if (!actor) throw new Error("Actor is required");
-
-        const currentLevel = actor.system?.level?.value || 0;
+    async getLevelUpData(client: any, actor: any, classUuidOverride?: string, patronUuidOverride?: string) {
+        const currentLevel = actor?.system?.level?.value || 0;
         const targetLevel = currentLevel + 1;
-        const currentXP = actor.system?.level?.xp || 0;
+        const currentXP = actor?.system?.level?.xp || 0;
 
         // Prefer override if provided
-        const classUuid = classUuidOverride || actor.system?.class;
-        const patronUuid = actor.system?.patron;
-        const conMod = actor.system?.abilities?.con?.mod || 0;
+        const classUuid = classUuidOverride || actor?.system?.class;
+        const patronUuid = patronUuidOverride || actor?.system?.patron;
+        const conMod = actor?.system?.abilities?.con?.mod || 0;
 
         let classDoc = null;
         let patronDoc = null;
@@ -1797,7 +1795,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Return standardized object
         return {
             success: true,
-            actorId: actor.id || actor._id,
+            actorId: actor?.id || actor?._id || 'new',
             currentLevel,
             targetLevel,
             currentXP,
@@ -1823,6 +1821,16 @@ export class ShadowdarkAdapter implements SystemAdapter {
             // in the format: !tables.results!{tableId}.{resultId}.json
             // We use DataManager to find these files.
 
+            // FIRST: Check if DataManager already has the hydrated version
+            const uuid = table.uuid || `Compendium.shadowdark.rollable-tables.RollTable.${table._id}`;
+            const hydrated = await dataManager.getDocument(uuid);
+
+            if (hydrated && hydrated.results && Array.isArray(hydrated.results) && typeof hydrated.results[0] === 'object') {
+                logger.debug(`[ShadowdarkAdapter] Using hydrated results for table ${table._id}`);
+                return hydrated.results;
+            }
+
+            // FALLBACK: Scan all documents (existing logic)
             const allDocs = await dataManager.getAllDocuments();
             const tableId = table._id;
 
@@ -1833,7 +1841,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             });
 
             if (results && results.length > 0) {
-                logger.debug(`[ShadowdarkAdapter] Found ${results.length} cached results for table ${tableId}`);
+                logger.debug(`[ShadowdarkAdapter] Found ${results.length} cached results for table ${tableId} via scan`);
                 return results;
             }
         } catch (e) {

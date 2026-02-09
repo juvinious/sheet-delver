@@ -2,10 +2,12 @@
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } from './api/spells';
+import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
 import { handleIndex } from './api/index';
+import { handleRollTable } from './api/tables';
 import { dataManager } from './data/DataManager';
-import { getConfig } from '@/core/config';
+import { getConfig } from '../../core/config';
 import { ShadowdarkAdapter } from './system';
 
 // Initialize data cache
@@ -14,13 +16,15 @@ dataManager.initialize();
 export const apiRoutes = {
     'index': handleIndex,
     'import': handleImport,
+    'roll-table': handleRollTable,
+    'document/[uuid]': handleGetDocument,
+    'actors/level-up/data': async (request: Request) => {
+        return handleGetLevelUpData(undefined, request, (request as any).foundryClient);
+    },
     'actors/[id]/level-up/data': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1]; // Extract [id] from route array
-        return handleGetLevelUpData(actorId, (request as any).foundryClient);
-    },
-    'actors/level-up/data': async (request: Request) => {
-        return handleGetLevelUpData(undefined, (request as any).foundryClient);
+        return handleGetLevelUpData(actorId, request, (request as any).foundryClient);
     },
     'actors/[id]/effects': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -63,13 +67,13 @@ export const apiRoutes = {
         const result = await handleEffects(actorId, client, 'toggle', { effectId });
         return Response.json({ success: true, result });
     },
+    'actors/level-up/roll-hp': async (request: Request) => {
+        return handleRollHP(undefined, request, (request as any).foundryClient);
+    },
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
         return handleRollHP(actorId, request, (request as any).foundryClient);
-    },
-    'actors/level-up/roll-hp': async (request: Request) => {
-        return handleRollHP(undefined, request, (request as any).foundryClient);
     },
     'actors/level-up/roll-gold': async (request: Request) => {
         return handleRollGold(undefined, request, (request as any).foundryClient);
@@ -112,3 +116,6 @@ export const apiRoutes = {
         return handleGetSpellsBySource(request);
     }
 };
+
+console.log('[DEBUG] shadowdark/server.ts loaded. keys:', Object.keys(apiRoutes || {}));
+

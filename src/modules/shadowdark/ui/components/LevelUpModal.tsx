@@ -181,15 +181,17 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         />
                                     )}
 
-                                    <LanguageSelectionSection
-                                        languageGroups={state.languageGroups}
-                                        selectedLanguages={state.selectedLanguages}
-                                        fixedLanguages={state.fixedLanguages}
-                                        knownLanguages={state.knownLanguages}
-                                        availableLanguages={props.availableLanguages || []}
-                                        status={state.statuses.languages}
-                                        onSelectedLanguagesChange={actions.setSelectedLanguages}
-                                    />
+                                    {!props.skipLanguageSelection && (
+                                        <LanguageSelectionSection
+                                            languageGroups={state.languageGroups}
+                                            selectedLanguages={state.selectedLanguages}
+                                            fixedLanguages={state.fixedLanguages}
+                                            knownLanguages={state.knownLanguages}
+                                            availableLanguages={props.availableLanguages || []}
+                                            status={state.statuses.languages}
+                                            onSelectedLanguagesChange={actions.setSelectedLanguages}
+                                        />
+                                    )}
                                 </>
                             )}
                         </>

@@ -5,7 +5,7 @@ import { ShadowdarkImporter } from '../importer';
 
 export async function handleImport(request: Request) {
     try {
-        const client = getClient();
+        const client = (request as any).foundryClient;
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
