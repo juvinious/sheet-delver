@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { resolveGear } from './resolveGear';
 import { TALENT_HANDLERS } from './talent-handlers';
 import { ROLL_TABLE_PATTERNS } from '../../../data/roll-table-patterns';
-import { findEffectUuid } from '../../../data/talent-effects';
+import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 import { logger } from '../../../../../app/ui/logger';
 
 export interface LevelUpProps {
@@ -322,44 +322,40 @@ export const useLevelUp = (props: LevelUpProps) => {
             logger.info("[LevelUp] Raw resolved items:", resolved);
 
             if (resolved.length > 0) {
-                // Check if this is a "Choice Group"
-                // Heuristic: If we have > 1 item, and one of them is a Text/Instruction to "Choose"
-                const instructionItem = resolved.find((r: any) => {
-                    const name = r.name || "";
-                    const text = r.text || "";
-                    const desc = r.description || "";
+                if (resolved.length > 1) {
+                    // If we have an instruction, use it. If not, default to "Choose One"
+                    const instructionItem = resolved.find((r: any) => {
+                        const name = r.name || "";
+                        const text = r.text || "";
+                        const desc = r.description || "";
+                        return (r.type === 0 || r.type === 'text') && (
+                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(name) ||
+                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(text) ||
+                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(desc) ||
+                            name.toUpperCase().includes("CHOOSE")
+                        );
+                    });
 
-                    const matches = (r.type === 0 || r.type === 'text') && (
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(name) ||
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(text) ||
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(desc)
-                    );
-
-                    if (matches) logger.info(`[LevelUp] Found instruction item: ${name} (Desc: ${desc})`);
-                    else logger.debug(`[LevelUp] Item failed instruction check: ${name} | Txt: ${text} | Desc: ${desc} | Type: ${r.type}`);
-                    return matches;
-                });
-
-                if (resolved.length > 1 && instructionItem) {
-                    logger.info("[LevelUp] Detected Choice Group in roll results.");
-
-                    // The options are everything EXCEPT the instruction
+                    logger.info("[LevelUp] Multiple results detected. Forcing Choice Selection.");
                     const options = resolved.filter((r: any) => r !== instructionItem).map((r: any) => ({
                         ...r,
-                        // Ensure we have a valid img
                         img: r.img || "icons/svg/d20.svg"
                     }));
 
+                    let header = "Select an Option";
+                    if (instructionItem) {
+                        header = instructionItem.text || instructionItem.name || "Select an Option";
+                    }
+
                     setPendingChoices({
-                        header: instructionItem.text || instructionItem.name || "Choose One",
-                        options: options,
+                        header,
+                        options,
                         context: 'talent'
                     });
 
                     setStatuses(prev => ({ ...prev, talents: 'READY' }));
-                    return; // Stop here, wait for user selection
+                    return;
                 }
-
 
                 // Deduplicate
                 const newItems = resolved.filter((r: any) => {
@@ -537,17 +533,39 @@ export const useLevelUp = (props: LevelUpProps) => {
                     return resolvedDocs;
                 }
 
+                // If it's a "text" result (from a table), try to resolve it to a real item or valid fallback
+                if (r.type === 'text' || r.type == 0) {
+                    const text = r.text || r.name || r.description || "";
+                    const predefinedUuid = findEffectUuid(text);
+
+                    if (predefinedUuid) {
+                        const doc = await fetchByUuid(predefinedUuid);
+                        if (doc) {
+                            resolvedDocs.push(doc);
+                        } else {
+                            resolvedDocs.push({
+                                type: context === 'boon' ? 'Boon' : 'Talent',
+                                name: text || "Unknown",
+                                description: r.description || text || "",
+                                isManual: true,
+                                img: r.img || "icons/svg/item-bag.svg",
+                                system: {}
+                            });
+                        }
+                    } else {
+                        resolvedDocs.push({
+                            type: context === 'boon' ? 'Boon' : 'Talent',
+                            name: text || "Unknown",
+                            description: r.description || text || "",
+                            isManual: true,
+                            img: r.img || "icons/svg/item-bag.svg",
+                            system: {}
+                        });
+                    }
+                }
                 // If it's already a resolved document from the server (has type and system)
-                if (r.type && r.system && !r.isManual) {
+                else if (r.type && r.system && !r.isManual) {
                     resolvedDocs.push(r);
-                } else if (r.type === 'text' || r.type == 0) {
-                    resolvedDocs.push({
-                        type: context === 'boon' ? 'Boon' : 'Talent',
-                        name: r.text || r.name || r.description || "Unknown",
-                        description: r.description || r.text || "",
-                        isManual: true,
-                        img: r.img
-                    });
                 } else if (r.documentUuid || r.documentId || r.uuid) {
                     const uuid = r.documentUuid || r.uuid || `Compendium.${r.collection}.${r.documentId}`;
                     logger.debug("Fetching document for choice:", uuid);
@@ -623,7 +641,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                         if (effectUuid) {
                             const doc = await fetchByUuid(effectUuid);
                             if (doc) {
-                                const cleaned = { ...doc };
+                                const cleaned = (doc.toObject ? doc.toObject() : { ...doc });
                                 delete cleaned._id;
                                 if (!cleaned.system) cleaned.system = {};
                                 cleaned.system.level = targetLevel;
@@ -715,8 +733,19 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
 
             if (activeClassObj && (activeClassObj.uuid !== classObj?.uuid || currentLevel === 0)) {
-                const classItem = { ...activeClassObj, type: 'Class' };
+                const classItem = { ...(activeClassObj.toObject ? activeClassObj.toObject() : activeClassObj), type: 'Class' };
                 delete classItem._id;
+
+                // Clean problematic system arrays that cause creation errors
+                if (classItem.system) {
+                    delete classItem.system.armor;
+                    delete classItem.system.weapons;
+                    delete classItem.system.talents;
+                    delete classItem.system.classAbilities;
+                    delete classItem.system.languages; // Helper data, not needed on actor
+                    delete classItem.system.titles; // Helper data
+                }
+
                 if (!classItem.flags) classItem.flags = {};
                 if (!classItem.flags.core) classItem.flags.core = {};
                 if (!classItem.flags.core.sourceId) classItem.flags.core.sourceId = activeClassObj.uuid;
@@ -726,7 +755,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             if (selectedPatronUuid && selectedPatronUuid !== (patron?.uuid || patron?._id)) {
                 const fullPatron = await fetchByUuid(selectedPatronUuid);
                 if (fullPatron) {
-                    const patronItem = { ...fullPatron };
+                    const patronItem = { ...(fullPatron.toObject ? fullPatron.toObject() : fullPatron) };
                     delete patronItem._id;
                     if (!patronItem.flags) patronItem.flags = {};
                     if (!patronItem.flags.core) patronItem.flags.core = {};
@@ -737,14 +766,79 @@ export const useLevelUp = (props: LevelUpProps) => {
 
             const finalLanguageUuids = Array.from(selectedLanguages);
 
+            // Apply Handlers (mutateItem) to ALL items (Class, Ancestry, Talents, etc)
+            // This ensures standard effects are polyfilled using the 'missing-effects' handler
+            // avoiding manual ad-hoc fixes and keeping logic centralized in talent-handlers.ts
+            for (const item of items) {
+                for (const handler of TALENT_HANDLERS) {
+                    if (handler.matches(item) && handler.mutateItem) {
+                        try {
+                            handler.mutateItem(item, {
+                                statSelection,
+                                weaponMasterySelection,
+                                armorMasterySelection,
+                                extraSpellSelection,
+                                targetLevel
+                            });
+                        } catch (e) {
+                            logger.error(`[LevelUp] Error applying handler ${handler.id} to ${item.name}`, e);
+                        }
+                    }
+                }
+            }
+
+            // Verify Handler Results
+            logger.info("[LevelUp] Handler Loop Complete. Inspecting Item Effects:");
+            items.forEach((i: any) => {
+                logger.info(`- Item: ${i.name} (ID: ${i._id})`);
+                if (i.effects) {
+                    logger.info(`  Effects: ${JSON.stringify(i.effects)}`);
+                } else {
+                    logger.info(`  Effects: <undefined>`);
+                }
+            });
+
+            // Final Sanitization of ALL items
+            // This catches Ancestry, Background, and any other items that might have helper arrays
+            // which Foundry tries to validate as Embedded Collections (causing _id errors)
+            // AND catches any remaining "text" items
+            const sanitizedItems = items.map((item: any) => {
+                const clean = { ...item };
+
+                // 1. Fix "text" types that slipped through
+                if (clean.type === 'text' || clean.type == 0) {
+                    clean.type = 'Talent';
+                    clean.img = clean.img || "icons/svg/item-bag.svg";
+                    clean.system = {};
+                }
+
+                // 2. Remove problematic system arrays that are just strings (Generic Approach)
+                if (clean.system) {
+                    Object.keys(clean.system).forEach(key => {
+                        const val = clean.system[key];
+                        if (Array.isArray(val)) {
+                            // Check if it contains strings (or is empty, which implies we don't need it if it was a collection)
+                            // Note: Empty arrays might be fine, but if it was meant to be a collection of Embedded Options, 
+                            // removing it is generally safe for creation as we are resolved.
+                            if (val.length === 0 || typeof val[0] === 'string') {
+                                delete clean.system[key];
+                            }
+                        }
+                    });
+                }
+
+                return clean;
+            });
+
             const data = {
                 hpRoll: (hpRoll as any)?.total ?? hpRoll,
                 gold: (goldRoll as any)?.total ?? goldRoll,
-                items,
+                items: sanitizedItems,
                 languages: finalLanguageUuids,
                 targetLevel
             };
 
+            logger.info('[useLevelUp] Completing Level Up with Sanitized Data:', data);
             onComplete(data);
         } catch (e: any) {
             setError(e.message);

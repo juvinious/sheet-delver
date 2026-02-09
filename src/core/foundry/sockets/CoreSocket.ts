@@ -376,7 +376,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async dispatchDocumentSocket(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }, failHard: boolean = true): Promise<any> {
         if (!this.socket?.connected) throw new Error('Socket not connected');
-        if (parent) operation.parentUuid = `${parent.type}.${parent.id}`;
+        //if (parent) operation.parentUuid = `${parent.type}.${parent.id}`;
+        if (parent) {
+            // Mapping simplistic type/id to UUID
+            operation.parentUuid = `${parent.type}.${parent.id}`;
+        }
+        else if (operation.parent && typeof operation.parent === 'object') {
+            operation.parentUuid = `${operation.parent.type}.${operation.parent.id}`;
+            delete operation.parent;
+        }
 
         try {
             const result = await this.emitSocketEvent('modifyDocument', { type, action, operation }, 5000);

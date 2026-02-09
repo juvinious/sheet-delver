@@ -186,7 +186,13 @@ export class ClientSocket extends SocketBase {
     }
 
     public async createActor(data: any): Promise<any> {
-        return this.coreSocket.createActor(data);
+        // Normalize to array for 'data' field in socket operation
+        const batch = Array.isArray(data) ? data : [data];
+        const response = await this.dispatchDocument('Actor', 'create', { data: batch });
+        // Return first document if single creation, otherwise full result array
+        return Array.isArray(data) ? response?.result : response?.result?.[0];
+
+        //return this.coreSocket.createActor(data);
     }
 
     public async deleteActor(id: string): Promise<any> {
@@ -217,7 +223,40 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.getAllCompendiumIndices();
     }
 
-    public async dispatchDocument(type: string, action: string, operation?: any, parent?: { type: string, id: string }): Promise<any> {
+    public async emitSocketEvent<T>(event: string, payload: any, timeoutMs: number = 5000): Promise<T> {
+        if (!this.socket || !this.isConnected) throw new Error(`Not connected to Foundry`);
+
+        return new Promise((resolve, reject) => {
+            this.socket!.emit(event, payload, (response: any) => {
+                if (response?.error) {
+                    reject(new Error(typeof response.error === 'string' ? response.error : JSON.stringify(response.error)));
+                } else {
+                    resolve(response);
+                }
+            });
+            setTimeout(() => reject(new Error(`Timeout waiting for event: ${event}`)), timeoutMs);
+        });
+    }
+
+    public async dispatchDocument(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }): Promise<any> {
+        // If we represent a user session and are connected, USE OUR OWN SOCKET to act as the User
+        if (this.isConnected && this.socket) {
+            if (parent) {
+                operation.parentUuid = `${parent.type}.${parent.id}`;
+            }
+            else if (operation.parent && typeof operation.parent === 'object') {
+                operation.parentUuid = `${operation.parent.type}.${operation.parent.id}`;
+                delete operation.parent;
+            }
+
+            try {
+                return await this.emitSocketEvent('modifyDocument', { type, action, operation }, 5000);
+            } catch (e: any) {
+                logger.warn(`ClientSocket | Dispatch failed on user socket: ${e.message}`);
+                throw e;
+            }
+        }
+
         return this.coreSocket.dispatchDocument(type, action, operation, parent);
     }
 

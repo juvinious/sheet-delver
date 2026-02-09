@@ -5,6 +5,7 @@ import { Crimson_Pro, Inter } from 'next/font/google';
 import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@/app/ui/logger';
 import { useConfig } from '@/app/ui/context/ConfigContext';
+import { TALENT_HANDLERS } from '../components/levelup/talent-handlers';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -1034,6 +1035,29 @@ export default function Generator() {
                     if (!itemData.flags.core) itemData.flags.core = {};
                     itemData.flags.core.sourceId = uuid;
 
+                    // Validate & Sanitize Effects using Handlers
+                    // This fixes the "Cannot create property '_id' on string" crash
+                    // by converting legacy string effects to objects or removing them
+                    for (const handler of TALENT_HANDLERS) {
+                        if (handler.matches(itemData)) {
+                            try {
+                                // Some handlers expect a full state object, but for Generator base items
+                                // we just need the mutateItem logic (mostly for missing-effects)
+                                if (handler.mutateItem) {
+                                    handler.mutateItem(itemData, {} as any);
+                                }
+                            } catch (e) {
+                                // If handler fails (e.g. missing context), just ignore
+                                // Our main goal is the missing-effects cleanup
+                            }
+                        }
+                    }
+
+                    // Safety Fallback: Nuke any remaining string effects
+                    if (itemData.effects && Array.isArray(itemData.effects) && itemData.effects.length > 0 && typeof itemData.effects[0] === 'string') {
+                        itemData.effects = [];
+                    }
+
                     // FORCE LEVEL 1 for Level 1 Characters
                     // Unless it's Level 0 mode, all added items should be active (Level 1)
                     if (!formData.level0 && itemData.system && typeof itemData.system.level !== 'undefined') {
@@ -1300,6 +1324,7 @@ export default function Generator() {
             };
 
             // 3. Send to API
+
             const headers: any = { 'Content-Type': 'application/json' };
             const token = sessionStorage.getItem('sheet-delver-token');
             if (token) headers['Authorization'] = `Bearer ${token}`;

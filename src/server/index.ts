@@ -420,6 +420,7 @@ async function startServer() {
         try {
             const client = (req as any).foundryClient;
             const actorData = req.body;
+            logger.debug('Core Service | Create Actor:', actorData);
             const newActor = await client.createActor(actorData);
 
             // Handle potential error from socket
