@@ -72,9 +72,11 @@ export interface ItemRowProps {
     toggleItem: (id: string) => void;
     onUpdate: (path: string, value: any) => void;
     onDelete?: (itemId: string) => void;
+    isTreasure?: boolean;
+    onSell?: (item: any) => void;
 }
 
-export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }: ItemRowProps) {
+export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, isTreasure, onSell }: ItemRowProps) {
     const { resolveImageUrl } = useConfig();
     // Optimistic States
     const [equipped, setEquipped] = useState(item.system?.equipped || false);
@@ -139,6 +141,16 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
         propertiesDisplay = Object.keys(rawProps).filter(k => rawProps[k]);
     }
 
+    // Cost Formatter
+    const formatCost = (cost: any) => {
+        if (!cost) return '-';
+        const parts = [];
+        if (cost.gp) parts.push(`${cost.gp} gp`);
+        if (cost.sp) parts.push(`${cost.sp} sp`);
+        if (cost.cp) parts.push(`${cost.cp} cp`);
+        return parts.length > 0 ? parts.join(', ') : '-';
+    };
+
     return (
         <div
             className="group cursor-pointer hover:bg-neutral-100 transition-colors"
@@ -182,14 +194,18 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
                     </div>
                 </div>
                 <div className="col-span-2 text-center font-bold text-neutral-500 flex justify-center items-center gap-1">
-                    {(item.system?.slots?.per_slot || 1) > 1 ? (
-                        <QuantityControl
-                            value={item.system?.quantity ?? 1}
-                            max={item.system?.slots?.per_slot || 0}
-                            onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
-                        />
+                    {isTreasure ? (
+                        <span className="text-amber-600">{formatCost(item.system?.cost)}</span>
                     ) : (
-                        item.showQuantity ? (item.system?.quantity || 1) : ''
+                        (item.system?.slots?.per_slot || 1) > 1 ? (
+                            <QuantityControl
+                                value={item.system?.quantity ?? 1}
+                                max={item.system?.slots?.per_slot || 0}
+                                onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
+                            />
+                        ) : (
+                            item.showQuantity ? (item.system?.quantity || 1) : ''
+                        )
                     )}
                 </div>
                 <div className="col-span-2 text-center">{calculateItemSlots(item) === 0 ? '-' : calculateItemSlots(item)}</div>
@@ -231,6 +247,25 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete }:
                                 <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
                                 <path d="m3.3 7 8.7 5 8.7-5"></path>
                                 <path d="M12 22V12"></path>
+                            </svg>
+                        </button>
+                    )}
+
+                    {/* Sell Button (Treasure Only) */}
+                    {isTreasure && onSell && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSell(item);
+                            }}
+                            title="Sell Treasure"
+                            className="w-10 h-10 flex items-center justify-center rounded hover:bg-amber-100 text-neutral-300 hover:text-amber-600 transition-colors group/sell touch-manipulation"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="8" cy="8" r="6" />
+                                <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+                                <path d="M7 6h1v4" />
+                                <path d="m16.71 13.88.7 .71-2.82 2.82" />
                             </svg>
                         </button>
                     )}

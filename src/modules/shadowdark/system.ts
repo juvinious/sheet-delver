@@ -1381,11 +1381,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             const slots = calculateItemSlots(item);
 
-            if (system.equipped && type !== 'Gem') {
-                equipped.push({ ...item, derived: { ...item.derived, slots } });
-                if (!system.stashed) totalSlots += slots;
-            } else if (system.stashed && type !== 'Gem') {
+            if (system.stashed && type !== 'Gem') {
                 stashed.push({ ...item, derived: { ...item.derived, slots } });
+            } else if (system.equipped && type !== 'Gem') {
+                equipped.push({ ...item, derived: { ...item.derived, slots } });
+                // if (!system.stashed) totalSlots += slots; // Redundant now as stashed is handled above
+                totalSlots += slots;
             } else {
                 // Carried (Not Equipped, Not Stashed) or a Gem (which we handle specially)
                 const excludedTypes = ['Class', 'Ancestry', 'Background', 'Language', 'Talent', 'Spell', 'Effect', 'Deity', 'Title', 'Feature', 'Boon', 'Gem'];
@@ -1396,8 +1397,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 // Treasure (non-gem) still counts towards slots per item if not stashed
-                if ((type === 'Treasure' || !isExcluded) && type !== 'Gem' && !system.equipped) {
-                    if (!system.stashed) totalSlots += slots;
+                // Logic: It is carried (not equipped, not stashed), so it counts.
+                if ((type === 'Treasure' || !isExcluded) && type !== 'Gem') {
+                    totalSlots += slots;
                 }
             }
         });

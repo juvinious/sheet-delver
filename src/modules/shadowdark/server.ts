@@ -4,6 +4,7 @@ import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevel
 import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } from './api/spells';
 import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
+import { handleGetGear } from './api/gear';
 import { handleIndex } from './api/index';
 import { handleRollTable } from './api/tables';
 import { dataManager } from './data/DataManager';
@@ -16,6 +17,7 @@ dataManager.initialize();
 export const apiRoutes = {
     'index': handleIndex,
     'import': handleImport,
+    'gear/list': handleGetGear,
     'roll-table': handleRollTable,
     'document/[uuid]': handleGetDocument,
     'actors/level-up/data': async (request: Request) => {
