@@ -121,3 +121,44 @@ Executes a roll on a specific RollTable by UUID.
   "total": 12
 }
 ```
+
+## Shadowdark Module Routes
+Base URL: `/api/modules/shadowdark`
+
+### `GET /gear/list`
+Returns a list of all gear items from the `gear` and `magic-items` compendiums.
+**Response**: Array of Item objects.
+
+### `GET /spells/list`
+Returns a list of all spells from the `spells` compendium.
+**Response**: Array of Item objects.
+
+### `GET /effects/predefined-effects`
+Returns the system's predefined effects (e.g., "Blind", "Blessed").
+
+### `GET /actors/:id/level-up/data`
+Returns context data for the Level Up wizard (class, ancestry, available talents).
+
+### `POST /actors/:id/level-up/roll-hp`
+Rolls HP for the current level.
+**Response**: `{ "roll": { "total": 4, "result": "1d4" }, "success": true }`
+
+### `POST /actors/:id/level-up/roll-gold`
+Rolls starting gold for a new character.
+**Response**: `{ "roll": { "total": 10, "result": "2d6 * 5" }, "success": true }`
+
+### `POST /actors/:id/level-up/finalize`
+Applied all pending level-up changes (HP, Talents, Stats) to the actor.
+**Body**:
+```json
+{
+  "hp": { "value": 4, "formula": "1d4" },
+  "talents": [ ... ],
+  "stats": { ... },
+  "gold": 10
+}
+```
+
+### `POST /actors/:id/spells/learn`
+Adds a spell to the actor's "Known Spells" (or relevant ability).
+**Body**: `{ "spellId": "uuid" }`
