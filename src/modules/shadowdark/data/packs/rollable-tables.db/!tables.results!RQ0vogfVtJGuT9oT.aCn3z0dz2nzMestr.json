@@ -6,8 +6,8 @@
 	"drawn": false,
 	"img": "icons/svg/d20-black.svg",
 	"range": [
-		12,
-		12
+		10,
+		10
 	],
 	"text": "Learn an additional wizard spell of any tier you know",
 	"type": 0,

@@ -6,8 +6,8 @@
 	"drawn": false,
 	"img": "icons/svg/d20-black.svg",
 	"range": [
-		12,
-		12
+		11,
+		11
 	],
 	"text": "Make on random magic item",
 	"type": 0,

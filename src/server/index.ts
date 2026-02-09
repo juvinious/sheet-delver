@@ -461,7 +461,6 @@ async function startServer() {
             const result = await client.roll(rollData.formula, rollData.label);
             res.json({ success: true, result, label: rollData.label });
         } catch (error: any) {
-            logger.error(`Core Service | Roll failed: ${error.message}`);
             res.status(500).json({ error: error.message });
         }
     });
@@ -705,6 +704,13 @@ async function startServer() {
         }
     });
 
+    appRouter.post('/foundry/roll-table', async (req, res) => {
+        const { handleRollTable } = await import('./api/tables');
+        const nextRes = await handleRollTable(req as any);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
     appRouter.get('/session/users', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -928,9 +934,42 @@ async function startServer() {
         }
     });
 
-    app.use('/api/modules', moduleRouter);
+    // --- Shadowdark Module API ---
+    const shadowdarkRouter = express.Router();
+
+    shadowdarkRouter.get('/actors/:id/level-up/data', async (req, res) => {
+        const { handleGetLevelUpData } = await import('../modules/shadowdark/api/level-up');
+        const nextRes = await handleGetLevelUpData(req.params.id, (req as any).foundryClient);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    shadowdarkRouter.post('/actors/:id/level-up/roll-hp', async (req, res) => {
+        const { handleRollHP } = await import('../modules/shadowdark/api/level-up');
+        const nextRes = await handleRollHP(req.params.id, req as any, (req as any).foundryClient);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    shadowdarkRouter.post('/actors/:id/level-up/roll-gold', async (req, res) => {
+        const { handleRollGold } = await import('../modules/shadowdark/api/level-up');
+        const nextRes = await handleRollGold(req.params.id, req as any, (req as any).foundryClient);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    shadowdarkRouter.post('/actors/:id/level-up/finalize', async (req, res) => {
+        const { handleFinalizeLevelUp } = await import('../modules/shadowdark/api/level-up');
+        const nextRes = await handleFinalizeLevelUp(req.params.id, req as any, (req as any).foundryClient);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    // --- Mount Routers ---
+    app.use('/api/modules', moduleRouter); // Mount before global auth middleware for permissive routes
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
+    app.use('/api/shadowdark', shadowdarkRouter);
 
     app.listen(corePort, '0.0.0.0', () => {
         logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);

@@ -650,10 +650,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
     async createActor(data: any): Promise<any> {
-        // Create uses 'data' array in operation
-        const response = await this.dispatchDocumentSocket('Actor', 'create', { data: [data] });
-        // Response.result is array of created docs
-        return response?.result?.[0];
+        // Normalize to array for 'data' field in socket operation
+        const batch = Array.isArray(data) ? data : [data];
+        const response = await this.dispatchDocumentSocket('Actor', 'create', { data: batch });
+        // Return first document if single creation, otherwise full result array
+        return Array.isArray(data) ? response?.result : response?.result?.[0];
     }
 
     async deleteActor(id: string): Promise<any> {
@@ -666,10 +667,16 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
     async createActorItem(actorId: string, itemData: any): Promise<any> {
+        // Normalize to array for 'data' field
+        const batch = Array.isArray(itemData) ? itemData : [itemData];
         const response = await this.dispatchDocumentSocket('Item', 'create',
-            { data: [itemData] },
+            { data: batch },
             { type: 'Actor', id: actorId }
         );
+        // Return first ID if single creation, otherwise array of IDs/docs
+        if (Array.isArray(itemData)) {
+            return response?.result;
+        }
         return response?.result?.[0]?._id;
     }
 
@@ -728,8 +735,271 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
     public async roll(formula: string, flavor?: string, userId?: string): Promise<any> {
-        return await this.sendMessage(`Rolling ${formula}: ${flavor || ''}`, userId);
+        try {
+            // Dynamic import to avoid circular dependencies if any (though Roll is standalone)
+            const { Roll } = await import('../classes/Roll'); // Path check required
+            const roll = new Roll(formula);
+            await roll.evaluate();
+
+            const chatData = {
+                author: userId || this.userId,
+                // speaker: { alias: ... } // Foundry often auto-populates speaker from author if missing, or we can add it
+                content: String(roll.total),
+                flavor: flavor,
+                type: 0, // In v13, style 5 is deprecated; rolls are defined by the rolls array
+                rolls: [JSON.stringify(roll.toJSON())], // Explicit stringification for safe transport
+                flags: {},
+                sound: 'sounds/dice.wav' // Optional: generic sound
+            };
+
+            const response: any = await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [chatData] });
+            return response?.result?.[0];
+        } catch (e: any) {
+            logger.error(`CoreSocket | Roll failed: ${e.message}`);
+            // Fallback to text message
+            return await this.sendMessage(`Rolling ${formula}: ${flavor || ''} (Error: ${e.message})`, userId);
+        }
     }
+
+    /**
+     * Roll on a Foundry RollTable and return the results.
+     * Mimics Foundry's native RollTable.draw() behavior.
+     * 
+     * @param tableUuid - UUID of the table to roll on (e.g., "Compendium.shadowdark.rollable-tables.RQ0vogfVtJGuT9oT")
+     * @param options - Optional configuration
+     * @param options.roll - Pre-made roll to use instead of rolling the table formula
+     * @param options.displayChat - Whether to send result to chat (default: true)
+     * @param options.rollMode - Roll mode ('public', 'private', 'blind', 'self')
+     * @param options.actorId - Actor context for the roll
+     * @returns Object containing the roll, matched results, and total
+     */
+    public async rollTable(tableUuid: string, options: {
+        roll?: any;
+        displayChat?: boolean;
+        interactionId?: string;
+        rollMode?: string;
+        actorId?: string;
+        userId?: string;
+    } = {}): Promise<{
+        roll: any;
+        results: any[];
+        total: number;
+    }> {
+        try {
+            logger.info(`[CoreSocket] Rolling table: ${tableUuid}`);
+            const userId = options.userId || this.userId;
+
+            // 1. Fetch the table document
+            const table = await this.fetchByUuid(tableUuid);
+            if (!table) {
+                throw new Error(`RollTable not found: ${tableUuid}`);
+            }
+
+            logger.debug(`[CoreSocket] Fetched table: ${table.name}`);
+
+            // 2. Get table results
+            // In Foundry, table.results is a Collection of TableResult objects
+            // When fetched via socket, it might be an array of IDs or objects
+            const tableResults = table.results || [];
+            logger.debug(`[CoreSocket] Table has ${Array.isArray(tableResults) ? tableResults.length : 'unknown'} results`);
+
+            // Check if results are already objects with range data
+            const firstResult = Array.isArray(tableResults) ? tableResults[0] : null;
+            const resultsAreObjects = firstResult && typeof firstResult === 'object' && firstResult.range;
+
+            logger.debug(`[CoreSocket] Results are ${resultsAreObjects ? 'objects' : 'IDs'}`);
+
+            // 3. Perform the roll
+            let roll: any = options.roll;
+            if (!roll) {
+                const formula = table.formula || `1d${tableResults.length}`;
+                logger.debug(`[CoreSocket] Rolling formula: ${formula}`);
+
+                // Dynamic import to avoid circular dependencies
+                const { Roll } = await import('../classes/Roll');
+                roll = new Roll(formula);
+                await roll.evaluate();
+            }
+
+            const total = roll.total;
+            logger.info(`[CoreSocket] Roll total: ${total}`);
+
+            // 4. Match results based on roll total
+            // Mimics Foundry's getResultsForRoll: filter results where value is between range
+            let matches: any[] = [];
+
+            if (resultsAreObjects) {
+                // Results are already full objects with range data
+                matches = tableResults.filter((r: any) => {
+                    const range = r.range || [1, 1];
+                    const isMatch = total >= range[0] && total <= range[1];
+                    if (isMatch) {
+                        logger.debug(`[CoreSocket] Matched result: ${r.text || r.name} (range: ${range[0]}-${range[1]})`);
+                    }
+                    return isMatch;
+                });
+            } else {
+                // Results are IDs - need to expand them
+                // Strategy: 
+                // 1. Try system adapter expansion (handles shadowdark stale data issue via DataManager)
+                // 2. Fallback to fetching via UUID from Foundry (standard behavior)
+
+                logger.debug(`[CoreSocket] Expanding ${tableResults.length} result IDs form table ${tableUuid}...`);
+
+                let expandedResults: any[] = [];
+                let usedAdapter = false;
+
+                // 1. Adapter Expansion
+                if (this.adapter && this.adapter.expandTableResults) {
+                    try {
+                        const adapterResults = await this.adapter.expandTableResults(this, table);
+                        if (adapterResults && adapterResults.length > 0) {
+                            expandedResults = adapterResults;
+                            usedAdapter = true;
+                            logger.debug(`[CoreSocket] Expanded ${expandedResults.length} results via Adapter`);
+                        }
+                    } catch (err) {
+                        logger.warn(`[CoreSocket] Adapter expansion failed: ${err}`);
+                    }
+                }
+
+                // 2. Standard Foundry Fetch (Fallback)
+                if (!usedAdapter) {
+                    logger.debug(`[CoreSocket] Falling back to standard Foundry UUID fetch...`);
+
+                    // Fetch each embedded TableResult document from Foundry
+                    for (const resultId of tableResults) {
+                        let result = null;
+
+                        // Try multiple UUID formats for embedded documents
+                        const uuidFormats = [
+                            `${tableUuid}.TableResult.${resultId}`,
+                            resultId
+                        ];
+
+                        for (const uuid of uuidFormats) {
+                            try {
+                                result = await this.fetchByUuid(uuid);
+                                if (result && result.range) {
+                                    expandedResults.push(result);
+                                    logger.debug(`[CoreSocket] Fetched result via UUID: ${uuid}`);
+                                    break;
+                                }
+                            } catch (err) {
+                                // Try next format
+                            }
+                        }
+
+                        if (!result) {
+                            logger.warn(`[CoreSocket] Could not fetch result: ${resultId}`);
+                        }
+                    }
+                }
+
+                logger.debug(`[CoreSocket] Expanded total ${expandedResults.length} results`);
+
+                // Log all fetched results for debugging
+                if (expandedResults.length > 0) {
+                    logger.debug(`[CoreSocket] Fetched results:`);
+                    expandedResults.forEach((r: any) => {
+                        logger.debug(`  - ${r.text || r.name} (range: ${r.range?.[0]}-${r.range?.[1]})`);
+                    });
+                }
+
+                // Now filter the expanded results
+                if (expandedResults.length > 0) {
+                    matches = expandedResults.filter((r: any) => {
+                        const range = r.range || [1, 1];
+                        const isMatch = total >= range[0] && total <= range[1];
+                        if (isMatch) {
+                            logger.debug(`[CoreSocket] Matched result: ${r.text || r.name} (range: ${range[0]}-${range[1]})`);
+                        }
+                        return isMatch;
+                    });
+                } else {
+                    logger.error(`[CoreSocket] Could not expand any result IDs from Foundry`);
+                    matches = [];
+                }
+            }
+
+            logger.info(`[CoreSocket] Found ${matches.length} matching results`);
+
+            if (matches.length === 0) {
+                logger.warn(`[CoreSocket] No results matched roll total ${total}`);
+            }
+
+            // 5. Optionally send to chat
+            if (options.displayChat && matches.length > 0) {
+                // Construct rich chat card content
+                let content = `<div class="table-draw">`;
+
+                for (const result of matches) {
+                    const text = result.text || result.name;
+                    const img = result.img || result.icon || 'icons/svg/d20-grey.svg';
+
+                    content += `
+                        <div class="result-row">
+                            <img class="result-image" src="${img}" alt="${text}" width="32" height="32" style="border:none; vertical-align:middle; margin-right:5px;"/>
+                            <span class="result-text">${text}</span>
+                        </div>
+                    `;
+
+                    // If it's a document reference, maybe add a link (optional, but nice)
+                    // But for now, just text and image is a huge improvement.
+                }
+                content += `</div>`;
+
+                const rollMode = options.rollMode || 'public';
+                const rollModeData = await this.resolveRollMode(rollMode, userId);
+
+                const chatData = {
+                    user: userId,
+                    speaker: options.actorId ? { actor: options.actorId } : { alias: table.name },
+                    flavor: `Draws a result from the <b>${table.name}</b> table`,
+                    content: content,
+                    type: 0, // OTHER (with rolls)
+                    rolls: [JSON.stringify(roll.toJSON())], // Explicit stringification for safe transport
+                    sound: 'sounds/dice.wav', // Optional: generic sound
+                    flags: {
+                        core: {
+                            RollTable: table.id
+                        }
+                    },
+                    ...rollModeData
+                };
+
+                await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [chatData] });
+            }
+
+            return {
+                roll: roll,
+                results: matches,
+                total
+            };
+
+        } catch (error: any) {
+            logger.error(`[CoreSocket] rollTable failed: ${error.message}`);
+            throw error;
+        }
+    }
+
+    private async resolveRollMode(mode: string, userId: string | null) {
+        if (mode === 'public') return {};
+        if (mode === 'self') return { whisper: userId ? [userId] : [] };
+
+        // For blind/private/gm, we need GM users
+        const users = await this.getUsers();
+        // Role 4 is GM in Foundry (CONST.USER_ROLES.GAMEMASTER)
+        // Adjust if needed. Usually 4 is GM, 3 is Assistant GM.
+        const gmIds = users.filter((u: any) => u.role >= 3).map((u: any) => u._id);
+
+        if (mode === 'gm') return { whisper: gmIds };
+        if (mode === 'blind') return { blind: true, whisper: gmIds };
+        if (mode === 'private') return { whisper: gmIds.concat(userId ? [userId] : []) };
+
+        return {};
+    }
+
 
     async useItem(actorId: string, itemId: string): Promise<any> {
         const actor = await this.getActor(actorId);

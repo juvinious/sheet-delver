@@ -232,4 +232,17 @@ export class ClientSocket extends SocketBase {
     public async getSystemConfig(): Promise<any> {
         return this.coreSocket.getSystemConfig();
     }
+    public async rollTable(tableUuid: string, options: {
+        roll?: any;
+        displayChat?: boolean;
+        interactionId?: string;
+        rollMode?: string;
+        actorId?: string;
+    } = {}): Promise<{
+        roll: any;
+        results: any[];
+        total: number;
+    }> {
+        return this.coreSocket.rollTable(tableUuid, { ...options, userId: this.userId || undefined });
+    }
 }

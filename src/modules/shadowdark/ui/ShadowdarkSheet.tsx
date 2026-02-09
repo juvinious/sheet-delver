@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import RollDialog from '@/app/ui/components/RollDialog';
+import ErrorBoundary from './components/ErrorBoundary';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
@@ -62,7 +63,10 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         const fetchCasterInfo = async () => {
             try {
                 const id = actor._id || actor.id;
-                const res = await fetch(`/api/modules/shadowdark/actors/${id}/spellcaster`);
+                const headers: any = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                const res = await fetch(`/api/modules/shadowdark/actors/${id}/spellcaster`, { headers });
                 if (res.ok) {
                     const data = await res.json();
                     setServerSideCasterInfo(data);
@@ -314,9 +318,9 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 setLevelUpData({
                                     currentLevel: actor.system?.level?.value || 0,
                                     targetLevel: (actor.system?.level?.value || 0) + 1,
-                                    classObj: actor.classDetails, // May be missing if not populated by parent
+                                    classObj: actor.computed?.classDetails,
                                     ancestry: actor.system?.ancestry,
-                                    patron: actor.patronDetails,
+                                    patron: actor.computed?.patronDetails,
                                     abilities: actor.system?.abilities,
                                     spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
                                     // If Level 0, force empty classUuid so modal prompts for class selection
@@ -466,16 +470,18 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
                 {
                     activeTab === 'spells' && (
-                        <SpellsTab
-                            actor={actor}
-                            systemData={systemData}
-                            onUpdate={onUpdate}
-                            triggerRollDialog={triggerRollDialog}
-                            onRoll={onRoll}
-                            onDeleteItem={onDeleteItem}
-                            addNotification={addNotification}
-                            token={token}
-                        />
+                        <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
+                            <SpellsTab
+                                actor={actor}
+                                systemData={systemData}
+                                onUpdate={onUpdate}
+                                triggerRollDialog={triggerRollDialog}
+                                onRoll={onRoll}
+                                onDeleteItem={onDeleteItem}
+                                addNotification={addNotification}
+                                token={token}
+                            />
+                        </ErrorBoundary>
                     )
                 }
 
@@ -570,13 +576,17 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 }
 
                                 const id = actor._id || actor.id;
+                                const headers: any = { 'Content-Type': 'application/json' };
+                                if (token) headers['Authorization'] = `Bearer ${token}`;
+
                                 const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
+                                    headers,
                                     body: JSON.stringify({
                                         hpRoll: data.hpRoll,
                                         items: data.items,
-                                        languages: data.languages
+                                        languages: data.languages,
+                                        gold: data.gold
                                     })
                                 });
                                 const result = await res.json();

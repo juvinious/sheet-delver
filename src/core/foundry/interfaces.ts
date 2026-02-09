@@ -63,6 +63,7 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
 
     useItem(actorId: string, itemId: string): Promise<any>;
     roll(formula: string, flavor?: string): Promise<any>;
+    rollTable(tableUuid: string, options?: any): Promise<any>;
 
     // World Management (Admin CLI)
     getWorlds(): Promise<any[]>;

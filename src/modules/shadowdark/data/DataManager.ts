@@ -47,11 +47,40 @@ class DataManager {
 
                 if (stat.isDirectory()) {
                     scanDirectory(fullPath);
-                } else if (file.endsWith('.json') && !file.startsWith('!')) {
+                } else if (file.endsWith('.json')) {
                     try {
                         const content = fs.readFileSync(fullPath, 'utf-8');
                         const data = JSON.parse(content);
 
+                        // Handle embedded documents (files starting with '!')
+                        // Example: !tables.results!RQ0vogfVtJGuT9oT.TlVUTCMj9MkYslL5.json
+                        // This is shadowdark-specific caching, but improves performance
+                        if (file.startsWith('!')) {
+                            // Parse embedded document key
+                            // Format: !tables.results!{tableId}.{resultId}.json
+                            if (file.startsWith('!tables.results!') && data._id) {
+                                const parentDir = path.basename(dir);
+                                const packName = parentDir.replace('.db', '');
+                                const system = 'shadowdark';
+
+                                // Extract table ID from filename
+                                const match = file.match(/!tables\.results!([^.]+)\.([^.]+)\.json/);
+                                if (match) {
+                                    const tableId = match[1];
+                                    const resultId = match[2];
+
+                                    // Index by result ID for direct lookup
+                                    this.index.set(resultId, data);
+
+                                    // Also index by full embedded UUID format
+                                    const embeddedUuid = `Compendium.${system}.${packName}.${tableId}.TableResult.${resultId}`;
+                                    this.index.set(embeddedUuid, data);
+                                }
+                            }
+                            continue; // Skip regular indexing for embedded docs
+                        }
+
+                        // Regular document indexing (non-embedded)
                         // Index by UUID if available
                         // Foundry exports usually have _id. The Full UUID is Compendium.<pack>.<type>.<id>
                         // But here we might just have the raw exported object.

@@ -292,10 +292,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // --- DERIVED STATS ---
                 const levelVal = actor.system.level?.value !== undefined ? Number(actor.system.level.value) : 1;
                 const xpVal = Number(actor.system.level?.xp) || 0;
+                const threshold = Number(actor.system.level?.xp_max) || (Math.max(1, levelVal) * 10);
                 const computed: any = {
                     maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
-                    xpNextLevel: levelVal * 10,
-                    levelUp: xpVal >= (levelVal * 10)
+                    xpNextLevel: threshold,
+                    levelUp: xpVal >= threshold
                 };
 
                 if (actor.type === "Player") {
@@ -957,6 +958,32 @@ export class ShadowdarkAdapter implements SystemAdapter {
             logger.debug(`[ShadowdarkAdapter] No Class item found. actor.system.class: ${actor.system?.class}`);
         }
 
+        let patronItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'patron');
+
+        // If no Patron item found, try to resolve from system.patron
+        if (!patronItem && actor.system?.patron && typeof window === 'undefined') {
+            const patronRef = actor.system.patron;
+            if (typeof patronRef === 'string') {
+                let doc = dataManager.index.get(patronRef) ||
+                    dataManager.index.get(`Compendium.${patronRef.replace('Compendium.', '')}`);
+
+                if (!doc) {
+                    const normalized = patronRef.toLowerCase();
+                    for (const d of dataManager.index.values()) {
+                        if (d.type === 'Patron' && d.name.toLowerCase() === normalized) {
+                            doc = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (doc) {
+                    patronItem = doc;
+                    logger.debug(`[ShadowdarkAdapter] Resolved missing Patron item from Ref: ${patronRef} -> ${doc.name}`);
+                }
+            }
+        }
+
         // Shadowdark Schema:
         // system.attributes.hp: { value, max, base, bonus }
         // system.attributes.ac: { value }
@@ -1068,12 +1095,20 @@ export class ShadowdarkAdapter implements SystemAdapter {
             logger.debug(`[ShadowdarkAdapter] Detected magic item usage capability`);
         }
 
+        const levelVal = s.level?.value || 0;
+        const xpVal = s.level?.xp || 0;
+        const nextXP = Number(s.level?.xp_max) || (Math.max(1, levelVal) * 10);
+        const levelUp = xpVal >= nextXP && nextXP > 0;
+
         const computed = {
             ...(actor.computed || {}),
             isSpellCaster: isCaster,
             canUseMagicItems: canMagic,
             showSpellsTab: isCaster || canMagic,
-            classDetails: classItem
+            classDetails: classItem,
+            patronDetails: patronItem,
+            xpNextLevel: nextXP,
+            levelUp: levelUp
         };
 
         // --- ROBUST EFFECT MERGING ---
@@ -1194,8 +1229,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             level: {
                 value: s.level?.value || 1,
                 xp: s.level?.xp || 0,
-                // User requirement: Display as "value / 10" (or max)
-                next: s.level?.xp_max || 10
+                next: Number(s.level?.xp_max) || (Math.max(1, s.level?.value || 1) * 10)
             },
             details: {
                 alignment: (s.alignment || s.details?.alignment) ? ((s.alignment || s.details?.alignment).charAt(0).toUpperCase() + (s.alignment || s.details?.alignment).slice(1)) : 'Neutral',
@@ -1223,7 +1257,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
         };
 
-        logger.debug(`[ShadowdarkAdapter] Normalized Data for ${actor.name}: isSpellCaster=${computed.isSpellCaster}, showSpellsTab=${computed.showSpellsTab}`);
+        logger.debug(`[ShadowdarkAdapter] Normalized Data for ${actor.name}: isSpellCaster=${computed.isSpellCaster}, showSpellsTab=${computed.showSpellsTab}, levelUp=${computed.levelUp} (${xpVal}/${nextXP})`);
 
         // Title Resolution
 
@@ -1676,5 +1710,136 @@ export class ShadowdarkAdapter implements SystemAdapter {
         } catch (e) {
             logger.error('[ShadowdarkAdapter] Failed to load local data', e);
         }
+    }
+
+    /**
+     * Fetch and normalize Level Up data
+     */
+    async getLevelUpData(client: any, actor: any, classUuidOverride?: string) {
+        if (!actor) throw new Error("Actor is required");
+
+        const currentLevel = actor.system?.level?.value || 0;
+        const targetLevel = currentLevel + 1;
+        const currentXP = actor.system?.level?.xp || 0;
+
+        // Prefer override if provided
+        const classUuid = classUuidOverride || actor.system?.class;
+        const patronUuid = actor.system?.patron;
+        const conMod = actor.system?.abilities?.con?.mod || 0;
+
+        let classDoc = null;
+        let patronDoc = null;
+
+        // 1. Try Local DataManager first (Fastest)
+        if (classUuid) classDoc = await dataManager.getDocument(classUuid);
+        if (patronUuid) patronDoc = await dataManager.getDocument(patronUuid);
+
+        // 2. Fallback to Foundry Fetch (Slower but guaranteed if UUID valid)
+        if (!classDoc && classUuid) {
+            logger.debug(`[ShadowdarkAdapter] Class not in cache, fetching from Foundry: ${classUuid}`);
+            try {
+                classDoc = await client.fetchByUuid(classUuid);
+            } catch (e) { logger.error(`[ShadowdarkAdapter] Failed to fetch class ${classUuid}:`, e); }
+        }
+
+        if (!patronDoc && patronUuid) {
+            try {
+                patronDoc = await client.fetchByUuid(patronUuid);
+            } catch (e) { logger.error(`[ShadowdarkAdapter] Failed to fetch patron ${patronUuid}:`, e); }
+        }
+
+        // Logic Calculation
+        const talentGained = targetLevel % 2 !== 0;
+
+        // Robust Spellcaster Check
+        let isSpellcaster = false;
+        if (classDoc) {
+            const sc = classDoc.system?.spellcasting;
+            if (sc?.ability || sc?.class) isSpellcaster = true;
+
+            // Name check fallback for custom classes without strict data
+            if (!isSpellcaster && classDoc.name) {
+                const name = classDoc.name.toLowerCase();
+                if (['wizard', 'priest', 'seer', 'shaman', 'witch', 'druid', 'warlock'].some((c: string) => name.includes(c))) {
+                    isSpellcaster = true;
+                }
+            }
+        }
+
+        const spellsToChoose: Record<number, number> = {};
+        let availableSpells: any[] = [];
+
+        if (isSpellcaster && classDoc) {
+            // Spells Known Calculation
+            if (classDoc.system?.spellcasting?.spellsknown) {
+                const skTable = classDoc.system.spellcasting.spellsknown;
+                // Shadowdark keys are sometimes strings "1", "2"
+                const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+                for (let tier = 1; tier <= 5; tier++) {
+                    const tStr = String(tier);
+                    const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
+                    const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
+                    const diff = targetVal - currentVal;
+                    if (diff > 0) {
+                        spellsToChoose[tier] = diff;
+                    }
+                }
+            }
+
+            // Available Spells
+            if (classDoc.name) {
+                availableSpells = await dataManager.getSpellsBySource(classDoc.name);
+            }
+        }
+
+        // Return standardized object
+        return {
+            success: true,
+            actorId: actor.id || actor._id,
+            currentLevel,
+            targetLevel,
+            currentXP,
+            talentGained,
+            classHitDie: classDoc?.system?.hitPoints || '1d4',
+            classTalentTable: classDoc?.system?.classTalentTable,
+            patronBoonTable: patronDoc?.system?.boonTable,
+            canRollBoons: classDoc?.system?.patron?.required || false,
+            startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
+            isSpellcaster,
+            spellsToChoose,
+            availableSpells,
+            conMod,
+            classUuid: classDoc?.uuid || classUuid || null
+        };
+    }
+
+    async expandTableResults(client: any, table: any): Promise<any[] | null> {
+        if (!table || !table._id) return null;
+
+        try {
+            // Shadowdark export quirk: Server sends stale result IDs, but disk has valid result files
+            // in the format: !tables.results!{tableId}.{resultId}.json
+            // We use DataManager to find these files.
+
+            const allDocs = await dataManager.getAllDocuments();
+            const tableId = table._id;
+
+            // Filter all cached documents for ones belonging to this table
+            const results = allDocs.filter((doc: any) => {
+                // Check for the unique key format used by DataManager for embedded results
+                return doc._key && doc._key.includes(`!tables.results!${tableId}.`);
+            });
+
+            if (results && results.length > 0) {
+                logger.debug(`[ShadowdarkAdapter] Found ${results.length} cached results for table ${tableId}`);
+                return results;
+            }
+        } catch (e) {
+            logger.error(`[ShadowdarkAdapter] Error expanding table results: ${e}`);
+        }
+
+        return null;
     }
 }

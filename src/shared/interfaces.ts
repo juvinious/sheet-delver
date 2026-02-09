@@ -89,6 +89,7 @@ export interface SystemAdapter {
     resolveDocument?(client: any, uuid: string): Promise<any | null>;
     resolveActorNames?(actor: any, cache: any): void;
     loadSupplementaryData?(cache: any): Promise<void>;
+    expandTableResults?(client: any, table: any): Promise<any[] | null>;
     theme?: {
         bg?: string;
         panelBg?: string;

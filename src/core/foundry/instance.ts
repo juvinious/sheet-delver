@@ -7,13 +7,10 @@ declare global {
 
 export function getClient(): FoundryClient | undefined {
     // [Dev Fix] Check for stale instance (missing new methods)
-    // Removed fragile check for useItem which was causing zombie clients
-    /*
-    if (global._foundryClient && typeof (global._foundryClient as any).useItem !== 'function') {
-        // Discard stale instance silently or with generic log if absolutely needed, but user requested clean log
+    if (global._foundryClient && typeof (global._foundryClient as any).rollTable !== 'function') {
+        // Discard stale instance to ensure HMR picks up the new CoreSocket prototype
         global._foundryClient = undefined;
     }
-    */
     return global._foundryClient;
 }
 

@@ -1,4 +1,4 @@
-import { logger } from '@/app/ui/logger';
+import { logger } from '../../../../../app/ui/logger';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 
 export interface TalentHandler {
@@ -12,8 +12,9 @@ export interface TalentHandler {
     /**
      * Logic to execute when the talent is rolled.
      * Takes the simplified actions object from useLevelUp.
+     * Returns true if the original item should be suppressed (not added to the list).
      */
-    onRoll?: (actions: any) => void;
+    onRoll?: (actions: any) => void | boolean;
 
     /**
      * Logic to determine initialization state (e.g. adding required talents like Ambitious)
@@ -37,6 +38,84 @@ export interface TalentHandler {
 }
 
 export const TALENT_HANDLERS: TalentHandler[] = [
+    {
+        id: 'generic-choice',
+        description: "Parse 'Choose one' text talents",
+        matches: (item: any) => {
+            const name = (item.name || "").toLowerCase();
+            const text = (item.text || item.description || "").toLowerCase();
+            // Match "Choose one:" or "Choose one of the following" pattern
+            // Common patterns: "Choose one:", "Choose one of the following:", "Choose 1:"
+            const regex = /(?:choose|select)\s+(?:one|1)/i;
+            return regex.test(name) || regex.test(text);
+        },
+        onRoll: (actions: any) => {
+            const item = actions.rolledItem;
+            const text = item.description || item.text || item.name || "";
+
+            // 1. Identify where options start. Usually after a colon or newline.
+            // basic parser: split by "OR", ",", "•", or newlines
+            // This is heuristics-based.
+
+            // Try to find the choice list.
+            // Example: "Choose one: +2 Str, +2 Dex"
+            // Example: "Choose one of the following: <p>Thing A</p><p>Thing B</p>"
+
+            // Remove HTML tags for text processing if needed, but we might want to keep them for display.
+            // Let's rely on standard separators first.
+
+            let options: any[] = [];
+
+            // Robust parsing strategy:
+            // If HTML lists (<ul><li>), use them.
+            if (text.includes('<li>')) {
+                const matches = text.match(/<li>(.*?)<\/li>/g);
+                if (matches) {
+                    options = matches.map((m: string) => ({
+                        name: m.replace(/<\/?li>/g, '').replace(/<[^>]+>/g, '').trim(),
+                        description: "",
+                        img: item.img,
+                        original: item
+                    }));
+                }
+            }
+
+            // If no list, try splitting by " or " if explicit
+            if (options.length === 0) {
+                // Clean text: remove "Choose one..." prefix (allowing for prefixes like "2. ")
+                // Regex: Match anything up to "choose one" + optional suffix + separator
+                let cleanText = text.replace(/.*?(?:choose|select)\s+(?:one|1)(?: of the following)?(?: options)?(?:[:.])\s*(?:<\/p>)?/i, '');
+
+                // Split by " or " (case insensitive)
+                if (/ or /i.test(cleanText)) {
+                    options = cleanText.split(/ or /i).map((s: string) => ({
+                        name: s.trim().replace(/<[^>]+>/g, ''),
+                        description: s.trim(),
+                        img: item.img,
+                        original: item
+                    }));
+                } else if (cleanText.includes(',')) {
+                    options = cleanText.split(',').map((s: string) => ({
+                        name: s.trim().replace(/<[^>]+>/g, ''),
+                        description: s.trim(),
+                        img: item.img,
+                        original: item
+                    }));
+                }
+            }
+
+            if (options.length >= 2 && actions.setPendingChoices) {
+                actions.setPendingChoices({
+                    header: item.name,
+                    options: options,
+                    context: 'talent'
+                });
+                return true; // Suppress original
+            }
+
+            return false;
+        }
+    },
     {
         id: 'ambitious',
         description: "Human Talent: Ambitious (Additional Talent at Level 1)",

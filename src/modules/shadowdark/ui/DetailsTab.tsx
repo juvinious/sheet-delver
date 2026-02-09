@@ -202,10 +202,10 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 type="number"
                                 defaultValue={actor.system?.level?.xp || 0}
                                 min={0}
-                                max={(actor.system?.level?.value || 1) * 10}
+                                max={actor.level?.next || 10}
                                 disabled={!actor.system?.level?.value || actor.system.level.value === 0}
                                 onBlur={(e) => {
-                                    const nextXP = (actor.system?.level?.value || 1) * 10;
+                                    const nextXP = actor.level?.next || 10;
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
                                     if (val < 0) val = 0;
@@ -216,7 +216,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 className={`w-12 bg-neutral-100 border-b border-black text-center outline-none px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                             />
                             <span className="text-neutral-400">/</span>
-                            <span>{(actor.system?.level?.value || 1) * 10}</span>
+                            <span>{actor.level?.next || 10}</span>
                         </div>
                     </div>
 

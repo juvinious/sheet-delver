@@ -399,7 +399,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                             </div>
                                             {spell.system?.class && (
                                                 <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
-                                                    {Array.isArray(spell.system.class) ? spell.system.class.join(', ') : spell.system.class}
+                                                    {(() => {
+                                                        const cls = spell.system.class;
+                                                        if (Array.isArray(cls)) return cls.join(', ');
+                                                        if (typeof cls === 'object' && cls !== null) return cls.name || cls.label || JSON.stringify(cls);
+                                                        return String(cls);
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>
@@ -410,11 +415,21 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 {(() => {
                                                     const val = spell.system?.duration?.value;
                                                     const type = spell.system?.duration?.type || '-';
-                                                    if (val === undefined || val === null || val === '' || val === -1) return type.charAt(0).toUpperCase() + type.slice(1);
-                                                    return `${val} ${type.charAt(0).toUpperCase() + type.slice(1)}${val !== 1 ? 's' : ''}`;
+
+                                                    const safeVal = (typeof val === 'object') ? (val.value || val.text || "") : val;
+                                                    const safeType = (typeof type === 'object') ? (type.label || type.value || "-") : type;
+
+                                                    if (safeVal === undefined || safeVal === null || safeVal === '' || safeVal === -1) return safeType.charAt(0).toUpperCase() + safeType.slice(1);
+                                                    return `${safeVal} ${safeType.charAt(0).toUpperCase() + safeType.slice(1)}${safeVal !== 1 ? 's' : ''}`;
                                                 })()}
                                             </span>
-                                            <span className="text-sm font-serif w-32 text-center">{spell.system?.range || 'Close'}</span>
+                                            <span className="text-sm font-serif w-32 text-center">
+                                                {(() => {
+                                                    const rng = spell.system?.range;
+                                                    if (typeof rng === 'object' && rng !== null) return rng.value || rng.label || "Close";
+                                                    return rng || 'Close';
+                                                })()}
+                                            </span>
 
                                             <div className="flex gap-2 items-center justify-end w-24">
                                                 <button
@@ -484,8 +499,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                     <div className="bg-black text-white p-2 font-serif font-bold text-sm uppercase tracking-widest border-b-2 border-black">
                                         {source.name}
                                     </div>
-                                    <div className="p-4 bg-neutral-50 flex-1">
-                                        <div className="flex wrap gap-2">
+                                    <div className="p-4 bg-neutral-50 flex-1 min-h-[100px]">
+                                        <div className="flex flex-wrap gap-2">
                                             {accessibleTiers.map(tier => {
                                                 const max = getMaxSpellsForSource(tier, source.classKey);
                                                 const current = (actor.items || []).filter((i: any) => {

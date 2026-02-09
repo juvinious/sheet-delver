@@ -99,7 +99,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                             status={state.statuses.hp}
                                             onRoll={actions.handleRollHP}
                                             onManualChange={actions.setHpRoll}
-                                            onClear={() => actions.setHpRoll(0)}
+                                            onClear={() => actions.setHpRoll(null)}
                                         />
 
                                         {props.currentLevel === 0 && (
@@ -110,7 +110,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                                 status={state.statuses.gold}
                                                 onRoll={actions.handleRollGold}
                                                 onManualChange={actions.setGoldRoll}
-                                                onClear={() => actions.setGoldRoll(0)}
+                                                onClear={() => actions.setGoldRoll(null)}
                                             />
                                         )}
                                     </div>

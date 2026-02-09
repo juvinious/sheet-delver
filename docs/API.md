@@ -97,3 +97,27 @@ Returns visible journal entries.
 
 ### `GET /api/foundry/document?uuid=...`
 Fetches a specific document by UUID.
+
+## Roll Tables
+
+### `POST /api/foundry/roll-table`
+**Auth**: Protected
+Executes a roll on a specific RollTable by UUID.
+
+**Body**: 
+```json
+{ 
+  "uuid": "Compendium.shadowdark.rollable-tables.RQ0vogfVtJGuT9oT",
+  "rollMode": "self", // optional: public, private, blind, self (default)
+  "displayChat": true // optional: default true
+}
+```
+
+**Response**:
+```json
+{
+  "roll": { ... }, // Roll object
+  "results": [ ... ], // Array of TableResult objects
+  "total": 12
+}
+```

@@ -40,6 +40,13 @@ export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
                             // Fix specific known bad asset
                             if (imgSrc.includes('d20-black.svg')) imgSrc = "/icons/dice-d20.svg";
 
+                            // RollTable specific handling
+                            if (choice.type === 'RollTable' || choice.documentCollection === 'RollTable') {
+                                if (!choice.img || choice.img === 'icons/svg/d20.svg') {
+                                    imgSrc = "/icons/dice-d20.svg";
+                                }
+                            }
+
                             return (
                                 <button
                                     key={idx}
