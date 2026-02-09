@@ -150,7 +150,7 @@ export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key?: st
 
     // --- Spellcasting ---
     spellChecks1: { label: '+1 on Spellcasting Checks', key: "system.bonuses.spellcastingCheckBonus", mode: 2, value: 1, icon: "icons/magic/fire/flame-burning-fist-strike.webp" },
-    magicMissileAdv: { label: 'Magic Missile Advantage', key: "system.bonuses.advantage", mode: 2, value: "Magic Missile", icon: "icons/magic/control/energy-stream-purple.webp" },
+    magicMissileAdv: { label: 'Magic Missile Advantage', key: "system.bonuses.advantage", mode: 2, value: "Magic Missile", icon: "icons/magic/light/projectiles-trio-pink.webp" },
     farsightSpell: { label: 'Farsight (Spell)', key: "system.bonuses.advantage", mode: 2, value: "Farsight", icon: "icons/magic/light/beam-rays-yellow-blue-small.webp" }, // Guessing advantage or increased range? usually advantage to cast or effect?
     farsightRanged: { label: 'Farsight (Ranged)', key: "system.bonuses.rangedAttackBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" }, // Guessing +1 ranged?
 

@@ -118,26 +118,26 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
     };
 
     const modalContent = (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 h-full w-full">
-            <div className={`bg-stone-200 text-neutral-900 border-4 border-double border-neutral-800 rounded-lg shadow-2xl max-w-xl w-full flex flex-col max-h-[90vh] font-serif transition-all ${importedId ? 'scale-100' : 'scale-100'}`}>
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 h-full w-full animate-in fade-in duration-300">
+            <div className={`bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] max-w-xl w-full flex flex-col max-h-[90vh] font-serif transition-all ${importedId ? 'scale-100' : 'scale-100'} animate-in zoom-in-95 duration-300`}>
 
                 {/* Header */}
-                <div className="p-4 flex justify-center items-center border-b-2 border-neutral-800 bg-stone-300">
-                    <h2 className="text-3xl font-black uppercase tracking-wider text-neutral-900 drop-shadow-sm font-crimson">Shadowdarkling Importer</h2>
+                <div className="bg-black p-6 flex justify-center items-center border-b-4 border-neutral-900">
+                    <h2 className="text-3xl font-black uppercase tracking-widest text-white font-serif drop-shadow-md">Shadowdarkling Importer</h2>
                 </div>
 
                 {/* Content */}
-                <div className="p-6 flex-1 overflow-y-auto bg-stone-200">
+                <div className="p-8 flex-1 overflow-y-auto bg-neutral-100">
 
                     {/* View: Input */}
                     {!importedId && (
                         <>
-                            <div className="mb-4">
-                                <p className="text-neutral-700 font-bold mb-2 uppercase text-sm tracking-wide">Paste JSON Export:</p>
+                            <div className="mb-6">
+                                <p className="text-neutral-900 font-black mb-2 uppercase text-sm tracking-widest font-serif">Paste JSON Export</p>
                                 <textarea
                                     value={jsonInput}
                                     onChange={(e) => setJsonInput(e.target.value)}
-                                    className="w-full h-64 bg-white border-2 border-neutral-400 p-4 text-xs font-mono text-neutral-800 focus:outline-none focus:border-neutral-900 shadow-inner resize-none rounded-none"
+                                    className="w-full h-64 bg-white border-2 border-neutral-300 p-4 text-xs font-mono text-neutral-900 focus:outline-none focus:border-black focus:ring-1 focus:ring-black shadow-inner resize-none transition-all"
                                     placeholder='{ "name": "Character Name", ... }'
                                     disabled={loading}
                                 />
@@ -152,51 +152,51 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
 
                     {/* View: Summary / Result */}
                     {importedId && charSummary && (
-                        <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-300">
+                        <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
 
                             {/* Character Card */}
-                            <div className="border-2 border-neutral-900 bg-stone-100 p-4 shadow-sm relative overflow-hidden">
+                            <div className="border-2 border-black bg-white p-6 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)] relative overflow-hidden group hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] transition-all">
                                 {/* Name Banner */}
-                                <div className="bg-neutral-900 text-white px-2 py-1 inline-block absolute top-0 left-0">
-                                    <span className="font-bold uppercase tracking-widest text-lg ml-2">{charSummary.name}</span>
+                                <div className="bg-black text-white px-6 py-2 inline-block absolute top-0 left-0 border-r-4 border-b-4 border-white shadow-sm z-10">
+                                    <span className="font-black uppercase tracking-widest text-xl font-serif">{charSummary.name}</span>
                                 </div>
 
-                                <div className="mt-10 grid grid-cols-2 gap-x-8 gap-y-1 text-sm font-bold text-neutral-800">
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>Ancestry:</span>
-                                        <span>{charSummary.ancestry}</span>
+                                <div className="mt-12 grid grid-cols-2 gap-x-8 gap-y-2 text-sm font-bold text-neutral-900">
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">Ancestry</span>
+                                        <span className="font-serif text-lg">{charSummary.ancestry}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>HP:</span>
-                                        <span>{charSummary.hp} / {charSummary.hp}</span>
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">HP</span>
+                                        <span className="font-serif text-lg">{charSummary.hp} / {charSummary.hp}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>Class:</span>
-                                        <span>{charSummary.class}</span>
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">Class</span>
+                                        <span className="font-serif text-lg">{charSummary.class}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>GP:</span>
-                                        <span>{charSummary.gp}</span>
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">GP</span>
+                                        <span className="font-serif text-lg">{charSummary.gp}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>Level:</span>
-                                        <span>{charSummary.level}</span>
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">Level</span>
+                                        <span className="font-serif text-lg">{charSummary.level}</span>
                                     </div>
-                                    <div className="flex justify-between border-b border-neutral-300 pb-1">
-                                        <span>XP:</span>
-                                        <span>{charSummary.xp}</span>
+                                    <div className="flex justify-between border-b-2 border-neutral-100 pb-1">
+                                        <span className="text-neutral-500 uppercase tracking-wider text-xs">XP</span>
+                                        <span className="font-serif text-lg">{charSummary.xp}</span>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Warnings / Notifications */}
                             {warnings.length > 0 && (
-                                <div className="border-2 border-yellow-700 bg-yellow-50">
-                                    <div className="bg-yellow-600 text-yellow-950 font-bold text-center uppercase py-1 text-sm tracking-widest relative">
+                                <div className="border-2 border-amber-500 bg-amber-50">
+                                    <div className="bg-amber-500 text-white font-black text-center uppercase py-1 text-sm tracking-widest relative">
                                         Import Notes
                                     </div>
-                                    <div className="max-h-32 overflow-y-auto p-2">
-                                        <ul className="list-disc list-inside text-sm text-yellow-900">
+                                    <div className="max-h-32 overflow-y-auto p-4">
+                                        <ul className="list-disc list-inside text-sm text-amber-900 font-medium">
                                             {warnings.map((w, i) => (
                                                 <li key={i}>{w}</li>
                                             ))}
@@ -207,24 +207,23 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
 
                             {/* Warnings Table */}
                             {rawErrors.length > 0 && (
-                                <div className="border-2 border-neutral-900 bg-white">
-                                    <div className="bg-black text-white font-bold text-center uppercase py-1 text-sm tracking-widest relative">
-                                        {/* Texture hint if desired */}
+                                <div className="border-2 border-red-500 bg-red-50">
+                                    <div className="bg-red-500 text-white font-black text-center uppercase py-1 text-sm tracking-widest relative">
                                         Items Not Found
                                     </div>
                                     <div className="max-h-48 overflow-y-auto">
                                         <table className="w-full text-sm text-left border-collapse">
-                                            <thead className="bg-stone-300 text-neutral-900 font-bold border-b-2 border-neutral-900">
+                                            <thead className="bg-red-100 text-red-900 font-bold border-b-2 border-red-200">
                                                 <tr>
-                                                    <th className="p-2 border-r border-neutral-400">Item Name</th>
+                                                    <th className="p-2 border-r border-red-200">Item Name</th>
                                                     <th className="p-2">Item Type</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {rawErrors.map((err, i) => (
-                                                    <tr key={i} className="border-b border-stone-200 even:bg-stone-50">
-                                                        <td className="p-2 border-r border-stone-200 font-semibold">{err.name}</td>
-                                                        <td className="p-2 text-neutral-600">{err.type}</td>
+                                                    <tr key={i} className="border-b border-red-100 even:bg-red-50/50">
+                                                        <td className="p-2 border-r border-red-100 font-semibold text-red-900">{err.name}</td>
+                                                        <td className="p-2 text-red-700">{err.type}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -239,10 +238,10 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t-2 border-neutral-800 bg-stone-300 flex justify-center gap-4">
+                <div className="p-6 border-t-4 border-black bg-neutral-100 flex justify-center gap-6">
                     <button
                         onClick={handleCancel}
-                        className="px-6 py-2 rounded-sm border-2 border-neutral-500 text-neutral-600 hover:text-neutral-900 hover:border-neutral-900 font-bold uppercase transition-all"
+                        className="px-8 py-3 rounded-none border-2 border-neutral-300 text-neutral-500 hover:text-black hover:border-black font-bold uppercase tracking-widest transition-all"
                     >
                         Cancel
                     </button>
@@ -250,7 +249,7 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
                     {importedId ? (
                         <button
                             onClick={() => onImportSuccess(importedId)}
-                            className="px-8 py-2 rounded-sm bg-neutral-200 border-2 border-neutral-900 hover:bg-white text-neutral-900 font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-y-px hover:shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] active:translate-y-0.5 active:shadow-none transition-all uppercase tracking-wide flex items-center gap-2"
+                            className="px-10 py-3 rounded-none bg-black text-white hover:bg-neutral-900 font-black shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:shadow-none transition-all uppercase tracking-widest flex items-center gap-2"
                         >
                             Continue to Sheet
                         </button>
@@ -258,7 +257,7 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
                         <button
                             onClick={handleImport}
                             disabled={loading || !jsonInput}
-                            className="px-8 py-2 rounded-sm bg-neutral-800 border-2 border-neutral-900 hover:bg-neutral-700 text-white font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)] hover:shadow-lg transition-all uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-10 py-3 rounded-none bg-amber-600 hover:bg-amber-500 text-white font-black shadow-lg hover:shadow-xl hover:-translate-y-1 active:translate-y-0 active:shadow-none transition-all uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed transform"
                         >
                             {loading ? 'Reading Scroll...' : 'Import Character'}
                         </button>

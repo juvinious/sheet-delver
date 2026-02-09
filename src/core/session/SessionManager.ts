@@ -121,6 +121,14 @@ export class SessionManager {
         // IF we need explicit login, we should add a login() method to ClientSocket similar to CoreSocket.
         // Assuming we need to replicate the SocketClient "login" behavior here for now.
 
+        // Enforce Single Session per User: Cleanup any existing sessions for this user
+        for (const [id, session] of this.sessions.entries()) {
+            if (session.username === username) {
+                logger.info(`SessionManager | Found existing session for ${username} (${id}). Destroying...`);
+                await this.destroySession(id);
+            }
+        }
+
         const client = new ClientSocket({ ...this.config, username, password }, this.systemClient);
 
         try {

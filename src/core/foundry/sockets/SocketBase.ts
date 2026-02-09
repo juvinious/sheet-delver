@@ -230,8 +230,9 @@ export abstract class SocketBase extends EventEmitter {
 
     public disconnect() {
         if (this.socket) {
-            this.socket.removeAllListeners();
+            logger.info(`[${this.constructor.name}] Disconnecting socket...`);
             this.socket.disconnect();
+            this.socket.removeAllListeners();
             this.socket = null;
         }
         this.isSocketConnected = false;
