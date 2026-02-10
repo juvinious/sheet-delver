@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { SectionStatus } from '../useLevelUp';
 
 interface Props {
-    goldRoll: number;
+    goldRoll: number | null;
     goldFormula: string;
     goldMax: number;
     status: SectionStatus;
     onRoll: (isReroll: boolean) => void;
-    onManualChange: (val: number) => void;
+    onManualChange: (val: number | null) => void;
     onClear: () => void;
 }
 
@@ -28,7 +28,7 @@ export const GoldRollSection = ({
             const constrained = Math.min(Math.max(val, 0), goldMax);
             onManualChange(constrained);
         } else if (e.target.value === '') {
-            onManualChange(0);
+            onManualChange(null);
         }
     };
 
@@ -36,7 +36,7 @@ export const GoldRollSection = ({
         <div className="bg-white p-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden h-full flex flex-col">
             <div className="bg-black text-white px-4 py-2 font-serif font-bold text-lg uppercase tracking-wider -mx-4 -mt-4 mb-4 flex justify-between items-center h-12">
                 <span>Gold</span>
-                {goldRoll > 0 && (
+                {goldRoll !== null && goldRoll > 0 && (
                     <button
                         onClick={onClear}
                         className="text-white/50 hover:text-white transition-colors"
@@ -51,7 +51,7 @@ export const GoldRollSection = ({
 
             <div className="flex-1 flex flex-col justify-between">
                 <div className="flex items-center justify-center py-4">
-                    <div className={`text-6xl font-black font-serif ${goldRoll > 0 ? 'text-black' : 'text-neutral-200'} flex items-center`}>
+                    <div className={`text-6xl font-black font-serif ${goldRoll !== null && goldRoll > 0 ? 'text-black' : 'text-neutral-200'} flex items-center`}>
                         {isManual ? (
                             <input
                                 type="number"
@@ -80,7 +80,7 @@ export const GoldRollSection = ({
 
                     <div className="flex gap-2">
                         {!isManual ? (
-                            goldRoll === 0 ? (
+                            goldRoll === null || goldRoll === 0 ? (
                                 <button
                                     onClick={() => onRoll(false)}
                                     disabled={status === 'LOADING' || status === 'DISABLED'}
@@ -99,7 +99,7 @@ export const GoldRollSection = ({
                         ) : (
                             <div className="h-12 w-full"></div>
                         )}
-                        {(!isManual && goldRoll > 0) && <div className="hidden"></div>}
+                        {(!isManual && goldRoll !== null && goldRoll > 0) && <div className="hidden"></div>}
 
                         <button
                             onClick={() => setIsManual(!isManual)}

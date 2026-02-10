@@ -114,17 +114,17 @@ export default function LanguageSelectionModal({
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {commonLanguages.map(lang => {
+                                {commonLanguages.map((lang, idx) => {
                                     const isSelected = selected.includes(lang.uuid) || selected.includes(lang.name);
                                     const disabled = !isSelected && selectedCommonCount >= maxCommon;
                                     return (
                                         <button
-                                            key={lang.uuid}
+                                            key={lang.uuid || `common-lang-${idx}`}
                                             onClick={() => toggleLanguage(lang.uuid)}
                                             disabled={disabled}
                                             className={`px-3 py-2 text-left text-[10px] font-black uppercase transition-all border-2 ${isSelected
-                                                    ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                                                    : 'bg-white text-black border-neutral-200 hover:border-black'
+                                                ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                                : 'bg-white text-black border-neutral-200 hover:border-black'
                                                 } ${disabled ? 'opacity-20 grayscale' : ''}`}
                                         >
                                             <span className="truncate">{lang.name}</span>
@@ -145,17 +145,17 @@ export default function LanguageSelectionModal({
                                 </span>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {rareLanguages.map(lang => {
+                                {rareLanguages.map((lang, idx) => {
                                     const isSelected = selected.includes(lang.uuid) || selected.includes(lang.name);
                                     const disabled = !isSelected && selectedRareCount >= maxRare;
                                     return (
                                         <button
-                                            key={lang.uuid}
+                                            key={lang.uuid || `rare-lang-${idx}`}
                                             onClick={() => toggleLanguage(lang.uuid)}
                                             disabled={disabled}
                                             className={`px-3 py-2 text-left text-[10px] font-black uppercase transition-all border-2 ${isSelected
-                                                    ? 'bg-purple-900 text-white border-purple-900 shadow-[2px_2px_0px_0px_rgba(88,28,135,1)]'
-                                                    : 'bg-white text-purple-900 border-purple-200 hover:border-purple-900'
+                                                ? 'bg-purple-900 text-white border-purple-900 shadow-[2px_2px_0px_0px_rgba(88,28,135,1)]'
+                                                : 'bg-white text-purple-900 border-purple-200 hover:border-purple-900'
                                                 } ${disabled ? 'opacity-20 grayscale' : ''}`}
                                         >
                                             <span className="truncate">{lang.name}</span>
@@ -171,17 +171,17 @@ export default function LanguageSelectionModal({
                     )}
                 </div>
 
-                {/* Footer */}
+                {/* Footer (Consistency with Language modal) */}
                 <div className="p-6 bg-neutral-100 border-t-4 border-black flex justify-between items-center">
                     <button
                         onClick={onClose}
-                        className="text-black hover:text-red-700 font-black uppercase tracking-widest text-xs px-4 py-2 hover:bg-neutral-200 transition-colors"
+                        className="h-12 bg-neutral-200 text-black border-2 border-black px-8 font-black font-serif uppercase tracking-widest text-xs hover:bg-neutral-300 transition-all active:translate-x-[2px] active:translate-y-[2px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={() => onSelect(selected)}
-                        className="bg-black text-white px-10 py-3 font-serif font-black text-lg uppercase tracking-[0.2em] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-800 transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                        className="h-12 bg-black text-white border-2 border-black px-10 font-black font-serif uppercase tracking-widest text-base hover:bg-neutral-800 transition-all active:translate-x-[2px] active:translate-y-[2px] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
                     >
                         Save Languages
                     </button>

@@ -2,36 +2,29 @@
 import React from 'react';
 
 interface Props {
-    actorId: string;
     currentLevel: number;
     targetLevel: number;
     targetClassUuid: string;
     availableClasses: any[];
-    loading: boolean;
     error: string | null;
     needsBoon: boolean;
     availablePatrons: any[];
     selectedPatronUuid: string;
-    loadingPatrons: boolean;
     onClassChange: (uuid: string) => void;
     onPatronChange: (uuid: string) => void;
-    foundryUrl?: string;
     actorName?: string;
 }
 
 export const LevelUpHeader = ({
-    actorId,
     actorName,
     currentLevel,
     targetLevel,
     targetClassUuid,
     availableClasses,
-    loading,
     error,
     needsBoon,
     availablePatrons,
     selectedPatronUuid,
-    loadingPatrons,
     onClassChange,
     onPatronChange,
     classLocked

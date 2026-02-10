@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Search, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { resolveImage, formatDescription, getSafeDescription } from '../sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface SpellOption {
     name: string;
@@ -20,8 +21,8 @@ interface SpellSelectionModalProps {
     title: string;
     availableSpells: SpellOption[];
     knownSpells: SpellOption[];
-    foundryUrl?: string;
     maxSelections?: number;
+    token?: string | null;
 }
 
 export default function SpellSelectionModal({
@@ -31,9 +32,10 @@ export default function SpellSelectionModal({
     title,
     availableSpells,
     knownSpells,
-    foundryUrl,
-    maxSelections
+    maxSelections,
+    token
 }: SpellSelectionModalProps) {
+    const { resolveImageUrl } = useConfig();
     const [search, setSearch] = useState('');
     const [selectedUuids, setSelectedUuids] = useState<Set<string>>(new Set());
     const [expandedUuids, setExpandedUuids] = useState<Set<string>>(new Set());
@@ -57,7 +59,12 @@ export default function SpellSelectionModal({
     const loadDescription = async (spell: SpellOption) => {
         setLoadingUuids(prev => new Set(prev).add(spell.uuid));
         try {
-            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(spell.uuid)}`);
+            const headers: any = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(spell.uuid)}`, {
+                headers
+            });
             if (res.ok) {
                 const doc = await res.json();
                 const desc = getSafeDescription(doc.system);
@@ -186,7 +193,7 @@ export default function SpellSelectionModal({
 
                     {/* Spell List */}
                     <div className="flex-1 overflow-y-auto space-y-0 pr-2 custom-scrollbar border-t-2 border-black">
-                        {filteredSpells.map(spell => {
+                        {filteredSpells.map((spell, idx) => {
                             const isSelected = selectedUuids.has(spell.uuid);
                             const isExpanded = expandedUuids.has(spell.uuid);
                             const disabled = !isSelected && isMaxReached;
@@ -195,7 +202,7 @@ export default function SpellSelectionModal({
                             const isLoading = loadingUuids.has(spell.uuid);
 
                             return (
-                                <div key={spell.uuid} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'}`}>
+                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'}`}>
                                     <div
                                         className={`flex items-center gap-3 py-1.5 px-2 cursor-pointer transition-colors`}
                                         onClick={() => toggleExpand(spell)}
@@ -203,7 +210,7 @@ export default function SpellSelectionModal({
                                         {/* Image */}
                                         <div className="w-10 h-10 border border-black bg-black flex-shrink-0 flex items-center justify-center overflow-hidden">
                                             {spell.img ? (
-                                                <img src={resolveImage(spell.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                                <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
                                             )}
@@ -225,7 +232,12 @@ export default function SpellSelectionModal({
                                                     toggleSpell(spell.uuid);
                                                 }}
                                                 disabled={disabled}
-                                                className={`w-8 h-8 rounded-full border-2 border-black flex items-center justify-center transition-all ${isSelected ? 'bg-black text-white' : 'bg-white hover:border-amber-500'}`}
+                                                className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
+                                                        ? 'bg-black text-white border-black'
+                                                        : disabled
+                                                            ? 'bg-neutral-50 border-neutral-300 cursor-not-allowed'
+                                                            : 'bg-white border-black hover:border-amber-500'
+                                                    }`}
                                             >
                                                 {isSelected && <Check className="w-5 h-5" />}
                                             </button>

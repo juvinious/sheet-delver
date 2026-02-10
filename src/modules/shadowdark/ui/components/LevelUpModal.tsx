@@ -15,20 +15,18 @@ import { SelectionOverlay } from './levelup/sections/SelectionOverlay';
 import { LoadingOverlay } from './levelup/sections/LoadingOverlay';
 import { LevelUpFooter } from './levelup/sections/LevelUpFooter';
 import { ExtraSpellSelectionSection } from './levelup/sections/ExtraSpellSelectionSection';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // ... (imports)
 
 // ... (inside component)
 
-import {
-    resolveImage,
-    formatDescription,
-    getSafeDescription
-} from '../sheet-utils';
+// ... (imports deleted)
+
 
 export const LevelUpModal = (props: LevelUpProps) => {
     const { state, actions } = useLevelUp(props);
-    const foundryUrl = props.foundryUrl;
+    const { resolveImageUrl } = useConfig();
     //const activeClassImage = state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img;
     //dangerouslySetInnerHTML={{ __html: state.activeClassObj.system?.description?.split('.')[0] + '.' || "Class Archetype" }}
     // Common Shadowdark Class Card Style
@@ -37,7 +35,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
         <div className="bg-white border-2 border-black p-4 flex items-center gap-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
             <div className="w-12 h-12 bg-black flex-shrink-0 flex items-center justify-center border border-black overflow-hidden">
                 <img
-                    src={resolveImage(state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img, foundryUrl)}
+                    src={resolveImageUrl(state.activeClassObj?.img?.startsWith('systems') ? `/${state.activeClassObj.img}` : state.activeClassObj.img)}
                     className="w-full h-full object-cover"
                     alt={state.activeClassObj.name}
                 />
@@ -64,28 +62,23 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     <SelectionOverlay
                         pendingChoices={state.pendingChoices}
                         onSelect={actions.handleChoiceSelection}
-                        foundryUrl={props.foundryUrl}
                     />
                 )}
 
                 {(state.loadingClass || state.loadingPatrons || state.isSubmitting) && <LoadingOverlay />}
 
                 <LevelUpHeader
-                    actorId={props.actorId}
                     actorName={props.actorName}
                     currentLevel={props.currentLevel}
                     targetLevel={props.targetLevel}
                     targetClassUuid={state.targetClassUuid}
                     availableClasses={props.availableClasses || []}
-                    loading={state.loading}
                     error={state.error}
                     needsBoon={state.needsBoon}
                     availablePatrons={state.availablePatrons}
                     selectedPatronUuid={state.selectedPatronUuid}
-                    loadingPatrons={state.loadingPatrons}
                     onClassChange={actions.setTargetClassUuid}
                     onPatronChange={actions.setSelectedPatronUuid}
-                    foundryUrl={props.foundryUrl}
                     classLocked={!!props.classUuid}
                 />
 
@@ -103,12 +96,10 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                             hpRoll={state.hpRoll}
                                             hpFormula={state.hpFormula}
                                             hpMax={state.hpMax}
-                                            confirmReroll={state.confirmReroll}
                                             status={state.statuses.hp}
                                             onRoll={actions.handleRollHP}
                                             onManualChange={actions.setHpRoll}
-                                            onClear={() => actions.setHpRoll(0)}
-                                            setConfirmReroll={actions.setConfirmReroll}
+                                            onClear={() => actions.setHpRoll(null)}
                                         />
 
                                         {props.currentLevel === 0 && (
@@ -119,7 +110,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                                 status={state.statuses.gold}
                                                 onRoll={actions.handleRollGold}
                                                 onManualChange={actions.setGoldRoll}
-                                                onClear={() => actions.setGoldRoll(0)}
+                                                onClear={() => actions.setGoldRoll(null)}
                                             />
                                         )}
                                     </div>
@@ -190,15 +181,17 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         />
                                     )}
 
-                                    <LanguageSelectionSection
-                                        languageGroups={state.languageGroups}
-                                        selectedLanguages={state.selectedLanguages}
-                                        fixedLanguages={state.fixedLanguages}
-                                        knownLanguages={state.knownLanguages}
-                                        availableLanguages={props.availableLanguages || []}
-                                        status={state.statuses.languages}
-                                        onSelectedLanguagesChange={actions.setSelectedLanguages}
-                                    />
+                                    {!props.skipLanguageSelection && (
+                                        <LanguageSelectionSection
+                                            languageGroups={state.languageGroups}
+                                            selectedLanguages={state.selectedLanguages}
+                                            fixedLanguages={state.fixedLanguages}
+                                            knownLanguages={state.knownLanguages}
+                                            availableLanguages={props.availableLanguages || []}
+                                            status={state.statuses.languages}
+                                            onSelectedLanguagesChange={actions.setSelectedLanguages}
+                                        />
+                                    )}
                                 </>
                             )}
                         </>

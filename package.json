@@ -1,12 +1,26 @@
 {
   "name": "sheet-delver",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "ts-node scripts/start-server.ts dev",
+    "dev": "ts-node src/scripts/start-server.ts dev",
     "build": "next build",
-    "start": "ts-node scripts/start-server.ts start",
-    "lint": "eslint"
+    "start": "ts-node src/scripts/start-server.ts start",
+    "setup": "npx tsx src/scripts/setup.ts",
+    "lint": "eslint",
+    "core": "npx tsx src/server/index.ts",
+    "admin": "npx tsx src/cli/index.ts",
+    "test:socket": "npx tsx src/tests/socket/run-all.ts",
+    "test:socket:connection": "npx tsx src/tests/socket/01-connection.test.ts",
+    "test:socket:system": "npx tsx src/tests/socket/02-system-info.test.ts",
+    "test:socket:actors": "npx tsx src/tests/socket/03-actor-access.test.ts",
+    "test:socket:users": "npx tsx src/tests/socket/04-users-compendia.test.ts",
+    "test:socket:write": "npx tsx src/tests/socket/05-write-operations.test.ts",
+    "test:socket:rolling": "tsx src/tests/socket/09-rolling.test.ts",
+    "test:socket:batch": "tsx src/tests/socket/10-batch-operations.test.ts",
+    "test:socket:all": "tsx src/tests/socket/run-all.ts",
+    "test:states": "npx tsx src/scripts/test-states.ts"
   },
   "dependencies": {
     "@next/font": "^14.2.15",
@@ -19,24 +33,32 @@
     "@tiptap/react": "^3.15.3",
     "@tiptap/starter-kit": "^3.15.3",
     "@types/js-yaml": "^4.0.9",
+    "classic-level": "^3.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "inquirer": "^13.2.2",
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
-    "playwright": "^1.57.0",
-    "playwright-core": "^1.57.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/inquirer": "^9.0.9",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

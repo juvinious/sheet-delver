@@ -1,0 +1,58 @@
+
+import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
+import { FoundryConfig } from '../../core/foundry/types';
+import { EventEmitter } from 'events';
+
+// Mock Socket.io Client
+class MockSocket extends EventEmitter {
+    id = 'mock-socket-id';
+    io = { opts: { query: {} } };
+    connected = true;
+    disconnect() { this.emit('disconnect'); }
+    connect() { this.emit('connect'); }
+}
+
+class TestClient extends ClientSocket {
+    public mockSocket: MockSocket;
+
+    constructor(config: FoundryConfig, core: CoreSocket) {
+        super(config, core);
+        this.mockSocket = new MockSocket();
+        // @ts-ignore
+        // We can't assign to this.socket because ClientSocket doesn't have it anymore! 
+        // We need to manipulate the CoreSocket instance if we want to mock socket behavior.
+        // But this test checks `ClientSocket` logic (userId).
+        // Does ClientSocket logic depend on socket?
+        // restoreSession sets userId.
+        // It calls connect().
+    }
+
+    public setUserId(id: string | null) {
+        this.userId = id;
+    }
+}
+
+async function run() {
+    const config: FoundryConfig = { url: 'http://test', username: 'user', password: 'pw' };
+    const core = new CoreSocket(config);
+    const client = new TestClient(config, core);
+
+    console.log('--- Auth Logic Test (ClientSocket) ---');
+
+    // 1. Initial State
+    console.log(`Initial userId: ${client.userId} (Expected: null)`);
+    if (client.userId !== null) throw new Error('Initial state wrong');
+
+    // 2. Simulate Logged In
+    client.setUserId('user-123');
+    console.log(`Logged In userId: ${client.userId} (Expected: user-123)`);
+    if (client.userId !== 'user-123') throw new Error('Logged in state wrong');
+
+    console.log('\n✅ All Auth Logic Tests Passed');
+}
+
+run().catch(e => {
+    console.error(e);
+    process.exit(1);
+});

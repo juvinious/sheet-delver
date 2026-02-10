@@ -1,17 +1,18 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { resolveImage, resolveEntityName } from './sheet-utils';
+import { resolveEntityName } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface AbilitiesTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     onRoll?: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
 }
 
-export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl }: AbilitiesTabProps) {
+export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll }: AbilitiesTabProps) {
+    const { resolveImageUrl } = useConfig();
 
     // Common container style for standard sheet feel
     const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
@@ -137,8 +138,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         <button className="text-neutral-400 hover:text-white"><i className="fas fa-pen text-xs"></i></button>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-2">
-                        {Object.entries(actor.attributes || actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any]) => (
-                            <div key={key}
+                        {Object.entries(actor.attributes || actor.computed?.abilities || actor.system?.abilities || {}).map(([key, stat]: [string, any], idx) => (
+                            <div key={`stat-${key}-${idx}`}
                                 className="flex flex-col items-center bg-neutral-100 border-2 border-neutral-300 rounded cursor-pointer transition-all hover:border-black hover:bg-white hover:scale-105 active:scale-95 group overflow-hidden"
                                 onClick={() => triggerRollDialog('ability', key)}>
                                 <div className="w-full bg-neutral-200 text-center py-1 border-b border-neutral-300 group-hover:bg-neutral-800 transition-colors">
@@ -166,10 +167,10 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         <span className="font-serif font-bold text-lg uppercase">Melee Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {(actor.derived?.attacks?.melee || []).map((item: any) => (
+                        {(actor.derived?.attacks?.melee || []).map((item: any, idx: number) => (
                             <div
-                                key={item.id}
-                                onClick={() => triggerRollDialog('item', item.id)}
+                                key={item.id || item._id || `melee-${idx}`}
+                                onClick={() => triggerRollDialog('item', item.id || item._id)}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
@@ -206,10 +207,10 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         <span className="font-serif font-bold text-lg uppercase">Ranged Attacks</span>
                     </div>
                     <div className="space-y-2">
-                        {(actor.derived?.attacks?.ranged || []).map((item: any) => (
+                        {(actor.derived?.attacks?.ranged || []).map((item: any, idx: number) => (
                             <div
-                                key={item.id}
-                                onClick={() => triggerRollDialog('item', item.id)}
+                                key={item.id || item._id || `ranged-${idx}`}
+                                onClick={() => triggerRollDialog('item', item.id || item._id)}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
@@ -273,8 +274,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                 grouped[group].push(item);
                             });
 
-                            return Object.entries(grouped).map(([group, items]) => (
-                                <div key={group}>
+                            return Object.entries(grouped).map(([group, items], gIdx) => (
+                                <div key={`group-${group}-${gIdx}`}>
                                     {/* Header Row */}
                                     <div className="flex justify-between items-center border-b-2 border-black pb-1 mb-1 text-black font-bold text-sm uppercase">
                                         <div className="flex-1">{group}</div>
@@ -283,7 +284,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                     </div>
 
                                     <div className="divide-y divide-neutral-200">
-                                        {items.map((item: any) => {
+                                        {items.map((item: any, idx) => {
                                             // Prefer 'available' if present, otherwise 'value'
                                             const usesKey = item.system?.uses?.available !== undefined ? 'available' : 'value';
                                             const usesPath = `items.${item.id}.system.uses.${usesKey}`;
@@ -297,13 +298,13 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
 
                                             return (
                                                 <div
-                                                    key={item.id}
+                                                    key={item.id || item._id || `ability-${idx}`}
                                                     className="py-2 flex items-center text-sm hover:bg-neutral-50 group"
                                                 >
                                                     {/* Col 1: Image + Name */}
                                                     <div className="flex-1 flex items-center gap-2">
                                                         <img
-                                                            src={resolveImage(item.img, foundryUrl)}
+                                                            src={resolveImageUrl(item.img)}
                                                             className="w-8 h-8 border border-black object-cover bg-neutral-200"
                                                             alt={item.name}
                                                         />

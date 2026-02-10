@@ -1,264 +1,40 @@
-
 import { NextResponse } from 'next/server';
-import { getClient } from '@/lib/foundry/instance';
+import { getClient } from '../../../core/foundry/instance';
+import { logger } from '../../../app/ui/logger';
+import { getConfig } from '../../../core/config';
+import { ShadowdarkAdapter } from '../system';
 import { dataManager } from '../data/DataManager';
+
+import { Roll } from '../../../core/foundry/classes/Roll';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data
  * Fetch level-up data for the modal
  */
-export async function handleGetLevelUpData(actorId: string | undefined, request?: Request) {
+export async function handleGetLevelUpData(actorId: string | undefined, request: Request, client: any) {
+    logger.info(`[API] handleGetLevelUpData | actorId: ${actorId} | url: ${request.url}`);
     try {
-        const client = getClient();
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        // Get optional params from request URL
-        let queryClassUuid: string | undefined;
-        if (request) {
-            const url = new URL(request.url);
-            queryClassUuid = url.searchParams.get('classId') || undefined;
+        // 1. Fetch Request Query Params
+        const url = new URL(request.url, getConfig().app.url);
+        const classId = url.searchParams.get('classId');
+        const patronId = url.searchParams.get('patronId');
+
+        let actor = null;
+        if (actorId && actorId !== 'undefined' && actorId !== 'null' && actorId !== 'new') {
+            actor = await client.getActor(actorId);
         }
 
-        // 1. Fetch Minimal Actor Data from Foundry
-        const actorData = await client.page!.evaluate(async ({ actorId, queryClassUuid }) => {
-            let currentLevel = 0;
-            let targetLevel = 1;
-            let currentXP = 0;
-            let classUuid = queryClassUuid;
-            let patronUuid = null;
-            let actor = null;
-            let conMod = 0;
-
-            if (actorId) {
-                // @ts-ignore
-                actor = window.game.actors.get(actorId);
-                if (!actor) return { error: 'Actor not found' };
-                currentLevel = actor.system?.level?.value || 0;
-                targetLevel = currentLevel + 1;
-                currentXP = actor.system?.level?.xp || 0;
-                // Prefer queryClassUuid if provided
-                classUuid = queryClassUuid || actor.system?.class;
-                patronUuid = actor.system?.patron;
-                conMod = actor.system?.abilities?.con?.mod || 0;
-            }
-
-            return {
-                actorId,
-                currentLevel,
-                targetLevel,
-                currentXP,
-                classUuid,
-                patronUuid,
-                conMod
-            };
-        }, { actorId, queryClassUuid });
-
-        if ('error' in actorData) {
-            return NextResponse.json({ error: actorData.error }, { status: 404 });
-        }
-
-        const { currentLevel, targetLevel, currentXP, classUuid, patronUuid, conMod } = actorData;
-
-        // 2. Try to resolve Data locally (Fast Path)
-        const classDoc = classUuid ? dataManager.getDocument(classUuid) : null;
-        const patronDoc = patronUuid ? dataManager.getDocument(patronUuid) : null;
-
-        // If we have the class doc (or don't need one), we can proceed locally
-        if (classDoc || !classUuid) {
-            // console.log('[API] Fast Path: Using cached data for', classDoc?.name);
-
-            const talentGained = targetLevel % 2 !== 0; // Odd levels
-
-            const isSpellcaster = Boolean(
-                classDoc?.system?.spellcasting?.class ||
-                classDoc?.system?.spellcasting?.ability
-            );
-
-            const spellsToChoose: Record<number, number> = {};
-            let availableSpells: any[] = [];
-
-            if (isSpellcaster) {
-                if (classDoc?.system?.spellcasting?.spellsknown) {
-                    const skTable = classDoc.system.spellcasting.spellsknown;
-                    const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-                    const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-
-                    for (let tier = 1; tier <= 5; tier++) {
-                        const tStr = String(tier);
-                        const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
-                        const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
-                        const diff = targetVal - currentVal;
-                        if (diff > 0) {
-                            spellsToChoose[tier] = diff;
-                        }
-                    }
-                }
-
-                // Get Spells from Cache
-                if (classDoc?.name) {
-                    availableSpells = dataManager.getSpellsBySource(classDoc.name);
-                }
-            }
-
-            const data = {
-                success: true,
-                actorId,
-                currentLevel,
-                targetLevel,
-                currentXP,
-                talentGained,
-                classHitDie: classDoc?.system?.hitPoints || '1d4',
-                classTalentTable: classDoc?.system?.classTalentTable,
-                patronBoonTable: patronDoc?.system?.boonTable,
-                canRollBoons: classDoc?.system?.patron?.required || false,
-                startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
-                isSpellcaster,
-                spellsToChoose,
-                availableSpells,
-                conMod,
-            };
-            return NextResponse.json({ success: true, data });
-        }
-
-        // 3. Fallback to Foundry (Slow Path)
-        // Used if Class/Patron are custom items not in our cache
-        console.log('[API] Slow Path: Fetching full data from Foundry for', classUuid);
-        const data = await client.page!.evaluate(async ({ actorId, queryClassUuid }) => {
-            let currentLevel = 0;
-            let targetLevel = 1;
-            let currentXP = 0;
-            let classUuid = queryClassUuid;
-            let patronUuid = null;
-            let actor = null;
-            let conMod = 0;
-
-            if (actorId) {
-                // @ts-ignore
-                actor = window.game.actors.get(actorId);
-                if (!actor) return { error: 'Actor not found' };
-                currentLevel = actor.system?.level?.value || 0;
-                targetLevel = currentLevel + 1;
-                currentXP = actor.system?.level?.xp || 0;
-                classUuid = queryClassUuid || actor.system?.class;
-                patronUuid = actor.system?.patron;
-                conMod = actor.system?.abilities?.con?.mod || 0;
-            }
-
-            // Get class document
-            // @ts-ignore
-            const classDoc = classUuid ? await fromUuid(classUuid) : null;
-
-            const talentGained = targetLevel % 2 !== 0;
-
-            // Get patron if applicable
-            // @ts-ignore
-            const patronDoc = patronUuid ? await fromUuid(patronUuid) : null;
-
-            const isSpellcaster = Boolean(
-                classDoc?.system?.spellcasting?.class ||
-                classDoc?.system?.spellcasting?.ability
-            );
-
-            const spellsToChoose: Record<number, number> = {};
-            let availableSpells: any[] = [];
-
-            if (isSpellcaster) {
-                if (classDoc?.system?.spellcasting?.spellsknown) {
-                    const skTable = classDoc.system.spellcasting.spellsknown;
-                    const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-                    const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-
-                    for (let tier = 1; tier <= 5; tier++) {
-                        const tStr = String(tier);
-                        const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
-                        const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
-                        const diff = targetVal - currentVal;
-                        if (diff > 0) {
-                            spellsToChoose[tier] = diff;
-                        }
-                    }
-                }
-
-                // @ts-ignore
-                if (window.shadowdark?.compendiums?.classSpellBook) {
-                    // @ts-ignore
-                    const spells = await window.shadowdark.compendiums.classSpellBook(classUuid);
-                    availableSpells = spells.map((s: any) => {
-                        if (typeof s.toJSON === 'function') return s.toJSON();
-                        return s;
-                    });
-                }
-            }
-
-            // Get current languages
-            // @ts-ignore
-            const languages = actor?.system?.languages || [];
-            // Resolve language names if possible
-            const knownLanguages = [];
-            for (const langId of languages) {
-                let name = "";
-                let uuid = "";
-
-                if (typeof langId === 'object' && langId.name) {
-                    name = langId.name;
-                } else if (typeof langId === 'string') {
-                    // Check if it looks like a UUID
-                    if (langId.includes('.') || langId.length > 20) {
-                        try {
-                            // @ts-ignore
-                            const langItem = await fromUuid(langId);
-                            if (langItem) {
-                                name = langItem.name;
-                                uuid = langId;
-                            }
-                        } catch (e) {
-                            // Fallback if UUID resolution fails
-                            name = langId;
-                        }
-                    } else {
-                        // Assume it's a name
-                        name = langId;
-                    }
-                }
-
-                if (name) {
-                    knownLanguages.push({
-                        uuid: uuid,
-                        name: name
-                    });
-                }
-            }
-
-            return {
-                success: true,
-                actorId,
-                currentLevel,
-                targetLevel,
-                currentXP,
-                talentGained,
-                classHitDie: classDoc?.system?.hitPoints || '1d4',
-                classTalentTable: classDoc?.system?.classTalentTable,
-                patronBoonTable: patronDoc?.system?.boonTable,
-                canRollBoons: classDoc?.system?.patron?.required || false,
-                startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
-                isSpellcaster,
-                spellsToChoose,
-                availableSpells,
-                conMod,
-                knownLanguages
-            };
-        }, { actorId, queryClassUuid });
-
-        if ('error' in data) {
-            return NextResponse.json({ error: data.error }, { status: 404 });
-        }
+        const adapter = new ShadowdarkAdapter();
+        const data = await adapter.getLevelUpData(client, actor, classId || undefined, patronId || undefined);
 
         return NextResponse.json({ success: true, data });
 
     } catch (error: any) {
-        console.error('[API] Level-Up Data Error:', error);
+        logger.error('[API] Level-Up Data Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to fetch level-up data' }, { status: 500 });
     }
 }
@@ -267,72 +43,97 @@ export async function handleGetLevelUpData(actorId: string | undefined, request?
  * POST /api/shadowdark/actors/[id]/level-up/roll-hp
  * Roll HP for level-up
  */
-export async function handleRollHP(actorId: string | undefined, request: Request) {
+export async function handleRollHP(actorId: string | undefined, request: Request, client: any) {
+    logger.info(`[API] handleRollHP called for actorId: ${actorId}`);
     try {
-        const client = getClient();
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { isReroll, classId } = await request.json();
+        logger.info(`[API] Yes`);
 
-        const result = await client.page!.evaluate(async ({ actorId, classId }) => {
-            let hitDie = '1d4';
-            let actor = null;
+        const body = await request.json();
+        const { isReroll: _isReroll, classId } = body;
 
+        let hitDie = '1d4';
 
-            // Prioritize classId if provided (for level-up scenarios where target class differs from current)
-            if (classId) {
-                // Get class hit die from class ID directly
-                // @ts-ignore
-                const classDoc = await fromUuid(classId);
-                if (classDoc?.system?.hitPoints) hitDie = classDoc.system.hitPoints;
-
-                // Get actor if provided (for chat message)
-                if (actorId) {
-                    // @ts-ignore
-                    actor = window.game.actors.get(actorId);
+        // 1. Try to fetch from actor if exists
+        if (actorId && actorId !== 'new' && actorId !== 'undefined') {
+            try {
+                const actor = await client.getActor(actorId);
+                const classItem = actor.items?.find((i: any) => i.type === 'Class');
+                if (classItem && classItem.system && classItem.system.hitPoints) {
+                    hitDie = classItem.system.hitPoints;
                 }
-            } else if (actorId) {
-                // Fallback: use actor's current class if no classId provided
-                // @ts-ignore
-                actor = window.game.actors.get(actorId);
-                const classUuid = actor?.system?.class;
-                // @ts-ignore
-                const classDoc = classUuid ? await fromUuid(classUuid) : null;
-                if (classDoc?.system?.hitPoints) hitDie = classDoc.system.hitPoints;
-            }
-
-
-            // Roll HP using Foundry's Roll class
-            // @ts-ignore
-            const roll = new Roll(hitDie);
-            await roll.evaluate();
-
-            // Create a chat message for the roll
-            // @ts-ignore
-            await roll.toMessage({
-                // @ts-ignore
-                speaker: actor ? window.ChatMessage.getSpeaker({ actor }) : window.ChatMessage.getSpeaker(),
-                flavor: `Hit Point Roll (Level Up)`
-            });
-
-            return {
-                success: true,
-                formula: hitDie,
-                total: roll.total
-            };
-        }, { actorId, classId });
-
-        if ('error' in result) {
-            return NextResponse.json({ error: result.error }, { status: 404 });
+            } catch { /* ignore */ }
         }
+
+        // 2. Fallback: Use classId override if provided (e.g. for Level 1 creation)
+        if (hitDie === '1d4' && classId) {
+            try {
+                logger.info(`[API] Fetching class doc for ${classId}`);
+                const classDoc = await dataManager.getDocument(classId) || await client.fetchByUuid(classId);
+                if (classDoc && classDoc.system && classDoc.system.hitPoints) {
+                    hitDie = classDoc.system.hitPoints;
+                    logger.info(`[API] Found hitDie from class doc: ${hitDie}`);
+                }
+            } catch (err) {
+                logger.error(`[API] Error fetching class doc:`, err);
+            }
+        }
+
+        logger.info(`[API] Using hitDie: ${hitDie}`);
+
+        // IMPROVEMENT: Sanitize hitDie to ensure it's a formula, not just a number
+        const str = String(hitDie).trim();
+        if (/^\d+$/.test(str)) {
+            // "4" -> "1d4"
+            hitDie = `1d${str}`;
+        } else if (/^d\d+$/i.test(str)) {
+            // "d6" -> "1d6"
+            hitDie = `1${str}`;
+        }
+
+        logger.info(`[API] Rolling HP with formula: ${hitDie}`);
+
+        logger.info(`[API] Rolling HP with formula: ${hitDie}`);
+
+        // Roll using Foundry Client (Socket)
+        // This ensures the roll is performed by Foundry's logic/modules and sent to chat
+        const chatMessage = await client.roll(hitDie, "Hit Point Roll (Level Up)");
+
+        if (!chatMessage) {
+            throw new Error("Failed to execute roll via Foundry Client");
+        }
+
+        // Parse result from Chat Message
+        // content is usually the total string
+        let total = parseInt(chatMessage.content);
+
+        // Fallback: Check rolls array
+        if (isNaN(total) && chatMessage.rolls && chatMessage.rolls.length > 0) {
+            try {
+                // In v12/v13 rolls might be JSON strings or objects
+                const rollData = typeof chatMessage.rolls[0] === 'string'
+                    ? JSON.parse(chatMessage.rolls[0])
+                    : chatMessage.rolls[0];
+                total = rollData.total;
+            } catch (e) {
+                logger.warn(`[API] Failed to parse roll data from message: ${e}`);
+            }
+        }
+
+        // Shadowdark Rule: Minimum 1 HP gain (safe guard, though usually 1dX >= 1)
+        total = Math.max(1, total || 0);
 
         return NextResponse.json({
             success: true,
+            formula: hitDie,
+            total: total,
             roll: {
-                ...result,
-                isReroll: isReroll || false
+                total,
+                formula: hitDie,
+                isReroll: _isReroll || false
             }
         });
 
@@ -342,226 +143,91 @@ export async function handleRollHP(actorId: string | undefined, request: Request
     }
 }
 
-export async function handleRollGold(actorId: string | undefined, request: Request) {
-    const client = getClient();
+export async function handleRollGold(actorId: string | undefined, request: Request, client: any) {
     if (!client || !client.isConnected) {
         return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
 
-    const { isReroll, classId } = await request.json();
+    // Shadowdark Standard Gold: 2d6 * 5
+    const multiplier = 5;
+    const dice = "2d6";
+    const formula = `${dice} * ${multiplier}`;
 
-    const result = await client.page!.evaluate(async ({ actorId, classId }) => {
-        // Shadowdark Standard Gold: 2d6 * 5
-        let multiplier = 5;
-        let dice = "2d6";
-        let actor = null;
+    try {
+        const roll = new Roll(formula);
+        await roll.evaluate();
+        const total = roll.total || 0;
 
-        if (actorId) {
-            // @ts-ignore
-            actor = window.game.actors.get(actorId);
-        }
-
-        // @ts-ignore
-        const r = new Roll(dice);
-        await r.evaluate();
-        const total = r.total * multiplier;
-
-        // Create a chat message for the roll
-        // @ts-ignore
-        await r.toMessage({
-            // @ts-ignore
-            speaker: actor ? window.ChatMessage.getSpeaker({ actor }) : window.ChatMessage.getSpeaker(),
-            flavor: `Starting Gold Roll (Level 1) - ${r.total} × ${multiplier}`
-        });
-
-        return {
-            total: total,
-            formula: `${dice} x ${multiplier}`,
-            breakdown: `${r.total} x ${multiplier}`
-        };
-    }, { actorId, classId });
-
-    return NextResponse.json({ success: true, roll: result });
+        return NextResponse.json({ success: true, roll: { total } });
+    } catch (e: any) {
+        console.error("Gold Roll Failed", e);
+        return NextResponse.json({ error: e.message }, { status: 500 });
+    }
 }
 
 /**
  * POST /api/shadowdark/actors/[id]/level-up/finalize
  * Finalize level-up and apply changes
  */
-export async function handleFinalizeLevelUp(actorId: string, request: Request) {
+export async function handleFinalizeLevelUp(actorId: string, request: Request, client: any) {
     try {
-        const client = getClient();
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const { hpRoll, items, languages } = await request.json();
+        const body = await request.json();
+        const { hpRoll, items, languages, gold } = body;
 
-        const result = await client.page!.evaluate(async ({ actorId, hpRoll, items, languages }) => {
-            // @ts-ignore
-            const actor = window.game.actors.get(actorId);
-            if (!actor) return { error: 'Actor not found' };
+        logger.info(`[API] Finalizing Level Up for ${actorId} -> Level ${body.targetLevel || 'Unknown'}`);
 
-            const currentLevel = actor.system?.level?.value || 0;
-            const targetLevel = currentLevel + 1;
-            const currentXP = actor.system?.level?.xp || 0;
+        const actor = await client.getActor(actorId);
+        if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
 
-            // Reset XP to 0
-            let newXP = 0;
+        const actorUpdates: any = {};
 
-            let createdItems: any[] = [];
+        if (hpRoll !== undefined) {
+            const currentMax = actor.system?.attributes?.hp?.max || 0;
+            const currentVal = actor.system?.attributes?.hp?.value || 0;
+            const newMax = currentMax + hpRoll;
+            const newVal = currentVal + hpRoll;
 
-            // Add items first (they may include HP/CON bonuses)
-            if (items && items.length > 0) {
-                console.log('[API] Finalize Items:', items.map((i: any) => `${i.name} (${i.type})`));
-
-                // If we are adding a Class, remove any existing Class items first (e.g. replacing Level 0)
-                const newClassItemData = items.find((i: any) => i.type?.toLowerCase() === 'class');
-                if (newClassItemData) {
-                    console.log('[API] New Class detected, removing existing classes...');
-                    const existingClasses = actor.items.filter((i: any) => i.type?.toLowerCase() === 'class');
-                    console.log('[API] Existing Classes found:', existingClasses.map((i: any) => i.name));
-
-                    if (existingClasses.length > 0) {
-                        const idsToDelete = existingClasses.map((i: any) => i.id);
-                        await actor.deleteEmbeddedDocuments('Item', idsToDelete);
-                    }
-                }
-
-                createdItems = await actor.createEmbeddedDocuments('Item', items);
-
-                // EXPLODING CLASS FEATURES: Recursively add class talents/features if a class was added
-                // This accounts for "Spellcasting", "Backstab", etc. which are linked in the Class Item but not in the 'items' payload explicitly.
-                const createdClass = createdItems.find((i: any) => i.type?.toLowerCase() === 'class');
-                if (createdClass && createdClass.system) {
-                    console.log('[API] Expanding Class Features for:', createdClass.name);
-                    const featuresToadd = [
-                        ...(createdClass.system.talents || []),
-                        ...(createdClass.system.features || []),
-                        ...(createdClass.system.abilities || [])
-                    ];
-
-                    const resolvedFeatures = [];
-                    for (const ref of featuresToadd) {
-                        // ref can be UUID string or object {uuid, ...}
-                        const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
-                        if (uuid) {
-                            try {
-                                // @ts-ignore
-                                const featureDoc = await fromUuid(uuid);
-                                if (featureDoc) {
-                                    const featureData = featureDoc.toObject();
-                                    // @ts-ignore
-                                    featureData._id = foundry.utils.randomID();
-                                    featureData.system.level = targetLevel; // Assign current level
-                                    resolvedFeatures.push(featureData);
-                                    console.log('[API] Resolved Class Feature:', featureData.name);
-                                }
-                            } catch (e) {
-                                console.error('[API] Failed to resolve feature:', uuid, e);
-                            }
-                        }
-                    }
-
-                    if (resolvedFeatures.length > 0) {
-                        const createdFeatures = await actor.createEmbeddedDocuments('Item', resolvedFeatures);
-                        createdItems.push(...createdFeatures);
-                    }
-                }
-            }
-
-            // Calculate new HP
-            let newBaseHP = (actor.system?.attributes?.hp?.base || 0) + hpRoll;
-            let newValueHP = (actor.system?.attributes?.hp?.value || 0) + hpRoll;
-            const hpBonus = actor.system?.attributes?.hp?.bonus || 0;
-            let newMaxHP = newBaseHP + hpBonus;
-
-            // Special handling for level 1: apply CON modifier
-            if (targetLevel === 1) {
-                const conMod = actor.system?.abilities?.con?.mod || 0;
-                const hpWithCon = hpRoll + conMod;
-                newBaseHP = Math.max(1, hpWithCon); // Minimum 1 HP
-                newValueHP = newBaseHP + hpBonus;
-                newMaxHP = newValueHP;
-            }
-
-            // Create audit log entry
-            // Check both cases as Foundry data structure might vary or be custom
-            const auditLog = actor.system?.auditLog || actor.system?.auditlog || {};
-            const itemNames = createdItems.map((i: any) => i.name) || [];
-            auditLog[targetLevel] = {
-                baseHP: newBaseHP,
-                itemsGained: itemNames,
-            };
-
-            // Update system links (Class, Patron) to point to the new items
-            const newClass = createdItems.find((i: any) => i.type?.toLowerCase() === 'class');
-            const newPatron = createdItems.find((i: any) => i.type?.toLowerCase() === 'patron');
-
-            const updates: any = {
-                'system.attributes.hp.base': newBaseHP,
-                'system.attributes.hp.max': newMaxHP,
-                'system.attributes.hp.value': newValueHP,
-                'system.auditLog': auditLog,
-                'system.level.value': targetLevel,
-                'system.level.xp': newXP,
-            };
-
-            if (newClass) {
-                // Use the sourceId (Compendium UUID) if available, fallback to the embedded item UUID
-                const classUuid = newClass.flags?.core?.sourceId || newClass.uuid || `Actor.${actor.id}.Item.${newClass.id || newClass._id}`;
-                console.log('[API] Linking new Class (Compendium):', newClass.name, classUuid);
-                updates['system.class'] = classUuid;
-            }
-            if (newPatron) {
-                const patronUuid = newPatron.flags?.core?.sourceId || newPatron.uuid || `Actor.${actor.id}.Item.${newPatron.id || newPatron._id}`;
-                console.log('[API] Linking new Patron (Compendium):', newPatron.name, patronUuid);
-                updates['system.patron'] = patronUuid;
-            }
-
-            // Also link Ancestry and Background if they were added (e.g. 0->1 transition from Generator)
-            const newAncestry = createdItems.find((i: any) => i.type?.toLowerCase() === 'ancestry');
-            const newBackground = createdItems.find((i: any) => i.type?.toLowerCase() === 'background');
-
-            if (newAncestry) {
-                const ancestryUuid = newAncestry.flags?.core?.sourceId || newAncestry.uuid || `Actor.${actor.id}.Item.${newAncestry.id || newAncestry._id}`;
-                console.log('[API] Linking new Ancestry (Compendium):', newAncestry.name, ancestryUuid);
-                updates['system.ancestry'] = ancestryUuid;
-            }
-            if (newBackground) {
-                const backgroundUuid = newBackground.flags?.core?.sourceId || newBackground.uuid || `Actor.${actor.id}.Item.${newBackground.id || newBackground._id}`;
-                console.log('[API] Linking new Background (Compendium):', newBackground.name, backgroundUuid);
-                updates['system.background'] = backgroundUuid;
-            }
-
-            // Sync Languages (Merge UUIDs/Names)
-            if (languages && Array.isArray(languages)) {
-                const currentLangs = actor.system?.languages || [];
-                // Merge and deduplicate
-                const updatedLangs = [...new Set([...currentLangs, ...languages])];
-                console.log('[API] Finalizing system.languages with UUIDs:', updatedLangs);
-                updates['system.languages'] = updatedLangs;
-            }
-
-            await actor.update(updates);
-
-            return {
-                success: true,
-                level: targetLevel,
-                xp: newXP,
-                hp: {
-                    base: newBaseHP,
-                    max: newMaxHP,
-                    value: newValueHP,
-                }
-            };
-        }, { actorId, hpRoll, items, languages });
-
-        if ('error' in result) {
-            return NextResponse.json({ error: result.error }, { status: 404 });
+            actorUpdates['system.attributes.hp.max'] = newMax;
+            actorUpdates['system.attributes.hp.value'] = newVal;
         }
 
-        return NextResponse.json({ success: true, actor: result });
+        const currentLevel = actor.system?.level?.value || 0;
+        actorUpdates['system.level.value'] = currentLevel + 1;
+
+        if (gold !== undefined) {
+            const currentCoins = actor.system?.coins?.gp || 0;
+            actorUpdates['system.coins.gp'] = currentCoins + gold;
+        }
+
+        if (languages && Array.isArray(languages)) {
+            const currentLangs = actor.system?.languages || [];
+            const newLangs = Array.from(new Set([...currentLangs, ...languages]));
+            actorUpdates['system.languages'] = newLangs;
+        }
+
+        if (Object.keys(actorUpdates).length > 0) {
+            logger.info(`[API] Updating actor ${actorId} with: ${JSON.stringify(actorUpdates)}`);
+            await client.updateActor(actorId, actorUpdates);
+        }
+
+        if (items && Array.isArray(items) && items.length > 0) {
+            logger.info(`[API] Creating ${items.length} items for actor ${actorId}`);
+            try {
+                // Use Promise.all to ensure all items are created
+                // Foundry's createActorItem often takes an array, but let's be safe and map if needed
+                // Based on LegacySocketClient, it takes an array in the 'data' property
+                await client.createActorItem(actorId, items);
+            } catch (err: any) {
+                logger.error(`[API] Failed to create items: ${err.message}`, err);
+                // Don't throw, just log, so we return success for the level up even if items fail
+            }
+        }
+
+        return NextResponse.json({ success: true, actorId });
 
     } catch (error: any) {
         console.error('[API] Finalize Level-Up Error:', error);

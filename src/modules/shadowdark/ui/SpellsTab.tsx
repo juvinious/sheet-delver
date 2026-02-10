@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
-    resolveImage,
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
@@ -15,13 +15,14 @@ interface SpellsTabProps {
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, name?: string) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
     systemData?: any;
     onDeleteItem?: (itemId: string) => void;
     addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
+    token?: string | null;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, foundryUrl, systemData, onDeleteItem, addNotification }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification, token }: SpellsTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTier, setEditingTier] = useState<number | null>(null);
@@ -105,24 +106,14 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // REMOVE: Currently known but not selected
             const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; }) => !selectedNames.has(s.name));
 
-            console.log('DEBUG: Managing spells', {
-                source: modalFilterClass,
-                tier: editingTier,
-                toAdd: toAdd.map((s: any) => s.name),
-                toRemove: toRemove.map((s: any) => s.name)
-            });
 
-            // Execute ADDs
-            for (const spell of toAdd) {
-                await handleAddSpell(spell);
-            }
+            // Execute ADDs & REMOVEs in parallel for better performance
+            const tasks = [
+                ...toAdd.map((spell: any) => handleAddSpell(spell)),
+                ...(onDeleteItem ? toRemove.map((spell: any) => onDeleteItem(spell.id || spell._id)) : [])
+            ];
 
-            // Execute REMOVEs
-            if (onDeleteItem && toRemove.length > 0) {
-                for (const spell of toRemove) {
-                    onDeleteItem(spell.id || spell._id);
-                }
-            }
+            await Promise.all(tasks);
 
             addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
             setIsAddModalOpen(false);
@@ -137,9 +128,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
     const handleAddSpell = async (spell: any) => {
         try {
+            const headers: any = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             await fetch(`/api/modules/shadowdark/actors/${actor._id || actor.id}/spells/learn`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify({ spellUuid: spell.uuid })
             });
         } catch (e) {
@@ -151,9 +145,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         const sources: Map<string, any> = new Map();
 
         // 1. Primary Class
-        const classItem = actor.items?.find((i: any) => i.type === 'Class');
+        const classItem = actor.computed?.classDetails || actor.items?.find((i: any) => i.type === 'Class');
         if (classItem?.system?.spellcasting?.ability) {
-            const classKey = classItem.name.toLowerCase();
+            const classKey = (classItem.name || "").toLowerCase();
             sources.set(classKey, {
                 name: classItem.name,
                 type: 'class',
@@ -161,6 +155,24 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 spellcasting: classItem.system.spellcasting,
                 bonusSpells: 0
             });
+        } else if (actor.system?.class && systemData?.classes) {
+            // Fallback: Resolve via systemData if class identified by UUID
+            const classRef = actor.system.class;
+            const resolvedClass = systemData.classes.find((c: any) => c.uuid === classRef || c.name.toLowerCase() === classRef.toLowerCase());
+            if (resolvedClass?.spellcasting?.ability) {
+                const classKey = resolvedClass.name.toLowerCase();
+                sources.set(classKey, {
+                    name: resolvedClass.name,
+                    type: 'class',
+                    classKey: classKey,
+                    spellcasting: resolvedClass.spellcasting,
+                    bonusSpells: 0
+                });
+            } else {
+                console.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!resolvedClass?.spellcasting?.ability}`);
+            }
+        } else {
+            console.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
         }
 
         // 2. Talents/Boons that grant spellcasting (Formal field OR Name heuristic)
@@ -201,7 +213,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     }
                 }
             }
-
             classKeys.forEach((key: string) => {
                 const existing = sources.get(key);
                 if (existing) {
@@ -217,12 +228,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 }
             });
         });
-
         return Array.from(sources.values());
-    }, [actor.items]);
+    }, [actor.items, actor.computed?.classDetails, systemData]);
 
     const getAccessibleTiers = (source: any) => {
-        const level = actor.system?.level?.value || 0;
+        const level = actor.level?.value || actor.system?.level?.value || 0;
         const tiers = [];
 
         if (source.type === 'class' && source.spellcasting?.spellsknown) {
@@ -271,19 +281,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // Check for source key (e.g. 'wizard') OR the source name if we could find it
             const classMatch = spellClasses.includes(filterKey);
 
-            // SURGICAL DEBUG FOR 'FOG'
-            if (s.name === 'Fog' || s.name?.toLowerCase().includes('fog')) {
-                console.log('DEBUG: Fog Filter Trace', {
-                    name: s.name,
-                    spellTier,
-                    editingTier,
-                    tierMatch,
-                    spellClassesRaw: classData,
-                    spellClassesProcesssed: spellClasses,
-                    filterKey,
-                    classMatch
-                });
-            }
 
             if (!tierMatch || !classMatch) return false;
 
@@ -292,14 +289,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             return true;
         });
 
-        console.log('DEBUG: Filtering Summary', {
-            tier: editingTier,
-            source: modalFilterClass,
-            totalAvailable: systemData.spells.length,
-            matches: results.length,
-            systemDebugKeys: systemData.debug ? 'Present' : 'Missing',
-            sampleSpells: results.slice(0, 2).map((s: any) => s.name)
-        });
 
         return results;
     }, [systemData, editingTier, modalFilterClass]);
@@ -389,16 +378,16 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                             );
                         }
 
-                        return allSpells.map((spell: any) => {
-                            const isExpanded = expandedItems.has(spell.id);
+                        return allSpells.map((spell: any, idx: number) => {
+                            const isExpanded = expandedItems.has(spell.id || spell._id);
                             const lost = isLost(spell);
 
                             return (
-                                <div key={spell.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                                <div key={spell.id || spell._id || `spell-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
                                             {spell.img ? (
-                                                <img src={resolveImage(spell.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                                <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
                                             ) : (
                                                 <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
                                             )}
@@ -410,7 +399,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                             </div>
                                             {spell.system?.class && (
                                                 <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
-                                                    {Array.isArray(spell.system.class) ? spell.system.class.join(', ') : spell.system.class}
+                                                    {(() => {
+                                                        const cls = spell.system.class;
+                                                        if (Array.isArray(cls)) return cls.join(', ');
+                                                        if (typeof cls === 'object' && cls !== null) return cls.name || cls.label || JSON.stringify(cls);
+                                                        return String(cls);
+                                                    })()}
                                                 </div>
                                             )}
                                         </div>
@@ -421,11 +415,21 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 {(() => {
                                                     const val = spell.system?.duration?.value;
                                                     const type = spell.system?.duration?.type || '-';
-                                                    if (val === undefined || val === null || val === '' || val === -1) return type.charAt(0).toUpperCase() + type.slice(1);
-                                                    return `${val} ${type.charAt(0).toUpperCase() + type.slice(1)}${val !== 1 ? 's' : ''}`;
+
+                                                    const safeVal = (typeof val === 'object') ? (val.value || val.text || "") : val;
+                                                    const safeType = (typeof type === 'object') ? (type.label || type.value || "-") : type;
+
+                                                    if (safeVal === undefined || safeVal === null || safeVal === '' || safeVal === -1) return safeType.charAt(0).toUpperCase() + safeType.slice(1);
+                                                    return `${safeVal} ${safeType.charAt(0).toUpperCase() + safeType.slice(1)}${safeVal !== 1 ? 's' : ''}`;
                                                 })()}
                                             </span>
-                                            <span className="text-sm font-serif w-32 text-center">{spell.system?.range || 'Close'}</span>
+                                            <span className="text-sm font-serif w-32 text-center">
+                                                {(() => {
+                                                    const rng = spell.system?.range;
+                                                    if (typeof rng === 'object' && rng !== null) return rng.value || rng.label || "Close";
+                                                    return rng || 'Close';
+                                                })()}
+                                            </span>
 
                                             <div className="flex gap-2 items-center justify-end w-24">
                                                 <button
@@ -495,8 +499,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                     <div className="bg-black text-white p-2 font-serif font-bold text-sm uppercase tracking-widest border-b-2 border-black">
                                         {source.name}
                                     </div>
-                                    <div className="p-4 bg-neutral-50 flex-1">
-                                        <div className="flex wrap gap-2">
+                                    <div className="p-4 bg-neutral-50 flex-1 min-h-[100px]">
+                                        <div className="flex flex-wrap gap-2">
                                             {accessibleTiers.map(tier => {
                                                 const max = getMaxSpellsForSource(tier, source.classKey);
                                                 const current = (actor.items || []).filter((i: any) => {
@@ -538,13 +542,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 <div className="space-y-2">
                     {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type))
                         .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                        .map((item: any) => {
-                            const isExpanded = expandedItems.has(item.id);
+                        .map((item: any, idx: number) => {
+                            const isExpanded = expandedItems.has(item.id || item._id);
                             return (
-                                <div key={item.id} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                                <div key={item.id || item._id || `magic-item-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                                     <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
                                         <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                            <img src={resolveImage(item.img, foundryUrl)} alt="" className="w-full h-full object-cover" />
+                                            <img src={resolveImageUrl(item.img)} alt="" className="w-full h-full object-cover" />
                                         </div>
                                         <div className="flex-1">
                                             <div className="font-serif font-bold text-lg leading-none">{item.name}</div>
@@ -589,8 +593,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     knownSpells={knownSpellsForModal}
                     onSave={handleManageSpells}
                     onClose={() => setIsAddModalOpen(false)}
-                    foundryUrl={foundryUrl}
                     maxSelections={maxSelections}
+                    token={token}
                 />
             )}
 

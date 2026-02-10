@@ -1,11 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getClient } from '@/lib/foundry/instance';
+import { getClient } from '@/core/foundry/instance';
 import { ShadowdarkImporter } from '../importer';
 
 export async function handleImport(request: Request) {
     try {
-        const client = getClient();
+        const client = (request as any).foundryClient;
         if (!client || !client.isConnected) {
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }

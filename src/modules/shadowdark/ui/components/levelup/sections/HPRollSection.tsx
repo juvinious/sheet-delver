@@ -2,27 +2,23 @@ import { useState } from 'react';
 import { SectionStatus } from '../useLevelUp';
 
 interface Props {
-    hpRoll: number;
+    hpRoll: number | null;
     hpFormula: string;
     hpMax: number;
-    confirmReroll: boolean;
     status: SectionStatus;
     onRoll: (isReroll: boolean) => void;
-    onManualChange: (val: number) => void;
+    onManualChange: (val: number | null) => void;
     onClear: () => void;
-    setConfirmReroll: (confirm: boolean) => void;
 }
 
 export const HPRollSection = ({
     hpRoll,
     hpFormula,
     hpMax,
-    confirmReroll,
     status,
     onRoll,
     onManualChange,
-    onClear,
-    setConfirmReroll
+    onClear
 }: Props) => {
     const [isManual, setIsManual] = useState(false);
 
@@ -33,7 +29,7 @@ export const HPRollSection = ({
             const constrained = Math.min(Math.max(val, 1), hpMax);
             onManualChange(constrained);
         } else if (e.target.value === '') {
-            onManualChange(0); // Allow clearing
+            onManualChange(null); // Allow clearing
         }
     };
 
@@ -41,7 +37,7 @@ export const HPRollSection = ({
         <div className="bg-white p-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden h-full flex flex-col">
             <div className="bg-black text-white px-4 py-2 font-serif font-bold text-lg uppercase tracking-wider -mx-4 -mt-4 mb-4 flex justify-between items-center h-12">
                 <span>Hit Points</span>
-                {hpRoll > 0 && (
+                {hpRoll !== null && hpRoll > 0 && (
                     <button
                         onClick={onClear}
                         className="text-white/50 hover:text-white transition-colors"
@@ -56,7 +52,7 @@ export const HPRollSection = ({
 
             <div className="flex-1 flex flex-col justify-between">
                 <div className="flex items-center justify-center py-4">
-                    <div className={`text-6xl font-black font-serif ${hpRoll > 0 ? 'text-black' : 'text-neutral-200'}`}>
+                    <div className={`text-6xl font-black font-serif ${hpRoll !== null && hpRoll > 0 ? 'text-black' : 'text-neutral-200'}`}>
                         {isManual ? (
                             <input
                                 type="number"
@@ -82,7 +78,7 @@ export const HPRollSection = ({
 
                     <div className="flex gap-2">
                         {!isManual ? (
-                            hpRoll === 0 ? (
+                            hpRoll === null || hpRoll === 0 ? (
                                 <button
                                     onClick={() => onRoll(false)}
                                     disabled={status === 'LOADING' || status === 'DISABLED'}

@@ -2,18 +2,18 @@
 
 import { useState } from 'react';
 import {
-    resolveImage,
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 interface TalentsTabProps {
     actor: any;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string; // Added prop
 }
 
-export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProps) {
+export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -64,7 +64,6 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
 
     // Group: Level (talentClass === 'level')
     const levelTalents = allTalents.filter((i: any) => {
-        //console.log(allTalents);
         return i.system?.talentClass?.toLowerCase() === 'level' || i.system?.talentClass?.toLowerCase() === 'patronboon';
     });
 
@@ -76,11 +75,11 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
             </div>
 
             <div className="space-y-2">
-                {items.map((item: any) => {
-                    const isExpanded = expandedItems.has(item.id);
+                {items.map((item: any, idx: number) => {
+                    const isExpanded = expandedItems.has(item.id || item._id);
                     const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
                     return (
-                        <div key={item.id} className={cardStyle}>
+                        <div key={item.id || item._id || `talent-${idx}`} className={cardStyle}>
                             {/* Header */}
                             <div
                                 className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
@@ -89,7 +88,7 @@ export default function TalentsTab({ actor, onRoll, foundryUrl }: TalentsTabProp
                                 {/* Image / Fallback */}
                                 <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
                                     {item.img ? (
-                                        <img src={resolveImage(item.img, foundryUrl)} alt={item.name} className="w-full h-full object-cover" />
+                                        <img src={resolveImageUrl(item.img)} alt={item.name} className="w-full h-full object-cover" />
                                     ) : (
                                         <span className="text-white font-serif font-bold text-lg">{item.name.charAt(0)}</span>
                                     )}

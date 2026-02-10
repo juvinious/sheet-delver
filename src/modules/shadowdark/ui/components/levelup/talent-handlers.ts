@@ -1,4 +1,5 @@
-import { TALENT_EFFECTS_MAP, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
+import { logger } from '../../../../../app/ui/logger';
+import { SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 
 export interface TalentHandler {
     id: string;
@@ -11,8 +12,9 @@ export interface TalentHandler {
     /**
      * Logic to execute when the talent is rolled.
      * Takes the simplified actions object from useLevelUp.
+     * Returns true if the original item should be suppressed (not added to the list).
      */
-    onRoll?: (actions: any) => void;
+    onRoll?: (actions: any) => void | boolean;
 
     /**
      * Logic to determine initialization state (e.g. adding required talents like Ambitious)
@@ -37,6 +39,22 @@ export interface TalentHandler {
 
 export const TALENT_HANDLERS: TalentHandler[] = [
     {
+        id: 'generic-choice',
+        description: "Parse 'Choose one' text talents",
+        matches: (item: any) => {
+            const name = (item.name || "").toLowerCase();
+            const text = (item.text || item.description || "").toLowerCase();
+            // Match "Choose one:" or "Choose one of the following" pattern
+            const regex = /(?:choose|select)\s+(?:one|1)/i;
+            return regex.test(name) || regex.test(text);
+        },
+        onRoll: (actions: any) => { /* logic is handled in useLevelUp via forced choice */ },
+        mutateItem: async (item: any) => {
+            // This is mostly handled by the UI modal forcing a selection
+            // but we keep the matcher for consistency
+        }
+    },
+    {
         id: 'ambitious',
         description: "Human Talent: Ambitious (Additional Talent at Level 1)",
         matches: (item: any) => {
@@ -60,7 +78,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return text.includes("+1 point to two stats") || text.includes("+1 to two stats");
         },
         onRoll: (actions: any) => {
-            console.log("[TalentHandler] Triggering Stat Selection");
+            logger.debug("[TalentHandler] Triggering Stat Selection");
             if (actions.setStatSelection) {
                 actions.setStatSelection({ required: 2, selected: [] });
             }
@@ -328,6 +346,64 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 return state.extraSpellSelection.selected.length < 1;
             }
             return false;
+        }
+    },
+    {
+        id: 'missing-effects',
+        description: "Apply standard effects from SYSTEM_PREDEFINED_EFFECTS if missing or invalid",
+        matches: (item: any) => {
+            // CRITICAL: Always match if we have invalid string effects (to clean them up)
+            // regardless of whether we have a predefined effect to replace them with.
+            const effects = item.effects;
+            const hasInvalidEffects = effects && Array.isArray(effects) && effects.length > 0 && typeof effects[0] === 'string';
+
+            if (hasInvalidEffects) return true;
+
+            // Otherwise, check if we are missing effects AND have a definition to add
+            const name = (item.name || "").toLowerCase();
+            const hasDefinition = Object.values(SYSTEM_PREDEFINED_EFFECTS).some((def: any) =>
+                name.includes(def.label.toLowerCase()) ||
+                def.label.toLowerCase().includes(name)
+            );
+
+            const isMissingEffects = !effects || (Array.isArray(effects) && effects.length === 0);
+            return isMissingEffects && hasDefinition;
+        },
+        mutateItem: (item: any) => {
+            // 1. Clean up invalid effects (strings) matches
+            if (item.effects && Array.isArray(item.effects) && item.effects.length > 0 && typeof item.effects[0] === 'string') {
+                logger.warn(`[TalentHandler] Clearing invalid string effects for ${item.name}`);
+                item.effects = [];
+            }
+
+            // 2. Try to polyfill from standard definitions
+            const name = (item.name || "").toLowerCase();
+            const predefinedMatch = Object.values(SYSTEM_PREDEFINED_EFFECTS).find((def: any) =>
+                name.includes(def.label.toLowerCase()) ||
+                def.label.toLowerCase().includes(name)
+            );
+
+            if (predefinedMatch) {
+                if (!item.effects) item.effects = [];
+
+                // Check if already exists to be safe (deduplication)
+                const exists = item.effects.some((e: any) => e.name === predefinedMatch.label);
+                if (!exists) {
+                    logger.debug(`[TalentHandler] Polyfilling effect ${predefinedMatch.label} for ${item.name}`);
+                    item.effects.push({
+                        name: predefinedMatch.label,
+                        icon: predefinedMatch.icon || "icons/svg/aura.svg",
+                        changes: predefinedMatch.changes || [{
+                            key: predefinedMatch.key,
+                            mode: predefinedMatch.mode,
+                            value: predefinedMatch.value
+                        }],
+                        transfer: true,
+                        disabled: false,
+                        _id: Math.random().toString(36).substring(2, 15) // Generate valid ID
+                    });
+                }
+            }
         }
     }
 ];

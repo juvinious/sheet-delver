@@ -29,7 +29,7 @@ export default function ToolPage({ params }: { params: Promise<{ systemId: strin
                     <p className="opacity-70">{error}</p>
                     <button
                         onClick={() => window.location.href = '/'}
-                        className="mt-4 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
+                        className="mt-4 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded transition-colors pointer"
                     >
                         Back to Dashboard
                     </button>

@@ -1,4 +1,5 @@
 import { ModuleManifest, SystemAdapter } from './interfaces';
+import { logger } from '../../core/logger';
 import shadowdark from '../shadowdark';
 import morkborg from '../morkborg';
 import generic from '../generic';
@@ -35,10 +36,16 @@ export const getSheet = (systemId: string) => {
 
 
 export const getMatchingAdapter = (actor: any): SystemAdapter => {
+    const actorName = actor.name || 'Unknown';
+    const actorId = actor.id || actor._id || 'unknown';
+
     // 1. Try explicit systemId match from the actor data
     if (actor.systemId) {
         const exact = getAdapter(actor.systemId);
-        if (exact && exact.systemId !== 'generic') return exact;
+        if (exact && exact.systemId !== 'generic') {
+            logger.debug(`[Registry] Matched ${actorName} (${actorId}) via explicit systemId: ${actor.systemId}`);
+            return exact;
+        }
     }
 
     // 2. Iterate all adapters to find a heuristic match
@@ -48,11 +55,13 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
 
         const adapter = new m.adapter();
         if (adapter.match(actor)) {
+            logger.debug(`[Registry] Matched ${actorName} (${actorId}) via heuristic: ${m.info.id}`);
             return adapter;
         }
     }
 
     // 3. Fallback to generic
+    logger.debug(`[Registry] No match for ${actorName} (${actorId}). Falling back to generic.`);
     return getAdapter('generic')!;
 };
 

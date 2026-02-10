@@ -1,15 +1,33 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { LevelUpModal } from '../components/LevelUpModal';
+import { logger } from '@/app/ui/logger';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+import { TALENT_HANDLERS } from '../components/levelup/talent-handlers';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export default function Generator() {
+    const { setFoundryUrl: setConfigFoundryUrl } = useConfig();
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
+    const [token, setToken] = useState<string | null>(null);
+
+    // Load Token
+    useEffect(() => {
+        const stored = sessionStorage.getItem('sheet-delver-token');
+        if (stored) setToken(stored);
+    }, []);
+
+    const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        const currentToken = token || sessionStorage.getItem('sheet-delver-token');
+        if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
+        return fetch(input, { ...init, headers });
+    }, [token]);
 
     // Randomize All
     const skipLanguageReset = useRef(false);
@@ -90,33 +108,29 @@ export default function Generator() {
         }));
     };
 
-    const fetchDocument = async (uuid: string) => {
-        try {
-            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(uuid)}`);
-            if (!res.ok) throw new Error('Failed to fetch document');
-            return await res.json();
-        } catch (e) {
-            console.error(e);
-            return null;
-        }
-    };
+    const fetchDocument = useCallback(async (uuid: string) => {
+        const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
+        if (!res.ok) throw new Error(`Failed to fetch document: ${uuid}`);
+        return res.json();
+    }, [fetchWithAuth]);
 
     // Verify Connection on Mount
     useEffect(() => {
         const checkConnection = async () => {
             try {
-                const res = await fetch('/api/session/connect');
+                const res = await fetchWithAuth('/api/session/connect');
                 const data = await res.json();
 
 
 
                 // If not connected, system mismatch, or NOT LOGGED IN, redirect to home.
-                if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.system?.isLoggedIn) {
+                // Fix: Check data.isAuthenticated (User Session) instead of data.system.isLoggedIn (Undefined/System Client)
+                if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.isAuthenticated) {
                     window.location.href = '/';
                 }
                 if (data.url) {
-
                     setFoundryUrl(data.url);
+                    setConfigFoundryUrl(data.url);
                 } else {
                     console.warn('Generator: No foundryUrl returned from connect');
                 }
@@ -125,18 +139,18 @@ export default function Generator() {
             }
         };
         checkConnection();
-    }, []);
+    }, [fetchWithAuth]);
 
     // Load System Data
     useEffect(() => {
-        fetch('/api/system/data')
+        fetchWithAuth('/api/system/data')
             .then(res => res.json())
             .then(data => {
                 setSystemData(data);
                 setLoading(false);
             })
             .catch(err => console.error('Failed to load system data', err));
-    }, []);
+    }, [fetchWithAuth]);
 
 
 
@@ -149,7 +163,7 @@ export default function Generator() {
         fetchDocument(formData.class).then(data => {
             setClassDetails(data);
         });
-    }, [formData.class]);
+    }, [formData.class, fetchDocument]);
 
     // Fetch Patron Details on change
     useEffect(() => {
@@ -158,7 +172,7 @@ export default function Generator() {
             return;
         }
         fetchDocument(formData.patron).then(data => setPatronDetails(data));
-    }, [formData.patron]);
+    }, [formData.patron, fetchDocument]);
 
     // Roll Stats (3d6 down the line)
     const rollStats = () => {
@@ -234,10 +248,9 @@ export default function Generator() {
         const gearTable = await fetchDocument(GEAR_TABLE_UUID);
         if (!gearTable || !gearTable.results) return;
 
-        let max = 0;
-        gearTable.results.forEach((r: any) => {
-            if (r.range[1] > max) max = r.range[1];
-        });
+        // conform to hydrated range structure
+        const max = Math.max(...gearTable.results.map((r: any) => (r.range?.[1] || 0)));
+        if (max === 0) return;
 
         const selectedItems: any[] = [];
         const seenNames = new Set<string>();
@@ -347,23 +360,20 @@ export default function Generator() {
 
     // Helper: Random Text from Roll Table
     const randomNameFromTable = async (tableUuid: string) => {
-        if (!tableUuid) return "";
         try {
             const table = await fetchDocument(tableUuid);
+            if (!table || !table.results) return "Generic Name";
 
-            if (!table?.results) return "";
+            const results = table.results;
+            const max = Math.max(...results.map((r: any) => (r.range?.[1] || 0)));
+            if (max === 0) return "Generic Name";
 
-            // Handle both Array and Collection-like object (Foundry toJSON sometimes varies)
-            const resultsArray = Array.isArray(table.results) ? table.results : Object.values(table.results);
+            const roll = Math.floor(Math.random() * max) + 1;
+            const result = results.find((r: any) => roll >= (r.range?.[0] || 1) && roll <= (r.range?.[1] || 1));
 
-            if (!resultsArray.length) return "";
-
-            // Simple random pick from results
-            const result = resultsArray[Math.floor(Math.random() * resultsArray.length)];
-            return result.text || result.name || "Unnamed";
+            return result?.text || result?.name || "Unnamed";
         } catch (e) {
-            console.warn("Failed to fetch name table", e);
-            return "";
+            return "Generic Name";
         }
     };
 
@@ -428,6 +438,7 @@ export default function Generator() {
             // 1. Pick Core Options
             const anc = rand(systemData.ancestries);
             const bg = rand(systemData.backgrounds);
+            // let classItem = null; // Unused // Unused
             let cls = null;
             if (!formData.level0) {
                 cls = rand(systemData.classes);
@@ -696,7 +707,7 @@ export default function Generator() {
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData]);
+    }, [formData.ancestry, systemData, fetchDocument]);
 
 
 
@@ -874,7 +885,7 @@ export default function Generator() {
         };
 
         loadDetails();
-    }, [classDetails, formData.level0]);
+    }, [classDetails, formData.level0, fetchDocument]);
 
     // Combined Language Effect
     useEffect(() => {
@@ -930,14 +941,13 @@ export default function Generator() {
 
             setLanguageConfig({ common, rare, ancestry: ancestryPool, class: classPool, fixed: fixedUuids });
             setKnownLanguages(prev => ({
-                ...prev,
                 fixed: fixedResolved,
                 selected: { common: [], rare: [], ancestry: [], class: [] } // Reset selections on reload
             }));
         };
 
         loadLanguages();
-    }, [ancestryDetails, classDetails, formData.level0]);
+    }, [ancestryDetails, classDetails, formData.level0, fetchDocument]);
 
 
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
@@ -1025,6 +1035,29 @@ export default function Generator() {
                     if (!itemData.flags.core) itemData.flags.core = {};
                     itemData.flags.core.sourceId = uuid;
 
+                    // Validate & Sanitize Effects using Handlers
+                    // This fixes the "Cannot create property '_id' on string" crash
+                    // by converting legacy string effects to objects or removing them
+                    for (const handler of TALENT_HANDLERS) {
+                        if (handler.matches(itemData)) {
+                            try {
+                                // Some handlers expect a full state object, but for Generator base items
+                                // we just need the mutateItem logic (mostly for missing-effects)
+                                if (handler.mutateItem) {
+                                    handler.mutateItem(itemData, {} as any);
+                                }
+                            } catch (e) {
+                                // If handler fails (e.g. missing context), just ignore
+                                // Our main goal is the missing-effects cleanup
+                            }
+                        }
+                    }
+
+                    // Safety Fallback: Nuke any remaining string effects
+                    if (itemData.effects && Array.isArray(itemData.effects) && itemData.effects.length > 0 && typeof itemData.effects[0] === 'string') {
+                        itemData.effects = [];
+                    }
+
                     // FORCE LEVEL 1 for Level 1 Characters
                     // Unless it's Level 0 mode, all added items should be active (Level 1)
                     if (!formData.level0 && itemData.system && typeof itemData.system.level !== 'undefined') {
@@ -1083,12 +1116,12 @@ export default function Generator() {
                 }
             }
 
-            const backgroundItem = await addItem(formData.background);
+            await addItem(formData.background);
 
             // Add Patron if selected (Warlock)
-            let patronItem = null;
+            // let patronItem = null; // Unused
             if (formData.patron) {
-                patronItem = await addItem(formData.patron);
+                await addItem(formData.patron);
             }
 
             // Add Class (if not Level 0)
@@ -1184,14 +1217,14 @@ export default function Generator() {
                 const choiceMatch = name.match(choiceRegex);
                 if (choiceMatch) {
                     const amount = parseInt(choiceMatch[1] || choiceMatch[2]);
-                    console.log(`Generator: Detected 'Any Stat' choice for ${name}. Prompting user...`);
+                    logger.debug(`Generator: Detected 'Any Stat' choice for ${name}. Prompting user...`);
 
                     // Prompt User
                     const selectedStat = await promptStatChoice(amount);
 
                     if (selectedStat) {
                         const statRaw = selectedStat.toLowerCase();
-                        console.log(`Generator: User chose ${statRaw}`);
+                        logger.debug(`Generator: User chose ${statRaw}`);
 
                         const effect = {
                             label: `${name} (${selectedStat.toUpperCase()})`,
@@ -1219,9 +1252,8 @@ export default function Generator() {
                 items.push(cleanItem);
             }
 
-            let classItem = null;
             if (!formData.level0) {
-                classItem = await addItem(formData.class);
+                await addItem(formData.class);
             }
 
             // Collect Language UUIDs for system.languages array
@@ -1292,9 +1324,14 @@ export default function Generator() {
             };
 
             // 3. Send to API
+
+            const headers: any = { 'Content-Type': 'application/json' };
+            const token = sessionStorage.getItem('sheet-delver-token');
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
             const res = await fetch('/api/actors', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers,
                 body: JSON.stringify(actorData)
             });
 
@@ -1480,7 +1517,6 @@ export default function Generator() {
                             <div className="bg-white p-4 border-2 border-black shadow-sm h-full flex flex-col justify-between">
                                 <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
                                     <span>HP</span>
-                                    {formData.level0 && <button onClick={calculateHP} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>}
                                 </h2>
                                 <div className="text-center flex-1 flex flex-col justify-center">
                                     {formData.level0 ? (
@@ -1498,7 +1534,6 @@ export default function Generator() {
                             <div className="bg-white p-4 border-2 border-black shadow-sm h-full flex flex-col justify-between">
                                 <h2 className="text-black font-black font-serif text-lg border-b-2 border-black mb-2 flex justify-between items-center">
                                     <span>Gold</span>
-                                    {formData.level0 && <button onClick={calculateGold} className="text-neutral-300 hover:text-black transition-colors"><i className="fas fa-dice"></i></button>}
                                 </h2>
                                 <div className="text-center flex-1 flex flex-col justify-center">
                                     {
@@ -1697,26 +1732,31 @@ export default function Generator() {
 
                                 {/* Ancestry Talent Modal */}
                                 {showAncestryTalentsModal && (
-                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                        <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
-                                            <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
-                                                <h3 className="font-bold font-serif text-lg">Choose {ancestryTalents.choiceCount} Talent{ancestryTalents.choiceCount > 1 ? 's' : ''}</h3>
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                                        <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm" onClick={() => setShowAncestryTalentsModal(false)}></div>
+                                        <div className="relative w-full max-w-lg bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                                            <div className="bg-black p-4 flex justify-between items-center">
+                                                <h3 className="text-xl font-black text-white uppercase tracking-wider font-serif">
+                                                    Choose {ancestryTalents.choiceCount} Talent{ancestryTalents.choiceCount > 1 ? 's' : ''}
+                                                </h3>
                                                 <button
                                                     onClick={() => setShowAncestryTalentsModal(false)}
-                                                    className="text-neutral-500 hover:text-black"
+                                                    className="text-neutral-400 hover:text-white transition-colors"
                                                 >
-                                                    ✕
+                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
                                                 </button>
                                             </div>
-                                            <div className="p-4 overflow-y-auto">
-                                                <div className="space-y-2">
+                                            <div className="p-6 overflow-y-auto">
+                                                <div className="space-y-3">
                                                     {ancestryTalents.choice.map((t: any) => {
                                                         const isSelected = selectedAncestryTalents.includes(t.uuid);
                                                         const canSelect = isSelected || selectedAncestryTalents.length < ancestryTalents.choiceCount;
 
                                                         return (
                                                             <div
-                                                                key={t.uuid || t.name} // Prefer UUID
+                                                                key={t.uuid || t.name}
                                                                 onClick={() => {
                                                                     if (isSelected) {
                                                                         setSelectedAncestryTalents(prev => prev.filter(id => id !== t.uuid));
@@ -1724,30 +1764,30 @@ export default function Generator() {
                                                                         setSelectedAncestryTalents(prev => [...prev, t.uuid]);
                                                                     }
                                                                 }}
-                                                                className={`p-2 border rounded cursor-pointer transition-colors ${isSelected
-                                                                    ? 'border-indigo-500 bg-indigo-50'
+                                                                className={`p-4 border-2 transition-all cursor-pointer ${isSelected
+                                                                    ? 'border-black bg-indigo-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                                                                     : canSelect
-                                                                        ? 'hover:bg-neutral-50 border-neutral-200'
-                                                                        : 'opacity-50 cursor-not-allowed border-neutral-100'
+                                                                        ? 'border-neutral-200 hover:border-black hover:bg-neutral-100'
+                                                                        : 'border-neutral-100 opacity-50 cursor-not-allowed bg-neutral-50'
                                                                     }`}
                                                             >
                                                                 <div className="flex justify-between items-start">
-                                                                    <div className="font-bold text-sm">{t.name}</div>
-                                                                    {isSelected && <span className="fas fa-check text-indigo-600"></span>}
+                                                                    <div className={`font-black font-serif uppercase tracking-wide ${isSelected ? 'text-black' : 'text-neutral-600'}`}>{t.name}</div>
+                                                                    {isSelected && <span className="text-indigo-600 font-bold">✓</span>}
                                                                 </div>
-                                                                <div className="text-xs text-neutral-600 mt-1" dangerouslySetInnerHTML={{ __html: t.description }}></div>
+                                                                <div className="text-xs text-neutral-500 mt-2 font-medium" dangerouslySetInnerHTML={{ __html: t.description }}></div>
                                                             </div>
                                                         );
                                                     })}
                                                 </div>
                                             </div>
-                                            <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right flex justify-between items-center">
-                                                <span className="text-xs text-neutral-500">
+                                            <div className="p-4 border-t-4 border-black bg-neutral-100 flex justify-between items-center">
+                                                <span className="text-xs font-black uppercase tracking-widest text-neutral-500">
                                                     {selectedAncestryTalents.length} / {ancestryTalents.choiceCount} selected
                                                 </span>
                                                 <button
                                                     onClick={() => setShowAncestryTalentsModal(false)}
-                                                    className="px-3 py-1 bg-neutral-800 text-white hover:bg-black rounded text-sm disabled:opacity-50"
+                                                    className="px-6 py-2 bg-black text-white font-black uppercase tracking-widest text-sm hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                                     disabled={selectedAncestryTalents.length !== ancestryTalents.choiceCount}
                                                 >
                                                     Confirm
@@ -1855,140 +1895,106 @@ export default function Generator() {
 
                         {/* Language Selection Modal */}
                         {showLanguageModal && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
-                                        <h3 className="font-bold font-serif text-lg">Select Languages</h3>
-                                        <button
-                                            onClick={() => setShowLanguageModal(false)}
-                                            className="text-neutral-500 hover:text-black"
-                                        >
-                                            ✕
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                                <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm" onClick={() => setShowLanguageModal(false)}></div>
+                                <div className="relative w-full max-w-3xl bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                                    <div className="bg-black p-4 flex justify-between items-center">
+                                        <h3 className="text-xl font-black text-white uppercase tracking-wider font-serif">Select Languages</h3>
+                                        <button onClick={() => setShowLanguageModal(false)} className="text-neutral-400 hover:text-white transition-colors">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
                                         </button>
                                     </div>
-                                    <div className="p-4 overflow-y-auto flex-1 text-sm">
+                                    <div className="p-6 overflow-y-auto space-y-6">
+                                        {[
+                                            { key: 'ancestry', label: 'Ancestry Languages', config: languageConfig.ancestry },
+                                            { key: 'class', label: 'Class Languages', config: languageConfig.class },
+                                            { key: 'common', label: 'Common Languages', config: { count: languageConfig.common, options: [] } },
+                                            { key: 'rare', label: 'Rare Languages', config: { count: languageConfig.rare, options: [] } }
+                                        ].map(section => {
+                                            if (section.config.count <= 0) return null;
 
-                                        {/* Ancestry Languages */}
-                                        {languageConfig.ancestry.count > 0 && (
-                                            <div className="mb-4">
-                                                <div className="font-bold mb-1 border-b border-neutral-200 pb-1">
-                                                    Ancestry Languages (Choose {languageConfig.ancestry.count})
-                                                </div>
-                                                <div className="space-y-1">
-                                                    {(() => {
-                                                        // Determine the source pool: Explicit options OR all languages if no options
-                                                        // @ts-ignore
-                                                        const source = languageConfig.ancestry.options.length > 0
-                                                            ? languageConfig.ancestry.options
-                                                            // @ts-ignore
-                                                            : systemData.languages.map((l: any) => l.uuid);
+                                            const bucketKey = section.key as keyof typeof knownLanguages.selected;
+                                            const selectedIds = knownLanguages.selected[bucketKey] || [];
 
-                                                        // Filter source to get full objects (name, uuid)
-                                                        // @ts-ignore
-                                                        const options = systemData?.languages?.filter((l: any) => source.includes(l.uuid)) || [];
+                                            // Determine Options
+                                            let options: any[] = [];
+                                            if (section.key === 'common') {
+                                                // @ts-ignore
+                                                options = systemData?.languages?.filter((l: any) => !l.rarity || l.rarity === 'common') || [];
+                                            } else if (section.key === 'rare') {
+                                                // @ts-ignore
+                                                options = systemData?.languages?.filter((l: any) => l.rarity === 'rare') || [];
+                                            } else {
+                                                // @ts-ignore
+                                                const allowedIds = section.config.options;
+                                                if (allowedIds && allowedIds.length > 0) {
+                                                    // @ts-ignore
+                                                    options = allowedIds.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)).filter(Boolean);
+                                                } else {
+                                                    // @ts-ignore
+                                                    options = systemData?.languages || [];
+                                                }
+                                            }
 
-                                                        // Filter out any that are ALREADY fixed (e.g. Common)
-                                                        const available = options.filter((l: any) => !knownLanguages.fixed.some((f: any) => f.uuid === l.uuid));
+                                            options.sort((a, b) => a.name.localeCompare(b.name));
 
-                                                        return available.map((l: any) => {
-                                                            const isSelected = knownLanguages.selected.ancestry.includes(l.uuid);
-                                                            const isFull = knownLanguages.selected.ancestry.length >= languageConfig.ancestry.count;
-                                                            const disabled = !isSelected && isFull;
+                                            return (
+                                                <div key={section.key}>
+                                                    <h4 className="font-black font-serif text-sm uppercase tracking-widest text-black mb-3 border-b-2 border-black flex justify-between">
+                                                        <span>{section.label}</span>
+                                                        <span className="text-neutral-500 font-sans tracking-normal">{selectedIds.length} / {section.config.count}</span>
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                        {options.map((l: any) => {
+                                                            const isFixed = knownLanguages.fixed.some(f => f.uuid === l.uuid) || languageConfig.fixed.includes(l.uuid);
+                                                            if (isFixed) return null;
 
-                                                            return (
-                                                                <label key={l.uuid} className={`flex items-center gap-2 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={isSelected}
-                                                                        disabled={disabled}
-                                                                        onChange={(e) => {
-                                                                            const checked = e.target.checked;
-                                                                            setKnownLanguages(prev => {
-                                                                                const current = prev.selected.ancestry;
-                                                                                let updated = [];
-                                                                                if (checked) {
-                                                                                    if (current.length < languageConfig.ancestry.count) {
-                                                                                        updated = [...current, l.uuid];
-                                                                                    } else {
-                                                                                        updated = current;
-                                                                                    }
-                                                                                } else {
-                                                                                    updated = current.filter(id => id !== l.uuid);
-                                                                                }
-                                                                                return {
-                                                                                    ...prev,
-                                                                                    selected: { ...prev.selected, ancestry: updated }
-                                                                                };
-                                                                            });
-                                                                        }}
-                                                                    />
-                                                                    <span>{l.name}</span>
-                                                                </label>
-                                                            );
-                                                        });
-                                                    })()}
-                                                </div>
-                                            </div>
-                                        )}
+                                                            const isSelectedInBucket = selectedIds.includes(l.uuid);
+                                                            const isSelectedElsewhere = Object.entries(knownLanguages.selected).some(([k, ids]) => k !== section.key && ids.includes(l.uuid));
+                                                            const canSelect = isSelectedInBucket || (selectedIds.length < section.config.count && !isSelectedElsewhere);
 
-                                        {/* Class Languages */}
-                                        {languageConfig.class.count > 0 && (
-                                            <div className="mb-4">
-                                                <div className="font-bold mb-1 border-b border-neutral-200 pb-1">
-                                                    Class Languages (Choose {languageConfig.class.count})
-                                                </div>
-                                                <div className="space-y-1">
-                                                    {(() => {
-                                                        // @ts-ignore
-                                                        const source = languageConfig.class.options.length > 0 ? languageConfig.class.options : systemData.languages.map((l: any) => l.uuid);
-                                                        // @ts-ignore
-                                                        const options = systemData?.languages?.filter((l: any) => source.includes(l.uuid)) || [];
-                                                        const available = options.filter((l: any) => !knownLanguages.fixed.some((f: any) => f.uuid === l.uuid));
-
-                                                        return available.map((l: any) => {
-                                                            const isSelected = knownLanguages.selected.class.includes(l.uuid);
-                                                            const isFull = knownLanguages.selected.class.length >= languageConfig.class.count;
-                                                            const disabled = !isSelected && isFull;
+                                                            let validStyle = 'border-neutral-200 hover:border-black hover:bg-neutral-100';
+                                                            if (isSelectedInBucket) validStyle = 'border-black bg-indigo-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold';
+                                                            if (isSelectedElsewhere) validStyle = 'opacity-30 cursor-not-allowed border-neutral-100 grayscale';
+                                                            if (!canSelect && !isSelectedElsewhere && !isSelectedInBucket) validStyle = 'opacity-50 cursor-not-allowed border-neutral-100';
 
                                                             return (
-                                                                <label key={l.uuid} className={`flex items-center gap-2 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={isSelected}
-                                                                        disabled={disabled}
-                                                                        onChange={(e) => {
-                                                                            const checked = e.target.checked;
-                                                                            setKnownLanguages(prev => {
-                                                                                const current = prev.selected.class;
-                                                                                let updated = [];
-                                                                                if (checked) {
-                                                                                    if (current.length < languageConfig.class.count) updated = [...current, l.uuid];
-                                                                                    else updated = current;
-                                                                                } else {
-                                                                                    updated = current.filter(id => id !== l.uuid);
-                                                                                }
-                                                                                return { ...prev, selected: { ...prev.selected, class: updated } };
-                                                                            });
-                                                                        }}
-                                                                    />
-                                                                    <span>{l.name}</span>
-                                                                </label>
+                                                                <div
+                                                                    key={l.uuid}
+                                                                    onClick={() => {
+                                                                        if (isSelectedElsewhere) return;
+                                                                        if (isSelectedInBucket) {
+                                                                            setKnownLanguages(prev => ({
+                                                                                ...prev,
+                                                                                selected: { ...prev.selected, [bucketKey]: prev.selected[bucketKey].filter(id => id !== l.uuid) }
+                                                                            }));
+                                                                        } else if (canSelect) {
+                                                                            setKnownLanguages(prev => ({
+                                                                                ...prev,
+                                                                                selected: { ...prev.selected, [bucketKey]: [...prev.selected[bucketKey], l.uuid] }
+                                                                            }));
+                                                                        }
+                                                                    }}
+                                                                    className={`p-3 border-2 transition-all cursor-pointer text-xs uppercase font-bold tracking-wider ${validStyle}`}
+                                                                >
+                                                                    <div className="flex justify-between items-center">
+                                                                        <span>{l.name}</span>
+                                                                        {isSelectedInBucket && <span className="text-indigo-600 font-bold">✓</span>}
+                                                                    </div>
+                                                                </div>
                                                             );
-                                                        });
-                                                    })()}
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
-
-                                        {/* Common / Rare Pools (if any left) */}
-                                        {/* NOTE: Shadowdark usually auto-assigns common/rare. But if user manually wants to swap? */}
-                                        {/* For now, adhering mainly to Ancestry/Class choices requested by user. */}
-
+                                            );
+                                        })}
                                     </div>
-                                    <div className="p-3 border-t border-neutral-200 bg-neutral-100 rounded-b flex justify-end">
+                                    <div className="p-4 border-t-4 border-black bg-neutral-100 flex justify-end">
                                         <button
                                             onClick={() => setShowLanguageModal(false)}
-                                            className="px-4 py-2 bg-black text-white rounded hover:bg-neutral-800 text-xs font-bold uppercase tracking-wide"
+                                            className="px-8 py-2 bg-black text-white font-black uppercase tracking-widest text-sm hover:bg-neutral-800 transition-colors shadow-[4px_4px_0px_0px_rgba(100,100,100,1)] active:translate-y-1 active:shadow-none"
                                         >
                                             Done
                                         </button>
@@ -2026,24 +2032,23 @@ export default function Generator() {
                         )}
 
                         {/* Patron Selection Modal */}
-                        {/* Patron Selection Modal */}
                         {showPatronModal && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                <div className="bg-white rounded shadow-lg max-w-md w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
-                                        <h3 className="font-bold font-serif text-lg">Choose Patron</h3>
-                                        <button
-                                            onClick={() => setShowPatronModal(false)}
-                                            className="text-neutral-500 hover:text-black"
-                                        >
-                                            ✕
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
+                                <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm" onClick={() => setShowPatronModal(false)}></div>
+                                <div className="relative w-full max-w-lg bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                                    <div className="bg-black p-4 flex justify-between items-center">
+                                        <h3 className="text-xl font-black text-white uppercase tracking-wider font-serif">Choose Patron</h3>
+                                        <button onClick={() => setShowPatronModal(false)} className="text-neutral-400 hover:text-white transition-colors">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
                                         </button>
                                     </div>
-                                    <div className="p-4 overflow-y-auto">
+                                    <div className="p-6 overflow-y-auto">
                                         {!systemData?.patrons?.length ? (
-                                            <p className="italic text-neutral-500">No patrons found in list.</p>
+                                            <p className="italic text-neutral-500 text-center font-serif">No patrons found in the darkness.</p>
                                         ) : (
-                                            <div className="space-y-2">
+                                            <div className="space-y-3">
                                                 {/* @ts-ignore */}
                                                 {systemData.patrons.map((p: any) => (
                                                     <div
@@ -2052,10 +2057,13 @@ export default function Generator() {
                                                             setFormData(prev => ({ ...prev, patron: p.uuid }));
                                                             setShowPatronModal(false);
                                                         }}
-                                                        className={`p-2 border rounded cursor-pointer hover:bg-neutral-50 ${formData.patron === p.uuid ? 'border-indigo-500 bg-indigo-50' : 'border-neutral-200'}`}
+                                                        className={`p-4 border-2 transition-all cursor-pointer ${formData.patron === p.uuid
+                                                            ? 'border-black bg-indigo-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
+                                                            : 'border-neutral-200 hover:border-black hover:bg-neutral-100'
+                                                            }`}
                                                     >
-                                                        <div className="font-bold text-sm">{p.name}</div>
-                                                        <div className="text-xs text-neutral-600 line-clamp-2">
+                                                        <div className={`font-black font-serif uppercase tracking-wide ${formData.patron === p.uuid ? 'text-black' : 'text-neutral-600'}`}>{p.name}</div>
+                                                        <div className="text-xs text-neutral-500 mt-2 font-medium line-clamp-2">
                                                             {(p.description || "").replace(/<[^>]+>/g, ' ')}
                                                         </div>
                                                     </div>
@@ -2063,10 +2071,10 @@ export default function Generator() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right">
+                                    <div className="p-4 border-t-4 border-black bg-neutral-100 flex justify-end">
                                         <button
                                             onClick={() => setShowPatronModal(false)}
-                                            className="px-3 py-1 bg-neutral-200 hover:bg-neutral-300 rounded text-sm"
+                                            className="px-6 py-2 bg-black text-white font-black uppercase tracking-widest text-sm hover:bg-neutral-800 transition-colors"
                                         >
                                             Cancel
                                         </button>
@@ -2075,133 +2083,6 @@ export default function Generator() {
                             </div>
                         )}
 
-                        {/* Language Selection Modal */}
-                        {showLanguageModal && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                                <div className="bg-white rounded shadow-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-3 border-b border-neutral-200 flex justify-between items-center bg-neutral-100 rounded-t">
-                                        <h3 className="font-bold font-serif text-lg">Select Languages</h3>
-                                        <button onClick={() => setShowLanguageModal(false)} className="text-neutral-500 hover:text-black">✕</button>
-                                    </div>
-                                    <div className="p-4 overflow-y-auto space-y-4">
-                                        {[
-                                            { key: 'ancestry', label: 'Ancestry Languages', config: languageConfig.ancestry },
-                                            { key: 'class', label: 'Class Languages', config: languageConfig.class },
-                                            { key: 'common', label: 'Common Languages', config: { count: languageConfig.common, options: [] } },
-                                            { key: 'rare', label: 'Rare Languages', config: { count: languageConfig.rare, options: [] } }
-                                        ].map(section => {
-                                            if (section.config.count <= 0) return null;
-
-                                            const bucketKey = section.key as keyof typeof knownLanguages.selected;
-                                            const selectedIds = knownLanguages.selected[bucketKey] || [];
-
-                                            // Determine Options
-                                            let options: any[] = [];
-                                            if (section.key === 'common') {
-                                                // All Common
-                                                // @ts-ignore
-                                                options = systemData?.languages?.filter((l: any) => !l.rarity || l.rarity === 'common') || [];
-                                            } else if (section.key === 'rare') {
-                                                // All Rare
-                                                // @ts-ignore
-                                                options = systemData?.languages?.filter((l: any) => l.rarity === 'rare') || [];
-                                            } else {
-                                                // Restricted Pool (Ancestry/Class)
-                                                // If options provided, use them. Else ALL.
-                                                // @ts-ignore
-                                                const allowedIds = section.config.options;
-                                                if (allowedIds && allowedIds.length > 0) {
-                                                    // @ts-ignore
-                                                    options = allowedIds.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)).filter(Boolean);
-                                                } else {
-                                                    // Fallback to ALL languages if no restriction list (Any)
-                                                    // @ts-ignore
-                                                    options = systemData?.languages || [];
-                                                }
-                                            }
-
-                                            // Sort options
-                                            options.sort((a, b) => a.name.localeCompare(b.name));
-
-                                            return (
-                                                <div key={section.key}>
-                                                    <h4 className="font-bold text-sm uppercase text-neutral-500 mb-2 border-b border-neutral-200 flex justify-between">
-                                                        <span>{section.label}</span>
-                                                        <span>{selectedIds.length} / {section.config.count}</span>
-                                                    </h4>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        {options.map((l: any) => {
-                                                            // Check if fixed
-                                                            const isFixed = knownLanguages.fixed.some(f => f.uuid === l.uuid) || languageConfig.fixed.includes(l.uuid);
-                                                            if (isFixed) return null;
-
-                                                            // Check if selected in THIS bucket
-                                                            const isSelectedInBucket = selectedIds.includes(l.uuid);
-
-                                                            // Check if selected in ANY OTHER bucket
-                                                            const isSelectedElsewhere = Object.entries(knownLanguages.selected).some(([k, ids]) => k !== section.key && ids.includes(l.uuid));
-
-                                                            // Can select?
-                                                            const canSelect = isSelectedInBucket || (selectedIds.length < section.config.count && !isSelectedElsewhere);
-
-                                                            // Style
-                                                            let validStyle = 'hover:bg-neutral-50 border-neutral-200';
-                                                            if (isSelectedInBucket) validStyle = 'bg-indigo-50 border-indigo-500 font-bold';
-                                                            if (isSelectedElsewhere) validStyle = 'opacity-50 cursor-not-allowed border-neutral-100 bg-neutral-100 text-neutral-400';
-                                                            if (!canSelect && !isSelectedElsewhere && !isSelectedInBucket) validStyle = 'opacity-50 cursor-not-allowed border-neutral-100';
-
-                                                            return (
-                                                                <div
-                                                                    key={l.uuid}
-                                                                    onClick={() => {
-                                                                        if (isSelectedElsewhere) return; // Cannot pick
-
-                                                                        if (isSelectedInBucket) {
-                                                                            // Deselect
-                                                                            setKnownLanguages(prev => ({
-                                                                                ...prev,
-                                                                                selected: {
-                                                                                    ...prev.selected,
-                                                                                    [bucketKey]: prev.selected[bucketKey].filter(id => id !== l.uuid)
-                                                                                }
-                                                                            }));
-                                                                        } else if (canSelect) {
-                                                                            // Select
-                                                                            setKnownLanguages(prev => ({
-                                                                                ...prev,
-                                                                                selected: {
-                                                                                    ...prev.selected,
-                                                                                    [bucketKey]: [...prev.selected[bucketKey], l.uuid]
-                                                                                }
-                                                                            }));
-                                                                        }
-                                                                    }}
-                                                                    className={`p-2 border rounded cursor-pointer text-sm transition-all ${validStyle}`}
-                                                                >
-                                                                    <div className="flex justify-between items-center">
-                                                                        <span>{l.name}</span>
-                                                                        {isSelectedInBucket && <span className="fas fa-check text-indigo-600">✓</span>}
-                                                                        {isSelectedElsewhere && <span className="text-[10px] uppercase font-bold">Picked</span>}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <div className="p-3 border-t border-neutral-200 bg-neutral-50 rounded-b text-right">
-                                        <button
-                                            onClick={() => setShowLanguageModal(false)}
-                                            className="px-4 py-2 bg-neutral-800 text-white rounded hover:bg-neutral-900"
-                                        >
-                                            Done
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
 
                         {/* 7. Class Talents */}
                         {!formData.level0 && classDetails && (
@@ -2284,22 +2165,27 @@ export default function Generator() {
 
                 {/* Stat Selection Modal */}
                 {currentStatPrompt && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-                        <div className="bg-neutral-900 border border-amber-600/50 p-6 rounded-lg max-w-md w-full shadow-2xl">
-                            <h3 className="text-xl font-bold text-amber-500 mb-4">Choose Stat to Increase</h3>
-                            <p className="text-gray-300 mb-6">
-                                This talent grants <strong>+{currentStatPrompt.amount}</strong> to one stat of your choice.
-                            </p>
-                            <div className="grid grid-cols-2 gap-3">
-                                {['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(stat => (
-                                    <button
-                                        key={stat}
-                                        onClick={() => handleStatSelect(stat)}
-                                        className="p-3 bg-neutral-800 hover:bg-amber-700 hover:text-white border border-neutral-600 rounded flex flex-col items-center transition-colors"
-                                    >
-                                        <span className="font-bold text-lg">{stat}</span>
-                                    </button>
-                                ))}
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                        <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm"></div>
+                        <div className="relative w-full max-w-md bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="bg-black p-4">
+                                <h3 className="text-xl font-black text-white uppercase tracking-wider font-serif">Increase Stat</h3>
+                            </div>
+                            <div className="p-6">
+                                <p className="text-neutral-600 mb-6 font-medium">
+                                    This talent grants <strong className="text-black">+{currentStatPrompt.amount}</strong> to one stat of your choice.
+                                </p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].map(stat => (
+                                        <button
+                                            key={stat}
+                                            onClick={() => handleStatSelect(stat)}
+                                            className="p-4 border-2 border-neutral-200 hover:border-black hover:bg-neutral-100 transition-all flex flex-col items-center group"
+                                        >
+                                            <span className="font-black font-serif text-2xl uppercase tracking-widest group-hover:scale-110 transition-transform">{stat}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2349,12 +2235,13 @@ export default function Generator() {
 
                 {/* Randomization Overlay */}
                 {isRandomizing && (
-                    <div className="fixed inset-0 z-[100] bg-neutral-900/80 backdrop-blur-sm flex items-center justify-center">
-                        <div className="bg-neutral-800 p-8 rounded-lg border-2 border-amber-600 shadow-2xl flex flex-col items-center gap-4 max-w-sm text-center">
-                            <div className="w-12 h-12 border-4 border-neutral-600 border-t-amber-500 rounded-full animate-spin"></div>
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-in fade-in duration-300">
+                        <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm"></div>
+                        <div className="relative bg-neutral-50 border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] p-8 flex flex-col items-center gap-6 max-w-sm text-center animate-in zoom-in-95 duration-300">
+                            <div className="w-16 h-16 border-4 border-neutral-200 border-t-black rounded-full animate-spin"></div>
                             <div>
-                                <h3 className="text-xl font-bold text-amber-500 font-serif">Divining Fate...</h3>
-                                <p className="text-neutral-300 mt-2">Consulting the oracles for your destiny.</p>
+                                <h3 className="text-2xl font-black text-black uppercase tracking-wider font-serif">Divining Fate...</h3>
+                                <p className="text-neutral-500 mt-2 font-medium italic">Consulting the oracles for your destiny.</p>
                             </div>
                         </div>
                     </div>

@@ -83,7 +83,78 @@ export const findEffectUuid = (text: string): string | null => {
 };
 
 // Mapping of System Predefined Keys to their configuration (transcoded from system/config.mjs)
-export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key: string, mode: number, value: string | number, icon: string }> = {
+// Mapping of System Predefined Keys to their configuration (transcoded from system/config.mjs)
+export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key?: string, mode?: number, value?: string | number, icon: string, changes?: any[] }> = {
+    // --- Stat Improvements (Explicit Checks) ---
+    statBonusCha1: { label: '+1 to Charisma', key: "system.abilities.cha.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusCon1: { label: '+1 to Constitution', key: "system.abilities.con.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusDex1: { label: '+1 to Dexterity', key: "system.abilities.dex.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusInt1: { label: '+1 to Intelligence', key: "system.abilities.int.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusStr1: { label: '+1 to Strength', key: "system.abilities.str.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusWis1: { label: '+1 to Wisdom', key: "system.abilities.wis.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+
+    statBonusCha2: { label: '+2 to Charisma', key: "system.abilities.cha.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusCon2: { label: '+2 to Constitution', key: "system.abilities.con.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusDex2: { label: '+2 to Dexterity', key: "system.abilities.dex.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusInt2: { label: '+2 to Intelligence', key: "system.abilities.int.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusStr2: { label: '+2 to Strength', key: "system.abilities.str.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+    statBonusWis2: { label: '+2 to Wisdom', key: "system.abilities.wis.bonus", mode: 2, value: 2, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
+
+    // --- Complex Talents (Quickstart/Ancestry) ---
+    mighty: {
+        label: 'Mighty',
+        icon: "icons/skills/melee/unarmed-punch-fist.webp",
+        changes: [
+            { key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1 },
+            { key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1 }
+        ]
+    },
+    stout: { label: 'Stout', key: "system.bonuses.advantage", mode: 2, value: "hp", icon: "icons/equipment/back/backpack-leather-tan.webp" },
+    hauler: { label: 'Hauler', key: "system.bonuses.gearSlots", mode: 2, value: 3, icon: "icons/equipment/back/backpack-leather-tan.webp" },
+
+    // --- Combat Bonuses (Explicit) ---
+    meleeAttackBonus1: { label: '+1 to Melee Attacks', key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },
+    meleeDamageBonus1: { label: '+1 to Melee Damage', key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+    rangedAttackBonus1: { label: '+1 to Ranged Attacks', key: "system.bonuses.rangedAttackBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" },
+    rangedDamageBonus1: { label: '+1 to Ranged Damage', key: "system.bonuses.rangedDamageBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" },
+
+    meleeRangedAttackBonus: { label: '+1 to Melee and Ranged Attacks', key: "system.bonuses.attackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },
+    meleeRangedDamageBonus: { label: '+1 to Melee and Ranged Damage', key: "system.bonuses.damageBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-axe-blood-red.webp" },
+
+    meleeAttackDamageBonus: {
+        label: '+1 to Melee Attacks and Damage',
+        icon: "icons/skills/melee/strike-polearm-glowing-white.webp",
+        changes: [
+            { key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1 },
+            { key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1 }
+        ]
+    },
+    rangedAttackDamageBonus: {
+        label: '+1 to Ranged Attacks and Damage',
+        icon: "icons/skills/melee/strike-polearm-glowing-white.webp",
+        changes: [
+            { key: "system.bonuses.rangedAttackBonus", mode: 2, value: 1 },
+            { key: "system.bonuses.rangedDamageBonus", mode: 2, value: 1 }
+        ]
+    },
+    weaponAttackDamageBonus: {
+        label: '+1 to Weapon Attacks and Damage',
+        icon: "icons/skills/melee/strike-polearm-glowing-white.webp",
+        changes: [
+            { key: "system.bonuses.attackBonus", mode: 2, value: 1 },
+            { key: "system.bonuses.damageBonus", mode: 2, value: 1 }
+        ]
+    },
+
+    dualWieldAc: { label: '+1 AC Dual Wield', key: "system.bonuses.acBonus", mode: 2, value: 1, icon: "icons/skills/melee/shield-block-gray-orange.webp" },
+
+    // --- Spellcasting ---
+    spellChecks1: { label: '+1 on Spellcasting Checks', key: "system.bonuses.spellcastingCheckBonus", mode: 2, value: 1, icon: "icons/magic/fire/flame-burning-fist-strike.webp" },
+    magicMissileAdv: { label: 'Magic Missile Advantage', key: "system.bonuses.advantage", mode: 2, value: "Magic Missile", icon: "icons/magic/light/projectiles-trio-pink.webp" },
+    farsightSpell: { label: 'Farsight (Spell)', key: "system.bonuses.advantage", mode: 2, value: "Farsight", icon: "icons/magic/light/beam-rays-yellow-blue-small.webp" }, // Guessing advantage or increased range? usually advantage to cast or effect?
+    farsightRanged: { label: 'Farsight (Ranged)', key: "system.bonuses.rangedAttackBonus", mode: 2, value: 1, icon: "icons/weapons/ammunition/arrow-head-war-flight.webp" }, // Guessing +1 ranged?
+
+    // --- Existing Mapping ---
     abilityImprovementCha: { label: 'Ability Improvement (Cha)', key: "system.abilities.cha.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
     abilityImprovementCon: { label: 'Ability Improvement (Con)', key: "system.abilities.con.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
     abilityImprovementDex: { label: 'Ability Improvement (Dex)', key: "system.abilities.dex.bonus", mode: 2, value: 1, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
@@ -95,12 +166,14 @@ export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key: str
     additionalGearSlots: { label: 'Additional Gear Slots', key: "system.bonuses.gearSlots", mode: 2, value: 1, icon: "icons/magic/defensive/shield-barrier-deflect-teal.webp" },
     armorMastery: { label: 'Armor Mastery', key: "system.bonuses.armorMastery", mode: 2, value: "REPLACEME", icon: "icons/magic/defensive/shield-barrier-deflect-teal.webp" },
     backstabDie: { label: 'Backstab Die', key: "system.bonuses.backstabDie", mode: 2, value: 1, icon: "icons/skills/melee/strike-dagger-white-orange.webp" },
+    backstabPlus1: { label: 'Backstab +1 Damage Dice', key: "system.bonuses.backstabDie", mode: 2, value: 1, icon: "icons/skills/melee/strike-dagger-white-orange.webp" },
     criticalFailureThreshold: { label: 'Critical Failure Threshold', key: "system.bonuses.critical.failureThreshold", mode: 5, value: 3, icon: "icons/magic/life/cross-area-circle-green-white.webp" },
     criticalSuccessThreshold: { label: 'Critical Success Threshold', key: "system.bonuses.critical.successThreshold", mode: 5, value: 18, icon: "icons/magic/fire/flame-burning-fist-strike.webp" },
     critMultiplier: { label: 'Critical Multiplier', key: "system.bonuses.critical.multiplier", mode: 5, value: 4, icon: "icons/skills/melee/hand-grip-staff-yellow-brown.webp" },
     damageMultiplier: { label: 'Damage Multiplier', key: "system.bonuses.damageMultiplier", mode: 5, value: 2, icon: "icons/skills/melee/strike-hammer-destructive-orange.webp" },
     hpAdvantage: { label: 'HP Advantage', key: "system.bonuses.advantage", mode: 2, value: "hp", icon: "icons/magic/life/cross-area-circle-green-white.webp" },
     initAdvantage: { label: 'Initiative Advantage', key: "system.bonuses.advantage", mode: 2, value: "initiative", icon: "icons/skills/movement/feet-winged-boots-glowing-yellow.webp" },
+    knackSpellcasting: { label: 'Knack (Spellcasting)', key: "system.bonuses.spellcastingCheckBonus", mode: 2, value: 1, icon: "icons/magic/control/sihouette-hold-beam-green.webp" },
     lightSource: { label: 'Light Source', key: "system.light.template", mode: 5, value: "REPLACEME", icon: "icons/magic/light/torch-fire-orange.webp" },
     meleeAttackBonus: { label: 'Melee Attack Bonus', key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },
     meleeDamageBonus: { label: 'Melee Damage Bonus', key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-axe-blood-red.webp" },

@@ -1,35 +1,35 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
-    resolveImage,
     calculateItemSlots,
     calculateMaxSlots,
     calculateCoinSlots,
     calculateGemSlots,
-    getSafeDescription,
-    formatDescription
 } from './sheet-utils';
-import { ConfirmationModal } from '@/components/ui/ConfirmationModal';
-import { useOptimisticOverrides } from '@/hooks/useOptimisticOverrides';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { useOptimisticOverrides } from '@/app/ui/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
 import GemBagModal from './components/GemBagModal';
-import { Gem } from 'lucide-react';
+import CreateTreasureModal from './components/CreateTreasureModal';
+import GearSelectionModal from './components/GearSelectionModal';
+import { Gem, Plus } from 'lucide-react';
 
 interface InventoryTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    foundryUrl?: string;
     onDeleteItem?: (itemId: string) => void;
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any) => Promise<void>;
 }
-
-export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl, onCreateItem, onUpdateItem }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
+    const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isGemModalOpen, setIsGemModalOpen] = useState(false);
+    const [isCreateTreasureModalOpen, setIsCreateTreasureModalOpen] = useState(false);
+    const [isGearSelectionModalOpen, setIsGearSelectionModalOpen] = useState(false);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -63,9 +63,23 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
 
     const calculateTotal = (list: any[]) => list.reduce((acc, i) => acc + calculateItemSlots(i), 0);
 
-    // Separate treasure items (system.treasure=true) from regular gear
-    const treasureItems = [...equippedItems, ...carriedItems].filter((i: any) => i.system?.treasure === true);
-    const gearItems = [...equippedItems, ...carriedItems].filter((i: any) => i.system?.treasure !== true);
+    // Separate treasure items from regular gear
+    const isTreasure = (i: any) => !!i.system?.treasure;
+    const isNotTreasure = (i: any) => !i.system?.treasure;
+
+    // Filter the source lists for display
+    const displayEquipped = equippedItems.filter(isNotTreasure);
+    const displayCarried = carriedItems.filter(isNotTreasure);
+    const displayStashed = stashedItems; // Stashed items include treasure if stashed
+
+    // Treasure matches treasure items that are NOT stashed
+    // (If they are stashed, they go to Stashed section)
+    const treasureItems = [...equippedItems, ...carriedItems]
+        .filter(i => isTreasure(i) && !i.system?.stashed)
+        .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    const gearItems = [...displayEquipped, ...displayCarried]; // For slot calculation excluding treasure
+
 
     const gearSlots = calculateTotal(gearItems);
     const treasureSlots = calculateTotal(treasureItems);
@@ -130,6 +144,30 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
 
 
 
+    const handleSellTreasure = async (item: any) => {
+        const cost = item.system?.cost || {};
+        const gp = Number(cost.gp) || 0;
+        const sp = Number(cost.sp) || 0;
+        const cp = Number(cost.cp) || 0;
+
+        // Add to actor's coins
+        const currentGp = Number(actor.system?.coins?.gp) || 0;
+        const currentSp = Number(actor.system?.coins?.sp) || 0;
+        const currentCp = Number(actor.system?.coins?.cp) || 0;
+
+        const newGp = currentGp + gp;
+        const newSp = currentSp + sp;
+        const newCp = currentCp + cp;
+
+        // Update coins
+        if (gp > 0) onUpdate('system.coins.gp', newGp);
+        if (sp > 0) onUpdate('system.coins.sp', newSp);
+        if (cp > 0) onUpdate('system.coins.cp', newCp);
+
+        // Delete the item
+        if (onDeleteItem) onDeleteItem(item.id);
+    };
+
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pb-20">
             {/* MainInventory: Equipped, Carried, Stashed (Col 1 & 2) */}
@@ -149,10 +187,10 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {equippedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        {displayEquipped.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `equipped-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
-                        {(equippedItems.length === 0) && (
+                        {(displayEquipped.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
                         )}
                     </div>
@@ -160,8 +198,15 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
 
                 {/* Carried Gear Section (Not Equipped AND Not Stashed) */}
                 <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                    <div className="bg-black text-white p-2 font-bold font-serif uppercase tracking-widest text-sm mb-1">
-                        Carried Gear
+                    <div className="bg-black text-white p-2 font-bold font-serif uppercase tracking-widest text-sm mb-1 flex justify-between items-center">
+                        <span>Carried Gear</span>
+                        <button
+                            onClick={() => setIsGearSelectionModalOpen(true)}
+                            className="bg-white text-black text-[10px] px-2 py-0.5 rounded-sm flex items-center gap-1 hover:bg-neutral-200 transition-colors"
+                        >
+                            <Plus size={12} strokeWidth={4} />
+                            Add
+                        </button>
                     </div>
                     <div className="grid grid-cols-12 text-xs font-bold uppercase tracking-widest text-neutral-500 border-b-2 border-black px-2 py-1">
                         <div className="col-span-6">Item</div>
@@ -170,11 +215,39 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {carriedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        {displayCarried.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `carried-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
-                        {(carriedItems.length === 0) && (
+                        {(displayCarried.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Treasure Section */}
+                <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <div className="bg-black text-white p-2 font-bold font-serif uppercase tracking-widest text-sm mb-1 flex justify-between items-center">
+                        <span>Treasure</span>
+                        <button
+                            onClick={() => setIsCreateTreasureModalOpen(true)}
+                            className="bg-white text-black text-[10px] px-2 py-0.5 rounded-sm flex items-center gap-1 hover:bg-neutral-200 transition-colors"
+                        >
+                            <Plus size={12} strokeWidth={4} />
+                            Add
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-12 text-xs font-bold uppercase tracking-widest text-neutral-500 border-b-2 border-black px-2 py-1">
+                        <div className="col-span-6">Item</div>
+                        <div className="col-span-2 text-center">Value</div>
+                        <div className="col-span-2 text-center">Slots</div>
+                        <div className="col-span-2 text-center">Actions</div>
+                    </div>
+                    <div className="divide-y divide-neutral-300">
+                        {treasureItems.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `treasure-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} isTreasure={true} onSell={handleSellTreasure} />
+                        ))}
+                        {(treasureItems.length === 0) && (
+                            <div className="text-center text-neutral-400 italic p-4 text-xs">No treasure found.</div>
                         )}
                     </div>
                 </div>
@@ -191,10 +264,10 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                         <div className="col-span-2 text-center">Actions</div>
                     </div>
                     <div className="divide-y divide-neutral-300">
-                        {stashedItems.map((item: any) => (
-                            <ItemRow key={item.id} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} foundryUrl={foundryUrl} onDelete={confirmDelete} />
+                        {displayStashed.map((item: any, idx: number) => (
+                            <ItemRow key={item.id || item._id || `stashed-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
                         ))}
-                        {(stashedItems.length === 0) && (
+                        {(displayStashed.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>
                         )}
                     </div>
@@ -311,6 +384,23 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, foundryUrl
                 onCreateItem={onCreateItem}
                 onUpdateItem={onUpdateItem}
                 onDeleteItem={onDeleteItem}
+            />
+
+            {/* Create Treasure Modal */}
+            <CreateTreasureModal
+                isOpen={isCreateTreasureModalOpen}
+                onClose={() => setIsCreateTreasureModalOpen(false)}
+                onCreate={(data) => onCreateItem && onCreateItem(data)}
+            />
+
+            {/* Gear Selection Modal */}
+            <GearSelectionModal
+                isOpen={isGearSelectionModalOpen}
+                onClose={() => setIsGearSelectionModalOpen(false)}
+                onCreate={(data) => {
+                    setIsGearSelectionModalOpen(false);
+                    return onCreateItem ? onCreateItem(data) : Promise.resolve();
+                }}
             />
         </div>
     );

@@ -1,8 +1,14 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from './rules';
+import { logger } from '../../core/logger';
+import { dataManager } from './data/DataManager';
+import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
+    private systemConfig: any = null;
+    private readonly CACHE_NS = 'shadowdark';
+    private readonly CACHE_KEY = 'system-config';
 
     theme = {
         bg: 'bg-neutral-900',
@@ -13,6 +19,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         headerFont: 'font-serif tracking-widest',
         success: 'bg-green-800 hover:bg-green-700'
     };
+
+
 
     componentStyles = {
         chat: {
@@ -43,6 +51,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     async getActor(client: any, actorId: string): Promise<any> {
         const baseUrl = client.url;
+        logger.debug(`[ShadowdarkAdapter] getActor baseUrl: ${baseUrl}`);
 
         const actorData = await client.evaluate(async ({ actorId, baseUrl }: any) => {
 
@@ -70,6 +79,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 if (!actor) return null;
 
                 // --- SHADOWDARK ITEM PROCESSING ---
+                logger.debug(`[ShadowdarkAdapter] normalizing Actor: ${actor.name} (Type: ${actor.type})`);
                 const freeCarrySeen: Record<string, number> = {};
                 // @ts-ignore
                 const items = (actor.items?.contents || []).map((i: any) => {
@@ -141,16 +151,124 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     return itemData;
                 }).filter((i: any) => i !== null);
                 // --- SHADOWDARK EFFECTS PROCESSING ---
-                let effects = [];
+                let effects: any[] = [];
                 try {
+                    // Collect all applicable effects
+                    // @ts-ignore
+                    const allFoundryEffects = [];
                     // @ts-ignore
                     if (typeof actor.allApplicableEffects === 'function') {
                         // @ts-ignore
-                        effects = Array.from(actor.allApplicableEffects()).map((e: any) => ({
-                            _id: e.id,
-                            name: e.name,
-                            img: resolveUrl(e.img),
-                            disabled: e.disabled,
+                        for (const e of actor.allApplicableEffects()) allFoundryEffects.push(e);
+                    } else if (actor.effects) {
+                        // @ts-ignore
+                        const actorEffects = actor.effects.contents || Array.from(actor.effects || []);
+                        for (const e of actorEffects) allFoundryEffects.push(e);
+                    }
+
+                    // Also crawl items for any effects NOT already captured (just in case)
+                    // @ts-ignore
+                    const itemsToCrawl = actor.items?.contents || Array.from(actor.items || []);
+                    for (const item of itemsToCrawl) {
+                        const itemEffects = item.effects?.contents || Array.from(item.effects || []);
+                        for (const e of itemEffects) {
+                            const eId = e.id || e._id;
+                            const isDuplicate = allFoundryEffects.some(ae => {
+                                const aeId = ae.id || ae._id;
+                                if (aeId === eId) return true;
+                                if (ae.name === (e.name || e.label) && ae.origin && ae.origin.includes(item.id || item._id)) return true;
+                                return false;
+                            });
+
+                            if (!isDuplicate) {
+                                if (item.name) (e as any)._parentName = item.name;
+                                allFoundryEffects.push(e);
+                            }
+                        }
+                    }
+
+                    for (const e of allFoundryEffects) {
+                        const eId = e.id || e._id;
+                        let sourceName = e.sourceName || (e as any)._parentName || "Unknown";
+
+                        // Try to resolve source from parent first if it's an Item
+                        if (sourceName === "Unknown" && e.parent && e.parent.documentName === "Item") {
+                            sourceName = e.parent.name;
+                        }
+
+                        // Try resolving from origin UUID (Slow but robust)
+                        if (sourceName === "Unknown" && e.origin) {
+                            try {
+                                // @ts-ignore
+                                const originDoc = await fromUuid(e.origin);
+                                if (originDoc) {
+                                    if (originDoc.documentName === "Item") {
+                                        // If same actor, use item name. If different, use actor name.
+                                        if (originDoc.actor && originDoc.actor.id === actor.id) {
+                                            sourceName = originDoc.name;
+                                        } else {
+                                            sourceName = originDoc.actor?.name || actor.name;
+                                        }
+                                    } else {
+                                        sourceName = originDoc.name;
+                                    }
+                                } else {
+                                    // Manually parse origin if fromUuid fails (e.g. Actor ID mismatch)
+                                    const parts = e.origin.split('.');
+                                    const actorIdx = parts.indexOf('Actor');
+                                    const itemIdx = parts.indexOf('Item');
+                                    if (actorIdx !== -1 && parts[actorIdx + 1]) {
+                                        const originActorId = parts[actorIdx + 1];
+                                        if (originActorId === actor.id) {
+                                            if (itemIdx !== -1 && parts[itemIdx + 1]) {
+                                                const itemId = parts[itemIdx + 1];
+                                                // @ts-ignore
+                                                const sourceItem = itemsToCrawl.find(it => (it.id || it._id) === itemId);
+                                                if (sourceItem) sourceName = sourceItem.name;
+                                            }
+                                        } else {
+                                            sourceName = actor.name; // Fallback to current actor name as per user guidance
+                                        }
+                                    } else {
+                                        sourceName = e.origin;
+                                    }
+                                }
+                            } catch (err) { /* ignore */ }
+                        }
+
+                        // Fallback: Check if ANY item on actor has this effect by ID
+                        if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                            // @ts-ignore
+                            for (const it of itemsToCrawl) {
+                                const itEffects = it.effects?.contents || Array.from(it.effects || []);
+                                // @ts-ignore
+                                if (itEffects.some((ie: any) => (ie.id || ie._id) === eId)) {
+                                    sourceName = it.name;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Final fallbacks from flags or labels
+                        if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                            sourceName = e.flags?.shadowdark?.sourceName || e.source || e.origin || "Unknown";
+                        }
+
+                        if (sourceName === "Unknown" && e.label && e.label.includes(':')) {
+                            sourceName = e.label.split(':')[0].trim();
+                        }
+
+                        // Ensure we don't have "undefined" as a string
+                        if (sourceName === "undefined" || sourceName === "null") sourceName = "Unknown";
+
+                        // Only deduplicate by UNIQUE ID to allow identical effects from different sources
+                        if (effects.some(ef => ef._id === eId)) continue;
+
+                        effects.push({
+                            _id: eId,
+                            name: e.name || e.label,
+                            img: resolveUrl(e.img || e.icon),
+                            disabled: !!e.disabled,
                             duration: {
                                 type: e.duration?.type,
                                 remaining: e.duration?.remaining,
@@ -162,19 +280,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             },
                             changes: e.changes,
                             origin: e.origin,
-                            sourceName: e.parent?.name ?? "Unknown",
+                            sourceName: sourceName,
                             transfer: e.transfer,
                             statuses: Array.from(e.statuses ?? [])
-                        }));
-                    } else if (actor.effects) {
-                        // @ts-ignore
-                        effects = actor.effects.contents.map((e: any) => ({
-                            _id: e.id,
-                            name: e.name,
-                            img: resolveUrl(e.img),
-                            disabled: e.disabled,
-                            changes: e.changes
-                        }));
+                        });
                     }
                 } catch (err) {
                     console.error('Error processing effects:', err);
@@ -183,28 +292,69 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // --- DERIVED STATS ---
                 const levelVal = actor.system.level?.value !== undefined ? Number(actor.system.level.value) : 1;
                 const xpVal = Number(actor.system.level?.xp) || 0;
+                const threshold = Number(actor.system.level?.xp_max) || (Math.max(1, levelVal) * 10);
                 const computed: any = {
                     maxHp: (Number(actor.system.attributes?.hp?.base) || 0) + (Number(actor.system.attributes?.hp?.bonus) || 0),
-                    xpNextLevel: levelVal * 10,
-                    levelUp: xpVal >= (levelVal * 10)
+                    xpNextLevel: threshold,
+                    levelUp: xpVal >= threshold
                 };
 
                 if (actor.type === "Player") {
                     try {
                         computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
-                    } catch (err) { console.error('Error calculating AC:', err); computed.ac = 10; }
+                    } catch (err) { logger.error('Error calculating AC:', err); computed.ac = 10; }
 
                     try {
                         computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
-                    } catch (err) { console.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+                    } catch (err) { logger.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
 
-                    try {
-                        computed.isSpellCaster = (typeof actor.isSpellCaster === 'function') ? await actor.isSpellCaster() : false;
-                    } catch (err) { console.error('Error checking isSpellCaster:', err); computed.isSpellCaster = false; }
 
+                    // --- ROBUST SPELLCASTER CHECK ---
+                    // 1. Check for Class Spellcasting (foundry system data)
+                    const classItem = actor.items?.find((i: any) => i.type === 'Class');
+                    let isCaster = false;
+                    let canMagic = false;
+
+                    if (classItem) {
+                        // Check explicit ability or spellcasting property
+                        if (classItem.system?.spellcasting?.ability) isCaster = true;
+                        // Also check for 'class' property in spellcasting object just in case
+                        if (classItem.system?.spellcasting?.class) isCaster = true;
+                        // Name fallback
+                        const clsName = (classItem.name || "").toLowerCase();
+                        if (["wizard", "priest", "seer", "shaman", "witch", "druid"].some(c => clsName.includes(c))) {
+                            isCaster = true;
+                        }
+                    }
+
+                    // 2. Check for "Spell" items present
+                    const hasSpells = actor.items?.some((i: any) => i.type === 'Spell');
+                    if (hasSpells) isCaster = true;
+
+                    // 3. Browser Fallback (if available)
                     try {
-                        computed.canUseMagicItems = (typeof actor.canUseMagicItems === 'function') ? await actor.canUseMagicItems() : false;
-                    } catch (err) { console.error('Error checking canUseMagicItems:', err); computed.canUseMagicItems = false; }
+                        if (typeof actor.isSpellCaster === 'function') {
+                            const sysCaster = await actor.isSpellCaster();
+                            if (sysCaster) isCaster = true;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    computed.isSpellCaster = isCaster;
+
+                    // --- MAGIC ITEM CHECK ---
+                    // 1. Check for Scrolls/Wands
+                    const hasMagicItems = actor.items?.some((i: any) => ['Scroll', 'Wand'].includes(i.type));
+                    if (hasMagicItems) canMagic = true;
+
+                    // 2. Browser Fallback
+                    try {
+                        if (typeof actor.canUseMagicItems === 'function') {
+                            const sysMagic = await actor.canUseMagicItems();
+                            if (sysMagic) canMagic = true;
+                        }
+                    } catch (e) { /* ignore */ }
+
+                    computed.canUseMagicItems = canMagic;
 
                     computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
 
@@ -302,7 +452,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 return {
-                    id: actor.id,
+                    id: actor.id || actor._id,
                     name: actor.name,
                     type: actor.type,
                     img: resolveUrl(actor.img),
@@ -321,285 +471,303 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
         }, { actorId, baseUrl });
 
-        if (actorData && actorData.system) {
-            const abilities = actorData.system.abilities || actorData.system.stats || {};
-            const derived = {
-                ...this.calculateAttacks(actorData, abilities),
-                ...this.categorizeInventory(actorData)
-            };
-            actorData.derived = derived;
+        if (actorData && !actorData.error) {
+            return this.normalizeActorData(actorData, client);
         }
 
         return actorData;
     }
 
-    async getSystemData(client: any): Promise<any> {
-        return await client.evaluate(async () => {
-            // @ts-ignore
-            if (!window.game || !window.game.system) return null;
-            // @ts-ignore
-            const s = window.game.system;
-            // @ts-ignore
-            const packs = window.game.packs.contents;
+    /**
+     * Get adapter configuration (server-side, no browser access needed)
+     * This includes UI configuration like actorCard.subtext
+     */
+    getConfig() {
+        return {
+            actorCard: {
+                // Subtext paths to display on actor cards
+                // Format: ["path.to.field", "another.path"]
+                // For Shadowdark: Show "Ancestry • Class • Level X"
+                subtext: ['details.ancestry', 'details.class', 'level.value']
+            }
+        };
+    }
 
-            const results = {
-                id: s.id,
-                title: s.title,
-                version: s.version,
-                url: s.url,
-                manifest: s.manifest,
-                documentTypes: s.documentTypes,
-                template: s.template,
+    async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
+        // 1. Fetch System Config (Live)
+        if (!this.systemConfig) {
+            // Server-only dynamic import
+            const { persistentCache } = await import('../../core/cache/PersistentCache');
 
-                classes: [] as any[],
-                ancestries: [] as any[],
-                backgrounds: [] as any[],
-                languages: [] as any[],
-                deities: [] as any[],
-                patrons: [] as any[],
-                spells: [] as any[],
-                talents: [] as any[],
-                titles: {},
-                PREDEFINED_EFFECTS: {},
-                debug: [] as any[]
-            };
+            // Try cache first
+            this.systemConfig = await persistentCache.get(this.CACHE_NS, this.CACHE_KEY);
 
-            // @ts-ignore
-            const sdConfig = (typeof CONFIG !== 'undefined' ? CONFIG.SHADOWDARK : null) || window.game?.shadowdark?.config;
+            // If no cache or first run, fetch from client
+            if (!this.systemConfig && client.getSystemConfig) {
+                try {
+                    logger.info('ShadowdarkAdapter | Fetching official system configuration...');
+                    const liveConfig = await client.getSystemConfig();
+                    if (liveConfig && Object.keys(liveConfig).length > 0) {
+                        this.systemConfig = liveConfig;
+                        await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, liveConfig);
+                        logger.info('ShadowdarkAdapter | Official system configuration cached.');
+                    }
+                } catch (e) {
+                    logger.error('ShadowdarkAdapter | Failed to fetch system config:', e);
+                }
+            }
+        }
 
-            console.log('[DEBUG] SD Config found:', !!sdConfig);
+        const sysInfo = await client.getSystem();
+        const results = {
+            id: sysInfo.id,
+            title: sysInfo.title,
+            version: sysInfo.version,
+            config: {
+                actorCard: {
+                    subtext: ['level.value', 'details.class']
+                }
+            },
+            classes: [] as any[],
+            ancestries: [] as any[],
+            backgrounds: [] as any[],
+            languages: [] as any[],
+            deities: [] as any[],
+            patrons: [] as any[],
+            spells: [] as any[],
+            talents: [] as any[],
+            titles: {},
+            PREDEFINED_EFFECTS: {
+                ...SYSTEM_PREDEFINED_EFFECTS,
+                ...(this.systemConfig?.PREDEFINED_EFFECTS || {})
+            },
+        };
 
-            if (sdConfig?.PREDEFINED_EFFECTS) {
-                // @ts-ignore
-                results.PREDEFINED_EFFECTS = sdConfig.PREDEFINED_EFFECTS;
+        if (options?.minimal) return results;
+
+        try {
+            const processedUuids = new Set<string>();
+
+            // 1. Fetch from DataManager (Server-side High Reliability)
+            if (typeof window === 'undefined') {
+                try {
+                    const { dataManager } = await import('./data/DataManager');
+                    const localDocs = await dataManager.getAllDocuments();
+
+                    for (const doc of localDocs) {
+                        const type = (typeof doc.type === 'string' ? doc.type : '').toLowerCase();
+                        const uuid = doc.uuid;
+
+                        if (!uuid || processedUuids.has(uuid)) continue;
+                        processedUuids.add(uuid);
+
+                        const baseInfo = { name: doc.name, uuid, img: doc.img };
+
+                        if (type === 'class') {
+                            results.classes.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                            if (doc.system?.titles) {
+                                (results.titles as any)[doc.name] = doc.system.titles;
+                            }
+                        } else if (type === 'ancestry') {
+                            results.ancestries.push({
+                                ...baseInfo,
+                                languages: doc.system?.languages || []
+                            });
+                        } else if (type === 'background') {
+                            results.backgrounds.push(baseInfo);
+                        } else if (type === 'language') {
+                            results.languages.push({
+                                ...baseInfo,
+                                rarity: doc.system?.rarity || 'common'
+                            });
+                        } else if (type === 'deity') {
+                            results.deities.push(baseInfo);
+                        } else if (type === 'patron') {
+                            results.patrons.push(baseInfo);
+                        } else if (type === 'talent') {
+                            results.talents.push(baseInfo);
+                        } else if (type === 'spell') {
+                            results.spells.push({
+                                ...baseInfo,
+                                tier: doc.system?.tier || 0,
+                                class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("ShadowdarkAdapter | DataManager fallback failed:", e);
+                }
             }
 
+            // 2. Fetch all compendium packs from Socket (If available/different)
+            const packs = await client.getAllCompendiumIndices();
+            const discoveryTasks: Promise<void>[] = [];
+
             for (const pack of packs) {
-                // @ts-ignore
-                if (pack.documentName !== 'Item') continue;
+                // We only care about Item packs
+                // V13 metadata usually has 'type' or 'documentName' or 'documentClass'
+                const metadata = pack.metadata || {};
+                const docType = metadata.type || metadata.documentName || metadata.documentClass;
+                if (docType !== 'Item') continue;
 
-                // Index with robust fields
-                // @ts-ignore
-                const index = await pack.getIndex({ fields: ['type', 'system.tier', 'system.class', 'system.spellcasting', 'system.patron', 'system.alignment'] });
+                const packId = pack.id;
+                const index = pack.index || [];
 
-                // Helper for case-insensitive check
-                const filterType = (type: string) => index.filter((i: any) => i.type && i.type.toLowerCase() === type.toLowerCase());
+                for (const item of index) {
+                    const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
+                    const uuid = `Compendium.${packId}.Item.${item._id || item.id}`;
 
-                // Index Classes
-                const classIndex = filterType('class');
-                for (const c of classIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(c._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.classes.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${c._id}`,
-                            languages: doc.system?.languages || []
-                        });
+                    if (processedUuids.has(uuid)) continue;
+                    processedUuids.add(uuid);
 
-                        // Index Titles directly from Class items
-                        if (doc.system?.titles) {
-                            // @ts-ignore
-                            results.titles[doc.name] = doc.system.titles;
+                    const baseInfo = { name: item.name, uuid, img: item.img };
+
+                    if (type === 'class') {
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            if (doc) {
+                                results.classes.push({
+                                    ...baseInfo,
+                                    languages: doc.system?.languages || [],
+                                    spellcasting: doc.system?.spellcasting || null
+                                });
+                                if (doc.system?.titles) {
+                                    (results.titles as any)[doc.name] = doc.system.titles;
+                                }
+                            }
+                        })());
+                    } else if (type === 'ancestry') {
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            if (doc) {
+                                results.ancestries.push({
+                                    ...baseInfo,
+                                    languages: doc.system?.languages || []
+                                });
+                            }
+                        })());
+                    } else if (type === 'background') {
+                        results.backgrounds.push(baseInfo);
+                    } else if (type === 'language') {
+                        discoveryTasks.push((async () => {
+                            const doc = await client.fetchByUuid(uuid);
+                            results.languages.push({
+                                ...baseInfo,
+                                rarity: doc?.system?.rarity || 'common'
+                            });
+                        })());
+                    } else if (type === 'deity') {
+                        results.deities.push(baseInfo);
+                    } else if (type === 'patron') {
+                        results.patrons.push(baseInfo);
+                    } else if (type === 'talent') {
+                        results.talents.push(baseInfo);
+                    } else if (type === 'spell') {
+                        // Spells need tier and class
+                        // If they aren't in index, fetch full doc (can be slow if many spells)
+                        // Optimization: if index has it, use it
+                        const tier = item.system?.tier ?? item['system.tier'] ?? null;
+                        const classes = item.system?.class ?? item['system.class'] ?? null;
+
+                        if (tier !== null && classes !== null) {
+                            results.spells.push({
+                                ...baseInfo,
+                                tier,
+                                class: Array.isArray(classes) ? classes : [classes]
+                            });
+                        } else {
+                            // Fallback fetch
+                            discoveryTasks.push((async () => {
+                                const doc = await client.fetchByUuid(uuid);
+                                if (doc) {
+                                    results.spells.push({
+                                        ...baseInfo,
+                                        tier: doc.system?.tier || 0,
+                                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                                    });
+                                }
+                            })());
                         }
                     }
                 }
-
-                // Index Ancestries
-                const ancestryIndex = filterType('ancestry');
-                for (const a of ancestryIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(a._id);
-                    if (doc) {
-                        results.ancestries.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${a._id}`,
-                            languages: doc.system?.languages || []
-                        });
-                    }
-                }
-
-                // Backgrounds
-                // @ts-ignore
-                results.backgrounds.push(...filterType('background').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}` })));
-
-                // Talents (Generic or specific)
-                // @ts-ignore
-                results.talents.push(...filterType('talent').map(i => ({ name: i.name, uuid: `Compendium.${pack.collection}.Item.${i._id}`, img: i.img })));
-
-                // Index Languages
-                const langIndex = filterType('language');
-                for (const l of langIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(l._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.languages.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${l._id}`,
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || doc.system?.desc || '',
-                            rarity: doc.system?.rarity || 'common'
-                        });
-                    }
-                }
-
-                // Index Deities
-                const deityIndex = filterType('deity');
-                for (const d of deityIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(d._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.deities.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${d._id}`,
-                            alignment: doc.system?.alignment || 'neutral'
-                        });
-                    }
-                }
-
-                // Index Patrons
-                const patronIndex = filterType('patron');
-                for (const p of patronIndex) {
-                    // @ts-ignore
-                    const doc = await pack.getDocument(p._id);
-                    if (doc) {
-                        // @ts-ignore
-                        results.patrons.push({
-                            name: doc.name,
-                            uuid: `Compendium.${pack.collection}.Item.${p._id}`,
-                            description: (typeof doc.system?.description === 'string' ? doc.system.description : doc.system?.description?.value) || '',
-                            boonTable: doc.system?.boonTable || ''
-                        });
-                    }
-                }
-
-                // Index Spells
-                const spellIndex = filterType('spell');
-                if (spellIndex.length > 0) {
-                    results.debug.push({
-                        pack: pack.collection,
-                        count: spellIndex.length,
-                        firstEntry: spellIndex[0] ? { name: spellIndex[0].name, type: spellIndex[0].type } : null
-                    });
-                }
-
-                results.spells.push(...spellIndex.map((s: any) => {
-                    // Robust access for flattened or nested index fields
-                    // Check system.tier, system.level, and flat versions
-                    const tier = s.system?.tier !== undefined ? s.system.tier :
-                        (s['system.tier'] !== undefined ? s['system.tier'] :
-                            (s.system?.level !== undefined ? s.system.level :
-                                (s['system.level'] !== undefined ? s['system.level'] : 0)));
-
-                    const classes = s.system?.class || s['system.class'] ||
-                        s.system?.classes || s['system.classes'] || [];
-
-                    return {
-                        name: s.name,
-                        uuid: `Compendium.${pack.collection}.Item.${s._id}`,
-                        tier: tier,
-                        class: classes,
-                        img: s.img,
-                        system: {
-                            duration: s.system?.duration || s['system.duration'],
-                            range: s.system?.range || s['system.range']
-                        },
-                        description: ''
-                    };
-                }));
             }
 
-            // ADDED: Include World Items (for world-defined spells/classes)
-            // @ts-ignore
-            const worldItems = window.game.items.contents;
-            worldItems.forEach((item: any) => {
-                const type = item.type.toLowerCase();
-                const baseInfo = { name: item.name, uuid: item.uuid, img: item.img };
+            // Wait for all discovered items to be fully fetched
+            await Promise.all(discoveryTasks);
+
+            // 3. Fetch World Items
+            const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
+            const items = worldItems?.result || [];
+
+            for (const item of items) {
+                const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
+                const uuid = item.uuid || `Item.${item._id || item.id}`;
+
+                if (processedUuids.has(uuid)) continue;
+                processedUuids.add(uuid);
+
+                const baseInfo = { name: item.name, uuid, img: item.img };
 
                 if (type === 'spell') {
                     results.spells.push({
                         ...baseInfo,
                         tier: item.system?.tier || 0,
-                        class: item.system?.class || [],
-                        system: {
-                            duration: item.system?.duration,
-                            range: item.system?.range
-                        },
-                        description: ''
+                        class: Array.isArray(item.system?.class) ? item.system.class : [item.system?.class].filter(Boolean)
                     });
                 } else if (type === 'class') {
                     results.classes.push(baseInfo);
-                    // @ts-ignore
-                    if (item.system?.titles) results.titles[item.name] = item.system.titles;
+                    if (item.system?.titles) (results.titles as any)[item.name] = item.system.titles;
                 } else if (type === 'talent') {
                     results.talents.push(baseInfo);
+                } else if (type === 'ancestry') {
+                    results.ancestries.push(baseInfo);
+                } else if (type === 'background') {
+                    results.backgrounds.push(baseInfo);
                 }
-            });
+            }
 
-            // FINAL PASS: Resolve Class UUIDs to names in Spell Database
-            // This fixes the issue where spells list "Compendium.shadowdark.classes.Item..."
-            // instead of "Wizard" or "Priest". 
-            // We use Case-Insensitive matching.
+            // 3. Resolve Class Names in Spells (Case-Insensitive)
             const classUuidLookup = new Map<string, string>();
             results.classes.forEach((c: any) => {
                 if (c.uuid) classUuidLookup.set(c.uuid.toLowerCase(), c.name.toLowerCase());
             });
-            results.talents.forEach((t: any) => {
-                if (t.uuid) classUuidLookup.set(t.uuid.toLowerCase(), t.name.toLowerCase());
-            });
-
-            results.debug.push({
-                msg: "Resolution Pass",
-                classesIndexed: results.classes.length,
-                lookupSize: classUuidLookup.size
-            });
 
             results.spells = results.spells.map((s: any) => {
-                const rawClasses = Array.isArray(s.class) ? s.class : [s.class];
+                const rawClasses = Array.isArray(s.class) ? s.class : [s.class].filter(Boolean);
                 const resolved = rawClasses.map((c: any) => {
                     const cStr = String(c);
                     const cLower = cStr.toLowerCase();
-
-                    // 1. Exact UUID match (case-insensitive)
                     const found = classUuidLookup.get(cLower);
                     if (found) return found;
 
-                    // 2. Fuzzy match: check if UUID path contains a known class name
                     const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
                     for (const cls of knownClasses) {
                         if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
                             return cls;
                         }
                     }
-
-                    // 3. Fallback: Return original or lowercased if not a UUID
                     return (cStr.includes('.') ? cStr : cLower);
                 });
                 return { ...s, class: resolved };
             });
 
-            return results;
-        });
+        } catch (e) {
+            console.error('ShadowdarkAdapter | getSystemData failed:', e);
+        }
+
+        return results;
     }
 
-    async getPredefinedEffects(client: any): Promise<any[]> {
-        return await client.evaluate(() => {
-            // @ts-ignore
-            const effects = CONFIG.statusEffects || [];
-            return effects.map((e: any) => ({
-                id: e.id, // Shadowdark usually uses 'blinded' etc. as ID
-                label: e.label, // Name of the condition
-                icon: e.icon,
-                changes: e.changes
-            }));
-        });
-    }
+
 
     // ... existing normalizeActorData below ...
 
     // --- Active Effect Application ---
+    // --- Active Effect Application ---
+
     private applyEffects(actor: any, systemData: any) {
         const effects = actor.effects || [];
         if (!effects.length) return;
@@ -663,7 +831,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     'wis.value': 'abilities.wis.value',
                     'cha.value': 'abilities.cha.value',
                     'hp.max': 'attributes.hp.max',
-                    'hp.bonus': 'attributes.hp.bonus'
+                    'hp.bonus': 'attributes.hp.bonus',
+                    'bonuses.acBonus': 'attributes.ac.bonus',
+                    'bonuses.attackBonus': 'attributes.attack.bonus',
+                    'bonuses.meleeAttackBonus': 'attributes.attack.melee.bonus',
+                    'bonuses.rangedAttackBonus': 'attributes.attack.ranged.bonus',
+                    'bonuses.spellAttackBonus': 'attributes.attack.spell.bonus'
                 };
 
                 if (SHORTHANDS[path]) {
@@ -671,7 +844,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 const currentVal = Number(getProperty(systemData, path)) || 0;
-                let changeVal = Number(value) || 0;
+                const changeVal = Number(value) || 0;
                 // NOTE: `value` could be a formula in Foundry (e.g. "@abilities.str.mod").
                 // Evaluating strings is dangerous/complex without a full parser. 
                 // For now, we support numeric literals. If NaN, we skip (or try strict string for Override).
@@ -705,22 +878,111 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         break;
                 }
 
-                console.log(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
+                logger.debug(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
                 setProperty(systemData, path, finalVal);
             }
         }
     }
 
-    normalizeActorData(actor: any): ActorSheetData {
+    normalizeActorData(actor: any, client?: any): ActorSheetData {
+        const actorName = actor.name || 'Unknown Actor';
+        logger.debug(`[ShadowdarkAdapter] Normalizing Actor Data: ${actorName} (${actor.id || actor._id})`);
+
+        // Log all item types for debugging
+        if (actor.items) {
+            const types = [...new Set(actor.items.map((i: any) => i.type))];
+            logger.debug(`[ShadowdarkAdapter] Found items with types: ${types.join(', ')}`);
+        } else {
+            logger.debug(`[ShadowdarkAdapter] No items found on actor.`);
+        }
+
         // Clone system data to apply effects without mutating raw data
         const s = typeof structuredClone === 'function'
             ? structuredClone(actor.system)
             : JSON.parse(JSON.stringify(actor.system));
 
+        // Sanitization
+        if (client) {
+            actor.img = client.resolveUrl(actor.img);
+            if (actor.items) {
+                actor.items = actor.items.map((i: any) => ({
+                    ...i,
+                    img: client.resolveUrl(i.img)
+                }));
+            }
+
+            if (s.details?.biography?.value) {
+                s.details.biography.value = client.resolveHtml(s.details.biography.value);
+            }
+            if (s.details?.notes?.value) {
+                s.details.notes.value = client.resolveHtml(s.details.notes.value);
+            }
+            if (s.notes && typeof s.notes === 'string') {
+                s.notes = client.resolveHtml(s.notes);
+            }
+        }
+
         // Apply Active Effects to the cloned system data
         // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true
 
-        const classItem = (actor.items || []).find((i: any) => i.type === 'Class');
+        let classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
+
+        // If no Class item found, try to resolve from system.class (UUID or name)
+        if (!classItem && actor.system?.class && typeof window === 'undefined') {
+            const classRef = actor.system.class;
+            if (typeof classRef === 'string') {
+                // 1. Try UUID lookup
+                let doc = dataManager.index.get(classRef) ||
+                    dataManager.index.get(`Compendium.${classRef.replace('Compendium.', '')}`);
+
+                // 2. Try Name lookup fallback
+                if (!doc) {
+                    const normalized = classRef.toLowerCase();
+                    for (const d of dataManager.index.values()) {
+                        if (d.type === 'Class' && d.name.toLowerCase() === normalized) {
+                            doc = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (doc) {
+                    classItem = doc;
+                    logger.debug(`[ShadowdarkAdapter] Resolved missing Class item from Ref: ${classRef} -> ${doc.name}`);
+                }
+            }
+        }
+        if (classItem) {
+            logger.debug(`[ShadowdarkAdapter] Found Class item: ${classItem.name}`);
+        } else {
+            logger.debug(`[ShadowdarkAdapter] No Class item found. actor.system.class: ${actor.system?.class}`);
+        }
+
+        let patronItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'patron');
+
+        // If no Patron item found, try to resolve from system.patron
+        if (!patronItem && actor.system?.patron && typeof window === 'undefined') {
+            const patronRef = actor.system.patron;
+            if (typeof patronRef === 'string') {
+                let doc = dataManager.index.get(patronRef) ||
+                    dataManager.index.get(`Compendium.${patronRef.replace('Compendium.', '')}`);
+
+                if (!doc) {
+                    const normalized = patronRef.toLowerCase();
+                    for (const d of dataManager.index.values()) {
+                        if (d.type === 'Patron' && d.name.toLowerCase() === normalized) {
+                            doc = d;
+                            break;
+                        }
+                    }
+                }
+
+                if (doc) {
+                    patronItem = doc;
+                    logger.debug(`[ShadowdarkAdapter] Resolved missing Patron item from Ref: ${patronRef} -> ${doc.name}`);
+                }
+            }
+        }
 
         // Shadowdark Schema:
         // system.attributes.hp: { value, max, base, bonus }
@@ -787,8 +1049,171 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const ancestryName = findItemName('Ancestry', s.ancestry || s.details?.ancestry) || resolved.ancestry || s.ancestry || s.details?.ancestry || '';
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
 
+        // Calculate computed properties for frontend if not already present
+        // Calculate computed properties
+        // We force recalculation of showSpellsTab to ensure it's accurate based on current state
+        let isCaster = false;
+        let canMagic = false;
+
+        const items = actor.items || [];
+
+        // 1. Check Class Item
+        if (classItem) {
+            const spellcasting = classItem.system?.spellcasting;
+            if (spellcasting?.ability || spellcasting?.class) {
+                isCaster = true;
+                logger.debug(`[ShadowdarkAdapter] Detected caster via system.spellcasting`);
+            }
+
+            const clsName = (classItem.name || "").toLowerCase();
+            if (["wizard", "priest", "seer", "shaman", "witch", "druid", "warlock"].some(c => clsName.includes(c))) {
+                isCaster = true;
+                logger.debug(`[ShadowdarkAdapter] Detected caster via class name: ${classItem.name}`);
+            }
+        }
+
+        // 2. Check for "Spell" items
+        if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) {
+            isCaster = true;
+            logger.debug(`[ShadowdarkAdapter] Detected caster via existing Spell items`);
+        }
+
+        // 3. Check for specific talents (Spellcasting)
+        if (items.some((i: any) => i.type === 'Talent' && (i.name || "").toLowerCase().includes('spellcasting'))) {
+            isCaster = true;
+            logger.debug(`[ShadowdarkAdapter] Detected caster via Spellcasting talent`);
+        }
+
+        // 4. Check for Magic Items (Scrolls/Wands)
+        // Note: Types might be 'Basic' or 'Weapon' but names usually contain the words
+        if (items.some((i: any) => {
+            const type = (i.type || "").toLowerCase();
+            const name = (i.name || "").toLowerCase();
+            return type === 'scroll' || type === 'wand' || name.includes('scroll') || name.includes('wand');
+        })) {
+            canMagic = true;
+            logger.debug(`[ShadowdarkAdapter] Detected magic item usage capability`);
+        }
+
+        const levelVal = s.level?.value || 0;
+        const xpVal = s.level?.xp || 0;
+        const nextXP = Number(s.level?.xp_max) || (Math.max(1, levelVal) * 10);
+        const levelUp = xpVal >= nextXP && nextXP > 0;
+
+        const computed = {
+            ...(actor.computed || {}),
+            isSpellCaster: isCaster,
+            canUseMagicItems: canMagic,
+            showSpellsTab: isCaster || canMagic,
+            classDetails: classItem,
+            patronDetails: patronItem,
+            xpNextLevel: nextXP,
+            levelUp: levelUp
+        };
+
+        // --- ROBUST EFFECT MERGING ---
+        const effects: any[] = [];
+        const allFoundryEffects: any[] = [];
+
+        // 1. Collect Actor Effects
+        const actorEffects = actor.effects?.contents || Array.from(actor.effects || []);
+        for (const e of actorEffects) allFoundryEffects.push(e);
+
+        // 2. Crawl Items for any effects NOT already captured
+        const itemsToCrawl = actor.items?.contents || Array.from(actor.items || []);
+        for (const item of itemsToCrawl) {
+            const itemEffects = item.effects?.contents || Array.from(item.effects || []);
+            for (const e of itemEffects) {
+                const eId = e.id || e._id;
+                const isDuplicate = allFoundryEffects.some(ae => {
+                    const aeId = ae.id || ae._id;
+                    if (aeId === eId) return true;
+                    if (ae.name === (e.name || e.label) && ae.origin && ae.origin.includes(item.id || item._id)) return true;
+                    return false;
+                });
+
+                if (!isDuplicate) {
+                    if (item.name) (e as any)._parentName = item.name;
+                    allFoundryEffects.push(e);
+                }
+            }
+        }
+
+        // 3. Process and Resolve Sources
+        for (const e of allFoundryEffects) {
+            const eId = e.id || e._id;
+            let sourceName = e.sourceName || (e as any)._parentName || "Unknown";
+
+            // Try to resolve from origin UUID if Unknown
+            if (sourceName === "Unknown" && e.origin) {
+                // Manually parse origin if possible (since we can't async await easily here)
+                const parts = e.origin.split('.');
+                const actorIdx = parts.indexOf('Actor');
+                const itemIdx = parts.indexOf('Item');
+
+                if (actorIdx !== -1 && parts[actorIdx + 1]) {
+                    const originActorId = parts[actorIdx + 1];
+                    const isSameActor = originActorId === (actor.id || actor._id);
+
+                    if (itemIdx !== -1 && parts[itemIdx + 1]) {
+                        const itemId = parts[itemIdx + 1];
+                        if (isSameActor) {
+                            // @ts-ignore
+                            const sourceItem = itemsToCrawl.find(it => (it.id || it._id) === itemId);
+                            if (sourceItem) {
+                                sourceName = sourceItem.name;
+                            } else {
+                                sourceName = e.origin;
+                            }
+                        } else {
+                            sourceName = actor.name; // User verification: Different actor ID resolved to "Zaldini the Red"
+                        }
+                    } else {
+                        sourceName = actor.name;
+                    }
+                } else {
+                    sourceName = e.origin;
+                }
+            }
+
+            // Final fallback check
+            if (sourceName === "Unknown" || sourceName === "undefined" || sourceName === "null") {
+                sourceName = e.flags?.shadowdark?.sourceName || e.source || e.origin || "Unknown";
+            }
+
+            if (sourceName === "Unknown" && e.label && e.label.includes(':')) {
+                sourceName = e.label.split(':')[0].trim();
+            }
+
+            if (sourceName === "undefined" || sourceName === "null") sourceName = "Unknown";
+
+            // Deduplicate by ID
+            if (effects.some(ef => ef._id === eId)) continue;
+
+            effects.push({
+                _id: eId,
+                name: e.name || e.label,
+                img: client ? client.resolveUrl(e.img || e.icon) : (e.img || e.icon),
+                disabled: !!e.disabled,
+                duration: {
+                    type: e.duration?.type,
+                    remaining: e.duration?.remaining,
+                    label: e.duration?.label,
+                    startTime: e.duration?.startTime,
+                    seconds: e.duration?.seconds,
+                    rounds: e.duration?.rounds,
+                    turns: e.duration?.turns
+                },
+                changes: e.changes,
+                origin: e.origin,
+                sourceName: sourceName,
+                transfer: e.transfer,
+                statuses: Array.from(e.statuses ?? [])
+            });
+        }
+
         const sheetData: ActorSheetData = {
-            id: actor.id,
+            id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
             img: actor.img,
@@ -797,12 +1222,14 @@ export class ShadowdarkAdapter implements SystemAdapter {
             ac: ac,
             attributes: abilities,
             stats: abilities,
-            items: actor.items || [],
+            items: (actor.items || []).map((i: any) => ({
+                ...i,
+                id: i.id || i._id
+            })),
             level: {
                 value: s.level?.value || 1,
                 xp: s.level?.xp || 0,
-                // User requirement: Display as "value / 10" (or max)
-                next: s.level?.xp_max || 10
+                next: Number(s.level?.xp_max) || (Math.max(1, s.level?.value || 1) * 10)
             },
             details: {
                 alignment: (s.alignment || s.details?.alignment) ? ((s.alignment || s.details?.alignment).charAt(0).toUpperCase() + (s.alignment || s.details?.alignment).slice(1)) : 'Neutral',
@@ -817,8 +1244,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             },
             luck: s.luck,
             coins: s.coins,
-            effects: actor.effects || [],
-            computed: actor.computed,
+            effects: effects, // Use robustly merged effects
+            computed: computed,
             choices: {
                 alignments: actor.systemConfig?.ALIGNMENTS ? Object.values(actor.systemConfig.ALIGNMENTS) : ['Lawful', 'Neutral', 'Chaotic'],
                 ancestries: [], // Placeholder, populate if cached or passed
@@ -829,6 +1256,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 ...this.categorizeInventory(actor)
             }
         };
+
+        logger.debug(`[ShadowdarkAdapter] Normalized Data for ${actor.name}: isSpellCaster=${computed.isSpellCaster}, showSpellsTab=${computed.showSpellsTab}, levelUp=${computed.levelUp} (${xpVal}/${nextXP})`);
 
         // Title Resolution
 
@@ -952,11 +1381,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             const slots = calculateItemSlots(item);
 
-            if (system.equipped && type !== 'Gem') {
-                equipped.push({ ...item, derived: { ...item.derived, slots } });
-                if (!system.stashed) totalSlots += slots;
-            } else if (system.stashed && type !== 'Gem') {
+            if (system.stashed && type !== 'Gem') {
                 stashed.push({ ...item, derived: { ...item.derived, slots } });
+            } else if (system.equipped && type !== 'Gem') {
+                equipped.push({ ...item, derived: { ...item.derived, slots } });
+                // if (!system.stashed) totalSlots += slots; // Redundant now as stashed is handled above
+                totalSlots += slots;
             } else {
                 // Carried (Not Equipped, Not Stashed) or a Gem (which we handle specially)
                 const excludedTypes = ['Class', 'Ancestry', 'Background', 'Language', 'Talent', 'Spell', 'Effect', 'Deity', 'Title', 'Feature', 'Boon', 'Gem'];
@@ -967,8 +1397,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 // Treasure (non-gem) still counts towards slots per item if not stashed
-                if ((type === 'Treasure' || !isExcluded) && type !== 'Gem' && !system.equipped) {
-                    if (!system.stashed) totalSlots += slots;
+                // Logic: It is carried (not equipped, not stashed), so it counts.
+                if ((type === 'Treasure' || !isExcluded) && type !== 'Gem') {
+                    totalSlots += slots;
                 }
             }
         });
@@ -1126,8 +1557,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (options.abilityBonus !== undefined) {
                         totalBonus += Number(options.abilityBonus);
                     } else {
-                        // Fallback logic
-                        const statKey = item.system?.ability || 'int';
+                        const statKey = item.system?.ability || actor.computed?.spellcastingAbility?.toLowerCase() || 'int';
                         totalBonus += actor.system.abilities?.[statKey]?.mod || 0;
                     }
                 } else if (item.type === 'Weapon') {
@@ -1201,7 +1631,32 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // 2. Try Compendium Cache
-            return cache.getName(uuid);
+            let name = cache.getName(uuid);
+
+            if (!name) {
+                // Attempt Normalization for mismatched casing (e.g. Shadowdark -> shadowdark, Classes -> classes)
+                const parts = uuid.split('.');
+                logger.debug(`[ShadowdarkAdapter] Resolving: ${uuid}`);
+
+                if (parts.length >= 5 && parts[0] === 'Compendium') {
+                    // parts[1] = System, parts[2] = Pack
+                    // We want to force System matches to be lower (shadowdark)
+                    // We want to force Pack matches to be lower (classes, ancestries)
+                    // But we MUST preserve the ID (parts[4])!
+
+                    const system = parts[1].toLowerCase();
+                    const pack = parts[2].toLowerCase();
+                    const type = parts[3]; // Keep as is, usually Item
+                    const id = parts[4];   // Keep case crucial!
+
+                    const normalized = `Compendium.${system}.${pack}.${type}.${id}`;
+                    name = cache.getName(normalized);
+
+                    if (!name) logger.debug(`[ShadowdarkAdapter] Failed normalized: ${normalized}`);
+                    else logger.debug(`[ShadowdarkAdapter] Success normalized: ${normalized} -> ${name}`);
+                }
+            }
+            return name;
         };
 
         if (actor.system) {
@@ -1209,5 +1664,192 @@ export class ShadowdarkAdapter implements SystemAdapter {
             actor.computed.resolvedNames.ancestry = resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
             actor.computed.resolvedNames.background = resolve(actor.system.background, actor.computed.resolvedNames.background);
         }
+    }
+
+    async resolveDocument(client: any, uuid: string): Promise<any | null> {
+        if (typeof window === 'undefined' && uuid.startsWith('Compendium.shadowdark.')) {
+            try {
+                const { dataManager } = await import('./data/DataManager');
+                const doc = await dataManager.getDocument(uuid);
+                return doc;
+            } catch (e) {
+                logger.warn(`ShadowdarkAdapter | resolveDocument failed for ${uuid}: ${e}`);
+            }
+        }
+        return null;
+    }
+
+    async loadSupplementaryData(cache: any): Promise<void> {
+        try {
+            let index: Record<string, string> = {};
+
+            if (typeof window === 'undefined') {
+                // Server-side: Direct load
+                try {
+                    const { dataManager } = await import('./data/DataManager');
+                    index = await dataManager.getIndex();
+                    logger.debug(`[ShadowdarkAdapter] Loaded ${Object.keys(index).length} local entries via DataManager (Server-side).`);
+                } catch (err) {
+                    logger.error('[ShadowdarkAdapter] Failed to import DataManager', err);
+                    return;
+                }
+            } else {
+                // Client-side: Fetch from API
+                const res = await fetch('/api/modules/shadowdark/index');
+                if (!res.ok) return;
+                index = await res.json();
+            }
+
+            let count = 0;
+            for (const [uuid, name] of Object.entries(index)) {
+                // @ts-ignore
+                cache.set(uuid, name as string);
+                count++;
+            }
+            if (typeof window !== 'undefined') {
+                logger.debug(`[ShadowdarkAdapter] Loaded ${count} local index entries (Client-side).`);
+            }
+        } catch (e) {
+            logger.error('[ShadowdarkAdapter] Failed to load local data', e);
+        }
+    }
+
+    /**
+     * Fetch and normalize Level Up data
+     */
+    async getLevelUpData(client: any, actor: any, classUuidOverride?: string, patronUuidOverride?: string) {
+        const currentLevel = actor?.system?.level?.value || 0;
+        const targetLevel = currentLevel + 1;
+        const currentXP = actor?.system?.level?.xp || 0;
+
+        // Prefer override if provided
+        const classUuid = classUuidOverride || actor?.system?.class;
+        const patronUuid = patronUuidOverride || actor?.system?.patron;
+        const conMod = actor?.system?.abilities?.con?.mod || 0;
+
+        let classDoc = null;
+        let patronDoc = null;
+
+        // 1. Try Local DataManager first (Fastest)
+        if (classUuid) classDoc = await dataManager.getDocument(classUuid);
+        if (patronUuid) patronDoc = await dataManager.getDocument(patronUuid);
+
+        // 2. Fallback to Foundry Fetch (Slower but guaranteed if UUID valid)
+        if (!classDoc && classUuid) {
+            logger.debug(`[ShadowdarkAdapter] Class not in cache, fetching from Foundry: ${classUuid}`);
+            try {
+                classDoc = await client.fetchByUuid(classUuid);
+            } catch (e) { logger.error(`[ShadowdarkAdapter] Failed to fetch class ${classUuid}:`, e); }
+        }
+
+        if (!patronDoc && patronUuid) {
+            try {
+                patronDoc = await client.fetchByUuid(patronUuid);
+            } catch (e) { logger.error(`[ShadowdarkAdapter] Failed to fetch patron ${patronUuid}:`, e); }
+        }
+
+        // Logic Calculation
+        const talentGained = targetLevel % 2 !== 0;
+
+        // Robust Spellcaster Check
+        let isSpellcaster = false;
+        if (classDoc) {
+            const sc = classDoc.system?.spellcasting;
+            if (sc?.ability || sc?.class) isSpellcaster = true;
+
+            // Name check fallback for custom classes without strict data
+            if (!isSpellcaster && classDoc.name) {
+                const name = classDoc.name.toLowerCase();
+                if (['wizard', 'priest', 'seer', 'shaman', 'witch', 'druid', 'warlock'].some((c: string) => name.includes(c))) {
+                    isSpellcaster = true;
+                }
+            }
+        }
+
+        const spellsToChoose: Record<number, number> = {};
+        let availableSpells: any[] = [];
+
+        if (isSpellcaster && classDoc) {
+            // Spells Known Calculation
+            if (classDoc.system?.spellcasting?.spellsknown) {
+                const skTable = classDoc.system.spellcasting.spellsknown;
+                // Shadowdark keys are sometimes strings "1", "2"
+                const currentSpells = skTable[String(currentLevel)] || skTable[currentLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                const targetSpells = skTable[String(targetLevel)] || skTable[targetLevel] || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+                for (let tier = 1; tier <= 5; tier++) {
+                    const tStr = String(tier);
+                    const targetVal = targetSpells[tStr] ?? targetSpells[tier] ?? 0;
+                    const currentVal = currentSpells[tStr] ?? currentSpells[tier] ?? 0;
+                    const diff = targetVal - currentVal;
+                    if (diff > 0) {
+                        spellsToChoose[tier] = diff;
+                    }
+                }
+            }
+
+            // Available Spells
+            if (classDoc.name) {
+                availableSpells = await dataManager.getSpellsBySource(classDoc.name);
+            }
+        }
+
+        // Return standardized object
+        return {
+            success: true,
+            actorId: actor?.id || actor?._id || 'new',
+            currentLevel,
+            targetLevel,
+            currentXP,
+            talentGained,
+            classHitDie: classDoc?.system?.hitPoints || '1d4',
+            classTalentTable: classDoc?.system?.classTalentTable,
+            patronBoonTable: patronDoc?.system?.boonTable,
+            canRollBoons: classDoc?.system?.patron?.required || false,
+            startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
+            isSpellcaster,
+            spellsToChoose,
+            availableSpells,
+            conMod,
+            classUuid: classDoc?.uuid || classUuid || null
+        };
+    }
+
+    async expandTableResults(client: any, table: any): Promise<any[] | null> {
+        if (!table || !table._id) return null;
+
+        try {
+            // Shadowdark export quirk: Server sends stale result IDs, but disk has valid result files
+            // in the format: !tables.results!{tableId}.{resultId}.json
+            // We use DataManager to find these files.
+
+            // FIRST: Check if DataManager already has the hydrated version
+            const uuid = table.uuid || `Compendium.shadowdark.rollable-tables.RollTable.${table._id}`;
+            const hydrated = await dataManager.getDocument(uuid);
+
+            if (hydrated && hydrated.results && Array.isArray(hydrated.results) && typeof hydrated.results[0] === 'object') {
+                logger.debug(`[ShadowdarkAdapter] Using hydrated results for table ${table._id}`);
+                return hydrated.results;
+            }
+
+            // FALLBACK: Scan all documents (existing logic)
+            const allDocs = await dataManager.getAllDocuments();
+            const tableId = table._id;
+
+            // Filter all cached documents for ones belonging to this table
+            const results = allDocs.filter((doc: any) => {
+                // Check for the unique key format used by DataManager for embedded results
+                return doc._key && doc._key.includes(`!tables.results!${tableId}.`);
+            });
+
+            if (results && results.length > 0) {
+                logger.debug(`[ShadowdarkAdapter] Found ${results.length} cached results for table ${tableId} via scan`);
+                return results;
+            }
+        } catch (e) {
+            logger.error(`[ShadowdarkAdapter] Error expanding table results: ${e}`);
+        }
+
+        return null;
     }
 }

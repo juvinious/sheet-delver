@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import RollDialog from '@/components/RollDialog';
-import LoadingModal from '@/components/LoadingModal';
-import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import RollDialog from '@/app/ui/components/RollDialog';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingModal from '@/app/ui/components/LoadingModal';
+import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
-import { resolveImage, resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
+import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { Menu, X } from 'lucide-react';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -17,15 +19,15 @@ import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
-
-// Typography
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 
 interface ShadowdarkSheetProps {
     actor: any;
-    foundryUrl?: string;
+    // ...
+    token?: string | null;
+    // ...
     onRoll: (type: string, key: string, options?: any) => void;
     onUpdate: (path: string, value: any) => void;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
@@ -33,12 +35,15 @@ interface ShadowdarkSheetProps {
     onDeleteItem?: (itemId: string) => void;
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
 
     onToggleDiceTray?: () => void;
     isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onAddPredefinedEffect, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+    const { resolveImageUrl } = useConfig();
+    // ... (State initialization)
     const [activeTab, setActiveTab] = useState('details');
     const [systemData, setSystemData] = useState<any>(null);
     const [loadingSystem, setLoadingSystem] = useState(true);
@@ -47,6 +52,32 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
+
+    const [serverSideCasterInfo, setServerSideCasterInfo] = useState<{
+        isSpellcaster: boolean;
+        canUseMagicItems: boolean;
+        showSpellsTab: boolean;
+    } | null>(null);
+
+    useEffect(() => {
+        const fetchCasterInfo = async () => {
+            try {
+                const id = actor._id || actor.id;
+                const headers: any = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                const res = await fetch(`/api/modules/shadowdark/actors/${id}/spellcaster`, { headers });
+                if (res.ok) {
+                    const data = await res.json();
+                    setServerSideCasterInfo(data);
+                }
+            } catch (err) {
+                console.error('Failed to fetch caster info:', err);
+            }
+        };
+
+        fetchCasterInfo();
+    }, [actor._id, actor.id]);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -63,18 +94,17 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     });
 
     const triggerRollDialog = (type: string, key: string) => {
+        // ... (existing implementation)
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
         const defaults: any = {};
 
         if (type === 'ability') {
             dialogType = 'ability';
-            title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`; // e.g. "STR Ability Check"
-            // Find mod
+            title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`;
             const stat = actor.stats?.[key] || {};
             defaults.abilityBonus = stat.mod || 0;
         } else if (type === 'item') {
-            // Find item
             const item = actor.items?.find((i: any) => i.id === key);
             if (item) {
                 if (item.type === 'Spell') {
@@ -84,13 +114,12 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     const stat = actor.stats?.[statKey] || {};
                     defaults.abilityBonus = stat.mod || 0;
                     defaults.talentBonus = calculateSpellBonus(actor);
-                    defaults.showItemBonus = false; // Hide Item Bonus for known spells
+                    defaults.showItemBonus = false;
                 } else {
                     dialogType = 'attack';
                     title = `Roll Attack with ${item.name}`;
-                    // Attempt to pre-calculate bonuses
                     const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isRanged = item.system?.type === 'ranged'; // Only force DEX if explicitly a ranged weapon
+                    const isRanged = item.system?.type === 'ranged';
 
                     const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
                     const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
@@ -111,19 +140,40 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             type: dialogType,
             defaults,
             callback: (options) => {
-                onRoll(type, key, options); // Pass options back up
+                onRoll(type, key, options);
             }
         });
     };
 
     useEffect(() => {
         setLoadingSystem(true);
-        fetch('/api/system/data')
-            .then(res => res.json())
-            .then(data => setSystemData(data))
-            .catch(err => console.error('Failed to fetch system data:', err))
-            .finally(() => setLoadingSystem(false));
-    }, []);
+        const headers: any = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const fetchData = async (retries = 3, delay = 1000) => {
+            try {
+                const res = await fetch('/api/system/data', { headers });
+                if (res.status === 503 && retries > 0) {
+                    console.warn(`System initializing (503), retrying in ${delay / 1000}s...`);
+                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
+                    return;
+                }
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                setSystemData(data);
+                setLoadingSystem(false);
+            } catch (err) {
+                console.error('Failed to fetch system data:', err);
+                if (retries > 0) {
+                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
+                } else {
+                    setLoadingSystem(false);
+                }
+            }
+        };
+
+        fetchData();
+    }, [token]);
 
     // Dynamic Tabs Logic
     const [tabsOrder, setTabsOrder] = useState([
@@ -140,11 +190,11 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
     const [overflowTabs, setOverflowTabs] = useState<typeof tabsOrder>([]);
 
     // Determine how many tabs fit based on width
-    const getVisibleCount = (width: number) => {
+    const getVisibleCount = useCallback((width: number) => {
         if (width < 640) return 3;
         if (width < 1024) return 5;
         return tabsOrder.length;
-    };
+    }, [tabsOrder.length]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -152,7 +202,8 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             let currentTabs = [...tabsOrder];
 
             // Filter out Spells tab if not applicable
-            if (!actor.computed?.showSpellsTab) {
+            const showSpells = serverSideCasterInfo ? serverSideCasterInfo.showSpellsTab : actor.computed?.showSpellsTab;
+            if (!showSpells) {
                 currentTabs = currentTabs.filter(t => t.id !== 'spells');
             }
 
@@ -167,7 +218,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor.computed?.showSpellsTab]);
+    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount, serverSideCasterInfo]);
 
     // Auto-close Level Up Modal when level effectively changes
     useEffect(() => {
@@ -237,7 +288,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
                 <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
                     <img
-                        src={resolveImage(actor.img, foundryUrl)}
+                        src={resolveImageUrl(actor.img)}
                         alt={actor.name}
                         className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
                     />
@@ -245,7 +296,7 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                         <div>
                             <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                             <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
                             </p>
                         </div>
                         {/* Level displayed inline on mobile for space or block on desktop */}
@@ -267,9 +318,9 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                                 setLevelUpData({
                                     currentLevel: actor.system?.level?.value || 0,
                                     targetLevel: (actor.system?.level?.value || 0) + 1,
-                                    classObj: actor.classDetails, // May be missing if not populated by parent
+                                    classObj: actor.computed?.classDetails,
                                     ancestry: actor.system?.ancestry,
-                                    patron: actor.patronDetails,
+                                    patron: actor.computed?.patronDetails,
                                     abilities: actor.system?.abilities,
                                     spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
                                     // If Level 0, force empty classUuid so modal prompts for class selection
@@ -393,13 +444,11 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
 
             {/* Content Area */}
             <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
-
                 {activeTab === 'details' && (
                     <DetailsTab
                         actor={actor}
                         systemData={systemData}
                         onUpdate={onUpdate}
-                        foundryUrl={foundryUrl}
                         onCreateItem={onCreateItem}
                         onUpdateItem={onUpdateItem}
                         onDeleteItem={onDeleteItem}
@@ -415,23 +464,24 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             onUpdate={onUpdate}
                             triggerRollDialog={triggerRollDialog}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                         />
                     )
                 }
 
                 {
                     activeTab === 'spells' && (
-                        <SpellsTab
-                            actor={actor}
-                            systemData={systemData}
-                            onUpdate={onUpdate}
-                            triggerRollDialog={triggerRollDialog}
-                            onRoll={onRoll}
-                            foundryUrl={foundryUrl}
-                            onDeleteItem={onDeleteItem}
-                            addNotification={addNotification}
-                        />
+                        <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
+                            <SpellsTab
+                                actor={actor}
+                                systemData={systemData}
+                                onUpdate={onUpdate}
+                                triggerRollDialog={triggerRollDialog}
+                                onRoll={onRoll}
+                                onDeleteItem={onDeleteItem}
+                                addNotification={addNotification}
+                                token={token}
+                            />
+                        </ErrorBoundary>
                     )
                 }
 
@@ -440,7 +490,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                         <TalentsTab
                             actor={actor}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                         />
                     )
                 }
@@ -451,7 +500,6 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                             actor={actor}
                             onUpdate={onUpdate}
                             onRoll={onRoll}
-                            foundryUrl={foundryUrl}
                             onDeleteItem={onDeleteItem}
                             onCreateItem={onCreateItem}
                             onUpdateItem={onUpdateItem}
@@ -472,9 +520,10 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
                     activeTab === 'effects' && (
                         <EffectsTab
                             actor={actor}
-                            foundryUrl={foundryUrl}
+                            token={token}
                             onToggleEffect={onToggleEffect}
                             onDeleteEffect={onDeleteEffect}
+                            onAddPredefinedEffect={onAddPredefinedEffect}
                         />
                     )
                 }
@@ -503,66 +552,71 @@ export default function ShadowdarkSheet({ actor, foundryUrl, onRoll, onUpdate, o
             />
 
             {/* Level-Up Modal */}
-            {showLevelUpModal && levelUpData && (
-                <LevelUpModal
-                    actorId={actor._id || actor.id}
-                    actorName={actor.name}
-                    currentLevel={levelUpData.currentLevel}
-                    targetLevel={levelUpData.targetLevel}
-                    ancestry={levelUpData.ancestry}
-                    classObj={levelUpData.classObj}
-                    classUuid={levelUpData.classUuid}
-                    patron={levelUpData.patron}
-                    patronUuid={levelUpData.patronUuid}
-                    abilities={levelUpData.abilities}
-                    spells={levelUpData.spells}
-                    availableClasses={systemData?.classes || []}
-                    availableLanguages={systemData?.languages || []}
-                    foundryUrl={foundryUrl}
-                    onComplete={async (data) => {
-                        try {
-                            // Update Gold if rerolled (Level 0)
-                            if (typeof data.gold === 'number' && data.gold >= 0) {
-                                await onUpdate('system.coins.gp', data.gold);
+            {
+                showLevelUpModal && levelUpData && (
+                    <LevelUpModal
+                        actorId={actor._id || actor.id}
+                        actorName={actor.name}
+                        currentLevel={levelUpData.currentLevel}
+                        targetLevel={levelUpData.targetLevel}
+                        ancestry={levelUpData.ancestry}
+                        classObj={levelUpData.classObj}
+                        classUuid={levelUpData.classUuid}
+                        patron={levelUpData.patron}
+                        patronUuid={levelUpData.patronUuid}
+                        abilities={levelUpData.abilities}
+                        spells={levelUpData.spells}
+                        availableClasses={systemData?.classes || []}
+                        availableLanguages={systemData?.languages || []}
+                        onComplete={async (data) => {
+                            try {
+                                // Update Gold if rerolled (Level 0)
+                                if (typeof data.gold === 'number' && data.gold >= 0) {
+                                    await onUpdate('system.coins.gp', data.gold);
+                                }
+
+                                const id = actor._id || actor.id;
+                                const headers: any = { 'Content-Type': 'application/json' };
+                                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                                const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
+                                    method: 'POST',
+                                    headers,
+                                    body: JSON.stringify({
+                                        hpRoll: data.hpRoll,
+                                        items: data.items,
+                                        languages: data.languages,
+                                        gold: data.gold
+                                    })
+                                });
+                                const result = await res.json();
+                                if (result.success) {
+                                    // Show success message and wait for data to stabilize
+                                    addNotification('Level Up Successful! Updating sheet...', 'success');
+
+                                    // Wait for a moment to let the backend process and the UI to acknowledge
+                                    await new Promise(resolve => setTimeout(resolve, 1500));
+
+                                    // Close modal manually after delay, assuming parent will update via polling/socket
+                                    setShowLevelUpModal(false);
+                                    setLevelUpData(null);
+
+                                    // Trigger a soft data refresh if possible (parent handles polling)
+                                } else {
+                                    addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
+                                }
+                            } catch (e: any) {
+                                console.error('Level-up error:', e);
+                                addNotification('Level-up failed: ' + e.message, 'error');
                             }
-
-                            const id = actor._id || actor.id;
-                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    hpRoll: data.hpRoll,
-                                    items: data.items,
-                                    languages: data.languages
-                                })
-                            });
-                            const result = await res.json();
-                            if (result.success) {
-                                // Show success message and wait for data to stabilize
-                                addNotification('Level Up Successful! Updating sheet...', 'success');
-
-                                // Wait for a moment to let the backend process and the UI to acknowledge
-                                await new Promise(resolve => setTimeout(resolve, 1500));
-
-                                // Close modal manually after delay, assuming parent will update via polling/socket
-                                setShowLevelUpModal(false);
-                                setLevelUpData(null);
-
-                                // Trigger a soft data refresh if possible (parent handles polling)
-                            } else {
-                                addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
-                            }
-                        } catch (e: any) {
-                            console.error('Level-up error:', e);
-                            addNotification('Level-up failed: ' + e.message, 'error');
-                        }
-                    }}
-                    onCancel={() => {
-                        setShowLevelUpModal(false);
-                        setLevelUpData(null);
-                    }}
-                />
-            )}
+                        }}
+                        onCancel={() => {
+                            setShowLevelUpModal(false);
+                            setLevelUpData(null);
+                        }}
+                    />
+                )
+            }
             <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
         </div >
     );

@@ -6,8 +6,8 @@
 	"drawn": false,
 	"img": "icons/magic/fire/flame-burning-fist-strike.webp",
 	"range": [
-		12,
-		12
+		8,
+		8
 	],
 	"text": "+1 on Spellcasting Checks",
 	"type": 2,

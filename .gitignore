@@ -13,6 +13,9 @@
 # testing
 /coverage
 
+# foundry cache
+.foundry-cache.json
+
 # next.js
 /.next/
 /out/
@@ -47,3 +50,6 @@ settings.yaml
 temp*
 logos/
 .vscode
+sheet-delver-bridge
+.foundry-session.json
+.data

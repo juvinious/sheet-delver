@@ -1,13 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SHADOWDARK_EQUIPMENT } from '../data';
 import {
-    resolveImage,
     calculateItemSlots,
     getSafeDescription,
     formatDescription
 } from './sheet-utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+
 
 export interface QuantityControlProps {
     value: number;
@@ -71,11 +71,13 @@ export interface ItemRowProps {
     expandedItems: Set<string>;
     toggleItem: (id: string) => void;
     onUpdate: (path: string, value: any) => void;
-    foundryUrl?: string;
     onDelete?: (itemId: string) => void;
+    isTreasure?: boolean;
+    onSell?: (item: any) => void;
 }
 
-export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl, onDelete }: ItemRowProps) {
+export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, isTreasure, onSell }: ItemRowProps) {
+    const { resolveImageUrl } = useConfig();
     // Optimistic States
     const [equipped, setEquipped] = useState(item.system?.equipped || false);
     const [stashed, setStashed] = useState(item.system?.stashed || false);
@@ -127,9 +129,8 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
     const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
 
     // Description
-    const title = item.name in SHADOWDARK_EQUIPMENT ? SHADOWDARK_EQUIPMENT[item.name] : '';
     const rawDesc = getSafeDescription(item.system);
-    const description = rawDesc || title;
+    const description = rawDesc;
 
     // Properties Logic
     const rawProps = item.system?.properties;
@@ -139,6 +140,16 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
     } else if (typeof rawProps === 'object' && rawProps !== null) {
         propertiesDisplay = Object.keys(rawProps).filter(k => rawProps[k]);
     }
+
+    // Cost Formatter
+    const formatCost = (cost: any) => {
+        if (!cost) return '-';
+        const parts = [];
+        if (cost.gp) parts.push(`${cost.gp} gp`);
+        if (cost.sp) parts.push(`${cost.sp} sp`);
+        if (cost.cp) parts.push(`${cost.cp} cp`);
+        return parts.length > 0 ? parts.join(', ') : '-';
+    };
 
     return (
         <div
@@ -158,7 +169,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
                 <div className="col-span-6 font-bold flex items-center">
                     {/* Thumbnail */}
                     <img
-                        src={resolveImage(item.img, foundryUrl)}
+                        src={resolveImageUrl(item.img)}
                         alt={item.name}
                         className="w-8 h-8 object-cover border border-black mr-2 bg-neutral-200"
                     />
@@ -183,14 +194,18 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
                     </div>
                 </div>
                 <div className="col-span-2 text-center font-bold text-neutral-500 flex justify-center items-center gap-1">
-                    {(item.system?.slots?.per_slot || 1) > 1 ? (
-                        <QuantityControl
-                            value={item.system?.quantity ?? 1}
-                            max={item.system?.slots?.per_slot || 0}
-                            onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
-                        />
+                    {isTreasure ? (
+                        <span className="text-amber-600">{formatCost(item.system?.cost)}</span>
                     ) : (
-                        item.showQuantity ? (item.system?.quantity || 1) : ''
+                        (item.system?.slots?.per_slot || 1) > 1 ? (
+                            <QuantityControl
+                                value={item.system?.quantity ?? 1}
+                                max={item.system?.slots?.per_slot || 0}
+                                onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
+                            />
+                        ) : (
+                            item.showQuantity ? (item.system?.quantity || 1) : ''
+                        )
                     )}
                 </div>
                 <div className="col-span-2 text-center">{calculateItemSlots(item) === 0 ? '-' : calculateItemSlots(item)}</div>
@@ -236,6 +251,25 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
                         </button>
                     )}
 
+                    {/* Sell Button (Treasure Only) */}
+                    {isTreasure && onSell && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onSell(item);
+                            }}
+                            title="Sell Treasure"
+                            className="w-10 h-10 flex items-center justify-center rounded hover:bg-amber-100 text-neutral-300 hover:text-amber-600 transition-colors group/sell touch-manipulation"
+                        >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="8" cy="8" r="6" />
+                                <path d="M18.09 10.37A6 6 0 1 1 10.34 18" />
+                                <path d="M7 6h1v4" />
+                                <path d="m16.71 13.88.7 .71-2.82 2.82" />
+                            </svg>
+                        </button>
+                    )}
+
                     {/* Trash / Delete Item (Carried or Stashed only) */}
                     {onDelete && !equipped && (
                         <button
@@ -263,8 +297,8 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, foundryUrl,
                             <span className="bg-neutral-200 px-1 rounded">{item.type}</span>
                             {isWeapon && <span>{weaponType} • {range} • {damage}</span>}
                             {isArmor && <span>AC +{item.system?.ac?.base || 0}</span>}
-                            {propertiesDisplay.map(p => (
-                                <span key={p} className="bg-neutral-200 px-1 rounded">{p}</span>
+                            {propertiesDisplay.map((p, pIdx) => (
+                                <span key={`${p}-${pIdx}`} className="bg-neutral-200 px-1 rounded">{p}</span>
                             ))}
                         </div>
 

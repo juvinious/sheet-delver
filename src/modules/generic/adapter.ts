@@ -14,7 +14,7 @@ export class GenericSystemAdapter implements SystemAdapter {
             const actor = window.game.actors.get(id);
             if (!actor) return null;
             return {
-                id: actor.id,
+                id: actor.id || actor._id,
                 name: actor.name,
                 type: actor.type,
                 img: actor.img,
@@ -43,13 +43,13 @@ export class GenericSystemAdapter implements SystemAdapter {
     normalizeActorData(actor: any): ActorSheetData {
         // Basic fallback that tries to guess common fields or dumps raw system data
         return {
-            id: actor.id,
+            id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
             img: actor.img,
             attributes: actor.system
         };
     }
-
-
 }
+
+
