@@ -71,6 +71,9 @@ export default function Generator() {
         gold: 0
     });
 
+    const [randomizeNonce, setRandomizeNonce] = useState(0);
+    const lastRandomizeNonce = useRef(0);
+
     // Helper: Calculate Modifier
     const getMod = (score: number) => Math.floor((score - 10) / 2);
 
@@ -163,7 +166,7 @@ export default function Generator() {
         fetchDocument(formData.class).then(data => {
             setClassDetails(data);
         });
-    }, [formData.class, fetchDocument]);
+    }, [formData.class, fetchDocument, randomizeNonce]);
 
     // Fetch Patron Details on change
     useEffect(() => {
@@ -428,6 +431,7 @@ export default function Generator() {
         }
 
         setIsRandomizing(true);
+        setRandomizeNonce(n => n + 1);
         skipLanguageReset.current = true;
         // Small delay to let the modal appear before heavy calculations freeze the thread (if any JS heavy work occurs)
         await new Promise(r => setTimeout(r, 100));
@@ -441,10 +445,15 @@ export default function Generator() {
             // let classItem = null; // Unused // Unused
             let cls = null;
             if (!formData.level0) {
-                cls = rand(systemData.classes);
+                cls = rand(systemData.classes.filter((c: any) => c.name !== "Level 0"));
             } else {
                 cls = systemData.classes?.find((c: any) => c.name === "Level 0") || null;
             }
+
+            // Force clear details to ensure UI refresh even if same class lands
+            setClassDetails(null);
+            setPatronDetails(null);
+            setAncestryDetails(null);
 
             const deity = rand(systemData.deities);
 
@@ -495,30 +504,12 @@ export default function Generator() {
                     if (ancDoc?.system) {
                         const choiceCount = ancDoc.system.talentChoiceCount || 0;
                         if (choiceCount > 0 && ancDoc.system.talents?.length > 0) {
-                            // Fetch all talent docs to separate choice/fixed
-                            const talentDocs = await Promise.all(ancDoc.system.talents.map((u: string) => fetchDocument(u)));
-                            const allTalents = talentDocs.filter(d => d);
-
-                            // If more than choiceCount, we have choices
-                            if (allTalents.length > choiceCount) {
-                                // Logic: Fixed are likely first? Or we just pick N?
-                                // Shadowdark usually "Choose 1 from list". List is all talents.
-                                // If list > 1 and choice = 1, pick 1.
-                                // Actually, `loadAncestry` splits them. 
-                                // Let's just pick N random UUIDs from `system.talents`.
-                                // Wait, if we pick fixed ones, that's redundant but harmless if we handle duplicates (which creates duplicate items).
-                                // Correct logic: 
-                                // `ancestryTalents` effect splits them.
-                                // If we want to be accurate without waiting for effect, we replicate logic:
-                                // "If available > choiceCount, these are choices."
-                                // Wait, `loadAncestry` in Generator says: if length <= choiceCount, all fixed. Else all choice.
-                                if (allTalents.length > choiceCount) {
-                                    // Pick N random
-                                    const shuffled = [...ancDoc.system.talents].sort(() => 0.5 - Math.random());
-                                    const chosen = shuffled.slice(0, choiceCount);
-                                    setSelectedAncestryTalents(chosen);
-                                }
-                            }
+                            const choiceUuids = ancDoc.system.talents;
+                            const shuffled = [...choiceUuids].sort(() => 0.5 - Math.random());
+                            const chosen = shuffled.slice(0, Math.min(choiceCount, shuffled.length));
+                            setSelectedAncestryTalents(chosen);
+                        } else {
+                            setSelectedAncestryTalents([]);
                         }
                     }
                 } catch (e) { console.error("Ancestry Rand Error", e); }
@@ -644,24 +635,27 @@ export default function Generator() {
 
     // Effect: React to Level Toggle
     useEffect(() => {
-        // If switching TO Level 1 and no class selected, maybe pick one? 
-        // Or just let user pick. For now, we ensure validation.
-        if (!formData.level0 && !formData.class && systemData?.classes) {
-            // Optional: Auto-pick class if none? User didn't explicitly ask, but it's helpful.
-            // Let's leave it blank to force choice, OR pick random if they hit random.
-        }
-        // If switching TO Level 0, clear class?
-        if (formData.level0 && systemData?.classes) {
-            const level0Class = systemData.classes.find((c: any) => c.name === "Level 0");
+        if (!systemData?.classes) return;
+
+        const level0Class = systemData.classes.find((c: any) => c.name === "Level 0");
+
+        if (formData.level0) {
+            // Switching TO Level 0
             if (level0Class && formData.class !== level0Class.uuid) {
                 setFormData(prev => ({ ...prev, class: level0Class.uuid }));
             }
+        } else {
+            // Switching TO Level 1
+            // If the current class is the Level 0 class, clear it so it shows "Choose Class..."
+            if (level0Class && formData.class === level0Class.uuid) {
+                setFormData(prev => ({ ...prev, class: '' }));
+            }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [formData.level0, systemData]);
+    }, [formData.level0, systemData?.classes]);
 
     // Effect: Load Ancestry Details & Talents & Languages
     useEffect(() => {
+        if (randomizeNonce > lastRandomizeNonce.current) return;
         setSelectedAncestryTalents([]);
 
         if (!formData.ancestry) {
@@ -707,12 +701,16 @@ export default function Generator() {
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData, fetchDocument]);
+    }, [formData.ancestry, systemData, fetchDocument, randomizeNonce]);
 
 
 
     // Effect: Calculate Languages (Centralized)
     useEffect(() => {
+        if (randomizeNonce > lastRandomizeNonce.current) {
+            lastRandomizeNonce.current = randomizeNonce;
+            return;
+        }
         if (skipLanguageReset.current) return;
 
         // If no ancestry loaded yet, and NOT level 1? 
@@ -954,7 +952,7 @@ export default function Generator() {
     const [creationError, setCreationError] = useState<string | null>(null);
 
     // Create Character
-    const createCharacter = async (extraItems: any[] = []) => {
+    const createCharacter = async (extraItems: any[] = [], extraData: any = {}) => {
         setCreationError(null);
         setFormErrors({});
 
@@ -1257,30 +1255,32 @@ export default function Generator() {
             }
 
             // Collect Language UUIDs for system.languages array
-            const languageUuids: string[] = [];
+            let languageUuids: string[] = extraData.languages || [];
 
-            // Fixed languages - handle both string UUIDs and objects with uuid property
-            for (const l of knownLanguages.fixed) {
-                if (typeof l === 'string') {
-                    languageUuids.push(l);
-                } else if (l && l.uuid) {
-                    languageUuids.push(l.uuid);
+            if (!extraData.languages) {
+                // Fixed languages - handle both string UUIDs and objects with uuid property
+                for (const l of knownLanguages.fixed) {
+                    if (typeof l === 'string') {
+                        languageUuids.push(l);
+                    } else if (l && l.uuid) {
+                        languageUuids.push(l.uuid);
+                    }
                 }
-            }
 
-            // Add flattened selections (these are already UUID strings)
-            languageUuids.push(
-                ...knownLanguages.selected.common,
-                ...knownLanguages.selected.rare,
-                ...knownLanguages.selected.ancestry,
-                ...knownLanguages.selected.class
-            );
+                // Add flattened selections (these are already UUID strings)
+                languageUuids.push(
+                    ...knownLanguages.selected.common,
+                    ...knownLanguages.selected.rare,
+                    ...knownLanguages.selected.ancestry,
+                    ...knownLanguages.selected.class
+                );
 
-            // Add any additional fixed languages from config
-            if (languageConfig.fixed?.length > 0) {
-                for (const uuid of languageConfig.fixed) {
-                    if (typeof uuid === 'string' && !languageUuids.includes(uuid)) {
-                        languageUuids.push(uuid);
+                // Add any additional fixed languages from config
+                if (languageConfig.fixed?.length > 0) {
+                    for (const uuid of languageConfig.fixed) {
+                        if (typeof uuid === 'string' && !languageUuids.includes(uuid)) {
+                            languageUuids.push(uuid);
+                        }
                     }
                 }
             }
@@ -1313,10 +1313,12 @@ export default function Generator() {
                         cha: { value: formData.stats.CHA.value, base: formData.stats.CHA.value, bonus: 0 }
                     },
                     attributes: {
-                        hp: { value: formData.hp, max: formData.hp }
+                        hp: { value: extraData.hpRoll ?? formData.hp, max: extraData.hpRoll ?? formData.hp }
                     },
-                    currency: {
-                        gp: formData.gold
+                    coins: {
+                        gp: (extraData.gold !== undefined) ? extraData.gold : formData.gold,
+                        sp: 0,
+                        cp: 0
                     },
                     notes: formData.description
                 },
@@ -2217,14 +2219,8 @@ export default function Generator() {
                         spells={[]}
                         onComplete={(data) => {
                             setShowLevelUp(false);
-                            // Merge the modal's HP roll if valid, otherwise keep generator's
-                            // Actually Generator calculated HP already, but Modal might re-roll it? 
-                            // If modal returns hpRoll, we should probably prefer it? 
-                            // But CreateCharacter takes items. We store HP in formData.
-                            // We need to update formData.hp? 
-                            // Or just accept items.
-                            // For now, simple fix for type error:
-                            createCharacter(data.items);
+                            // Pass both items and the extra roll/language data
+                            createCharacter(data.items, data);
                         }}
                         onCancel={() => {
                             setShowLevelUp(false);

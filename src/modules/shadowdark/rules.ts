@@ -193,15 +193,23 @@ export const calculateAbilities = (systemData: any) => {
  * Unified Spellcaster Logic for Shadowdark
  */
 
-export const getSpellcastingClass = (actor: any): string => {
+export const getSpellcastingClass = (item: any): string => {
+    return (item?.system?.spellcasting?.class || '').toLowerCase().trim();
+};
+
+export const isClassSpellcaster = (classItem: any): boolean => {
+    const spellClass = getSpellcastingClass(classItem);
+    return spellClass.length > 0 && spellClass !== 'none' && spellClass !== '__not_spellcaster__';
+};
+
+export const getActorSpellcastingClass = (actor: any): string => {
     const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
     const classItem = items.find((i: any) => i.type === 'Class');
-    if (!classItem) return '';
-    return (classItem.system?.spellcasting?.class || '').toLowerCase().trim();
+    return getSpellcastingClass(classItem);
 };
 
 export const isInnateCaster = (actor: any): boolean => {
-    const spellClass = getSpellcastingClass(actor);
+    const spellClass = getActorSpellcastingClass(actor);
     // Explicitly check for valid class name (foundry uses __not_spellcaster__ for non-casters)
     return spellClass.length > 0 && spellClass !== 'none' && spellClass !== '__not_spellcaster__';
 };

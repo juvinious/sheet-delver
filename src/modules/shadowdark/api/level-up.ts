@@ -154,13 +154,33 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
     const formula = `${dice} * ${multiplier}`;
 
     try {
-        const roll = new Roll(formula);
-        await roll.evaluate();
-        const total = roll.total || 0;
+        logger.info(`[API] Rolling Gold with formula: ${formula}`);
+
+        // Roll using Foundry Client (Socket)
+        const chatMessage = await client.roll(formula, "Starting Gold Roll");
+
+        if (!chatMessage) {
+            throw new Error("Failed to execute gold roll via Foundry Client");
+        }
+
+        // Parse result from Chat Message
+        let total = parseInt(chatMessage.content);
+
+        // Fallback: Check rolls array
+        if (isNaN(total) && chatMessage.rolls && chatMessage.rolls.length > 0) {
+            try {
+                const rollData = typeof chatMessage.rolls[0] === 'string'
+                    ? JSON.parse(chatMessage.rolls[0])
+                    : chatMessage.rolls[0];
+                total = rollData.total;
+            } catch (e) {
+                logger.warn(`[API] Failed to parse gold roll data: ${e}`);
+            }
+        }
 
         return NextResponse.json({ success: true, roll: { total } });
     } catch (e: any) {
-        console.error("Gold Roll Failed", e);
+        logger.error("Gold Roll Failed", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

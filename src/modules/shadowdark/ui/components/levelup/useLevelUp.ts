@@ -4,6 +4,7 @@ import { TALENT_HANDLERS } from './talent-handlers';
 import { ROLL_TABLE_PATTERNS } from '../../../data/roll-table-patterns';
 import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
 import { logger } from '../../../../../app/ui/logger';
+import { isSpellcaster, getSpellcastingClass, isClassSpellcaster } from '../../../rules';
 
 export interface LevelUpProps {
     actorId: string;
@@ -115,7 +116,13 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [extraSpellSelection, setExtraSpellSelection] = useState<{ active: boolean; maxTier: number; source: string; selected: any[] }>({ active: false, maxTier: 0, source: 'Wizard', selected: [] });
     const [extraSpellsList, setExtraSpellsList] = useState<any[]>([]);
 
-    const [isSpellcaster, setIsSpellcaster] = useState(Boolean(classObj?.system?.spellcasting?.class || classObj?.system?.spellcasting?.ability));
+    const [isSpellcaster, setIsSpellcaster] = useState(false);
+    useEffect(() => {
+        if (activeClassObj) {
+            setIsSpellcaster(isClassSpellcaster(activeClassObj));
+        }
+    }, [activeClassObj]);
+
     const [requiredTalents, setRequiredTalents] = useState(0);
     const [needsBoon, setNeedsBoon] = useState(Boolean(classObj?.system?.patron?.required));
     const [startingBoons, setStartingBoons] = useState(0);
