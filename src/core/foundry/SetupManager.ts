@@ -323,14 +323,14 @@ export class SetupManager {
      * Load all cached worlds
      */
     static async loadCache(): Promise<CacheData> {
-        console.log('[SetupManager] loadCache called. isBrowser:', typeof window !== 'undefined');
+        logger.debug('[SetupManager] loadCache called. isBrowser:', typeof window !== 'undefined');
         if (typeof window !== 'undefined') return { worlds: {}, currentWorldId: null };
 
         try {
             const cache = await persistentCache.get<CacheData>(CACHE_NS, CACHE_KEY);
-            console.log('[SetupManager] Raw cache from persistent store:', JSON.stringify(cache, null, 2));
+            logger.debug('[SetupManager] Raw cache from persistent store:', JSON.stringify(cache, null, 2));
             if (!cache) {
-                console.warn('[SetupManager] Cache is null or undefined');
+                logger.warn('[SetupManager] Cache is null or undefined');
                 return { worlds: {}, currentWorldId: null };
             }
 
@@ -338,17 +338,17 @@ export class SetupManager {
             if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
                 const world = cache.worlds[cache.currentWorldId];
                 if (!world.users || world.users.length === 0) {
-                    console.warn(`[SetupManager] Cache exists for ${world.worldTitle} but has 0 users. Treating as invalid/setup-required.`);
+                    logger.warn(`[SetupManager] Cache exists for ${world.worldTitle} but has 0 users. Treating as invalid/setup-required.`);
                     // We don't delete the data, but we treat it as "no current world" so the app redirects to setup
                     return { ...cache, currentWorldId: null };
                 }
             } else {
-                console.warn('[SetupManager] currentWorldId mismatch or missing in worlds map');
+                logger.warn('[SetupManager] currentWorldId mismatch or missing in worlds map');
             }
 
             return cache;
         } catch (e) {
-            console.error('[SetupManager] Error loading cache:', e);
+            logger.error('[SetupManager] Error loading cache:', e);
             return { worlds: {}, currentWorldId: null };
         }
     }

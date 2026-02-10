@@ -13,7 +13,11 @@ let apiPort = 3001;
 
 // Read settings.yaml
 try {
+    console.log(`[Manager] Current Working Directory: ${process.cwd()}`);
+    console.log(`[Manager] Looking for settings at: ${SETTINGS_PATH}`);
+
     if (fs.existsSync(SETTINGS_PATH)) {
+        console.log('[Manager] settings.yaml found.');
         const fileContents = fs.readFileSync(SETTINGS_PATH, 'utf8');
         const settings = yaml.load(fileContents) as any;
 
