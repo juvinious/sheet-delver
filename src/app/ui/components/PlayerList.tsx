@@ -14,10 +14,11 @@ interface UserDetail {
 
 interface PlayerListProps {
     users: any[]; // UserDetail[] but matching ClientPage state type
+    currentUserId: string | null;
     onLogout: () => void;
 }
 
-export default function PlayerList({ users, onLogout }: PlayerListProps) {
+export default function PlayerList({ users, currentUserId, onLogout }: PlayerListProps) {
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -48,23 +49,28 @@ export default function PlayerList({ users, onLogout }: PlayerListProps) {
     const activeGMCount = gamemasters.filter(u => u.active).length;
     const activePlayerCount = players.filter(u => u.active).length;
 
-    const renderUserRow = (u: any) => (
-        <li key={u._id || u.id || u.name} className={`flex items-center gap-2 px-2 py-1.5 rounded ${u.active ? 'opacity-100 bg-white/5' : 'opacity-40'}`}>
-            <div
-                className="w-2.5 h-2.5 rounded-full ring-2 ring-black/50"
-                style={{ backgroundColor: u.color, boxShadow: u.active ? `0 0 8px ${u.color}` : 'none' }}
-            />
-            <div className="flex flex-col leading-tight min-w-0">
-                <span className="text-sm font-bold text-neutral-200 flex items-center gap-1.5 truncate">
-                    {u.name}
-                    {u.isGM && <span className="text-[8px] bg-amber-600/90 text-black px-1 rounded-sm font-black tracking-tighter">GM</span>}
-                </span>
-                {u.characterName && (
-                    <span className="text-[10px] text-neutral-500 truncate">{u.characterName}</span>
-                )}
-            </div>
-        </li>
-    );
+    const renderUserRow = (u: any) => {
+        const isSelf = (u._id || u.id) === currentUserId;
+        const shouldHighlight = isSelf;
+
+        return (
+            <li key={u._id || u.id || u.name} className={`flex items-center gap-2 px-2 py-1.5 rounded transition-all ${u.active ? 'opacity-100' : 'opacity-40'} ${shouldHighlight ? 'ring-1 ring-white/20 bg-white/10' : ''}`}>
+                <div
+                    className={`w-2.5 h-2.5 rounded-full ring-2 ring-black/50 ${shouldHighlight ? 'ring-white/30' : ''}`}
+                    style={{ backgroundColor: u.color, boxShadow: u.active ? `0 0 8px ${u.color}` : 'none' }}
+                />
+                <div className="flex flex-col leading-tight min-w-0">
+                    <span className={`text-sm font-bold flex items-center gap-1.5 truncate ${shouldHighlight ? 'text-white' : 'text-neutral-200'}`}>
+                        {u.name}
+                        {u.isGM && <span className="text-[8px] bg-amber-600/90 text-black px-1 rounded-sm font-black tracking-tighter">GM</span>}
+                    </span>
+                    {u.characterName && (
+                        <span className="text-[10px] text-neutral-500 truncate">{u.characterName}</span>
+                    )}
+                </div>
+            </li>
+        );
+    };
 
     return (
         <div ref={containerRef} className="fixed bottom-6 left-6 z-[110] flex flex-col items-start gap-4">

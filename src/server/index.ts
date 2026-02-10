@@ -192,6 +192,7 @@ async function startServer() {
             res.json({
                 connected,
                 isAuthenticated,
+                currentUserId: userSession?.userId || null,
                 initialized: sessionManager.isCacheReady(),
                 users: sanitizedUsers,
                 system: system,

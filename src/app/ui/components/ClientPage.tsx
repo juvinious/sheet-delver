@@ -77,6 +77,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [ownedActors, setOwnedActors] = useState<any[]>([]);
   const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
   const [loginMessage, setLoginMessage] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -228,6 +229,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           setUrl(data.url);
           setFoundryUrl(data.url);
           setUsers((data.users || []) as User[]);
+          setCurrentUserId(data.currentUserId);
 
           // Apply Strict Logic
           const targetStep = determineStep(data, step);
@@ -337,6 +339,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               }
 
               setUsers(data.users as User[]);
+            }
+            if (data.currentUserId !== currentUserId) {
+              setCurrentUserId(data.currentUserId);
             }
           }
 
@@ -671,7 +676,9 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                     )}
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                      <span className="font-bold text-white">Connected as {users.find(u => (u as any).active)?.name || 'Unknown'}</span>
+                      <span className="font-bold text-white">
+                        Connected as {users.find(u => (u._id || u.id) === currentUserId)?.name || 'Connecting...'}
+                      </span>
                       <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
                       <span>{url}</span>
                     </div>
@@ -765,7 +772,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       </div>
 
       {/* Persistent Player List when logged in */}
-      {(step === 'dashboard') && <PlayerList users={users} onLogout={handleLogout} />}
+      {(step === 'dashboard') && <PlayerList users={users} currentUserId={currentUserId} onLogout={handleLogout} />}
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
