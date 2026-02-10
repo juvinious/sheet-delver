@@ -43,7 +43,20 @@ export class PersistentCache {
         this.initPromise = (async () => {
             if (await loadDeps()) {
                 try {
-                    this.baseDir = path.join(process.cwd(), '.data', 'cache');
+                    // Detect if running in Next.js standalone mode
+                    // Standalone builds run from .next/standalone, but data might be in project root
+                    let rootDir = process.cwd();
+                    if (rootDir.endsWith(path.join('.next', 'standalone'))) {
+                        rootDir = path.resolve(rootDir, '..', '..');
+                        logger.info(`PersistentCache | Detected standalone mode. Adjusting root to: ${rootDir}`);
+                    }
+
+                    this.baseDir = path.join(rootDir, '.data', 'cache');
+
+                    if (process.env.DEBUG) {
+                        logger.info(`PersistentCache | Initialized with base directory: ${this.baseDir} (Original CWD: ${process.cwd()})`);
+                    }
+
                     if (!fs.existsSync(this.baseDir)) {
                         fs.mkdirSync(this.baseDir, { recursive: true });
                     }
