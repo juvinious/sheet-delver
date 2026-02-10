@@ -143,14 +143,14 @@ export class DirectScraper {
         const users: ScrapedUser[] = [];
 
         if (fs.existsSync(usersDbPath)) {
+            let db: any = null;
             try {
-                const db = new ClassicLevel(usersDbPath, { valueEncoding: 'json' });
+                // Open explicitly to catch lock errors early
+                db = new ClassicLevel(usersDbPath, { valueEncoding: 'json' });
+                await db.open();
 
                 // Iterate through the DB
                 for await (const [key, value] of db.iterator()) {
-                    // Foundry VTT documents usually have the ID as the key, or prefixed
-                    // LevelDB keys in Foundry are simply the ID string
-
                     const user = value as any;
                     if (user && user.name) {
                         users.push({
@@ -160,11 +160,17 @@ export class DirectScraper {
                         });
                     }
                 }
-
-                await db.close();
             } catch (err) {
                 console.error('DirectScraper | Failed to read users LevelDB:', err);
-                // We continue with empty users if DB read fails (e.g. locked?)
+            } finally {
+                // Ensure close is called if db exists
+                if (db) {
+                    try {
+                        await db.close();
+                    } catch (e) {
+                        // Ignore close errors
+                    }
+                }
             }
         }
 
