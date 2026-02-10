@@ -71,7 +71,7 @@ export const getTool = (systemId: string, toolId: string) => {
     return manifest.tools[toolId];
 };
 
-export const getConfig = (systemId: string) => {
+export const getModuleConfig = (systemId: string) => {
     const manifest = moduleMap.get(systemId);
     return manifest?.info;
 };

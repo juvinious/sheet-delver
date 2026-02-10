@@ -1,6 +1,6 @@
 import { loadConfig } from '@/core/config';
 import ClientPage from '@/app/ui/components/ClientPage';
-import { SetupScraper } from '@/core/foundry/SetupScraper';
+import { SetupManager } from '@/core/foundry/SetupManager';
 // import { SetupToken } from '@/core/security/SetupToken';
 // import { redirect } from 'next/navigation';
 
@@ -9,7 +9,7 @@ export default async function Page() {
     const initialUrl = config?.foundry.url || '';
 
     // Check if setup is required
-    const cache = await SetupScraper.loadCache();
+    const cache = await SetupManager.loadCache();
     const hasCache = cache.currentWorldId && cache.worlds[cache.currentWorldId];
 
     if (!hasCache) {

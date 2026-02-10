@@ -2,7 +2,7 @@
 import inquirer from 'inquirer';
 import { loadConfig } from '@/core/config';
 import { DirectScraper } from '@/core/foundry/DirectScraper';
-import { SetupScraper, WorldData } from '@/core/foundry/SetupScraper';
+import { SetupManager, WorldData } from '@/core/foundry/SetupManager';
 import path from 'path';
 import fs from 'fs';
 
@@ -68,7 +68,7 @@ async function main() {
             }
 
             if (cacheUpdates.length > 0) {
-                await SetupScraper.saveBatchCache(cacheUpdates);
+                await SetupManager.saveBatchCache(cacheUpdates);
                 console.log(`\n\x1b[32mSuccessfully imported ${cacheUpdates.length}/${worlds.length} worlds.\x1b[0m`);
                 console.log(`\x1b[33mCache updated. Application will hot-reload if running.\x1b[0m\n`);
             } else {
@@ -162,7 +162,7 @@ async function main() {
                         data: { ...data }
                     };
 
-                    await SetupScraper.saveCache(cacheData);
+                    await SetupManager.saveCache(cacheData);
                     console.log('\n\x1b[32mImport Successful!\x1b[0m');
                     console.log(`Active World set to: ${data.title}`);
                     console.log(`\x1b[33mApplication hot-reload triggered.\x1b[0m\n`);

@@ -2194,8 +2194,13 @@ export class LegacySocketFoundryClient {
 
     async getWorlds(): Promise<any[]> {
         try {
-            const { SetupScraper } = await import('../SetupScraper');
-            const cache = await SetupScraper.loadCache();
+            import { SetupManager, WorldData, CacheData } from '../SetupManager';
+
+            // ...
+
+            // Cache SetupManager Data
+            // ...
+            const cache = await SetupManager.loadCache();
             if (cache.worlds) {
                 this.cachedWorlds = cache.worlds;
             }

@@ -2,7 +2,7 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketBase } from './SocketBase';
 import { logger } from '../../logger';
-import { WorldData, CacheData, SetupScraper } from '../SetupScraper';
+import { WorldData, CacheData, SetupManager } from '../SetupManager';
 import { FoundryConfig } from '../types';
 import { FoundryMetadataClient } from '../interfaces';
 import { getAdapter } from '../../../modules/core/registry';
@@ -48,7 +48,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     private async loadInitialCache() {
         try {
-            const cache = await SetupScraper.loadCache();
+            const cache = await SetupManager.loadCache();
             this.cachedWorlds = cache.worlds || {};
             if (cache.currentWorldId && this.cachedWorlds[cache.currentWorldId]) {
                 this.cachedWorldData = this.cachedWorlds[cache.currentWorldId];

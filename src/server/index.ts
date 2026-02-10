@@ -1,9 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import { createFoundryClient } from '../core/foundry';
-import { loadConfig } from '../core/config';
+import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
-import { getAdapter, getConfig } from '../modules/core/registry';
+import { getAdapter } from '../modules/core/registry';
 
 async function startServer() {
     const config = await loadConfig();
@@ -882,41 +882,121 @@ async function startServer() {
             // Use system client
             const client = sessionManager.getSystemClient();
             // Try live system info first
+            const { SetupManager } = await import('../core/foundry/SetupManager');
             let worlds: any[] = [];
-            try {
-                const systemInfo = await client.getSystem();
-                if (systemInfo?.worlds) {
-                    worlds = systemInfo.worlds;
-                }
-            } catch (e) {
-                // Ignore live fetch error, fallback to cache
-            }
 
+            // If we have a URL, try to scrape available worlds
+            // Note: SetupManager.scrapeAvailableWorlds is currently a placeholder returning []
+            // but we keep the call structure for future expansion
+            worlds = await SetupManager.scrapeAvailableWorlds(client.url || '');
+
+            // Also check local cache
             if (worlds.length === 0) {
-                const { SetupScraper } = await import('../core/foundry/SetupScraper');
-
-                // Try scraping /setup page first (Live Discovery)
-                worlds = await SetupScraper.scrapeAvailableWorlds(client.url || '');
-
-                // If scraping failed, fallback to cache
-                if (worlds.length === 0) {
-                    const cache = await SetupScraper.loadCache();
-                    if (cache.worlds) {
-                        worlds = Object.values(cache.worlds);
-                    }
+                const cache = await SetupManager.loadCache();
+                if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
+                    worlds = [cache.worlds[cache.currentWorldId]];
                 }
             }
 
             res.json(worlds);
+        } catch (error) {
+            logger.error('Failed to list worlds', error);
+            res.status(500).json({ error: 'Failed to list worlds' });
+        }
+    });
+
+    // Setup: Check status
+    appRouter.get('/api/setup/status', async (req, res) => {
+        const { SetupManager } = await import('../core/foundry/SetupManager');
+        const cache = await SetupManager.loadCache();
+        res.json({
+            configured: !!cache.currentWorldId,
+            worldId: cache.currentWorldId,
+            worldTitle: cache.currentWorldId ? cache.worlds[cache.currentWorldId]?.worldTitle : null
+        });
+    });
+
+    // Setup: Probe World
+    appRouter.post('/api/setup/probe', async (req, res) => {
+        const { url, username, password } = req.body;
+        const client = getConfig().foundry;
+
+        // We use the provided URL or fallback to config
+        const targetUrl = url || client.url;
+
+        if (!targetUrl) {
+            res.status(400).json({ error: 'Foundry URL is required' });
+            return;
+        }
+
+        try {
+            const { SetupManager } = await import('../core/foundry/SetupManager');
+            // Probe logic...
+            // For now, we reuse the scraping logic if we have credentials
+            // But the UI might just want to check connectivity.
+
+            // Actually, let's use the scrapeWorldData logic with a probe flag if needed
+            // or we can try to authenticate and see what world we land in.
+
+            // For this implementation, we'll try to get the current world ID
+            // cookie is needed for scrapeWorldData. 
+            // We don't have a direct "probe" method that takes credentials and returns world info without a cookie 
+            // EXCEPT scrapeActiveWorld if we implement it.
+
+            // Let's use the session cookie if we have one, or try to login.
+            // Since this is a setup step, we likely don't have a cookie yet.
+            // We need to authenticate first.
+
+            // TODO: Implement proper auth flow in SetupManager.
+            // For now, we'll assume the user provided valid credentials or a cookie.
+
+            // CHANGED: We now have probeActiveWorld in SetupManager!
+            const result = await SetupManager.probeActiveWorld(targetUrl, username, password);
+
+            if (result) {
+                res.json(result);
+            } else {
+                res.status(404).json({ error: 'No active world found or authentication failed' });
+            }
         } catch (error: any) {
+            logger.error('Setup probe failed', error);
             res.status(500).json({ error: error.message });
         }
     });
 
+    // Setup: Configure (Save)
+    appRouter.post('/api/setup/configure', async (req, res) => {
+        const { worldId, sessionCookie } = req.body;
+        if (!worldId) {
+            res.status(400).json({ error: 'World ID is required' });
+            return;
+        }
+
+        const client = getConfig().foundry;
+
+        try {
+            const { SetupManager } = await import('../core/foundry/SetupManager');
+
+            // Verify the world data one last time and get full details
+            const result = await SetupManager.scrapeWorldData(client.url || '', sessionCookie);
+
+            if (result.worldId !== worldId) {
+                logger.warn(`Setup configure mismatch: Expected ${worldId}, got ${result.worldId}`);
+            }
+
+            await SetupManager.saveCache(result);
+            res.json({ success: true, world: result });
+        } catch (error: any) {
+            logger.error('Setup configuration failed', error);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+
     adminRouter.get('/cache', async (req, res) => {
         try {
-            const { SetupScraper } = await import('../core/foundry/SetupScraper');
-            const cache = await SetupScraper.loadCache();
+            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const cache = await SetupManager.loadCache();
             res.json(cache);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -928,15 +1008,15 @@ async function startServer() {
         if (!sessionCookie) return res.status(400).json({ error: 'Session cookie required' });
 
         try {
-            const { SetupScraper } = await import('../core/foundry/SetupScraper');
+            const { SetupManager } = await import('../core/foundry/SetupManager');
             const client = sessionManager.getSystemClient();
             logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
 
             // Scrape
-            const result = await SetupScraper.scrapeWorldData(client.url || '', sessionCookie);
+            const result = await SetupManager.scrapeWorldData(client.url || '', sessionCookie);
 
             // Save to Cache
-            await SetupScraper.saveCache(result);
+            await SetupManager.saveCache(result);
 
             // Re-connect client logic if needed (optional)
             // if (!client.isLoggedIn) client.connect(); 
