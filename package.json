@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "ts-node src/scripts/start-server.ts dev",
-    "build": "next build",
+    "build": "ts-node src/scripts/start-server.ts build",
     "start": "ts-node src/scripts/start-server.ts start",
     "setup": "npx tsx src/scripts/setup.ts",
     "lint": "eslint",

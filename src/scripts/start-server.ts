@@ -39,16 +39,18 @@ try {
 const args = process.argv.slice(2);
 const command = args[0] || 'dev'; // Default to dev
 
-// Pre-flight Check: Ensure Cache Exists
-const CACHE_PATH = path.join(process.cwd(), '.data/cache/core/worlds.json');
-const LEGACY_CACHE_PATH = path.join(process.cwd(), '.foundry-cache.json');
+// Pre-flight Check: Ensure Cache Exists (Skip for build)
+if (command !== 'build') {
+    const CACHE_PATH = path.join(process.cwd(), '.data/cache/core/worlds.json');
+    const LEGACY_CACHE_PATH = path.join(process.cwd(), '.foundry-cache.json');
 
-if (!fs.existsSync(CACHE_PATH) && !fs.existsSync(LEGACY_CACHE_PATH)) {
-    console.error('\n\x1b[31m[CRITICAL] Cache Missing: World data not found.\x1b[0m');
-    console.error('The application cannot start without initial world data.');
-    console.error('Please run the setup script to initialize the cache:');
-    console.error('\n    \x1b[36mnpm run setup\x1b[0m\n');
-    process.exit(1);
+    if (!fs.existsSync(CACHE_PATH) && !fs.existsSync(LEGACY_CACHE_PATH)) {
+        console.error('\n\x1b[31m[CRITICAL] Cache Missing: World data not found.\x1b[0m');
+        console.error('The application cannot start without initial world data.');
+        console.error('Please run the setup script to initialize the cache:');
+        console.error('\n    \x1b[36mnpm run setup\x1b[0m\n');
+        process.exit(1);
+    }
 }
 
 let coreProcess: ChildProcess | null = null;
@@ -78,6 +80,23 @@ process.on('SIGTERM', () => {
 });
 
 async function start() {
+    // Handle Build Command
+    if (command === 'build') {
+        console.log(`[Manager] Building Application with API_PORT=${apiPort}...`);
+        const nextCmd = path.join(process.cwd(), 'node_modules', '.bin', 'next');
+        const env = { ...process.env, API_PORT: apiPort.toString() };
+
+        const buildProcess = spawn(nextCmd, ['build'], {
+            stdio: 'inherit',
+            env
+        });
+
+        buildProcess.on('close', (code) => {
+            process.exit(code || 0);
+        });
+        return;
+    }
+
     console.log('[Manager] Starting Decoupled Architecture...');
 
     // 1. Start Core Service
