@@ -40,11 +40,23 @@ async function main() {
             default: 3000
         },
         {
+            type: 'number',
+            name: 'apiPort',
+            message: 'API Port (internal):',
+            default: 3001
+        },
+        {
             type: 'list',
             name: 'appProtocol',
             message: 'App Protocol:',
             choices: ['http', 'https'],
             default: 'http'
+        },
+        {
+            type: 'number',
+            name: 'chatHistory',
+            message: 'Chat History Limit:',
+            default: 100
         },
         // Foundry Settings
         {
@@ -81,6 +93,26 @@ async function main() {
             type: 'input',
             name: 'foundryDataDir',
             message: 'Foundry Data Directory (Optional, for imports):',
+        },
+        {
+            type: 'confirm',
+            name: 'debugEnabled',
+            message: 'Enable Debug Logging?',
+            default: false
+        },
+        {
+            type: 'list',
+            name: 'debugLevel',
+            message: 'Debug Level:',
+            choices: [
+                { name: '0 - None', value: 0 },
+                { name: '1 - Error', value: 1 },
+                { name: '2 - Warn', value: 2 },
+                { name: '3 - Info', value: 3 },
+                { name: '4 - Debug', value: 4 }
+            ],
+            default: 1,
+            when: (answers) => answers.debugEnabled
         }
     ]);
 
@@ -88,8 +120,9 @@ async function main() {
         app: {
             host: answers.appHost,
             port: answers.appPort,
+            "api-port": answers.apiPort,
             protocol: answers.appProtocol,
-            'chat-history': 100
+            "chat-history": answers.chatHistory
         },
         foundry: {
             host: answers.foundryHost,
@@ -101,8 +134,8 @@ async function main() {
             ...(answers.foundryDataDir ? { foundryDataDirectory: answers.foundryDataDir } : {})
         },
         debug: {
-            enabled: true,
-            level: 3
+            enabled: answers.debugEnabled,
+            level: answers.debugLevel || 1
         }
     };
 

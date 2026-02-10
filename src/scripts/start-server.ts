@@ -9,6 +9,7 @@ const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
 // Default settings
 let host = 'localhost';
 let port = 3000;
+let apiPort = 3001;
 
 // Read settings.yaml
 try {
@@ -19,9 +20,10 @@ try {
         if (settings.app) {
             if (settings.app.host) host = settings.app.host;
             if (settings.app.port) port = settings.app.port;
+            if (settings.app['api-port']) apiPort = settings.app['api-port'];
         }
 
-        console.log(`[Manager] Loading configuration from settings.yaml: ${host}:${port}`);
+        console.log(`[Manager] Loading configuration: App=${host}:${port}, API=${apiPort}`);
     } else {
         console.log('[Manager] No settings.yaml found, using defaults.');
     }
@@ -75,10 +77,14 @@ async function start() {
     console.log('[Manager] Starting Decoupled Architecture...');
 
     // 1. Start Core Service
-    console.log(`[Manager] Launching Core Service (Express)...`);
+    console.log(`[Manager] Launching Core Service (Express) on port ${apiPort}...`);
+    // npx tsx src/server/index.ts
+    // We pass the API_PORT via env var as usual, but specific naming might be needed depending on server/index.ts
+    // server/index.ts reads config.app.apiPort mostly, but falls back to env.PORT or env.API_PORT
+
     coreProcess = spawn('npx', ['-y', 'tsx', 'src/server/index.ts'], {
         stdio: 'inherit',
-        env: { ...process.env, PORT: (port + 1).toString() }
+        env: { ...process.env, PORT: apiPort.toString(), API_PORT: apiPort.toString() }
     });
 
     coreProcess.on('error', (err) => {
@@ -100,9 +106,14 @@ async function start() {
     // 2. Start Shell Service
     console.log(`[Manager] Launching Shell Service (Next.js ${command}) on ${host}:${port}...`);
     const nextCmd = path.join(process.cwd(), 'node_modules', '.bin', 'next');
+
+    // Pass API_PORT to Next.js so it knows where to proxy
+    // In dev mode, we also need to ensure the port is passed
+    const env = { ...process.env, PORT: port.toString(), HOSTNAME: host, API_PORT: apiPort.toString() };
+
     shellProcess = spawn(nextCmd, [command, '-H', host, '-p', port.toString()], {
         stdio: 'inherit',
-        env: { ...process.env, PORT: port.toString(), HOSTNAME: host }
+        env
     });
 
     shellProcess.on('error', (err) => {

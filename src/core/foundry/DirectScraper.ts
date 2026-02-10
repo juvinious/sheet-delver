@@ -144,31 +144,78 @@ export class DirectScraper {
 
         if (fs.existsSync(usersDbPath)) {
             let db: any = null;
+            let tempDbPath: string | null = null;
+
             try {
-                // Open explicitly to catch lock errors early
+                // Attempt 1: Direct Open
                 db = new ClassicLevel(usersDbPath, { valueEncoding: 'json' });
                 await db.open();
+            } catch (err: any) {
+                // If locked, try Copy-and-Read strategy
+                if (err.code === 'LEVEL_LOCKED' || (err.cause && err.cause.code === 'LEVEL_LOCKED')) {
+                    // Close the failed instance (just in case)
+                    try { await db.close(); } catch (e) { }
+                    db = null;
 
-                // Iterate through the DB
-                for await (const [key, value] of db.iterator()) {
-                    const user = value as any;
-                    if (user && user.name) {
-                        users.push({
-                            id: user._id,
-                            name: user.name,
-                            role: user.role
-                        });
+                    try {
+                        const os = await import('node:os');
+                        tempDbPath = path.join(os.tmpdir(), `sheet-delver-users-${Date.now()}`);
+
+                        console.log(`DirectScraper | Database locked. Attempting read from snapshot: ${tempDbPath}`);
+
+                        // Copy entire directory to temp
+                        // Node 16.7.0+ has fs.cp
+                        if (fs.cp) {
+                            await new Promise<void>((resolve, reject) => {
+                                fs.cp(usersDbPath, tempDbPath, { recursive: true }, (err: any) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                            });
+                        } else {
+                            // Fallback for older node? (Unlikely given engine requirements, but safe to just fail)
+                            throw new Error('fs.cp not available');
+                        }
+
+                        db = new ClassicLevel(tempDbPath, { valueEncoding: 'json' });
+                        await db.open();
+
+                    } catch (copyErr) {
+                        console.error('DirectScraper | Failed to create temp snapshot:', copyErr);
+                        db = null;
                     }
+                } else {
+                    console.error('DirectScraper | Failed to open LevelDB:', err);
                 }
-            } catch (err) {
-                console.error('DirectScraper | Failed to read users LevelDB:', err);
-            } finally {
-                // Ensure close is called if db exists
-                if (db) {
+            }
+
+            if (db) {
+                try {
+                    // Iterate through the DB
+                    for await (const [key, value] of db.iterator()) {
+                        const user = value as any;
+                        if (user && user.name) {
+                            users.push({
+                                id: user._id,
+                                name: user.name,
+                                role: user.role
+                            });
+                        }
+                    }
+                } catch (readErr) {
+                    console.error('DirectScraper | Iteration error:', readErr);
+                } finally {
                     try {
                         await db.close();
-                    } catch (e) {
-                        // Ignore close errors
+                    } catch (e) { /* ignore */ }
+
+                    // Cleanup temp dir if created
+                    if (tempDbPath && fs.existsSync(tempDbPath)) {
+                        try {
+                            fs.rmSync(tempDbPath, { recursive: true, force: true });
+                        } catch (cleanErr) {
+                            console.error('DirectScraper | Failed to cleanup temp DB:', cleanErr);
+                        }
                     }
                 }
             }
