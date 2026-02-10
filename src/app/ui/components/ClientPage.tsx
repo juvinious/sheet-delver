@@ -49,22 +49,23 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [loading, setLoading] = useState(false);
 
   // Session State
-  const [token, setTokenState] = useState<string | null>(null);
+  const [token, setTokenState] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('sheet-delver-token');
+    }
+    return null;
+  });
 
   const setToken = (newToken: string | null) => {
     setTokenState(newToken);
-    if (newToken) {
-      sessionStorage.setItem('sheet-delver-token', newToken);
-    } else {
-      sessionStorage.removeItem('sheet-delver-token');
+    if (typeof window !== 'undefined') {
+      if (newToken) {
+        localStorage.setItem('sheet-delver-token', newToken);
+      } else {
+        localStorage.removeItem('sheet-delver-token');
+      }
     }
   };
-
-  // Load token on mount
-  useEffect(() => {
-    const stored = sessionStorage.getItem('sheet-delver-token');
-    if (stored) setTokenState(stored);
-  }, []);
 
   // Login State
   const [users, setUsers] = useState<User[]>([]);
