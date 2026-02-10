@@ -23,6 +23,7 @@ interface SpellSelectionModalProps {
     knownSpells: SpellOption[];
     maxSelections?: number;
     token?: string | null;
+    isSaving?: boolean;
 }
 
 export default function SpellSelectionModal({
@@ -33,7 +34,8 @@ export default function SpellSelectionModal({
     availableSpells,
     knownSpells,
     maxSelections,
-    token
+    token,
+    isSaving = false
 }: SpellSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
     const [search, setSearch] = useState('');
@@ -42,7 +44,11 @@ export default function SpellSelectionModal({
     const [fetchedData, setFetchedData] = useState<Record<string, { description: string, system: any }>>({});
     const [loadingUuids, setLoadingUuids] = useState<Set<string>>(new Set());
 
+    // Tracks if we have already initialized for the current "open" session
+    const [hasInitialized, setHasInitialized] = useState(false);
+
     const toggleExpand = async (spell: SpellOption) => {
+        if (isSaving) return;
         const newSet = new Set(expandedUuids);
         if (newSet.has(spell.uuid)) {
             newSet.delete(spell.uuid);
@@ -87,9 +93,9 @@ export default function SpellSelectionModal({
         }
     };
 
-    // Initialize selection from known spells
+    // Initialize selection from known spells ONLY when the modal opens
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && !hasInitialized) {
             const initialSet = new Set<string>();
             // Use names to match as UUIDs might differ between compendiums and actors
             const knownNames = new Set(knownSpells.map(s => s.name));
@@ -99,8 +105,12 @@ export default function SpellSelectionModal({
                 }
             });
             setSelectedUuids(initialSet);
+            setHasInitialized(true);
+        } else if (!isOpen) {
+            setHasInitialized(false);
+            setSearch('');
         }
-    }, [isOpen, knownSpells, availableSpells]);
+    }, [isOpen, knownSpells, availableSpells, hasInitialized]);
 
     const filteredSpells = useMemo(() => {
         let result = availableSpells;
@@ -117,6 +127,7 @@ export default function SpellSelectionModal({
     }, [availableSpells, search]);
 
     const toggleSpell = (uuid: string) => {
+        if (isSaving) return;
         const newSet = new Set(selectedUuids);
         if (newSet.has(uuid)) {
             newSet.delete(uuid);
@@ -132,7 +143,7 @@ export default function SpellSelectionModal({
     const handleSave = () => {
         const selected = availableSpells.filter(s => selectedUuids.has(s.uuid));
         onSave(selected);
-        onClose();
+        // We do NOT call onClose() here anymore; SpellsTab.tsx will call it after the async save completes.
     };
 
     if (!isOpen) return null;
@@ -154,7 +165,11 @@ export default function SpellSelectionModal({
                             )}
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-neutral-800 rounded-full transition-colors">
+                    <button
+                        onClick={onClose}
+                        disabled={isSaving}
+                        className="p-2 hover:bg-neutral-800 rounded-full transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
                         <X className="w-6 h-6" />
                     </button>
                 </div>
@@ -167,7 +182,8 @@ export default function SpellSelectionModal({
                         <input
                             type="text"
                             placeholder="Filter spells by name..."
-                            className="w-full pl-12 pr-4 py-4 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[2px] focus:translate-y-[2px] focus:shadow-none transition-all outline-none font-serif text-xl"
+                            disabled={isSaving}
+                            className="w-full pl-12 pr-4 py-4 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] focus:translate-x-[2px] focus:translate-y-[2px] focus:shadow-none transition-all outline-none font-serif text-xl disabled:opacity-50"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             autoFocus
@@ -181,7 +197,8 @@ export default function SpellSelectionModal({
                             {expandedUuids.size > 0 && (
                                 <button
                                     onClick={() => setExpandedUuids(new Set())}
-                                    className="mr-4 text-amber-600 hover:text-amber-700 underline flex items-center gap-1 transition-colors"
+                                    disabled={isSaving}
+                                    className="mr-4 text-amber-600 hover:text-amber-700 underline flex items-center gap-1 transition-colors disabled:opacity-30"
                                 >
                                     <ChevronUp className="w-3 h-3" />
                                     Collapse All
@@ -196,13 +213,13 @@ export default function SpellSelectionModal({
                         {filteredSpells.map((spell, idx) => {
                             const isSelected = selectedUuids.has(spell.uuid);
                             const isExpanded = expandedUuids.has(spell.uuid);
-                            const disabled = !isSelected && isMaxReached;
+                            const disabled = (!isSelected && isMaxReached) || isSaving;
                             const fetched = fetchedData[spell.uuid];
                             const description = spell.description || fetched?.description;
                             const isLoading = loadingUuids.has(spell.uuid);
 
                             return (
-                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'}`}>
+                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'} ${isSaving ? 'opacity-70 pointer-events-none' : ''}`}>
                                     <div
                                         className={`flex items-center gap-3 py-1.5 px-2 cursor-pointer transition-colors`}
                                         onClick={() => toggleExpand(spell)}
@@ -233,10 +250,10 @@ export default function SpellSelectionModal({
                                                 }}
                                                 disabled={disabled}
                                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${isSelected
-                                                        ? 'bg-black text-white border-black'
-                                                        : disabled
-                                                            ? 'bg-neutral-50 border-neutral-300 cursor-not-allowed'
-                                                            : 'bg-white border-black hover:border-amber-500'
+                                                    ? 'bg-black text-white border-black'
+                                                    : disabled
+                                                        ? 'bg-neutral-50 border-neutral-300 cursor-not-allowed'
+                                                        : 'bg-white border-black hover:border-amber-500'
                                                     }`}
                                             >
                                                 {isSelected && <Check className="w-5 h-5" />}
@@ -301,16 +318,22 @@ export default function SpellSelectionModal({
                 <div className="p-4 bg-neutral-200 border-t-2 border-black flex justify-end gap-3">
                     <button
                         onClick={onClose}
-                        className="px-8 py-3 border-2 border-black font-serif font-bold text-lg hover:bg-neutral-300 transition-all active:translate-y-[2px]"
+                        disabled={isSaving}
+                        className="px-8 py-3 border-2 border-black font-serif font-bold text-lg hover:bg-neutral-300 transition-all active:translate-y-[2px] disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         CANCEL
                     </button>
                     <button
                         onClick={handleSave}
-                        className="px-10 py-3 bg-black text-white border-2 border-black font-serif font-bold text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={isSaving}
+                        className="px-10 py-3 bg-black text-white border-2 border-black font-serif font-bold text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                        <Check className="w-5 h-5" />
-                        SAVE CHANGES
+                        {isSaving ? (
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        ) : (
+                            <Check className="w-5 h-5" />
+                        )}
+                        {isSaving ? 'SAVING...' : 'SAVE CHANGES'}
                     </button>
                 </div>
             </div>

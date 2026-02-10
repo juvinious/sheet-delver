@@ -7,6 +7,7 @@ import LoadingModal from '@/app/ui/components/LoadingModal';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
+import { shouldShowSpellsTab } from '../rules';
 import { Menu, X } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
@@ -201,13 +202,14 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             const width = window.innerWidth;
             let currentTabs = [...tabsOrder];
 
-            // Filter out Spells tab if not applicable
-            const showSpells = serverSideCasterInfo ? serverSideCasterInfo.showSpellsTab : actor.computed?.showSpellsTab;
+            // Unified Spellcaster Logic from rules.ts
+            const showSpells = shouldShowSpellsTab(actor) || actor.computed?.showSpellsTab || serverSideCasterInfo?.showSpellsTab;
+
             if (!showSpells) {
                 currentTabs = currentTabs.filter(t => t.id !== 'spells');
             }
 
-            const count = getVisibleCount(width); // This counts based on full list length usually, might need adjusting
+            const count = getVisibleCount(width);
 
             setVisibleTabs(currentTabs.slice(0, count));
             setOverflowTabs(currentTabs.slice(count));
@@ -218,7 +220,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount, serverSideCasterInfo]);
+    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount, serverSideCasterInfo, actor.items, actor.effects, actor.system?.class]);
 
     // Auto-close Level Up Modal when level effectively changes
     useEffect(() => {

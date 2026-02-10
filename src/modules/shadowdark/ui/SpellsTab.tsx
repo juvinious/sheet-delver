@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     formatDescription,
     getSafeDescription
@@ -26,7 +26,38 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTier, setEditingTier] = useState<number | null>(null);
+    const [modalFilterClass, setModalFilterClass] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [targetSpellNames, setTargetSpellNames] = useState<Set<string> | null>(null);
+    const [optimisticLostState, setOptimisticLostState] = useState<Record<string, boolean>>({});
+
+    // Sync Verification: Monitor actor items and clear saving state only when they match our target
+    useEffect(() => {
+        if (!isSaving || !targetSpellNames || !editingTier || !modalFilterClass) return;
+
+        const currentSpells = (actor.items || []).filter((i: any) => {
+            if (i.type !== 'Spell') return false;
+            const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
+            if (iTier !== editingTier) return false;
+
+            const classData = i.system?.class || i.class || '';
+            const spellClasses = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
+            return spellClasses.includes(modalFilterClass);
+        });
+
+        const currentNames = new Set(currentSpells.map((s: any) => s.name));
+
+        // Check if current matches target exactly
+        const isSynced = targetSpellNames.size === currentNames.size &&
+            [...targetSpellNames].every(name => currentNames.has(name));
+
+        if (isSynced) {
+            setTargetSpellNames(null);
+            setIsSaving(false);
+            setIsAddModalOpen(false);
+            addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
+        }
+    }, [actor.items, isSaving, targetSpellNames, editingTier, modalFilterClass, addNotification]);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -53,25 +84,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         }
     };
 
-    const [optimisticLostState, setOptimisticLostState] = useState<Record<string, boolean>>({});
-
-    const handleLostToggle = (spellId: string, currentLost: boolean) => {
-        // Optimistic update
-        setOptimisticLostState(prev => ({
-            ...prev,
-            [spellId]: !currentLost
-        }));
-
-        // Actual update
-        onUpdate(`items.${spellId}.system.lost`, !currentLost);
-    };
-
-    // Effect to sync optimistic state with prop updates (clearing overrides when server syncs)
-    // We can use a simple timeout or just let props take over if we want strict sync,
-    // but for simple toggles, we usually just prefer the prop value *unless* we just clicked.
-    // However, a simpler pattern for this sheet has been just one-way fire-and-forget with loading override,
-    // or just relying on the fact that the prop will update eventually.
-    // For true "snappy" feeling:
     const isLost = (spell: any) => {
         if (optimisticLostState[spell.id] !== undefined) {
             return optimisticLostState[spell.id];
@@ -79,15 +91,21 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         return spell.system?.lost;
     };
 
-
+    const handleLostToggle = (spellId: string, currentLost: boolean) => {
+        setOptimisticLostState(prev => ({
+            ...prev,
+            [spellId]: !currentLost
+        }));
+        onUpdate(`items.${spellId}.system.lost`, !currentLost);
+    };
 
     const handleManageSpells = async (selectedSpells: any[]) => {
         if (!editingTier || !modalFilterClass) return;
 
         setIsSaving(true);
         try {
-            // Current spells in this Tier matching this class source
-            const currentSpells = (actor.items || []).filter((i: any) => {
+            const currentItems = actor.items || [];
+            const currentSpells = currentItems.filter((i: any) => {
                 if (i.type !== 'Spell') return false;
                 const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
                 if (iTier !== editingTier) return false;
@@ -100,14 +118,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             const currentNames = new Set(currentSpells.map((s: { name: string }) => s.name));
             const selectedNames = new Set(selectedSpells.map((s: { name: string }) => s.name));
 
-            // ADD: Selected but not currently known
             const toAdd = selectedSpells.filter((s: { name: string }) => !currentNames.has(s.name));
-
-            // REMOVE: Currently known but not selected
             const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; }) => !selectedNames.has(s.name));
 
+            setTargetSpellNames(selectedNames);
 
-            // Execute ADDs & REMOVEs in parallel for better performance
             const tasks = [
                 ...toAdd.map((spell: any) => handleAddSpell(spell)),
                 ...(onDeleteItem ? toRemove.map((spell: any) => onDeleteItem(spell.id || spell._id)) : [])
@@ -115,16 +130,20 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
             await Promise.all(tasks);
 
-            addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
-            setIsAddModalOpen(false);
+            setTimeout(() => {
+                if (isSaving) {
+                    setTargetSpellNames(null);
+                    setIsSaving(false);
+                    setIsAddModalOpen(false);
+                }
+            }, 5000);
+
         } catch (e) {
             console.error("Failed to manage spells", e);
             addNotification?.("Failed to update spells. Check console.", "error");
-        } finally {
             setIsSaving(false);
         }
     };
-
 
     const handleAddSpell = async (spell: any) => {
         try {
@@ -138,7 +157,14 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             });
         } catch (e) {
             console.error(e);
+            throw e;
         }
+    };
+
+    const openManageModalWithSource = (tier: number, classKey: string) => {
+        setEditingTier(tier);
+        setModalFilterClass(classKey);
+        setIsAddModalOpen(true);
     };
 
     const spellSources = useMemo(() => {
@@ -256,47 +282,24 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         return tiers;
     };
 
-    const [modalFilterClass, setModalFilterClass] = useState<string | null>(null);
-
-    const openManageModalWithSource = (tier: number, classKey: string) => {
-        setEditingTier(tier);
-        setModalFilterClass(classKey);
-        setIsAddModalOpen(true);
-    };
-
     const filteredSpellOptions = useMemo(() => {
         if (!systemData?.spells || !editingTier || !modalFilterClass) return [];
-
         const seen = new Set();
-        const results = systemData.spells.filter((s: any) => {
-            // Robust tier comparison
+        return systemData.spells.filter((s: any) => {
             const spellTier = Number(s.tier !== undefined ? s.tier : s.system?.tier);
-            const tierMatch = spellTier === editingTier;
-
-            // Robust class comparison
+            if (spellTier !== editingTier) return false;
             const classData = s.class || s.system?.class || [];
             const spellClasses = (Array.isArray(classData) ? classData.join('|') : String(classData)).toLowerCase();
-            const filterKey = (modalFilterClass || '').toLowerCase().trim();
-
-            // Check for source key (e.g. 'wizard') OR the source name if we could find it
-            const classMatch = spellClasses.includes(filterKey);
-
-
-            if (!tierMatch || !classMatch) return false;
-
+            if (!spellClasses.includes(modalFilterClass.toLowerCase())) return false;
             if (seen.has(s.name)) return false;
             seen.add(s.name);
             return true;
         });
-
-
-        return results;
     }, [systemData, editingTier, modalFilterClass]);
 
     const getMaxSpellsForSource = useCallback((tier: number, classKey: string) => {
         const source = spellSources.find((s: any) => s.classKey === classKey);
         if (!source) return 0;
-
         let baseMax = 0;
         if (source.type === 'class') {
             const level = actor.system?.level?.value || 1;
@@ -351,13 +354,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 </div>
 
                 <div className="space-y-2">
-                    <div className="border-b-2 border-black mb-2 flex items-end justify-between px-2 pb-1 text-xs font-bold uppercase tracking-widest text-neutral-500">
+                    <div className="hidden md:flex border-b-2 border-black mb-2 items-end justify-between px-2 pb-1 text-xs font-bold uppercase tracking-widest text-neutral-500">
                         <span className="flex-1 font-serif text-lg text-black lowercase first-letter:uppercase">Name</span>
                         <div className="flex items-center gap-4 w-[500px] justify-between pr-2">
                             <span className="w-12 text-center">Tier</span>
                             <span className="w-40 text-center">Duration</span>
                             <span className="w-32 text-center">Range</span>
-                            <span className="w-24 text-center">Actions</span>
+                            <span className="w-40 text-center pr-2">Actions</span>
                         </div>
                     </div>
 
@@ -384,32 +387,61 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
                             return (
                                 <div key={spell.id || spell._id || `spell-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
-                                    <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
-                                        <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                            {spell.img ? (
-                                                <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
-                                            ) : (
-                                                <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
-                                            )}
-                                        </div>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
 
-                                        <div className="flex-1 flex flex-col justify-center overflow-hidden">
-                                            <div className={`font-serif font-bold text-lg uppercase leading-none truncate ${lost ? 'line-through text-neutral-400' : 'text-black'}`}>
-                                                {spell.name}
+                                        {/* Header / Name Section */}
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
+                                                {spell.img ? (
+                                                    <img src={resolveImageUrl(spell.img)} alt="" className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <span className="text-white font-serif font-bold text-lg">{spell.name.charAt(0)}</span>
+                                                )}
                                             </div>
-                                            {spell.system?.class && (
-                                                <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
-                                                    {(() => {
-                                                        const cls = spell.system.class;
-                                                        if (Array.isArray(cls)) return cls.join(', ');
-                                                        if (typeof cls === 'object' && cls !== null) return cls.name || cls.label || JSON.stringify(cls);
-                                                        return String(cls);
-                                                    })()}
+
+                                            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+                                                <div className={`font-serif font-bold text-lg uppercase leading-none truncate ${lost ? 'line-through text-neutral-400' : 'text-black'}`}>
+                                                    {spell.name}
                                                 </div>
-                                            )}
+
+                                                {/* Mobile Stats Row */}
+                                                <div className="md:hidden text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1 flex items-center gap-2">
+                                                    <span>Tier {spell.system?.tier}</span>
+                                                    <span>•</span>
+                                                    <span>
+                                                        {(() => {
+                                                            const val = spell.system?.duration?.value;
+                                                            const type = spell.system?.duration?.type || '-';
+                                                            const safeVal = (typeof val === 'object') ? (val.value || val.text || "") : val;
+                                                            const safeType = (typeof type === 'object') ? (type.label || type.value || "-") : type;
+                                                            if (safeVal === undefined || safeVal === null || safeVal === '' || safeVal === -1) return safeType;
+                                                            return `${safeVal} ${safeType}`;
+                                                        })()}
+                                                    </span>
+                                                    <span>•</span>
+                                                    <span>
+                                                        {(() => {
+                                                            const rng = spell.system?.range;
+                                                            return (typeof rng === 'object' && rng !== null) ? (rng.value || rng.label || "Close") : (rng || 'Close');
+                                                        })()}
+                                                    </span>
+                                                </div>
+
+                                                {spell.system?.class && (
+                                                    <div className="hidden md:block text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
+                                                        {(() => {
+                                                            const cls = spell.system.class;
+                                                            if (Array.isArray(cls)) return cls.join(', ');
+                                                            if (typeof cls === 'object' && cls !== null) return cls.name || cls.label || JSON.stringify(cls);
+                                                            return String(cls);
+                                                        })()}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
 
-                                        <div className="flex items-center gap-4 w-[500px] justify-between">
+                                        {/* Desktop Columns (Hidden on Mobile) */}
+                                        <div className="hidden md:flex items-center gap-4 w-[500px] justify-between">
                                             <span className="text-sm font-serif font-bold w-12 text-center">{spell.system?.tier}</span>
                                             <span className="text-sm font-serif w-40 text-center">
                                                 {(() => {
@@ -431,25 +463,26 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 })()}
                                             </span>
 
-                                            <div className="flex gap-2 items-center justify-end w-24">
+                                            <div className="flex gap-2 items-center justify-end w-40">
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         if (!lost) triggerRollDialog('item', spell.id, spell.name);
                                                     }}
                                                     disabled={lost}
-                                                    className={`w-10 h-10 flex items-center justify-center rounded-full transition-all ${lost ? 'bg-neutral-300 text-neutral-500 opacity-50' : 'bg-black text-white hover:scale-110'}`}
+                                                    className={`h-10 px-4 flex items-center justify-center gap-2 rounded transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none border-2 border-black ${lost ? 'bg-neutral-200 text-neutral-500 border-neutral-400 opacity-50' : 'bg-black text-white hover:bg-neutral-800'}`}
                                                 >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                                                         <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5z" />
                                                     </svg>
+                                                    <span className="font-serif font-bold text-sm uppercase tracking-wider">CAST</span>
                                                 </button>
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         handleLostToggle(spell.id, !!lost);
                                                     }}
-                                                    className={`w-10 h-10 flex items-center justify-center rounded-full border-2 transition-all ${lost ? 'bg-red-100 border-red-500 text-red-600' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black hover:scale-110'}`}
+                                                    className={`w-10 h-10 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
                                                 >
                                                     {lost ? (
                                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
@@ -462,6 +495,40 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                     )}
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        {/* Mobile Actions (Visible on Mobile) */}
+                                        <div className="md:hidden mt-3 flex items-center gap-2">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (!lost) triggerRollDialog('item', spell.id, spell.name);
+                                                }}
+                                                disabled={lost}
+                                                className={`flex-1 h-12 flex items-center justify-center gap-2 rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${lost ? 'bg-neutral-200 text-neutral-500 border-neutral-400 opacity-50' : 'bg-black text-white hover:bg-neutral-800'}`}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                                    <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5z" />
+                                                </svg>
+                                                <span className="font-serif font-bold text-lg uppercase tracking-wider">CAST</span>
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleLostToggle(spell.id, !!lost);
+                                                }}
+                                                className={`w-12 h-12 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
+                                            >
+                                                {lost ? (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
 
@@ -595,6 +662,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     onClose={() => setIsAddModalOpen(false)}
                     maxSelections={maxSelections}
                     token={token}
+                    isSaving={isSaving}
                 />
             )}
 

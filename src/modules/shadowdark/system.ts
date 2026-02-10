@@ -1,5 +1,5 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
-import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from './rules';
+import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots, isSpellcaster, shouldShowSpellsTab, canUseMagicItems } from './rules';
 import { logger } from '../../core/logger';
 import { dataManager } from './data/DataManager';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
@@ -309,54 +309,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     } catch (err) { logger.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
 
 
-                    // --- ROBUST SPELLCASTER CHECK ---
-                    // 1. Check for Class Spellcasting (foundry system data)
-                    const classItem = actor.items?.find((i: any) => i.type === 'Class');
-                    let isCaster = false;
-                    let canMagic = false;
-
-                    if (classItem) {
-                        // Check explicit ability or spellcasting property
-                        if (classItem.system?.spellcasting?.ability) isCaster = true;
-                        // Also check for 'class' property in spellcasting object just in case
-                        if (classItem.system?.spellcasting?.class) isCaster = true;
-                        // Name fallback
-                        const clsName = (classItem.name || "").toLowerCase();
-                        if (["wizard", "priest", "seer", "shaman", "witch", "druid"].some(c => clsName.includes(c))) {
-                            isCaster = true;
-                        }
-                    }
-
-                    // 2. Check for "Spell" items present
-                    const hasSpells = actor.items?.some((i: any) => i.type === 'Spell');
-                    if (hasSpells) isCaster = true;
-
-                    // 3. Browser Fallback (if available)
-                    try {
-                        if (typeof actor.isSpellCaster === 'function') {
-                            const sysCaster = await actor.isSpellCaster();
-                            if (sysCaster) isCaster = true;
-                        }
-                    } catch (e) { /* ignore */ }
-
-                    computed.isSpellCaster = isCaster;
-
-                    // --- MAGIC ITEM CHECK ---
-                    // 1. Check for Scrolls/Wands
-                    const hasMagicItems = actor.items?.some((i: any) => ['Scroll', 'Wand'].includes(i.type));
-                    if (hasMagicItems) canMagic = true;
-
-                    // 2. Browser Fallback
-                    try {
-                        if (typeof actor.canUseMagicItems === 'function') {
-                            const sysMagic = await actor.canUseMagicItems();
-                            if (sysMagic) canMagic = true;
-                        }
-                    } catch (e) { /* ignore */ }
-
-                    computed.canUseMagicItems = canMagic;
-
-                    computed.showSpellsTab = computed.isSpellCaster || computed.canUseMagicItems;
+                    // --- UNIFIED SPELLCASTER CHECK ---
+                    computed.isSpellCaster = isSpellcaster(actor);
+                    computed.canUseMagicItems = canUseMagicItems(actor);
+                    computed.showSpellsTab = shouldShowSpellsTab(actor);
 
                     try {
                         // --- BROWSER CONTEXT ---
@@ -1049,52 +1005,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const ancestryName = findItemName('Ancestry', s.ancestry || s.details?.ancestry) || resolved.ancestry || s.ancestry || s.details?.ancestry || '';
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
 
-        // Calculate computed properties for frontend if not already present
-        // Calculate computed properties
-        // We force recalculation of showSpellsTab to ensure it's accurate based on current state
-        let isCaster = false;
-        let canMagic = false;
+        // Unified Spellcaster Logic (v2: Broad Keyword Match + Collection Robustness)
+        const isCaster = isSpellcaster(actor);
+        const showSpellsTab = shouldShowSpellsTab(actor);
 
+        // Map items for the view
         const items = actor.items || [];
-
-        // 1. Check Class Item
-        if (classItem) {
-            const spellcasting = classItem.system?.spellcasting;
-            if (spellcasting?.ability || spellcasting?.class) {
-                isCaster = true;
-                logger.debug(`[ShadowdarkAdapter] Detected caster via system.spellcasting`);
-            }
-
-            const clsName = (classItem.name || "").toLowerCase();
-            if (["wizard", "priest", "seer", "shaman", "witch", "druid", "warlock"].some(c => clsName.includes(c))) {
-                isCaster = true;
-                logger.debug(`[ShadowdarkAdapter] Detected caster via class name: ${classItem.name}`);
-            }
-        }
-
-        // 2. Check for "Spell" items
-        if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) {
-            isCaster = true;
-            logger.debug(`[ShadowdarkAdapter] Detected caster via existing Spell items`);
-        }
-
-        // 3. Check for specific talents (Spellcasting)
-        if (items.some((i: any) => i.type === 'Talent' && (i.name || "").toLowerCase().includes('spellcasting'))) {
-            isCaster = true;
-            logger.debug(`[ShadowdarkAdapter] Detected caster via Spellcasting talent`);
-        }
-
-        // 4. Check for Magic Items (Scrolls/Wands)
-        // Note: Types might be 'Basic' or 'Weapon' but names usually contain the words
-        if (items.some((i: any) => {
-            const type = (i.type || "").toLowerCase();
-            const name = (i.name || "").toLowerCase();
-            return type === 'scroll' || type === 'wand' || name.includes('scroll') || name.includes('wand');
-        })) {
-            canMagic = true;
-            logger.debug(`[ShadowdarkAdapter] Detected magic item usage capability`);
-        }
-
         const levelVal = s.level?.value || 0;
         const xpVal = s.level?.xp || 0;
         const nextXP = Number(s.level?.xp_max) || (Math.max(1, levelVal) * 10);
@@ -1103,8 +1019,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const computed = {
             ...(actor.computed || {}),
             isSpellCaster: isCaster,
-            canUseMagicItems: canMagic,
-            showSpellsTab: isCaster || canMagic,
+            canUseMagicItems: canUseMagicItems(actor),
+            showSpellsTab: showSpellsTab,
             classDetails: classItem,
             patronDetails: patronItem,
             xpNextLevel: nextXP,
@@ -1751,25 +1667,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Logic Calculation
         const talentGained = targetLevel % 2 !== 0;
 
-        // Robust Spellcaster Check
-        let isSpellcaster = false;
-        if (classDoc) {
-            const sc = classDoc.system?.spellcasting;
-            if (sc?.ability || sc?.class) isSpellcaster = true;
-
-            // Name check fallback for custom classes without strict data
-            if (!isSpellcaster && classDoc.name) {
-                const name = classDoc.name.toLowerCase();
-                if (['wizard', 'priest', 'seer', 'shaman', 'witch', 'druid', 'warlock'].some((c: string) => name.includes(c))) {
-                    isSpellcaster = true;
-                }
-            }
-        }
+        // Centralized Spellcaster Check
+        const isSpellcasterChar = isSpellcaster(classDoc || { items: [] });
 
         const spellsToChoose: Record<number, number> = {};
         let availableSpells: any[] = [];
 
-        if (isSpellcaster && classDoc) {
+        if (isSpellcasterChar && classDoc) {
             // Spells Known Calculation
             if (classDoc.system?.spellcasting?.spellsknown) {
                 const skTable = classDoc.system.spellcasting.spellsknown;

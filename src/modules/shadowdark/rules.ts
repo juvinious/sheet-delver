@@ -188,3 +188,53 @@ export const calculateAbilities = (systemData: any) => {
     }
     return res;
 };
+
+/**
+ * Unified Spellcaster Logic for Shadowdark
+ */
+
+export const getSpellcastingClass = (actor: any): string => {
+    const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
+    const classItem = items.find((i: any) => i.type === 'Class');
+    if (!classItem) return '';
+    return (classItem.system?.spellcasting?.class || '').toLowerCase().trim();
+};
+
+export const isInnateCaster = (actor: any): boolean => {
+    const spellClass = getSpellcastingClass(actor);
+    // Explicitly check for valid class name (foundry uses __not_spellcaster__ for non-casters)
+    return spellClass.length > 0 && spellClass !== 'none' && spellClass !== '__not_spellcaster__';
+};
+
+export const isSpellcaster = (actor: any): boolean => {
+    if (isInnateCaster(actor)) return true;
+
+    const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
+
+    // Check for explicit Spell items
+    if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) return true;
+
+    // Check for Spellcasting Talents/Boons (Broad detection)
+    if (items.some((i: any) => {
+        if (i.type !== 'Talent' && i.type !== 'Boon') return false;
+        const name = (i.name || "").toLowerCase();
+        // Match "Spellcasting", "Cast a Spell", "Learn Wizard Spell", etc.
+        return name.includes('spellcast') || (name.includes('learn') && name.includes('spell'));
+    })) return true;
+
+    return false;
+};
+
+export const canUseMagicItems = (actor: any): boolean => {
+    const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
+    return items.some((i: any) => {
+        const type = (i.type || "").toLowerCase();
+        const name = (i.name || "").toLowerCase();
+        return type === 'scroll' || type === 'wand' || name.includes('scroll') || name.includes('wand');
+    });
+};
+
+export const shouldShowSpellsTab = (actor: any): boolean => {
+    // Show if they are a caster OR have magic items they can use
+    return isSpellcaster(actor) || canUseMagicItems(actor);
+};

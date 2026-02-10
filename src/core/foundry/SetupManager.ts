@@ -328,7 +328,7 @@ export class SetupManager {
 
         try {
             const cache = await persistentCache.get<CacheData>(CACHE_NS, CACHE_KEY);
-            logger.debug('[SetupManager] Raw cache from persistent store:', JSON.stringify(cache, null, 2));
+            //logger.debug('[SetupManager] Raw cache from persistent store:', JSON.stringify(cache, null, 2));
             if (!cache) {
                 logger.warn('[SetupManager] Cache is null or undefined');
                 return { worlds: {}, currentWorldId: null };
