@@ -283,6 +283,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
 
         if (items && Array.isArray(items) && items.length > 0) {
             logger.info(`[API] Creating ${items.length} items for actor ${actorId}`);
+
             try {
                 // Use Promise.all to ensure all items are created
                 // Foundry's createActorItem often takes an array, but let's be safe and map if needed

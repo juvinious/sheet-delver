@@ -97,8 +97,15 @@ export const GoldRollSection = ({
                                 </button>
                             )
                         ) : (
-                            <div className="h-12 w-full"></div>
+                            <div className="flex-1"></div>
                         )}
+
+                        <button
+                            onClick={() => onManualChange(goldMax)}
+                            className="bg-white text-black font-bold py-3 px-4 border-2 border-black hover:bg-neutral-50 transition-all uppercase tracking-widest text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none whitespace-nowrap"
+                        >
+                            MAX
+                        </button>
                         {(!isManual && goldRoll !== null && goldRoll > 0) && <div className="hidden"></div>}
 
                         <button

@@ -159,30 +159,35 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return false;
         },
         mutateItem: (item: any, state: any) => {
+            logger.debug(`[TalentHandler] Mutating item: ${item.name} | statPool total: ${state.statPool?.total}`);
             if (state.statPool && state.statPool.total > 0) {
                 const allocated = state.statPool.allocated;
                 const effects: string[] = [];
 
                 if (!item.effects) item.effects = [];
                 // Clear existing effects if we are re-mutating (e.g. after edit)
-                item.effects = (item.effects || []).filter((e: any) => !e.name.startsWith("Stat Distribution"));
+                item.effects = (item.effects || []).filter((e: any) =>
+                    !e.name.startsWith("Stat Distribution") &&
+                    !e.name.startsWith("Ability Score Improvement")
+                );
 
                 Object.entries(allocated).forEach(([stat, val]) => {
                     const value = Number(val);
                     if (value > 0) {
-                        const effectKey = `statBonus${stat.charAt(0).toUpperCase() + stat.slice(1)}${value}`;
+                        const statName = stat.charAt(0).toUpperCase() + stat.slice(1);
+                        const effectKey = `abilityImprovement${statName}`;
                         effects.push(effectKey);
 
                         const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
                         if (config) {
                             item.effects.push({
-                                name: `Stat Distribution (${config.label})`,
+                                name: `Ability Score Improvement (${config.label})`,
                                 icon: config.icon,
                                 changes: [
                                     {
                                         key: config.key,
                                         mode: config.mode,
-                                        value: String(config.value)
+                                        value: String(value)
                                     }
                                 ],
                                 transfer: true

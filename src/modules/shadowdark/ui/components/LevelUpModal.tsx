@@ -127,8 +127,8 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         boonStatus={state.statuses.boons}
                                         onRollTalent={actions.handleRollTalent}
                                         onRollBoon={actions.handleRollBoon}
-                                        onRemoveTalent={(index) => actions.setRolledTalents(prev => prev.filter((_, i) => i !== index))}
-                                        onRemoveBoon={(index) => actions.setRolledBoons(prev => prev.filter((_, i) => i !== index))}
+                                         onRemoveTalent={actions.handleRemoveTalent}
+                                         onRemoveBoon={actions.handleRemoveBoon}
                                         patronName={state.fetchedPatron?.name || state.availablePatrons.find(p => (p.uuid || p._id) === state.selectedPatronUuid)?.name}
                                     />
 

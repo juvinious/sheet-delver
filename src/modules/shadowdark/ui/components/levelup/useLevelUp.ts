@@ -655,6 +655,26 @@ export const useLevelUp = (props: LevelUpProps) => {
         });
     };
 
+    const handleRemoveTalent = (index: number) => {
+        setRolledTalents(prev => prev.filter((_, i) => i !== index));
+
+        // Sync statPool
+        if (statPool.talentIndex === index) {
+            setStatPool({ total: 0, allocated: {}, talentIndex: null });
+        } else if (statPool.talentIndex !== null && statPool.talentIndex > index) {
+            setStatPool(prev => ({ ...prev, talentIndex: prev.talentIndex! - 1 }));
+        }
+
+        // Cleanup other selections (one per level-up usually)
+        if (weaponMasterySelection.required > 0) setWeaponMasterySelection({ required: 0, selected: [] });
+        if (armorMasterySelection.required > 0) setArmorMasterySelection({ required: 0, selected: [] });
+        if (extraSpellSelection.active) setExtraSpellSelection({ active: false, maxTier: 0, source: '', selected: [] });
+    };
+
+    const handleRemoveBoon = (index: number) => {
+        setRolledBoons(prev => prev.filter((_, i) => i !== index));
+    };
+
     const handleConfirm = async () => {
         setIsSubmitting(true);
         setStatuses(prev => ({ ...prev, class: 'LOADING' }));
@@ -699,17 +719,6 @@ export const useLevelUp = (props: LevelUpProps) => {
                         if (!cleaned.system) cleaned.system = {};
                         cleaned.system.level = targetLevel;
 
-                        for (const handler of TALENT_HANDLERS) {
-                            if (handler.matches(cleaned) && handler.mutateItem) {
-                                handler.mutateItem(cleaned, {
-                                    statSelection,
-                                    statPool: statPool.talentIndex === results.length ? statPool : { total: 0, allocated: {} }, // Only apply if index matches
-                                    weaponMasterySelection,
-                                    armorMasterySelection,
-                                    extraSpellSelection
-                                });
-                            }
-                        }
                         results.push(cleaned);
                     }
                 }
@@ -804,6 +813,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                     if (handler.matches(item) && handler.mutateItem) {
                         try {
                             handler.mutateItem(item, {
+                                statPool,
                                 statSelection,
                                 weaponMasterySelection,
                                 armorMasterySelection,
@@ -816,17 +826,6 @@ export const useLevelUp = (props: LevelUpProps) => {
                     }
                 }
             }
-
-            // Verify Handler Results
-            logger.info("[LevelUp] Handler Loop Complete. Inspecting Item Effects:");
-            items.forEach((i: any) => {
-                logger.info(`- Item: ${i.name} (ID: ${i._id})`);
-                if (i.effects) {
-                    logger.info(`  Effects: ${JSON.stringify(i.effects)}`);
-                } else {
-                    logger.info(`  Effects: <undefined>`);
-                }
-            });
 
             // Final Sanitization of ALL items
             // This catches Ancestry, Background, and any other items that might have helper arrays
@@ -1284,7 +1283,7 @@ export const useLevelUp = (props: LevelUpProps) => {
     }, [activeClassObj, _abilities]);
 
     const goldFormula = "2d6 x 5";
-    const goldMax = 90;
+    const goldMax = 60;
 
     return {
         state: {
@@ -1355,6 +1354,8 @@ export const useLevelUp = (props: LevelUpProps) => {
             setRolledBoons,
             setSelectedSpells,
             handleRollBoon,
+            handleRemoveTalent,
+            handleRemoveBoon,
             setSelectedLanguages,
             handleStatPoolChange,
             isComplete // Expose isComplete in actions as well for signature match
