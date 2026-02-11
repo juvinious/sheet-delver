@@ -109,8 +109,8 @@ export const SYSTEM_PREDEFINED_EFFECTS: Record<string, { label: string, key?: st
             { key: "system.bonuses.meleeDamageBonus", mode: 2, value: 1 }
         ]
     },
-    stout: { label: 'Stout', key: "system.bonuses.advantage", mode: 2, value: "hp", icon: "icons/equipment/back/backpack-leather-tan.webp" },
-    hauler: { label: 'Hauler', key: "system.bonuses.gearSlots", mode: 2, value: 3, icon: "icons/equipment/back/backpack-leather-tan.webp" },
+    stout: { label: 'Stout', key: "system.bonuses.advantage", mode: 2, value: "hp", icon: "icons/environment/people/group.webp" },
+    hauler: { label: 'Hauler', key: "system.bonuses.gearSlots", mode: 2, value: 3, icon: "icons/environment/people/group.webp" },
 
     // --- Combat Bonuses (Explicit) ---
     meleeAttackBonus1: { label: '+1 to Melee Attacks', key: "system.bonuses.meleeAttackBonus", mode: 2, value: 1, icon: "icons/skills/melee/strike-polearm-glowing-white.webp" },

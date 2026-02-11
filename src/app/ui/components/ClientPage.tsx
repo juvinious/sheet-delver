@@ -8,8 +8,9 @@ import SystemTools from './SystemTools';
 import LoadingModal from './LoadingModal';
 import { SystemInfo } from '@/shared/interfaces';
 import { logger, LOG_LEVEL } from '../logger';
-import { Users, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface User {
   id?: string;
@@ -78,6 +79,11 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
   const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
   const [loginMessage, setLoginMessage] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean, actorId: string, actorName: string }>({
+    isOpen: false,
+    actorId: '',
+    actorName: ''
+  });
 
   const handleLogin = async () => {
     setLoading(true);
@@ -263,8 +269,38 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       }
     };
     checkConfig();
-
   }, [token]);
+
+  const handleDeleteActor = async () => {
+    if (!confirmDelete.actorId) return;
+
+    setLoading(true);
+    setLoginMessage(`Deleting ${confirmDelete.actorName}...`);
+
+    try {
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/actors/${confirmDelete.actorId}`, {
+        method: 'DELETE',
+        headers
+      });
+
+      if (res.ok) {
+        addNotification(`Deleted ${confirmDelete.actorName}`, 'success');
+        await fetchActors();
+      } else {
+        const data = await res.json();
+        addNotification(`Failed to delete: ${data.error || 'Unknown error'}`, 'error');
+      }
+    } catch (e: any) {
+      addNotification(`Error: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
+      setLoginMessage('');
+      setConfirmDelete({ isOpen: false, actorId: '', actorName: '' });
+    }
+  };
 
   const fetchActors = useCallback(async () => {
     // We cannot block on loading because this might be called during the initial load sequence
@@ -410,8 +446,22 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               <div className="absolute inset-0 bg-amber-500/0 group-hover:bg-amber-500/5 transition-colors rounded-lg"></div>
             )}
           </div>
-          <div className="flex-1 min-w-0">
-            <h3 className={`font-bold text-lg truncate ${theme.accent} ${clickable ? 'group-hover:brightness-125' : ''}`}>
+          <div className="flex-1 min-w-0 relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDelete({
+                  isOpen: true,
+                  actorId: actor.id,
+                  actorName: actor.name
+                });
+              }}
+              className="absolute -top-1 -right-1 p-2 rounded-lg bg-black/20 hover:bg-red-500/20 text-white/20 hover:text-red-500 backdrop-blur-md border border-white/5 hover:border-red-500/50 transition-all duration-300 group/delete z-10"
+              title="Delete Character"
+            >
+              <Trash2 className="w-4 h-4 transition-transform group-hover/delete:scale-110" />
+            </button>
+            <h3 className={`font-bold text-lg truncate pr-8 ${theme.accent} ${clickable ? 'group-hover:brightness-125' : ''}`}>
               {actor.name}
             </h3>
 
@@ -447,8 +497,8 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               )}
             </div>
           </div>
-        </div>
-      </div>
+        </div >
+      </div >
     );
   };
 
@@ -774,6 +824,17 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
 
       {/* Persistent Player List when logged in */}
       {(step === 'dashboard') && <PlayerList users={users} currentUserId={currentUserId} onLogout={handleLogout} />}
+
+      <ConfirmationModal
+        isOpen={confirmDelete.isOpen}
+        title="Delete Character"
+        message={`Are you sure you want to delete ${confirmDelete.actorName}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Keep"
+        isDanger={true}
+        onConfirm={handleDeleteActor}
+        onCancel={() => setConfirmDelete({ ...confirmDelete, isOpen: false })}
+      />
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
