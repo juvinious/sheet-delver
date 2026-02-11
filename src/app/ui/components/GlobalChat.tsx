@@ -4,17 +4,18 @@ import ChatTab from './ChatTab';
 import DiceTray from './DiceTray';
 import { Inter } from 'next/font/google';
 import { MessageSquare } from 'lucide-react';
-import { SystemAdapter } from '@/modules/core/interfaces';
+import { SystemAdapter, RollMode } from '@/shared/interfaces';
 
 const inter = Inter({ subsets: ['latin'] });
 
 interface GlobalChatProps {
     messages: any[];
-    onSend: (msg: string) => void;
-    onRoll?: (type: string, key: string) => void;
+    onSend: (msg: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
+    onRoll?: (type: string, key: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
     foundryUrl?: string;
     adapter?: SystemAdapter;
     hideDice?: boolean;
+    speaker?: string;
     // Controlled props for Dice Tray
     isDiceTrayOpen?: boolean;
     onToggleDiceTray?: () => void;
@@ -35,20 +36,20 @@ export default function GlobalChat(props: GlobalChatProps) {
     const [isDiceOpenLocal, setIsDiceOpenLocal] = useState(false);
 
     const s = adapter?.componentStyles?.globalChat || {
-        window: "bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl",
-        header: "flex justify-between items-center bg-white/5 p-3 border-b border-white/5",
-        title: "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest",
+        window: "bg-neutral-900/95 backdrop-blur-xl border border-white/20 shadow-2xl rounded-xl",
+        header: "flex justify-between items-center bg-white/10 p-3 border-b border-white/10",
+        title: "text-[10px] font-bold uppercase text-white/60 pl-2 tracking-widest",
         diceWindow: "w-[400px]",
-        chatWindow: "w-[350px] h-[500px]",
+        chatWindow: "w-[400px] h-[80vh]",
         toggleBtn: (isOpen: boolean, isDice?: boolean) => `
             h-12 w-12 rounded-full shadow-lg flex items-center justify-center
             transition-all duration-300 hover:scale-110 active:scale-95 border border-white/10
             ${isDice
-                ? (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-neutral-900 text-white hover:bg-black')
+                ? (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-neutral-800 text-white hover:bg-neutral-700')
                 : (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-amber-500 text-black hover:bg-amber-400')
             }
         `,
-        closeBtn: "text-white/20 hover:text-white transition-colors"
+        closeBtn: "text-white/40 hover:text-white transition-colors"
     };
 
     // Use controlled state if provided, otherwise local
@@ -117,9 +118,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                         </div>
                         <div className="p-0">
                             <DiceTray
-                                onSend={(msg) => { onSend(msg); toggleDice(); }}
+                                onSend={(msg, options) => { onSend(msg, { ...options, speaker: options?.speaker || props.speaker }); toggleDice(); }}
                                 adapter={adapter}
                                 hideHeader={true}
+                                speaker={props.speaker}
                             />
                         </div>
                     </div>
@@ -127,10 +129,11 @@ export default function GlobalChat(props: GlobalChatProps) {
 
                 {/* Chat Window */}
                 <div className={`
-                    pointer-events-auto
                     ${s.window} overflow-hidden
                     transition-all duration-300 origin-bottom-right flex flex-col
-                    ${isChatOpen ? `${s.chatWindow} opacity-100 scale-100` : 'w-[0px] h-[0px] opacity-0 scale-90'}
+                    ${isChatOpen
+                        ? `${s.chatWindow} opacity-100 scale-100 pointer-events-auto`
+                        : `${s.chatWindow} opacity-0 scale-95 pointer-events-none translate-y-4`}
                 `}>
                     <div className={`${s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"} flex-none`}>
                         <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>
@@ -147,6 +150,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                             adapter={adapter}
                             hideDiceTray={true}
                             hideHeader={true}
+                            speaker={props.speaker}
                         />
                     </div>
                 </div>

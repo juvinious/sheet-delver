@@ -1,16 +1,15 @@
-
 export const shadowdarkTheme = {
     chat: {
         container: "bg-white border-2 border-black",
         header: "text-black text-sm font-bold uppercase mb-4 border-b-2 border-black pb-2 font-serif tracking-widest",
-        msgContainer: (isRoll: boolean) => `p-3 border-2 border-black mb-2 shadow-sm ${isRoll ? 'bg-neutral-100' : 'bg-white'}`,
-        user: "font-serif font-bold text-black text-lg",
-        time: "text-[10px] uppercase font-bold text-neutral-400 tracking-widest",
-        flavor: "text-sm italic text-neutral-600 mb-1 font-serif",
-        content: "text-sm text-black font-serif leading-relaxed messages-content [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:border-2 [&_img]:border-black [&_img]:grayscale [&_img]:contrast-125",
-        rollResult: "mt-2 bg-white text-black p-2 text-center border-2 border-black",
-        rollFormula: "text-[10px] uppercase tracking-widest text-neutral-500",
-        rollTotal: "text-2xl font-bold font-serif",
+        msgContainer: (isRoll: boolean) => `p-2 border-2 border-black mb-1 shadow-sm ${isRoll ? 'bg-neutral-100' : 'bg-white'}`,
+        user: "font-serif font-bold text-black text-xs uppercase tracking-wider",
+        time: "text-[9px] uppercase font-bold text-neutral-400 tracking-widest",
+        flavor: "text-xs italic text-neutral-600 mb-0.5 font-serif leading-tight",
+        content: "text-sm text-black font-serif leading-relaxed messages-content [&_*]:!m-0 [&_*]:!p-0 [&_p]:mb-0.5 [&_br]:hidden [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:border-2 [&_img]:border-black [&_img]:grayscale [&_img]:contrast-125 [&_.chat-card]:!block [&_.chat-card]:bg-white [&_.chat-card]:border-2 [&_.chat-card]:border-black [&_.chat-card]:my-1 [&_.chat-card]:shadow-[1px_1px_0_0_rgba(0,0,0,1)] [&_.chat-card-header]:!block [&_.chat-card-header]:bg-black [&_.chat-card-header]:text-white [&_.chat-card-header]:px-2 [&_.chat-card-header]:py-0.5 [&_.chat-card-header]:font-bold [&_.chat-card-header]:uppercase [&_.chat-card-header]:text-[9px] [&_.chat-card-header]:tracking-widest [&_.chat-card-content]:!block [&_.chat-card-content]:p-0.5 [&_.chat-card-row]:!flex [&_.chat-card-row]:!flex-row [&_.chat-card-row]:!items-center [&_.chat-card-row]:!justify-start [&_.chat-card-row]:gap-2 [&_.chat-card-row]:p-0.5 [&_.chat-card-row]:border-b [&_.chat-card-row]:border-black/5 [&_.chat-card-row:last-child]:border-none [&_.chat-card-text]:!inline [&_.chat-card-text]:font-bold [&_.chat-card-text]:text-[11px] [&_.chat-card-text]:leading-tight [&_.chat-card-image]:!inline-block [&_.chat-card-image]:border-none [&_.chat-card-image]:grayscale-0 [&_.chat-card-image]:contrast-100 [&_.chat-card-image]:w-5 [&_.chat-card-image]:h-5 [&_.chat-card-image]:!shrink-0",
+        rollResult: "mt-1 bg-white text-black p-1.5 text-center border-2 border-black",
+        rollFormula: "text-[9px] uppercase tracking-widest text-neutral-500",
+        rollTotal: "text-xl font-bold font-serif",
         button: "inline-flex items-center gap-1 bg-white hover:bg-black group border-2 border-black px-2 py-0.5 text-xs font-bold text-black hover:text-white transition-colors cursor-pointer my-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none active:translate-y-[2px] rounded-lg",
         buttonText: "uppercase font-sans tracking-widest",
         buttonValue: "font-serif font-bold group-hover:text-white"
@@ -24,6 +23,8 @@ export const shadowdarkTheme = {
         diceBtn: "w-10 h-10 flex items-center justify-center bg-white hover:bg-black hover:text-white active:bg-neutral-200 border-2 border-black rounded-lg shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px] text-xs font-bold font-serif transition-all text-black",
         modGroup: "flex gap-1",
         modBtn: "px-3 py-2 bg-white border-2 border-black rounded-lg hover:bg-black hover:text-white font-bold shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px] transition-all font-serif text-black hover:text-white",
+        rollModeGroup: "flex gap-1 mb-2",
+        rollModeBtn: (active: boolean) => `flex-1 flex items-center justify-center p-2 border-2 border-black transition-all ${active ? 'bg-black text-white shadow-none translate-y-[1px]' : 'bg-white text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:bg-neutral-50'}`,
         advGroup: "flex bg-neutral-50 border-2 border-black p-1",
         advBtn: (active: boolean, type: 'normal' | 'adv' | 'dis') => {
             const base = "px-2 py-1 text-xs font-bold transition-all font-serif ";
@@ -77,7 +78,7 @@ export const shadowdarkTheme = {
         header: "bg-black border-b-[4px] border-black p-3 flex justify-between items-center",
         title: "text-white font-serif font-bold uppercase tracking-widest text-[12px]",
         diceWindow: "w-[400px]",
-        chatWindow: "w-[400px] h-[500px]",
+        chatWindow: "w-[400px] h-[80vh]",
         toggleBtn: (isOpen: boolean, isDice?: boolean) => {
             const base = "h-14 w-14 flex items-center justify-center transition-all duration-300 hover:scale-110 active:scale-95 border-2 border-white/10 shadow-lg rounded-full ";
             if (isDice) {

@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SystemAdapter } from '@/modules/core/interfaces';
+import { SystemAdapter, RollMode } from '@/shared/interfaces';
+import { Globe, UserRoundSearch, EyeOff, User } from 'lucide-react';
 
 interface DiceTrayProps {
-    onSend: (message: string) => void;
+    onSend: (message: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
     adapter?: SystemAdapter;
     hideHeader?: boolean;
+    speaker?: string;
 }
 
 const defaultStyles = {
@@ -30,11 +32,57 @@ const defaultStyles = {
     helpText: "text-[10px] text-white/20 text-center mt-2 uppercase tracking-widest font-medium"
 };
 
-export default function DiceTray({ onSend, adapter, hideHeader = false }: DiceTrayProps) {
+export default function DiceTray({ onSend, adapter, hideHeader = false, speaker }: DiceTrayProps) {
     const [formula, setFormula] = useState('');
     const [advMode, setAdvMode] = useState<'normal' | 'adv' | 'dis'>('normal');
+    const [rollMode, setRollMode] = useState<RollMode>('publicroll');
+
+    // Persistence: Load roll mode
+    useEffect(() => {
+        const saved = localStorage.getItem('sheetdelver_roll_mode') as RollMode;
+        if (saved) setRollMode(saved);
+    }, []);
+
+    // Persistence: Save roll mode
+    const updateRollMode = (mode: RollMode) => {
+        setRollMode(mode);
+        localStorage.setItem('sheetdelver_roll_mode', mode);
+    };
+
+    const getPrefix = (mode: RollMode) => {
+        switch (mode) {
+            case 'gmroll': return '/gmr';
+            case 'blindroll': return '/br';
+            case 'selfroll': return '/sr';
+            default: return '/r';
+        }
+    };
+
+    // Effect: Sync formula prefix when rollMode changes
+    useEffect(() => {
+        setFormula(prev => {
+            const prefix = getPrefix(rollMode);
+            // If empty, just set the prefix
+            if (!prev.trim()) return prefix + ' ';
+
+            // If it already has a roll command, swap it
+            const prefixRegex = /^\/(r|roll|gmr|gmroll|br|blindroll|sr|selfroll)\s*/i;
+            if (prefixRegex.test(prev)) {
+                return prev.replace(prefixRegex, prefix + ' ');
+            }
+
+            // If it looks like a roll but lacks prefix, prepend it
+            if (prev.match(/\d*d\d+/) || prev.match(/^[\+\-]\d+/)) {
+                return prefix + ' ' + prev;
+            }
+
+            return prev;
+        });
+    }, [rollMode]);
 
     const s = { ...defaultStyles, ...(adapter?.componentStyles?.diceTray || {}) };
+    // @ts-ignore - The theme might have this, but not in all adapters yet
+    const themeStyles = adapter?.componentStyles?.diceTray;
 
     // --- Reactive Formula Logic ---
 
@@ -107,8 +155,9 @@ export default function DiceTray({ onSend, adapter, hideHeader = false }: DiceTr
         }
 
         setFormula(prev => {
-            // If empty, start with /r 
-            const newFormula = prev || '/r ';
+            // If empty, start with current prefix 
+            const prefix = getPrefix(rollMode);
+            const newFormula = prev || (prefix + ' ');
             // Simple check to avoid double spaces or weird joins
             const spacer = newFormula.endsWith(' ') ? '' : ' + ';
             return newFormula + spacer + finalTerm;
@@ -124,7 +173,7 @@ export default function DiceTray({ onSend, adapter, hideHeader = false }: DiceTr
     const roll = () => {
         if (!formula) return;
         // Formula is already reactive, so just send it.
-        onSend(formula);
+        onSend(formula, { rollMode, speaker });
         setFormula('');
         setAdvMode('normal');
     };
@@ -132,6 +181,43 @@ export default function DiceTray({ onSend, adapter, hideHeader = false }: DiceTr
     return (
         <div className={s.container}>
             {!hideHeader && <h3 className={s.header}>Dice Tray</h3>}
+
+            {/* Roll Mode Selector */}
+            {/* @ts-ignore - Use the new theme extension if available */}
+            <div className={themeStyles?.rollModeGroup || "flex gap-1 mb-2"}>
+                <button
+                    onClick={() => updateRollMode('publicroll')}
+                    title="Public Roll"
+                    /* @ts-ignore */
+                    className={themeStyles?.rollModeBtn ? themeStyles.rollModeBtn(rollMode === 'publicroll') : `flex-1 flex items-center justify-center p-2 rounded-lg border transition-all ${rollMode === 'publicroll' ? 'bg-amber-500 text-black border-amber-600 shadow-inner' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                >
+                    <Globe size={18} />
+                </button>
+                <button
+                    onClick={() => updateRollMode('gmroll')}
+                    title="Private GM Roll"
+                    /* @ts-ignore */
+                    className={themeStyles?.rollModeBtn ? themeStyles.rollModeBtn(rollMode === 'gmroll') : `flex-1 flex items-center justify-center p-2 rounded-lg border transition-all ${rollMode === 'gmroll' ? 'bg-amber-500 text-black border-amber-600 shadow-inner' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                >
+                    <UserRoundSearch size={18} />
+                </button>
+                <button
+                    onClick={() => updateRollMode('blindroll')}
+                    title="Blind GM Roll"
+                    /* @ts-ignore */
+                    className={themeStyles?.rollModeBtn ? themeStyles.rollModeBtn(rollMode === 'blindroll') : `flex-1 flex items-center justify-center p-2 rounded-lg border transition-all ${rollMode === 'blindroll' ? 'bg-amber-500 text-black border-amber-600 shadow-inner' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                >
+                    <EyeOff size={18} />
+                </button>
+                <button
+                    onClick={() => updateRollMode('selfroll')}
+                    title="Self Roll"
+                    /* @ts-ignore */
+                    className={themeStyles?.rollModeBtn ? themeStyles.rollModeBtn(rollMode === 'selfroll') : `flex-1 flex items-center justify-center p-2 rounded-lg border transition-all ${rollMode === 'selfroll' ? 'bg-amber-500 text-black border-amber-600 shadow-inner' : 'bg-white/5 text-white/40 border-white/10 hover:bg-white/10'}`}
+                >
+                    <User size={18} />
+                </button>
+            </div>
 
             {/* Display / Input */}
             <div className="relative">

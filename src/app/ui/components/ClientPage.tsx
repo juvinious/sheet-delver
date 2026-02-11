@@ -111,14 +111,18 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     }
   }, [step, fetchWithAuthChat]);
 
-  const handleChatSend = async (message: string) => {
+  const handleChatSend = async (message: string, options?: { rollMode?: string, speaker?: string }) => {
     try {
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch('/api/chat/send', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ message })
+        body: JSON.stringify({
+          message,
+          rollMode: options?.rollMode,
+          speaker: options?.speaker
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -878,6 +882,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           onSend={handleChatSend}
           foundryUrl={configUrl || url}
           adapter={getMatchingAdapter(null)}
+          speaker={users.find(u => (u._id || u.id) === currentUserId)?.name}
         />
       )}
 

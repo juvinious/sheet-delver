@@ -55,7 +55,7 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
     const [abilityBonus, setAbilityBonus] = useState(0);
     const [itemBonus, setItemBonus] = useState(0);
     const [talentBonus, setTalentBonus] = useState(0);
-    const [rollingMode, setRollingMode] = useState('public');
+    const [rollingMode, setRollingMode] = useState<string>('publicroll');
     const popupRef = useRef<HTMLDivElement>(null);
 
     const t = { ...defaultTheme, ...theme };
@@ -66,9 +66,18 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
             setAbilityBonus(defaults?.abilityBonus || 0);
             setItemBonus(defaults?.itemBonus || 0);
             setTalentBonus(defaults?.talentBonus || 0);
-            setRollingMode('public');
+
+            // Persistence: Load roll mode
+            const saved = localStorage.getItem('sheetdelver_roll_mode');
+            if (saved) setRollingMode(saved);
         }
     }, [isOpen, defaults]);
+
+    // Persistence: Save roll mode
+    const updateRollMode = (mode: string) => {
+        setRollingMode(mode);
+        localStorage.setItem('sheetdelver_roll_mode', mode);
+    };
 
     // Close on click outside
     useEffect(() => {
@@ -165,13 +174,13 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                         <div className="col-span-2 relative">
                             <select
                                 value={rollingMode}
-                                onChange={e => setRollingMode(e.target.value)}
+                                onChange={e => updateRollMode(e.target.value)}
                                 className={t.select}
                             >
-                                <option value="public">Public Roll</option>
-                                <option value="private">Private GM Roll</option>
-                                <option value="blind">Blind GM Roll</option>
-                                <option value="self">Self Roll</option>
+                                <option value="publicroll">Public Roll</option>
+                                <option value="gmroll">Private GM Roll</option>
+                                <option value="blindroll">Blind GM Roll</option>
+                                <option value="selfroll">Self Roll</option>
                             </select>
                             <div className={t.selectArrow}>
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">

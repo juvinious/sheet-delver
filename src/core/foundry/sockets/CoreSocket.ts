@@ -706,62 +706,135 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async getChatLog(limit = 100, userId?: string): Promise<any[]> {
         const response: any = await this.dispatchDocumentSocket('ChatMessage', 'get', { broadcast: false });
-        let raw = (response?.result || []).slice(-limit).reverse();
+        const raw = response?.result || [];
 
-        if (userId) {
-            raw = raw.filter((m: any) => {
-                // Chat permissions logic is complex (whispers etc)
-                // For now, if whisper exists, check if user is in it or is author
-                if (m.whisper && m.whisper.length > 0) {
-                    return m.whisper.includes(userId) || m.author === userId;
+        // 1. Sort Chronologically (Oldest -> Newest)
+        // We do this BEFORE filtering to ensure we have the full context
+        const sorted = [...raw].sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
+
+        // 2. Filter based on requesting user
+        const filtered = sorted.filter((msg: any) => {
+            if (!userId) return true; // Internal calls see all
+
+            const requestingUser = userId ? this.userMap.get(userId) : null;
+            const isGM = (requestingUser?.role || requestingUser?.permissions?.role || 0) >= 3;
+
+            const whisper = msg.whisper || [];
+            const isPublic = whisper.length === 0;
+            const isAuthor = msg.author === userId;
+            const isWhisperToMe = whisper.includes(userId);
+
+            if (isPublic) return true;
+            if (isGM) return true;
+            if (isAuthor) return true;
+            if (isWhisperToMe) return true;
+
+            return false;
+        });
+
+        // 4. Slice to the most recent 'limit' messages
+        const latest = filtered.slice(-limit);
+
+        return latest.map((msg: any) => {
+            const requestingUser = userId ? this.userMap.get(userId) : null;
+            const isGM = (requestingUser?.role || requestingUser?.permissions?.role || 0) >= 3;
+
+            // Support both stringified and object-based rolls
+            const rolls = (msg.rolls || []).map((r: any) => {
+                if (typeof r === 'string') {
+                    try {
+                        return JSON.parse(r);
+                    } catch (e) {
+                        return r;
+                    }
                 }
-                return true; // Public message
+                return r;
             });
-        }
 
-        return raw.map((msg: any) => ({
-            ...msg,
-            user: this.userMap.get(msg.author)?.name || msg.alias || 'Unknown',
-            timestamp: msg.timestamp || Date.now(),
-            isRoll: msg.type === 5,
-            rollTotal: msg.rolls?.[0]?.total,
-            flavor: msg.flavor
-        }));
+            const roll = rolls[0];
+            const isRoll = msg.type === 5;
+            const isBlind = msg.blind === true;
+
+            // Masking: Hide roll results from non-GMs if message is blind
+            const shouldMask = isBlind && !isGM;
+
+            // Resolve Name: Prioritize User Name from author ID map
+            const author = this.userMap.get(msg.author);
+            const userName = author?.name || msg.alias || 'Unknown';
+
+            return {
+                ...msg,
+                user: userName,
+                timestamp: msg.timestamp || Date.now(),
+                isRoll: isRoll,
+                rolls: shouldMask ? [] : rolls,
+                rollTotal: shouldMask ? undefined : (roll?.total !== undefined ? roll.total : (isRoll ? msg.content : undefined)),
+                rollFormula: shouldMask ? "???" : (roll?.formula || (isRoll ? msg.flavor : undefined)),
+                flavor: msg.flavor
+            };
+        });
     }
 
-    public async sendMessage(content: string | any, userId?: string): Promise<any> {
+    public async sendMessage(content: string | any, userId?: string, options?: { rollMode?: string, speaker?: any }): Promise<any> {
         // If userId is provided, we try to create the message AS that user.
         // Since we are GM/Service, we can set 'author' to any user ID.
         const auth = userId || this.userId;
         if (!auth) throw new Error("Cannot send message: Author ID missing");
 
-        const data = typeof content === 'string'
+        const data: any = typeof content === 'string'
             ? { content, type: 1, author: auth }
             : { type: 1, author: auth, ...content };
+
+        // Handle Speaker
+        if (options?.speaker) {
+            if (typeof options.speaker === 'string') {
+                data.speaker = { alias: options.speaker };
+            } else {
+                data.speaker = options.speaker;
+            }
+        }
+
+        // Handle Roll Mode
+        if (options?.rollMode) {
+            const modeData = await this.resolveRollMode(options.rollMode, auth);
+            Object.assign(data, modeData);
+        }
 
         return await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [data] });
     }
 
-    public async roll(formula: string, flavor?: string, userId?: string, speakerOverride?: { actor?: string; alias?: string }): Promise<any> {
+    public async roll(formula: string, flavor?: string, options?: { userId?: string, rollMode?: string, speaker?: any }): Promise<any> {
         try {
             // Dynamic import to avoid circular dependencies if any (though Roll is standalone)
             const { Roll } = await import('../classes/Roll'); // Path check required
             const roll = new Roll(formula);
             await roll.evaluate();
 
+            const auth = options?.userId || this.userId;
             const chatData: any = {
-                author: userId || this.userId,
+                author: auth,
                 content: String(roll.total),
                 flavor: flavor,
-                type: 0, // In v13, style 5 is deprecated; rolls are defined by the rolls array
+                type: 5, // ROLL (standard Foundry ChatMessage type)
                 rolls: [JSON.stringify(roll.toJSON())], // Explicit stringification for safe transport
                 flags: {},
                 sound: 'sounds/dice.wav' // Optional: generic sound
             };
 
-            // Add speaker if provided
-            if (speakerOverride) {
-                chatData.speaker = speakerOverride;
+            // Handle Speaker
+            const speaker = options?.speaker;
+            if (speaker) {
+                if (typeof speaker === 'string') {
+                    chatData.speaker = { alias: speaker };
+                } else {
+                    chatData.speaker = speaker;
+                }
+            }
+
+            // Handle Roll Mode
+            if (options?.rollMode) {
+                const modeData = await this.resolveRollMode(options.rollMode, auth);
+                Object.assign(chatData, modeData);
             }
 
             const response: any = await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [chatData] });
@@ -769,7 +842,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         } catch (e: any) {
             logger.error(`CoreSocket | Roll failed: ${e.message}`);
             // Fallback to text message
-            return await this.sendMessage(`Rolling ${formula}: ${flavor || ''} (Error: ${e.message})`, userId);
+            return await this.sendMessage(`Rolling ${formula}: ${flavor || ''} (Error: ${e.message})`, options?.userId);
         }
     }
 
@@ -942,24 +1015,32 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
             // 5. Optionally send to chat
             if (options.displayChat && matches.length > 0) {
-                // Construct rich chat card content
-                let content = `<div class="table-draw">`;
+                // Construct rich chat card content mirroring Foundry's layout
+                const diceHtml = `
+                    <div class="dice-roll">
+                        <div class="dice-result">
+                            <div class="dice-formula">${roll.formula}</div>
+                            <h4 class="dice-total">${total}</h4>
+                        </div>
+                    </div>
+                `;
+
+                let resultsHtml = `<div class="chat-card">`;
+                resultsHtml += `<div class="chat-card-header">${table.name}</div>`;
+                resultsHtml += `<div class="chat-card-content">`;
 
                 for (const result of matches) {
                     const text = result.text || result.name;
                     const img = result.img || result.icon || 'icons/svg/d20-grey.svg';
 
-                    content += `
-                        <div class="result-row">
-                            <img class="result-image" src="${img}" alt="${text}" width="32" height="32" style="border:none; vertical-align:middle; margin-right:5px;"/>
-                            <span class="result-text">${text}</span>
+                    resultsHtml += `
+                        <div class="chat-card-row">
+                            <img class="chat-card-image" src="${img}" />
+                            <span class="chat-card-text">${text}</span>
                         </div>
                     `;
-
-                    // If it's a document reference, maybe add a link (optional, but nice)
-                    // But for now, just text and image is a huge improvement.
                 }
-                content += `</div>`;
+                resultsHtml += `</div></div>`;
 
                 const rollMode = options.rollMode || 'public';
                 const rollModeData = await this.resolveRollMode(rollMode, userId);
@@ -967,8 +1048,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 const chatData = {
                     user: userId,
                     speaker: options.actorId ? { actor: options.actorId } : { alias: table.name },
-                    flavor: `Draws a result from the <b>${table.name}</b> table`,
-                    content: content,
+                    flavor: `Draws ${matches.length} result${matches.length > 1 ? 's' : ''} from the ${table.name} table`,
+                    content: diceHtml + resultsHtml,
                     type: 0, // OTHER (with rolls)
                     rolls: [JSON.stringify(roll.toJSON())], // Explicit stringification for safe transport
                     sound: 'sounds/dice.wav', // Optional: generic sound
@@ -995,19 +1076,31 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
+    /**
+     * Resolve the whisper and blind flags based on the roll mode.
+     * Uses standardized RollMode strings: publicroll, gmroll, blindroll, selfroll
+     */
     private async resolveRollMode(mode: string, userId: string | null) {
-        if (mode === 'public') return {};
-        if (mode === 'self') return { whisper: userId ? [userId] : [] };
+        if (mode === 'publicroll') return {};
+        if (mode === 'selfroll') return { whisper: userId ? [userId] : [] };
 
         // For blind/private/gm, we need GM users
         const users = await this.getUsers();
-        // Role 4 is GM in Foundry (CONST.USER_ROLES.GAMEMASTER)
-        // Adjust if needed. Usually 4 is GM, 3 is Assistant GM.
-        const gmIds = users.filter((u: any) => u.role >= 3).map((u: any) => u._id);
+        // Role 4 is GM, 3 is Assistant GM
+        const gmIds = users.filter((u: any) => (u.role || u.permissions?.role) >= 3).map((u: any) => u._id || u.id);
 
-        if (mode === 'gm') return { whisper: gmIds };
+        // Include author (userId) in whisper array for non-blind rolls so they can see their own result
+        const authorId = userId ? [userId] : [];
+
+        if (mode === 'gmroll') return { whisper: Array.from(new Set([...gmIds, ...authorId])) };
+        if (mode === 'blindroll') return { blind: true, whisper: gmIds };
+
+        // Compatibility for legacy or other naming conventions
+        if (mode === 'public') return {};
+        if (mode === 'self') return { whisper: userId ? [userId] : [] };
+        if (mode === 'gm') return { whisper: Array.from(new Set([...gmIds, ...authorId])) };
         if (mode === 'blind') return { blind: true, whisper: gmIds };
-        if (mode === 'private') return { whisper: gmIds.concat(userId ? [userId] : []) };
+        if (mode === 'private') return { whisper: Array.from(new Set([...gmIds, ...authorId])) };
 
         return {};
     }
@@ -1068,5 +1161,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 }
             }).catch(() => { });
         }
+    }
+
+    public getUser(userId: string): any {
+        return this.userMap.get(userId);
     }
 }

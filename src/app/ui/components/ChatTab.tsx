@@ -1,34 +1,87 @@
-import { SystemAdapter } from '@/modules/core/interfaces';
+import { useState, useRef, useEffect } from 'react';
+import { SystemAdapter, RollMode } from '@/shared/interfaces';
 import DiceTray from './DiceTray';
 
 interface ChatTabProps {
     messages: any[];
-    onSend: (msg: string) => void;
-    onRoll?: (type: string, key: string) => void;
+    onSend: (msg: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
+    onRoll?: (type: string, key: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
     foundryUrl?: string;
     hideDiceTray?: boolean;
     hideHeader?: boolean;
     adapter?: SystemAdapter;
+    speaker?: string;
 }
 
 const defaultStyles = {
     container: "bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl h-full flex flex-col",
     header: "text-white/40 text-[10px] font-bold uppercase mb-4 border-b border-white/10 pb-2 flex items-center gap-2 tracking-widest px-4 pt-4",
-    msgContainer: (isRoll: boolean) => `mx-4 p-3 rounded-xl border text-sm transition-colors ${isRoll ? 'bg-white/5 border-white/10' : 'bg-transparent border-white/5 whitespace-pre-wrap'}`,
+    msgContainer: (isRoll: boolean) => `mx-4 p-2 rounded-xl border text-sm transition-colors ${isRoll ? 'bg-white/10 border-white/20' : 'bg-neutral-800/20 border-white/10 whitespace-pre-wrap'}`,
     user: "font-bold text-amber-500 text-[10px] uppercase tracking-widest",
-    time: "text-[10px] text-white/20 font-sans",
-    flavor: "text-xs italic text-white/40 mb-1 font-sans",
-    content: "text-white/80 leading-relaxed messages-content [&_p]:mb-1 [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:rounded-lg [&_img]:border [&_img]:border-white/10",
-    rollResult: "mt-2 bg-black/40 p-2 rounded-lg border border-white/5 text-center font-sans",
-    rollFormula: "text-[10px] text-white/30 uppercase tracking-widest font-bold",
-    rollTotal: "text-xl font-bold text-white",
-    button: "inline-flex items-center gap-1 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/50 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white/80 transition-all cursor-pointer my-1 shadow-sm active:scale-95",
+    time: "text-[10px] text-white/40 font-sans",
+    flavor: "text-[11px] italic text-white/50 mb-1 font-sans leading-tight",
+    content: "text-center text-white/90 text-lg font-bold [&_.table-draw]:flex [&_.table-draw]:flex-col [&_.table-draw]:gap-0 [&_.table-draw]:text-left [&_.table-draw]:!m-0 [&_.table-draw]:!p-0 [&_.result-row]:flex [&_.result-row]:items-center [&_.result-row]:gap-2 [&_.result-row]:px-2 [&_.result-row]:py-1 [&_.result-row]:!mt-0 [&_.result-row]:!mb-0 [&_.result-row]:bg-white/5 [&_.result-row]:border [&_.result-row]:border-white/10 [&_.result-row:not(:first-child)]:-mt-px [&_.result-image]:w-8 [&_.result-image]:h-8 [&_.result-image]:rounded [&_.result-image]:!border-none [&_.result-image]:!m-0 [&_.result-image]:shrink-0 [&_.result-text]:text-sm [&_.result-text]:font-medium [&_.result-text]:text-white/90 [&_.chat-card]:!block [&_.chat-card]:bg-white/5 [&_.chat-card]:border [&_.chat-card]:border-white/10 [&_.chat-card]:rounded-lg [&_.chat-card]:overflow-hidden [&_.chat-card]:text-left [&_.card-header]:flex [&_.card-header]:items-center [&_.card-header]:gap-2 [&_.card-header]:bg-white/10 [&_.card-header]:px-2 [&_.card-header]:py-0.5 [&_.card-header]:border-b [&_.card-header]:border-white/10 [&_.card-header_img]:w-8 [&_.card-header_img]:h-8 [&_.card-header_img]:rounded [&_.card-header_img]:shrink-0 [&_.item-name]:text-sm [&_.item-name]:font-bold [&_.item-name]:text-white/90 [&_.item-name]:!m-0 [&_.card-content]:px-2 [&_.card-content]:py-0.5 [&_.card-content]:text-xs [&_.card-content]:text-white/70 [&_.card-content_p]:!m-0 [&_.card-footer]:hidden [&_.dice-roll]:hidden [&_.dice-tooltip]:hidden [&_.table-results]:flex [&_.table-results]:flex-col [&_.table-results]:gap-0 [&_.table-results]:!m-0 [&_.table-results]:!p-0 [&_.table-results]:list-none [&_.table-results_li]:flex [&_.table-results_li]:items-center [&_.table-results_li]:gap-2 [&_.table-results_li]:px-2 [&_.table-results_li]:py-1 [&_.table-results_li]:bg-white/5 [&_.table-results_li]:border [&_.table-results_li]:border-white/10 [&_.table-results_li:not(:first-child)]:-mt-px [&_.table-results_img]:w-8 [&_.table-results_img]:h-8 [&_.table-results_img]:rounded [&_.table-results_img]:shrink-0 [&_.content-link]:text-sm [&_.content-link]:text-white/90 [&_.content-link]:no-underline [&_.content-link_i]:hidden [&_.description]:text-sm [&_.description]:text-white/90",
+    rollResult: "mt-1 bg-white/10 p-1.5 rounded-lg border border-white/20 text-center font-sans",
+    rollFormula: "text-md text-white/40 uppercase tracking-tighter font-bold",
+    rollTotal: "text-lg font-bold text-white",
+    button: "inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white/90 transition-all cursor-pointer my-1 shadow-sm active:scale-95",
     buttonText: "text-white/40 uppercase tracking-widest",
     buttonValue: "text-amber-500 font-bold"
 };
 
-export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter }: ChatTabProps) {
+export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter, speaker }: ChatTabProps) {
     const s = adapter?.componentStyles?.chat || defaultStyles;
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [isAtBottom, setIsAtBottom] = useState(true);
+
+    const scrollToBottom = (instant = false) => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTo({
+                top: scrollRef.current.scrollHeight,
+                behavior: instant ? 'auto' : 'smooth'
+            });
+        }
+    };
+
+    // Auto-scroll logic
+    useEffect(() => {
+        if (isAtBottom) {
+            scrollToBottom();
+        }
+    }, [messages, isAtBottom]);
+
+    // Initial scroll to bottom
+    useEffect(() => {
+        setTimeout(() => scrollToBottom(true), 100);
+    }, []);
+
+    const handleScroll = () => {
+        if (!scrollRef.current) return;
+        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+        // Threshold of 100px from bottom to be considered "at bottom"
+        const atBottom = scrollHeight - scrollTop - clientHeight < 100;
+        setIsAtBottom(atBottom);
+    };
+
+    const getTimeAgo = (timestamp: number) => {
+        const now = Date.now();
+        const diff = Math.max(0, now - timestamp);
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (seconds < 30) return "Just now";
+        if (minutes === 0) return `${seconds} secs ago`;
+        if (hours === 0) return `${minutes} min${minutes > 1 ? 's' : ''} ago`;
+
+        const parts = [];
+        if (days > 0) parts.push(`${days} day${days > 1 ? 's' : ''}`);
+        if (hours % 24 > 0) parts.push(`${hours % 24} hour${hours % 24 > 1 ? 's' : ''}`);
+        if (minutes % 60 > 0) parts.push(`${minutes % 60} min${minutes % 60 > 1 ? 's' : ''}`);
+
+        return `${parts.join(', ')} ago`;
+    };
 
     // Helper to format content content with fixed image URLs AND parsing inline checks
     const formatContent = (html: string) => {
@@ -92,6 +145,9 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
             return match;
         });
 
+        // 4. Strip inline styles from HTML to allow full CSS control
+        fixed = fixed.replace(/\s+style="[^"]*"/gi, '');
+
         return fixed;
     };
 
@@ -105,12 +161,12 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
             if (action === 'roll-check' && onRoll) {
                 const stat = button.getAttribute('data-stat');
                 if (stat) {
-                    onRoll('ability', stat);
+                    onRoll('ability', stat, { speaker });
                 }
             } else if (action === 'roll-formula' && onSend) {
                 const formula = button.getAttribute('data-formula');
                 if (formula) {
-                    onSend(`/roll ${formula}`);
+                    onSend(`/roll ${formula}`, { speaker });
                 }
             }
         }
@@ -122,16 +178,18 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
             <div className={`flex-1 flex flex-col p-4 overflow-hidden ${s.container}`}>
                 {!hideHeader && <h3 className={s.header}>Chat Log</h3>}
                 <div
-                    className="flex-1 overflow-y-auto space-y-4 pr-2"
+                    ref={scrollRef}
+                    className="flex-1 overflow-y-auto space-y-4 pr-2 scroll-smooth"
                     onClick={handleChatClick}
+                    onScroll={handleScroll}
                 >
                     {messages.map((msg, idx) => (
                         <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={s.user}>{msg.user}</span>
-                                <span className={s.time}>{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                                <span className={s.time}>{getTimeAgo(msg.timestamp)}</span>
                             </div>
-                            {msg.flavor && <div className={s.flavor}>{msg.flavor}</div>}
+                            {msg.flavor && <div className={s.flavor} dangerouslySetInnerHTML={{ __html: msg.flavor }} />}
                             <div className={s.content} dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }} />
                             {msg.rollTotal !== undefined && (
                                 <div className="mt-2 space-y-1">
@@ -159,7 +217,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
             {/* Dice Tray / Chat Input (Bottom) */}
             {!hideDiceTray && (
                 <div className="flex-none">
-                    <DiceTray onSend={onSend} adapter={adapter} />
+                    <DiceTray onSend={onSend} adapter={adapter} speaker={speaker} />
                 </div>
             )}
         </div>

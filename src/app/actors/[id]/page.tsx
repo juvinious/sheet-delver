@@ -192,12 +192,20 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
         return () => clearInterval(interval);
     }, [id, fetchWithAuthActor]);
 
-    const handleChatSend = async (message: string) => {
+    const handleChatSend = async (message: string, options?: { rollMode?: string, speaker?: string }) => {
         try {
+            const rollMode = localStorage.getItem('sheetdelver_roll_mode') || 'publicroll';
             const res = await fetchWithAuth('/api/chat/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message })
+                body: JSON.stringify({
+                    message,
+                    rollMode: options?.rollMode || rollMode,
+                    speaker: options?.speaker || {
+                        actor: actor?.id,
+                        alias: actor?.name
+                    }
+                })
             });
             const data = await res.json();
             if (data.success) {
@@ -215,11 +223,25 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     const handleRoll = async (type: string, key: string, options: any = {}) => {
         if (!actor) return;
+
+        // Get current global roll mode
+        const rollMode = localStorage.getItem('sheetdelver_roll_mode') || 'publicroll';
+
+        // Ensure speaker is passed if not provided in options
+        const rollOptions = {
+            ...options,
+            rollMode: options.rollMode || rollMode,
+            speaker: options.speaker || {
+                actor: actor.id,
+                alias: actor.name
+            }
+        };
+
         try {
             const res = await fetchWithAuth(`/api/actors/${actor.id}/roll`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type, key, options })
+                body: JSON.stringify({ type, key, options: rollOptions })
             });
             const data = await res.json();
             if (data.success) {
@@ -556,6 +578,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                         adapter={getMatchingAdapter(actor)}
                         isDiceTrayOpen={isDiceTrayOpen}
                         onToggleDiceTray={toggleDiceTray}
+                        speaker={actor?.name}
                     />
 
                     {/* Player List */}

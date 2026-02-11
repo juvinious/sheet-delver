@@ -75,13 +75,15 @@ export interface AppConfig {
     };
 }
 
+export type RollMode = 'publicroll' | 'gmroll' | 'blindroll' | 'selfroll';
+
 /**
  * Interface that all RPG system adapters must implement.
  */
 export interface SystemAdapter {
     systemId: string;
     normalizeActorData(actor: any, client?: any): ActorSheetData;
-    getRollData(actor: any, type: string, key: string, options?: any): any;
+    getRollData(actor: any, type: string, key: string, options?: { rollMode?: RollMode;[key: string]: any }): any;
     match(actor: any): boolean;
     renderNavigation?: boolean;
     getSystemData(client: any, options?: { minimal?: boolean }): Promise<any>;

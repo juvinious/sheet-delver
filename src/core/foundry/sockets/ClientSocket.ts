@@ -157,16 +157,86 @@ export class ClientSocket extends SocketBase {
     }
 
     public async getChatLog(limit = 100): Promise<any[]> {
+        // If we have an active user socket, use it to leverage Foundry's native filtering
+        if (this.isConnected && this.socket) {
+            try {
+                const response: any = await this.dispatchDocumentSocket('ChatMessage', 'get', {
+                    broadcast: false,
+                    limit: limit
+                });
+                const raw = response?.result || [];
+
+                // 1. Sort Chronologically (Oldest -> Newest)
+                const sorted = [...raw].sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
+
+                // 2. Filter based on visibility (replicate Foundry's ChatMessage.visible)
+                const user = this.coreSocket.getUser(this.userId || '');
+                const isGM = (user?.role || 0) >= 3;
+
+                const visible = sorted.filter((msg: any) => {
+                    // Replicate Foundry's ChatMessage.visible getter logic
+                    if (msg.whisper && msg.whisper.length > 0) {
+                        // Whispers: visible to author, recipients, or GM
+                        const isAuthor = msg.user === this.userId;
+                        const isRecipient = msg.whisper.includes(this.userId);
+                        return isAuthor || isRecipient || isGM;
+                    }
+                    // Public messages: visible to all
+                    return true;
+                });
+
+                logger.debug(`ClientSocket | User Socket: ${sorted.length} total, ${visible.length} visible (filtered ${sorted.length - visible.length})`);
+
+                return visible.map((msg: any) => {
+                    const rolls = (msg.rolls || []).map((r: any) => {
+                        if (typeof r === 'string') {
+                            try { return JSON.parse(r); } catch (e) { return r; }
+                        }
+                        return r;
+                    });
+
+                    const roll = rolls[0];
+                    const isRoll = msg.type === 5;
+                    const isBlind = msg.blind === true;
+
+                    // Masking: Hide roll results from non-GMs if message is blind
+                    const shouldMask = isBlind && !isGM;
+
+                    // Resolve Name: Prioritize User Name from author ID map
+                    const author = this.coreSocket.getUser(msg.author);
+                    const userName = author?.name || msg.alias || 'Unknown';
+
+                    return {
+                        ...msg,
+                        user: userName,
+                        timestamp: msg.timestamp || Date.now(),
+                        isRoll: isRoll,
+                        rolls: shouldMask ? [] : rolls,
+                        rollTotal: shouldMask ? undefined : (roll?.total !== undefined ? roll.total : (isRoll ? msg.content : undefined)),
+                        rollFormula: shouldMask ? "???" : (roll?.formula || (isRoll ? msg.flavor : undefined)),
+                        flavor: msg.flavor
+                    };
+                });
+            } catch (e: any) {
+                logger.warn(`ClientSocket | Failed to fetch chat via user socket: ${e.message}. Falling back to proxy.`);
+            }
+        }
+
         return this.coreSocket.getChatLog(limit, this.userId || undefined);
     }
 
-    public async sendMessage(content: string | any): Promise<any> {
+
+    public async sendMessage(content: string | any, options?: { rollMode?: string, speaker?: any }): Promise<any> {
         if (!this.userId) throw new Error("User ID not set on ClientSocket");
-        return this.coreSocket.sendMessage(content, this.userId);
+        return this.coreSocket.sendMessage(content, this.userId, options);
     }
 
-    public async roll(formula: string, flavor?: string, speakerOverride?: { actor?: string; alias?: string }): Promise<any> {
-        return this.coreSocket.roll(formula, flavor, this.userId || undefined, speakerOverride);
+    public async roll(formula: string, flavor?: string, options?: { rollMode?: string, speaker?: any }): Promise<any> {
+        return this.coreSocket.roll(formula, flavor, {
+            userId: this.userId || undefined,
+            rollMode: options?.rollMode,
+            speaker: options?.speaker
+        });
     }
 
     public async getActors(): Promise<any[]> {
@@ -182,7 +252,10 @@ export class ClientSocket extends SocketBase {
     }
 
     public async updateActor(id: string, data: any): Promise<any> {
-        return this.coreSocket.updateActor(id, data);
+        return this.dispatchDocument('Actor', 'update', {
+            _id: id,
+            ...data
+        });
     }
 
     public async createActor(data: any): Promise<any> {
@@ -204,11 +277,11 @@ export class ClientSocket extends SocketBase {
     }
 
     public async updateActorItem(actorId: string, itemData: any): Promise<any> {
-        return this.coreSocket.updateActorItem(actorId, itemData);
+        return this.dispatchDocument('Item', 'update', itemData, { type: 'Actor', id: actorId });
     }
 
     public async deleteActorItem(actorId: string, itemId: string): Promise<any> {
-        return this.coreSocket.deleteActorItem(actorId, itemId);
+        return this.dispatchDocument('Item', 'delete', { _id: itemId }, { type: 'Actor', id: actorId });
     }
 
     public async fetchByUuid(uuid: string): Promise<any> {
@@ -286,6 +359,9 @@ export class ClientSocket extends SocketBase {
         results: any[];
         total: number;
     }> {
+        // If we have an active socket, we could eventually implement Client-side table rolling
+        // but for now, CoreSocket.rollTable handles complex HTML generation.
+        // We pass our userId to ensure core can filter (as a fallback).
         return this.coreSocket.rollTable(tableUuid, { ...options, userId: this.userId || undefined });
     }
 }
