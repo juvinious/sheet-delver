@@ -26,16 +26,17 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
     // Load Token
     useEffect(() => {
-        const stored = sessionStorage.getItem('sheet-delver-token');
+        const stored = localStorage.getItem('sheet-delver-token');
         if (stored) setToken(stored);
     }, []);
 
     // Users State
     const [users, setUsers] = useState<any[]>([]);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
-        const currentToken = token || sessionStorage.getItem('sheet-delver-token');
+        const currentToken = token || localStorage.getItem('sheet-delver-token');
         if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
         return fetch(input, { ...init, headers });
     }, [token]);
@@ -46,6 +47,9 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             const data = await res.json();
             if (data.users) {
                 setUsers(data.users);
+            }
+            if (data.currentUserId) {
+                setCurrentUserId(data.currentUserId);
             }
         } catch (e) {
             console.error('Failed to fetch users', e);
@@ -82,6 +86,12 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                 return;
             }
 
+            // Handle Unauthorized (401) - session expired/missing
+            if (res.status === 401) {
+                router.push('/');
+                return;
+            }
+
             // Handle Not Found (404) - Deleted
             if (res.status === 404) {
                 setShowDeleteModal(true);
@@ -97,12 +107,18 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     setFoundryUrl(data.foundryUrl);
                 }
             } else {
-                if (!silent) setShowDeleteModal(true);
-                else setShowDeleteModal(true);
+                // If there's an error in the payload but it's NOT a 404, don't show "Deleted"
+                // except maybe as a fallback if we really don't know what happened
+                if (res.status >= 500) {
+                    addNotification('Server Error: ' + (data?.error || 'Unknown Error'), 'error');
+                } else {
+                    setShowDeleteModal(true);
+                }
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            if (!silent) setShowDeleteModal(true);
+            // On hard network error, don't necessarily show "Deleted"
+            addNotification('Connection Error: ' + e.message, 'error');
         } finally {
             if (!silent) setLoading(false);
         }
@@ -486,7 +502,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
 
 
     const handleLogout = () => {
-        sessionStorage.removeItem('sheet-delver-token');
+        localStorage.removeItem('sheet-delver-token');
         setToken(null);
         router.push('/');
     };
@@ -543,7 +559,7 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
                     />
 
                     {/* Player List */}
-                    <PlayerList users={users} onLogout={handleLogout} />
+                    <PlayerList users={users} currentUserId={currentUserId} onLogout={handleLogout} />
                 </>
             )}
 

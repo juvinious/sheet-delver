@@ -28,14 +28,14 @@ export class DataManager {
             path = (await import('node:path')).default;
             fs = (await import('node:fs')).default;
         } catch (e) {
-            console.error('[DataManager] Failed to load Node.js modules:', e);
+            logger.error('[DataManager] Failed to load Node.js modules:', e);
             return;
         }
 
         const packsDir = path.join(process.cwd(), 'src/modules/shadowdark/data/packs');
 
         if (!fs.existsSync(packsDir)) {
-            console.warn(`[DataManager] Packs directory not found: ${packsDir}`);
+            logger.warn(`[DataManager] Packs directory not found: ${packsDir}`);
             return;
         }
 
@@ -125,7 +125,7 @@ export class DataManager {
                         }
 
                     } catch (e) {
-                        console.error(`[DataManager] Failed to parse ${file}`, e);
+                        logger.error(`[DataManager] Failed to parse ${file}`, e);
                     }
                 }
             }

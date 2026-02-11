@@ -701,7 +701,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
               {/* Owned Actors */}
               <div>
                 <div className="flex items-center gap-3 mb-4">
-                  <h3 className={`text-xl font-bold uppercase tracking-widest opacity-80 ${theme.accent}`}>Your Characters</h3>
+                  <h3 className={`text-xl font-bold uppercase tracking-widest opacity-80 ${theme.accent}`}>Characters</h3>
                   <div className="h-px flex-1 bg-white/10"></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -710,7 +710,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                 </div>
               </div>
 
-              {/* Read Only Actors */}
+              {/* Read Only Actors 
               {readOnlyActors.length > 0 && (
                 <div className="mt-4">
                   <button
@@ -739,6 +739,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                   )}
                 </div>
               )}
+                */}
             </div>
           )
         }

@@ -461,6 +461,7 @@ async function startServer() {
     appRouter.post('/actors/:id/roll', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
+            const userSession = (req as any).userSession;
             const { type, key, options } = req.body;
             const actor = await client.getActor(req.params.id);
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
@@ -483,7 +484,13 @@ async function startServer() {
 
             if (!rollData) throw new Error('Cannot determine roll formula');
 
-            const result = await client.roll(rollData.formula, rollData.label);
+            // Determine speaker: use actor for character sheet rolls
+            const speakerOverride = {
+                actor: actor._id || actor.id,
+                alias: actor.name
+            };
+
+            const result = await client.roll(rollData.formula, rollData.label, undefined, speakerOverride);
             res.json({ success: true, result, label: rollData.label });
         } catch (error: any) {
             res.status(500).json({ error: error.message });

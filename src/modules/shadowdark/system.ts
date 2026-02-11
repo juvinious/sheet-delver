@@ -522,7 +522,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         if (type === 'class') {
                             results.classes.push({
                                 ...baseInfo,
-                                languages: doc.system?.languages || []
+                                system: {
+                                    description: doc.system?.description || "",
+                                    languages: doc.system?.languages || [],
+                                    talents: doc.system?.talents || [],
+                                    talentChoices: doc.system?.talentChoices || [],
+                                    talentChoiceCount: doc.system?.talentChoiceCount || 0
+                                }
                             });
                             if (doc.system?.titles) {
                                 (results.titles as any)[doc.name] = doc.system.titles;
@@ -530,14 +536,20 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         } else if (type === 'ancestry') {
                             results.ancestries.push({
                                 ...baseInfo,
-                                languages: doc.system?.languages || []
+                                system: {
+                                    description: doc.system?.description || "",
+                                    languages: doc.system?.languages || [],
+                                    talents: doc.system?.talents || [],
+                                    talentChoices: doc.system?.talentChoices || [],
+                                    talentChoiceCount: doc.system?.talentChoiceCount || 0
+                                }
                             });
                         } else if (type === 'background') {
                             results.backgrounds.push(baseInfo);
                         } else if (type === 'language') {
                             results.languages.push({
                                 ...baseInfo,
-                                rarity: doc.system?.rarity || 'common'
+                                rarity: (doc.system?.rarity || 'common').toLowerCase()
                             });
                         } else if (type === 'deity') {
                             results.deities.push(baseInfo);
@@ -554,13 +566,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         }
                     }
                 } catch (e) {
-                    console.error("ShadowdarkAdapter | DataManager fallback failed:", e);
+                    logger.error("ShadowdarkAdapter | DataManager fallback failed:", e);
                 }
             }
 
             // 2. Fetch all compendium packs from Socket (If available/different)
+            logger.info('ShadowdarkAdapter | Fetching compendium indices...');
             const packs = await client.getAllCompendiumIndices();
             const discoveryTasks: Promise<void>[] = [];
+            logger.info(`ShadowdarkAdapter | Discovered ${packs.length} packs.`);
 
             for (const pack of packs) {
                 // We only care about Item packs
@@ -587,8 +601,14 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             if (doc) {
                                 results.classes.push({
                                     ...baseInfo,
-                                    languages: doc.system?.languages || [],
-                                    spellcasting: doc.system?.spellcasting || null
+                                    system: {
+                                        description: doc.system?.description || "",
+                                        languages: doc.system?.languages || [],
+                                        talents: doc.system?.talents || [],
+                                        talentChoices: doc.system?.talentChoices || [],
+                                        talentChoiceCount: doc.system?.talentChoiceCount || 0,
+                                        spellcasting: doc.system?.spellcasting || null
+                                    }
                                 });
                                 if (doc.system?.titles) {
                                     (results.titles as any)[doc.name] = doc.system.titles;
@@ -601,7 +621,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             if (doc) {
                                 results.ancestries.push({
                                     ...baseInfo,
-                                    languages: doc.system?.languages || []
+                                    system: {
+                                        description: doc.system?.description || "",
+                                        languages: doc.system?.languages || [],
+                                        talents: doc.system?.talents || [],
+                                        talentChoices: doc.system?.talentChoices || [],
+                                        talentChoiceCount: doc.system?.talentChoiceCount || 0
+                                    }
                                 });
                             }
                         })());
@@ -612,7 +638,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             const doc = await client.fetchByUuid(uuid);
                             results.languages.push({
                                 ...baseInfo,
-                                rarity: doc?.system?.rarity || 'common'
+                                rarity: (doc?.system?.rarity || 'common').toLowerCase()
                             });
                         })());
                     } else if (type === 'deity') {
@@ -652,7 +678,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // Wait for all discovered items to be fully fetched
-            await Promise.all(discoveryTasks);
+            if (discoveryTasks.length > 0) {
+                logger.info(`ShadowdarkAdapter | Waiting for ${discoveryTasks.length} discovery tasks...`);
+                await Promise.all(discoveryTasks);
+                logger.info('ShadowdarkAdapter | Discovery tasks complete.');
+            }
 
             // 3. Fetch World Items
             const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
@@ -711,7 +741,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             });
 
         } catch (e) {
-            console.error('ShadowdarkAdapter | getSystemData failed:', e);
+            logger.error('ShadowdarkAdapter | getSystemData failed:', e);
         }
 
         return results;
@@ -1453,7 +1483,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             const sign = mod >= 0 ? '+' : '';
             return {
-                formula: `${dice} ${sign} ${mod}`,
+                formula: `${dice}${sign}${mod}`,
                 type: 'ability',
                 label: `${key.toUpperCase().replace('ABILITY', '')} Check`
             };
@@ -1513,7 +1543,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
                 const sign = totalBonus >= 0 ? '+' : '';
                 return {
-                    formula: `${dice} ${sign} ${totalBonus}`,
+                    formula: `${dice}${sign}${totalBonus}`,
                     type: item.type === 'Spell' ? 'spell' : 'attack',
                     label: label
                 };

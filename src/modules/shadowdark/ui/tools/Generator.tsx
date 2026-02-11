@@ -18,19 +18,20 @@ export default function Generator() {
 
     // Load Token
     useEffect(() => {
-        const stored = sessionStorage.getItem('sheet-delver-token');
+        const stored = localStorage.getItem('sheet-delver-token');
         if (stored) setToken(stored);
     }, []);
 
     const fetchWithAuth = useCallback(async (input: string, init?: RequestInit) => {
         const headers = new Headers(init?.headers);
-        const currentToken = token || sessionStorage.getItem('sheet-delver-token');
+        const currentToken = token || localStorage.getItem('sheet-delver-token');
         if (currentToken) headers.set('Authorization', `Bearer ${currentToken}`);
         return fetch(input, { ...init, headers });
     }, [token]);
 
     // Randomize All
     const skipLanguageReset = useRef(false);
+    const skipTalentReset = useRef(false);
 
     // Stat Choice State
     const [currentStatPrompt, setCurrentStatPrompt] = useState<{
@@ -71,8 +72,7 @@ export default function Generator() {
         gold: 0
     });
 
-    const [randomizeNonce, setRandomizeNonce] = useState(0);
-    const lastRandomizeNonce = useRef(0);
+
 
     // Helper: Calculate Modifier
     const getMod = (score: number) => Math.floor((score - 10) / 2);
@@ -159,14 +159,20 @@ export default function Generator() {
 
     // Fetch Class Details on change
     useEffect(() => {
-        setClassDetails(null); // Clear previous class immediately
         if (!formData.class) {
+            setClassDetails(null);
             return;
         }
+
+        // Only fetch if it's actually different from what we have
+        if (classDetails && (classDetails.uuid === formData.class || classDetails._id === formData.class)) {
+            return;
+        }
+
         fetchDocument(formData.class).then(data => {
             setClassDetails(data);
         });
-    }, [formData.class, fetchDocument, randomizeNonce]);
+    }, [formData.class, classDetails, fetchDocument]);
 
     // Fetch Patron Details on change
     useEffect(() => {
@@ -177,179 +183,16 @@ export default function Generator() {
         fetchDocument(formData.patron).then(data => setPatronDetails(data));
     }, [formData.patron, fetchDocument]);
 
-    // Roll Stats (3d6 down the line)
-    const rollStats = () => {
-        const roll3d6 = () => Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + 3;
-
-        const newStats: any = {};
-        ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'].forEach(stat => {
-            const val = roll3d6();
-            newStats[stat] = { value: val, mod: getMod(val) };
-        });
-
-        setFormData(prev => ({ ...prev, stats: newStats }));
-    };
-
-    // Roll a single stat
-    const rollSingleStat = (stat: string) => {
-        const roll3d6 = () => Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + 3;
-        const val = roll3d6();
-
-        setFormData(prev => ({
-            ...prev,
-            stats: {
-                ...prev.stats,
-                [stat]: { value: val, mod: getMod(val) }
-            }
-        }));
-    };
 
 
-    // Calculate HP based on Level Rules
-    const calculateHP = () => {
-        let hp = 1;
 
-        if (formData.level0) {
-            // Level 0: 1 + CON mod (min 1)
-            hp = Math.max(1, 1 + formData.stats.CON.mod);
-        } else {
-            // Level 1: Hit Die + CON mod
-            let hitDie = "d4";
-            if (classDetails?.system?.hitPoints) {
-                hitDie = classDetails.system.hitPoints;
-            }
 
-            // Parse "d8" -> 8
-            const sides = parseInt(hitDie.replace("d", "")) || 4;
-            const roll = Math.floor(Math.random() * sides) + 1;
 
-            // Add CON mod, minimum 1 HP total
-            hp = Math.max(1, roll + formData.stats.CON.mod);
-        }
-
-        setFormData(prev => ({ ...prev, hp }));
-    };
-
-    // Calculate Gold: 2d6 * 5 or 0 for Level 0
-    const calculateGold = () => {
-        if (formData.level0) {
-            setFormData(prev => ({ ...prev, gold: 0 }));
-            return;
-        }
-        const d6 = () => Math.floor(Math.random() * 6) + 1;
-        const gold = (d6() + d6()) * 5;
-        setFormData(prev => ({ ...prev, gold }));
-    };
-
-    // Randomize Gear (Level 0)
-    const randomizeGear = async () => {
-        const GEAR_TABLE_UUID = "Compendium.shadowdark.rollable-tables.RollTable.EOr6HKQIQVuR35Ry";
-
-        // Count Logic: Roll 1d4 to determine how many times to draw
-        const count = Math.floor(Math.random() * 4) + 1;
-
-        const gearTable = await fetchDocument(GEAR_TABLE_UUID);
-        if (!gearTable || !gearTable.results) return;
-
-        // conform to hydrated range structure
-        const max = Math.max(...gearTable.results.map((r: any) => (r.range?.[1] || 0)));
-        if (max === 0) return;
-
-        const selectedItems: any[] = [];
-        const seenNames = new Set<string>();
-
-        // Loop until we have enough items
-        let attempts = 0;
-        while (selectedItems.length < count && attempts < 50) {
-            attempts++;
-            const roll = Math.floor(Math.random() * max) + 1;
-            const result = gearTable.results.find((r: any) => roll >= r.range[0] && roll <= r.range[1]);
-
-            if (result && result.documentUuid) {
-                // Enforce NO DUPLICATES
-                if (seenNames.has(result.text || result.name)) continue;
-
-                const item = await fetchDocument(result.documentUuid);
-                if (item) {
-                    seenNames.add(result.text || result.name); // Mark as seen
-
-                    // Special case: Shortbow and 5 arrows (Legacy Item)
-                    if (item.name === "Shortbow and 5 arrows") {
-                        const arrows = await fetchDocument("Compendium.shadowdark.gear.Item.XXwA9ZWajYEDmcea");
-                        if (arrows) {
-                            const fiveArrows = JSON.parse(JSON.stringify(arrows));
-                            if (!fiveArrows.system) fiveArrows.system = {};
-                            fiveArrows.system.quantity = 5;
-                            selectedItems.push(fiveArrows);
-                        }
-                        selectedItems.push(item);
-                    } else {
-                        selectedItems.push(item);
-                    }
-                }
-            }
-        }
-
-        // Post-Processing: Shortbow/Arrow Dependency
-        // Verify if we have a Shortbow but no Arrows, or Arrows but no Shortbow.
-        // We check for names including "Shortbow" or "Arrows".
-        const hasShortbow = selectedItems.some(i => i.name.toLowerCase().includes("shortbow"));
-        const hasArrows = selectedItems.some(i => i.name.toLowerCase().includes("arrows"));
-
-        if (hasShortbow && !hasArrows) {
-            const arrows = await fetchDocument("Compendium.shadowdark.gear.Item.XXwA9ZWajYEDmcea");
-            if (arrows) {
-                const fiveArrows = JSON.parse(JSON.stringify(arrows));
-                if (!fiveArrows.system) fiveArrows.system = {};
-                fiveArrows.system.quantity = 5;
-                selectedItems.push(fiveArrows);
-            }
-        } else if (hasArrows && !hasShortbow) {
-            // Need to find Shortbow UUID.
-            // Assuming it's in the table, or we can look it up.
-            // If we can't find it easily, we might skip or try to fetch from pack if we knew UUID.
-            // Let's assume the user considers Shortbow + Arrows a set.
-            // We can search the gear table results for "Shortbow"?
-            // Or use a hardcodded UUID if we knew it.
-            // For now, let's rely on the table containing it or the user accepting arrow-only (rare).
-            // BUT user said "or vice versa".
-            // Let's check table results for "Shortbow".
-            const shortbowResult = gearTable.results.find((r: any) => r.text?.toLowerCase() === "shortbow" || r.name?.toLowerCase() === "shortbow");
-            if (shortbowResult && shortbowResult.documentUuid) {
-                const shortbow = await fetchDocument(shortbowResult.documentUuid);
-                if (shortbow) selectedItems.push(shortbow);
-            }
-        }
-
-        setGearSelected(selectedItems);
-    };
-
-    // Effect 1: Hit Points & Gold (Stats changes)
-    useEffect(() => {
-        calculateHP();
-        // Gold is random, don't re-roll on stats change.
-        // But do we want to re-roll Gold on Level toggle?
-        // calculateGold is called by randomizeAll.
-        // We should just init gold on mount? Or on Level Toggle?
-        if (formData.level0) {
-            // If switching to Level 0, ensure Gold is 0.
-            // But we don't want to infinite loop if we setFormData here.
-            // Actually calculateGold checks level0 and sets 0
-            // But doing this in effect might loop if gold isn't stable.
-            // Just let `level0` change trigger it once.
-            setFormData(prev => ({ ...prev, gold: 0 }));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [formData.stats.CON.mod]); // Only CON mod? Class is handled by level change.
 
     // Effect 2: Gear & Gold (Level/Class changes)
     useEffect(() => {
-        // If Class changes (and not level 0), maybe re-calc HP?
-        calculateHP();
-
         // If Level 0 toggled
         if (formData.level0) {
-            randomizeGear();
             setFormData(prev => ({ ...prev, gold: 0 }));
         } else {
             setGearSelected([]);
@@ -361,277 +204,114 @@ export default function Generator() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [classDetails, formData.level0]);
 
-    // Helper: Random Text from Roll Table
-    const randomNameFromTable = async (tableUuid: string) => {
-        try {
-            const table = await fetchDocument(tableUuid);
-            if (!table || !table.results) return "Generic Name";
 
-            const results = table.results;
-            const max = Math.max(...results.map((r: any) => (r.range?.[1] || 0)));
-            if (max === 0) return "Generic Name";
-
-            const roll = Math.floor(Math.random() * max) + 1;
-            const result = results.find((r: any) => roll >= (r.range?.[0] || 1) && roll <= (r.range?.[1] || 1));
-
-            return result?.text || result?.name || "Unnamed";
-        } catch (e) {
-            return "Generic Name";
-        }
-    };
-
-    // Randomize Name
-    // Fallback Names (minimal list to prevent "Unnamed")
-    const FALLBACK_NAMES: Record<string, string[]> = {
-        'Dwarf': ['Hilda', 'Torin', 'Balin', 'Dwalin', 'Kili', 'Fili', 'Gloin', 'Oin', 'Nori', 'Ori'],
-        'Elf': ['Legolas', 'Thranduil', 'Galadriel', 'Elrond', 'Arwen', 'Tauriel', 'Haldir', 'Celeborn'],
-        'Halfling': ['Frodo', 'Sam', 'Merry', 'Pippin', 'Bilbo', 'Lobelia', 'Rosie', 'Gollum'],
-        'Goblin': ['Glar', 'Snikt', 'Bog', 'Zog', 'Krug', 'Rash', 'Mok', 'Nok'],
-        'Human': ['Aragorn', 'Boromir', 'Eowyn', 'Faramir', 'Theodred', 'Eomer', 'Gandalf', 'Saruman'],
-        'Half-Orc': ['Grom', 'Thark', 'Mog', 'Varg', 'Karg', 'Urak', 'Grish', 'Naz'],
-        'default': ['Hero', 'Adventurer', 'Wanderer', 'Traveler']
-    };
-
-
-
-    const randomizeName = async (ancestryUuid: string) => {
-        if (!ancestryUuid) return;
-        try {
-            const ancestry = await fetchDocument(ancestryUuid);
-            let name = "";
-
-            if (ancestry?.system?.nameTable) {
-                name = await randomNameFromTable(ancestry.system.nameTable);
-            }
-
-            if (!name) {
-                // Fallback
-                const type = ancestry?.name || 'default';
-                const list = FALLBACK_NAMES[type] || FALLBACK_NAMES['default'];
-                name = list[Math.floor(Math.random() * list.length)];
-            }
-
-            setFormData(prev => ({ ...prev, name }));
-        } catch (e) {
-            console.error("Name randomization failed", e);
-            setFormData(prev => ({ ...prev, name: "Unnamed Hero" }));
-        }
-    };
 
     // Randomize All
     const [isRandomizing, setIsRandomizing] = useState(false);
 
+    // API Wrappers
+    const rollStats = async () => {
+        try {
+            const res = await fetchWithAuth('/api/modules/shadowdark/actors/randomize/stats', { method: 'POST' });
+            const data = await res.json();
+            if (data.stats) setFormData(prev => ({ ...prev, stats: data.stats }));
+        } catch (e) { console.error(e); }
+    };
+
+    const rollSingleStat = async (stat: string) => {
+        try {
+            const res = await fetchWithAuth('/api/modules/shadowdark/actors/randomize/stats', { method: 'POST' });
+            const data = await res.json();
+            if (data.stats && data.stats[stat]) {
+                setFormData(prev => ({
+                    ...prev,
+                    stats: {
+                        ...prev.stats,
+                        [stat]: data.stats[stat]
+                    }
+                }));
+            }
+        } catch (e) { console.error(e); }
+    };
+
     const randomizeAll = async () => {
-        if (!systemData || isRandomizing) return;
-
-        // Safety check
-        if (!systemData.ancestries?.length || !systemData.backgrounds?.length || !systemData.classes?.length) {
-            console.warn("System data is incomplete or loading", systemData);
-            return;
-        }
-
+        if (isRandomizing) return;
         setIsRandomizing(true);
-        setRandomizeNonce(n => n + 1);
         skipLanguageReset.current = true;
-        // Small delay to let the modal appear before heavy calculations freeze the thread (if any JS heavy work occurs)
-        await new Promise(r => setTimeout(r, 100));
+        skipTalentReset.current = true;
 
         try {
-            const rand = (arr: any[]) => (arr && arr.length > 0) ? arr[Math.floor(Math.random() * arr.length)] : null;
+            const res = await fetchWithAuth('/api/modules/shadowdark/actors/randomize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level0: formData.level0 })
+            });
 
-            // 1. Pick Core Options
-            const anc = rand(systemData.ancestries);
-            const bg = rand(systemData.backgrounds);
-            // let classItem = null; // Unused // Unused
-            let cls = null;
-            if (!formData.level0) {
-                cls = rand(systemData.classes.filter((c: any) => c.name !== "Level 0"));
-            } else {
-                cls = systemData.classes?.find((c: any) => c.name === "Level 0") || null;
-            }
+            if (!res.ok) throw new Error('Randomization failed');
+            const data = await res.json();
 
-            // Force clear details to ensure UI refresh even if same class lands
-            setClassDetails(null);
-            setPatronDetails(null);
-            setAncestryDetails(null);
+            // 1. Update Details State (Batch these to ensure Effects see consistent data)
+            setAncestryDetails(data.ancestry);
+            setClassDetails(data.class);
 
-            const deity = rand(systemData.deities);
-
-            const newAncestry = anc?.uuid || '';
-            const newBackground = bg?.uuid || '';
-            const newClass = cls?.uuid || '';
-            const newAlignment = rand(['lawful', 'neutral', 'chaotic']);
-            const newDeity = deity?.uuid || '';
-
-            let newPatron = '';
-            if (cls && cls.uuid) {
-                const isWarlock = cls.name?.toLowerCase().includes('warlock');
-                if (isWarlock && systemData.patrons?.length > 0) {
-                    // @ts-ignore
-                    newPatron = rand(systemData.patrons).uuid;
-                }
-            }
-
-            // 2. Roll Stats
-            rollStats();
-
-            // 3. Roll Gold (Initial calc)
-            calculateGold();
-
-            // 4. Update State (Base)
+            // 2. Update Form Data
             setFormData(prev => ({
                 ...prev,
-                ancestry: newAncestry,
-                background: newBackground,
-                class: newClass,
-                alignment: newAlignment,
-                deity: newDeity,
-                patron: newPatron,
+                stats: data.stats,
+                hp: data.hp || 0,
+                gold: data.gold || 0,
+                ancestry: data.ancestry?.uuid || '',
+                class: data.class?.uuid || '',
+                background: data.background?.uuid || '',
+                deity: data.deity?.uuid || '',
+                alignment: data.alignment?.toLowerCase() || 'neutral',
+                patron: data.patron?.uuid || '',
+                name: data.name || prev.name, // Use generated name or keep existing
+                // Keep level0 flag as requested
+                level0: formData.level0,
             }));
 
-            // 5. Fetch Details (Ancestry Name)
-            if (newAncestry) {
-                await randomizeName(newAncestry);
+            // 3. Talents
+            setSelectedAncestryTalents(data.talents?.ancestry || []);
 
-                // Randomize Ancestry Talents
-                // We need to fetch the ancestry again or wait?
-                // `ancestryDetails` is updated via Effect `[formData.ancestry]`.
-                // Effect mimics async behavior. We can't rely on `ancestryDetails`/`ancestryTalents` being ready immediately.
-                // We have to wait for the Effect to run? 
-                // OR we fetch manually here for randomization.
-                try {
-                    const ancDoc = await fetchDocument(newAncestry);
-                    if (ancDoc?.system) {
-                        const choiceCount = ancDoc.system.talentChoiceCount || 0;
-                        if (choiceCount > 0 && ancDoc.system.talents?.length > 0) {
-                            const choiceUuids = ancDoc.system.talents;
-                            const shuffled = [...choiceUuids].sort(() => 0.5 - Math.random());
-                            const chosen = shuffled.slice(0, Math.min(choiceCount, shuffled.length));
-                            setSelectedAncestryTalents(chosen);
-                        } else {
-                            setSelectedAncestryTalents([]);
-                        }
+
+            // 4. Languages
+            if (data.languages) {
+                setKnownLanguages({
+                    fixed: data.languages.fixed || [],
+                    selected: {
+                        common: data.languages.selected?.common || [],
+                        rare: data.languages.selected?.rare || [],
+                        ancestry: data.languages.selected?.ancestry || [],
+                        class: data.languages.selected?.class || []
                     }
-                } catch (e) { console.error("Ancestry Rand Error", e); }
+                });
             }
 
-            // 6. Randomize Languages
-            // Calculate Total Points (Approximate without full details load, or fetch)
-            // We need to fetch and bucketize.
-            const fixedLangs = new Set<string>();
-            let commonCount = 0;
-            let rareCount = 0;
-            const ankPool = { count: 0, options: [] as string[] }; // Ancestry
-            const clsPool = { count: 0, options: [] as string[] }; // Class
+            // 5. Gear
+            setGearSelected(data.gear || []);
 
-            try {
-                // Ancestry
-                if (newAncestry) {
-                    const anc = await fetchDocument(newAncestry);
-                    if (anc?.system?.languages) {
-                        commonCount += (anc.system.languages.common || 0);
-                        rareCount += (anc.system.languages.rare || 0);
-                        anc.system.languages.fixed?.forEach((u: string) => fixedLangs.add(u));
-                        ankPool.count = anc.system.languages.select || 0;
-                        if (anc.system.languages.selectOptions?.length > 0) {
-                            ankPool.options = anc.system.languages.selectOptions;
-                        }
-                    }
-                }
-                // Class
-                if (newClass) {
-                    const c = await fetchDocument(newClass);
-                    if (c?.system?.languages) {
-                        commonCount += (c.system.languages.common || 0);
-                        rareCount += (c.system.languages.rare || 0);
-                        c.system.languages.fixed?.forEach((u: string) => fixedLangs.add(u));
-                        clsPool.count = c.system.languages.select || 0;
-                        if (c.system.languages.selectOptions?.length > 0) {
-                            clsPool.options = c.system.languages.selectOptions;
-                        }
-                    }
-                }
-            } catch { }
-
-            // Populate Pools
-            const selections: { common: string[], rare: string[], ancestry: string[], class: string[] } = {
-                common: [],
-                rare: [],
-                ancestry: [],
-                class: []
-            };
-
-            const pickN = (pool: string[], n: number, exclude: Set<string>) => {
-                const available = pool.filter(id => !exclude.has(id));
-                const shuffled = available.sort(() => 0.5 - Math.random());
-                const picked = shuffled.slice(0, n);
-                picked.forEach(id => exclude.add(id));
-                return picked;
-            };
-
-            const usedUUIDs = new Set<string>([...fixedLangs]);
-
-            // 1. Ancestry (Restricted? or Any)
-            if (ankPool.count > 0 && systemData?.languages) {
-                // If options provided, pick from them. Else pick from ALL.
-                // @ts-ignore
-                const source = ankPool.options.length > 0 ? ankPool.options : systemData.languages.map((l: any) => l.uuid);
-                selections.ancestry = pickN(source, ankPool.count, usedUUIDs);
-            }
-
-            // 2. Class (Restricted? or Any)
-            if (clsPool.count > 0 && systemData?.languages) {
-                // @ts-ignore
-                const source = clsPool.options.length > 0 ? clsPool.options : systemData.languages.map((l: any) => l.uuid);
-                selections.class = pickN(source, clsPool.count, usedUUIDs);
-            }
-
-            // 3. Common
-            if (commonCount > 0 && systemData?.languages) {
-                // @ts-ignore
-                const commonUuids = systemData.languages.filter((l: any) => !l.rarity || l.rarity === 'common').map((l: any) => l.uuid);
-                selections.common = pickN(commonUuids, commonCount, usedUUIDs);
-            }
-
-            // 4. Rare
-            if (rareCount > 0 && systemData?.languages) {
-                // @ts-ignore
-                const rareUuids = systemData.languages.filter((l: any) => l.rarity === 'rare').map((l: any) => l.uuid);
-                selections.rare = pickN(rareUuids, rareCount, usedUUIDs);
-            }
-
-            // Ensure "Common" is always known
-            if (systemData?.languages) {
-                // @ts-ignore
-                const commonLang = systemData.languages.find((l: any) => l.name === 'Common');
-                if (commonLang) {
-                    fixedLangs.add(commonLang.uuid);
-                }
-            }
-
-            setKnownLanguages(prev => ({
-                ...prev,
-                fixed: Array.from(fixedLangs),
-                selected: selections
-            }));
-
-            // 7. Gold & Gear
-            calculateGold();
-            if (formData.level0) {
-                await randomizeGear();
-            } else {
-                setGearSelected([]);
-            }
         } catch (e) {
-            console.error("Randomization failed", e);
+            console.error("Randomization error", e);
         } finally {
-            // Keep the modal up for at least a minimum time to avoid flicker
             setTimeout(() => {
                 setIsRandomizing(false);
-            }, 500);
-            skipLanguageReset.current = false;
+                skipLanguageReset.current = false;
+                skipTalentReset.current = false;
+            }, 1500);
         }
     };
+
+    // Effect: Sync Level 0 HP
+    useEffect(() => {
+        if (formData.level0) {
+            const conMod = formData.stats.CON?.mod || 0;
+            const newHp = Math.max(1, 1 + conMod);
+            if (formData.hp !== newHp) {
+                setFormData(prev => ({ ...prev, hp: newHp }));
+            }
+        }
+    }, [formData.level0, formData.stats.CON?.mod, formData.hp]);
 
     // Effect: React to Level Toggle
     useEffect(() => {
@@ -651,13 +331,10 @@ export default function Generator() {
                 setFormData(prev => ({ ...prev, class: '' }));
             }
         }
-    }, [formData.level0, systemData?.classes]);
+    }, [formData.level0, systemData?.classes, formData.class]);
 
     // Effect: Load Ancestry Details & Talents & Languages
     useEffect(() => {
-        if (randomizeNonce > lastRandomizeNonce.current) return;
-        setSelectedAncestryTalents([]);
-
         if (!formData.ancestry) {
             setAncestryDetails(null);
             setAncestryTalents({ fixed: [], choice: [], choiceCount: 0 });
@@ -666,26 +343,35 @@ export default function Generator() {
 
         const loadAncestry = async () => {
             try {
-                const details = await fetchDocument(formData.ancestry);
-                setAncestryDetails(details);
+                let details = ancestryDetails;
+
+                // 1. Fetch details if missing or different
+                if (!details || (details.uuid !== formData.ancestry && details._id !== formData.ancestry)) {
+                    details = await fetchDocument(formData.ancestry);
+                    setAncestryDetails(details);
+                }
 
                 if (!details?.system) return;
 
-                // 1. TALENTS
+                // 2. TALENTS
                 const fixedTalents: any[] = [];
                 const choiceTalents: any[] = [];
                 const choiceCount = details.system.talentChoiceCount || 0;
                 let effectiveChoiceCount = choiceCount;
 
                 if (details.system.talents?.length > 0) {
-                    const docs = await Promise.all(details.system.talents.map((u: string) => fetchDocument(u)));
+                    const docs = await Promise.all(details.system.talents.map((u: any) => {
+                        const uuid = typeof u === 'string' ? u : u.uuid;
+                        return fetchDocument(uuid);
+                    }));
+
                     const loaded = docs.map((d, i) => d ? {
-                        uuid: details.system.talents[i],
+                        uuid: typeof details.system.talents[i] === 'string' ? details.system.talents[i] : details.system.talents[i].uuid,
                         name: d.name,
                         description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
                     } : null).filter(d => d);
 
-                    if (loaded.length <= choiceCount) {
+                    if (choiceCount === 0 || loaded.length <= choiceCount) {
                         fixedTalents.push(...loaded);
                         effectiveChoiceCount = 0;
                     } else {
@@ -694,77 +380,15 @@ export default function Generator() {
                 }
                 setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
 
-                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
-
             } catch (e) {
                 console.error("Ancestry load error", e);
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData, fetchDocument, randomizeNonce]);
+    }, [formData.ancestry, systemData, fetchDocument]);
 
 
 
-    // Effect: Calculate Languages (Centralized)
-    useEffect(() => {
-        if (randomizeNonce > lastRandomizeNonce.current) {
-            lastRandomizeNonce.current = randomizeNonce;
-            return;
-        }
-        if (skipLanguageReset.current) return;
-
-        // If no ancestry loaded yet, and NOT level 1? 
-        // Level 0 relies on Ancestry. Level 1 relies on Ancestry + Class.
-        // We act whenever details change.
-
-        const fixedLangs = new Set<string>();
-
-        // 1. Common (Always?)
-        if (systemData?.languages) {
-            const common = systemData.languages.find((l: any) => l.name?.trim().toLowerCase() === 'common');
-            if (common) fixedLangs.add(common.uuid);
-        }
-
-        // 2. Ancestry Fixed
-        if (ancestryDetails?.system?.languages?.fixed) {
-            ancestryDetails.system.languages.fixed.forEach((u: string) => fixedLangs.add(u));
-        }
-
-        // 3. Class Fixed
-        if (classDetails?.system?.languages?.fixed) {
-            classDetails.system.languages.fixed.forEach((u: string) => fixedLangs.add(u));
-        }
-
-        // Language Pools (for manual selection)
-        // Ancestry
-        const ankPool = {
-            count: ancestryDetails?.system?.languages?.select || 0,
-            options: ancestryDetails?.system?.languages?.selectOptions || []
-        };
-
-        // Class
-        const clsPool = {
-            count: classDetails?.system?.languages?.select || 0,
-            options: classDetails?.system?.languages?.selectOptions || []
-        };
-
-        setKnownLanguages(prev => ({
-            ...prev,
-            fixed: Array.from(fixedLangs),
-            // Reset selected choices on context switch to avoid invalid states
-            selected: { common: [], rare: [], ancestry: [], class: [] }
-        }));
-
-        setLanguageConfig({
-            common: 0, // Shadowdark usually fixed common/rare by INT?
-            rare: 0,
-            ancestry: ankPool,
-            class: clsPool,
-            fixed: Array.from(fixedLangs)
-        });
-
-    }, [ancestryDetails, classDetails, systemData]);
-    // Effect: Calculate Languages (Centralized) defined above
 
     const [classTalents, setClassTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number, table?: boolean }>({ fixed: [], choice: [], choiceCount: 0 });
     const [ancestryTalents, setAncestryTalents] = useState<{ fixed: any[], choice: any[], choiceCount: number }>({ fixed: [], choice: [], choiceCount: 0 });
@@ -813,8 +437,6 @@ export default function Generator() {
             setClassTalents({ fixed: [], choice: [], choiceCount: 0 });
             setWeaponNames([]);
             setArmorNames([]);
-            setLanguageConfig({ common: 0, rare: 0, ancestry: { count: 0, options: [] }, class: { count: 0, options: [] }, fixed: [] });
-            setKnownLanguages(prev => ({ ...prev, selected: { common: [], rare: [], ancestry: [], class: [] } }));
             return;
         }
 
@@ -894,35 +516,43 @@ export default function Generator() {
             const ancestryPool = { count: 0, options: [] as string[] };
             const classPool = { count: 0, options: [] as string[] };
 
-            // Ancestry
+            // 1. INT Mod Bonus
+            const intMod = formData.stats.INT?.mod || 0;
+            if (intMod > 0) {
+                common += intMod;
+            }
+
+            // 2. Ancestry
             if (ancestryDetails?.system?.languages) {
-                common += (ancestryDetails.system.languages.common || 0);
-                rare += (ancestryDetails.system.languages.rare || 0);
-                if (ancestryDetails.system.languages.fixed) {
-                    fixedUuids.push(...ancestryDetails.system.languages.fixed);
+                const al = ancestryDetails.system.languages;
+                common += (al.common || 0);
+                rare += (al.rare || 0);
+                if (al.fixed) {
+                    fixedUuids.push(...al.fixed);
                 }
 
                 // Select / Restricted
-                if (ancestryDetails.system.languages.select > 0) {
-                    ancestryPool.count = ancestryDetails.system.languages.select;
-                    if (ancestryDetails.system.languages.selectOptions?.length > 0) {
-                        ancestryPool.options = ancestryDetails.system.languages.selectOptions;
+                if (al.select > 0) {
+                    ancestryPool.count = al.select;
+                    if (al.selectOptions?.length > 0) {
+                        ancestryPool.options = al.selectOptions;
                     }
                 }
             }
 
-            // Class (only if not Level 0)
+            // 3. Class (only if not Level 0)
             if (!formData.level0 && classDetails?.system?.languages) {
-                common += (classDetails.system.languages.common || 0);
-                rare += (classDetails.system.languages.rare || 0);
-                if (classDetails.system.languages.fixed) {
-                    fixedUuids.push(...classDetails.system.languages.fixed);
+                const cl = classDetails.system.languages;
+                common += (cl.common || 0);
+                rare += (cl.rare || 0);
+                if (cl.fixed) {
+                    fixedUuids.push(...cl.fixed);
                 }
 
-                if (classDetails.system.languages.select > 0) {
-                    classPool.count = classDetails.system.languages.select;
-                    if (classDetails.system.languages.selectOptions?.length > 0) {
-                        classPool.options = classDetails.system.languages.selectOptions;
+                if (cl.select > 0) {
+                    classPool.count = cl.select;
+                    if (cl.selectOptions?.length > 0) {
+                        classPool.options = cl.selectOptions;
                     }
                 }
             }
@@ -938,14 +568,15 @@ export default function Generator() {
             }
 
             setLanguageConfig({ common, rare, ancestry: ancestryPool, class: classPool, fixed: fixedUuids });
+
             setKnownLanguages(prev => ({
-                fixed: fixedResolved,
-                selected: { common: [], rare: [], ancestry: [], class: [] } // Reset selections on reload
+                ...prev,
+                fixed: fixedResolved
             }));
         };
 
         loadLanguages();
-    }, [ancestryDetails, classDetails, formData.level0, fetchDocument]);
+    }, [ancestryDetails, classDetails, formData.level0, formData.stats.INT, fetchDocument]);
 
 
     const [formErrors, setFormErrors] = useState<Record<string, boolean>>({});
@@ -1328,7 +959,7 @@ export default function Generator() {
             // 3. Send to API
 
             const headers: any = { 'Content-Type': 'application/json' };
-            const token = sessionStorage.getItem('sheet-delver-token');
+            const token = localStorage.getItem('sheet-delver-token');
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
             const res = await fetch('/api/actors', {
@@ -1339,8 +970,10 @@ export default function Generator() {
 
             const result = await res.json();
             if (result.success) {
-                // Redirect to sheet
-                window.location.href = `/actors/${result.id}`;
+                // Redirect to sheet - Wait 500ms for backend stabilization
+                setTimeout(() => {
+                    window.location.href = `/actors/${result.id}`;
+                }, 500);
             } else {
                 setCreationError('Creation Failed: ' + result.error);
                 setLoading(false);
@@ -1566,7 +1199,14 @@ export default function Generator() {
                             <select
                                 className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                                 value={formData.class}
-                                onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
+                                onChange={(e) => {
+                                    setFormData(prev => ({ ...prev, class: e.target.value }));
+                                    // Reset languages related to class
+                                    setKnownLanguages(prev => ({
+                                        ...prev,
+                                        selected: { ...prev.selected, class: [] }
+                                    }));
+                                }}
                                 disabled={formData.level0}
                             >
                                 <option value="" disabled={!formData.level0 && formData.class !== ""}>
@@ -1587,7 +1227,15 @@ export default function Generator() {
                             <select
                                 className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                                 value={formData.ancestry}
-                                onChange={(e) => setFormData(prev => ({ ...prev, ancestry: e.target.value }))}
+                                onChange={(e) => {
+                                    setFormData(prev => ({ ...prev, ancestry: e.target.value }));
+                                    setSelectedAncestryTalents([]); // Reset talents on manual change
+                                    // Reset languages related to ancestry
+                                    setKnownLanguages(prev => ({
+                                        ...prev,
+                                        selected: { ...prev.selected, ancestry: [] }
+                                    }));
+                                }}
                             >
                                 <option value="">Select Ancestry...</option>
                                 {systemData?.ancestries?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (

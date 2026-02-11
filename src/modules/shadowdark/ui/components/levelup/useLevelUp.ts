@@ -111,6 +111,7 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [spellsToChooseTotal, setSpellsToChooseTotal] = useState(0);
     const [existingItems, setExistingItems] = useState<any[]>([]);
     const [statSelection, setStatSelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
+    const [statPool, setStatPool] = useState<{ total: number; allocated: Record<string, number>; talentIndex: number | null }>({ total: 0, allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, talentIndex: null });
     const [weaponMasterySelection, setWeaponMasterySelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
     const [armorMasterySelection, setArmorMasterySelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
     const [extraSpellSelection, setExtraSpellSelection] = useState<{ active: boolean; maxTier: number; source: string; selected: any[] }>({ active: false, maxTier: 0, source: 'Wizard', selected: [] });
@@ -386,11 +387,14 @@ export const useLevelUp = (props: LevelUpProps) => {
                             logger.debug(`[LevelUp] Triggering handler: ${handler.id}`);
                             const result = handler.onRoll({
                                 setStatSelection,
+                                setStatPool,
                                 setArmorMasterySelection,
+                                setWeaponMasterySelection,
                                 setExtraSpellSelection,
                                 setPendingChoices,
                                 targetLevel,
-                                rolledItem: item
+                                rolledItem: item,
+                                talentIndex: rolledTalents.length // Pass current index for linking
                             });
 
                             // If handler returns true, it consumed the item (don't add to list)
@@ -599,12 +603,15 @@ export const useLevelUp = (props: LevelUpProps) => {
                 for (const handler of TALENT_HANDLERS) {
                     if (handler.matches(item) && handler.onRoll) {
                         logger.debug(`[LevelUp] Triggering Selection handler: ${handler.id}`);
-                        handler.onRoll({
+                        const result = handler.onRoll({
                             setStatSelection,
+                            setStatPool,
                             setArmorMasterySelection,
+                            setWeaponMasterySelection,
                             setExtraSpellSelection,
                             targetLevel,
-                            rolledItem: item
+                            rolledItem: item,
+                            talentIndex: context === 'boon' ? rolledBoons.length : rolledTalents.length
                         });
                     }
                 }
@@ -630,6 +637,21 @@ export const useLevelUp = (props: LevelUpProps) => {
                 if (prev.selected.length >= prev.required) return prev;
                 return { ...prev, selected: [...prev.selected, stat] };
             }
+        });
+    };
+
+    const handleStatPoolChange = (stat: string, delta: number) => {
+        setStatPool(prev => {
+            const currentVal = prev.allocated[stat] || 0;
+            const newVal = Math.max(0, currentVal + delta);
+            const totalUsed = Object.values(prev.allocated).reduce((a: number, b: any) => a + (Number(b) || 0), 0) - currentVal + newVal;
+
+            if (totalUsed > prev.total) return prev;
+
+            return {
+                ...prev,
+                allocated: { ...prev.allocated, [stat]: newVal }
+            };
         });
     };
 
@@ -681,6 +703,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                             if (handler.matches(cleaned) && handler.mutateItem) {
                                 handler.mutateItem(cleaned, {
                                     statSelection,
+                                    statPool: statPool.talentIndex === results.length ? statPool : { total: 0, allocated: {} }, // Only apply if index matches
                                     weaponMasterySelection,
                                     armorMasterySelection,
                                     extraSpellSelection
@@ -1162,6 +1185,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 actor: null,
                 existingItems,
                 statSelection,
+                statPool,
                 weaponMasterySelection,
                 armorMasterySelection,
                 activeClassObj
@@ -1181,6 +1205,12 @@ export const useLevelUp = (props: LevelUpProps) => {
 
         // 5. Armor Mastery
         if (armorMasterySelection.required > 0 && armorMasterySelection.selected.length < armorMasterySelection.required) return false;
+
+        // 5b. Stat Pool (Distribution)
+        if (statPool.total > 0) {
+            const used = Object.values(statPool.allocated).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+            if (used < statPool.total) return false;
+        }
 
         // 6. Extra Spells
         if (extraSpellSelection.active) {
@@ -1225,7 +1255,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
         return true;
     }, [
-        rolledTalents, requiredTalents, targetLevel, existingItems, statSelection, weaponMasterySelection, armorMasterySelection, activeClassObj,
+        rolledTalents, requiredTalents, targetLevel, existingItems, statSelection, statPool, weaponMasterySelection, armorMasterySelection, activeClassObj,
         needsBoon, rolledBoons, startingBoons, choiceRolls,
         extraSpellSelection,
         languageGroups, availableLanguages, fixedLanguages, selectedLanguages, knownLanguages,
@@ -1268,6 +1298,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             hpRoll,
             goldRoll,
             statSelection,
+            statPool,
             weaponMasterySelection,
             armorMasterySelection,
             extraSpellSelection,
@@ -1325,6 +1356,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             setSelectedSpells,
             handleRollBoon,
             setSelectedLanguages,
+            handleStatPoolChange,
             isComplete // Expose isComplete in actions as well for signature match
         }
     };

@@ -165,8 +165,8 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.sendMessage(content, this.userId);
     }
 
-    public async roll(formula: string, flavor?: string): Promise<any> {
-        return this.coreSocket.roll(formula, flavor, this.userId || undefined);
+    public async roll(formula: string, flavor?: string, speakerOverride?: { actor?: string; alias?: string }): Promise<any> {
+        return this.coreSocket.roll(formula, flavor, this.userId || undefined, speakerOverride);
     }
 
     public async getActors(): Promise<any[]> {
@@ -258,6 +258,10 @@ export class ClientSocket extends SocketBase {
         }
 
         return this.coreSocket.dispatchDocument(type, action, operation, parent);
+    }
+
+    public async dispatchDocumentSocket(type: string, action: string, data?: any, parent?: any): Promise<any> {
+        return this.dispatchDocument(type, action, data, parent);
     }
 
     public async getActorRaw(id: string): Promise<any> {

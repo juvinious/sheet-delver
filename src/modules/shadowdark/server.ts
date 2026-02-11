@@ -9,6 +9,21 @@ import { handleIndex } from './api/index';
 import { handleRollTable } from './api/tables';
 import { dataManager } from './data/DataManager';
 import { getConfig } from '../../core/config';
+import { logger } from '../../core/logger';
+import {
+    handleRandomizeCharacter,
+    handleRandomizeName,
+    handleRandomizeAncestry,
+    handleRandomizeClass,
+    handleRandomizeBackground,
+    handleRandomizeAlignment,
+    handleRandomizeDeity,
+    handleRandomizePatron,
+    handleRandomizeStats,
+    handleRandomizeGear,
+    handleRandomizeTalents,
+    handleRandomizeLanguages
+} from './api/randomize-character';
 import { ShadowdarkAdapter } from './system';
 
 // Initialize data cache
@@ -20,6 +35,18 @@ export const apiRoutes = {
     'gear/list': handleGetGear,
     'roll-table': handleRollTable,
     'document/[uuid]': handleGetDocument,
+    'actors/randomize': handleRandomizeCharacter,
+    'actors/randomize/name': handleRandomizeName,
+    'actors/randomize/ancestry': handleRandomizeAncestry,
+    'actors/randomize/class': handleRandomizeClass,
+    'actors/randomize/background': handleRandomizeBackground,
+    'actors/randomize/alignment': handleRandomizeAlignment,
+    'actors/randomize/deity': handleRandomizeDeity,
+    'actors/randomize/patron': handleRandomizePatron,
+    'actors/randomize/stats': handleRandomizeStats,
+    'actors/randomize/gear': handleRandomizeGear,
+    'actors/randomize/talents': handleRandomizeTalents,
+    'actors/randomize/languages': handleRandomizeLanguages,
     'actors/level-up/data': async (request: Request) => {
         return handleGetLevelUpData(undefined, request, (request as any).foundryClient);
     },
@@ -70,21 +97,21 @@ export const apiRoutes = {
         return Response.json({ success: true, result });
     },
     'actors/level-up/roll-hp': async (request: Request) => {
-        return handleRollHP(undefined, request, (request as any).foundryClient);
+        return handleRollHP(undefined, request, (request as any).foundryClient, (request as any).userSession);
     },
     // /api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-hp
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
-        return handleRollHP(actorId, request, (request as any).foundryClient);
+        return handleRollHP(actorId, request, (request as any).foundryClient, (request as any).userSession);
     },
     'actors/level-up/roll-gold': async (request: Request) => {
-        return handleRollGold(undefined, request, (request as any).foundryClient);
+        return handleRollGold(undefined, request, (request as any).foundryClient, (request as any).userSession);
     },
     'actors/[id]/level-up/roll-gold': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
-        return handleRollGold(actorId, request, (request as any).foundryClient);
+        return handleRollGold(actorId, request, (request as any).foundryClient, (request as any).userSession);
     },
     'actors/[id]/level-up/finalize': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -120,5 +147,5 @@ export const apiRoutes = {
     }
 };
 
-console.log('[DEBUG] shadowdark/server.ts loaded. keys:', Object.keys(apiRoutes || {}));
+logger.info(`[DEBUG] shadowdark/server.ts loaded. keys: ${Object.keys(apiRoutes || {}).join(', ')}`);
 

@@ -135,6 +135,70 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         }
     },
     {
+        id: 'stat-distribution',
+        description: "Distribute +2 points across any stats",
+        matches: (item: any) => {
+            const text = (item.text || item.name || item.description || "").toLowerCase();
+            return text.includes("distribute") && text.includes("+2") && text.includes("stat");
+        },
+        onRoll: (actions: any) => {
+            logger.debug("[TalentHandler] Triggering Stat Distribution Pool");
+            if (actions.setStatPool) {
+                actions.setStatPool({
+                    total: 2,
+                    allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+                    talentIndex: actions.talentIndex !== undefined ? actions.talentIndex : null
+                });
+            }
+        },
+        isBlocked: (state: any) => {
+            if (state.statPool && state.statPool.total > 0) {
+                const used = Object.values(state.statPool.allocated).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+                return used < state.statPool.total;
+            }
+            return false;
+        },
+        mutateItem: (item: any, state: any) => {
+            if (state.statPool && state.statPool.total > 0) {
+                const allocated = state.statPool.allocated;
+                const effects: string[] = [];
+
+                if (!item.effects) item.effects = [];
+                // Clear existing effects if we are re-mutating (e.g. after edit)
+                item.effects = (item.effects || []).filter((e: any) => !e.name.startsWith("Stat Distribution"));
+
+                Object.entries(allocated).forEach(([stat, val]) => {
+                    const value = Number(val);
+                    if (value > 0) {
+                        const effectKey = `statBonus${stat.charAt(0).toUpperCase() + stat.slice(1)}${value}`;
+                        effects.push(effectKey);
+
+                        const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
+                        if (config) {
+                            item.effects.push({
+                                name: `Stat Distribution (${config.label})`,
+                                icon: config.icon,
+                                changes: [
+                                    {
+                                        key: config.key,
+                                        mode: config.mode,
+                                        value: String(config.value)
+                                    }
+                                ],
+                                transfer: true
+                            });
+                        }
+                    }
+                });
+
+                if (effects.length > 0) {
+                    if (!item.system) item.system = {};
+                    item.system.predefinedEffects = effects.join(',');
+                }
+            }
+        }
+    },
+    {
         id: 'weapon-mastery',
         description: "Choose one type of weapon",
         matches: (item: any) => {

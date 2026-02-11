@@ -11,6 +11,7 @@ import { LanguageSelectionSection } from './levelup/sections/LanguageSelectionSe
 import { StatSelectionSection } from './levelup/sections/StatSelectionSection';
 import { WeaponSelectionSection } from './levelup/sections/WeaponSelectionSection';
 import { ArmorSelectionSection } from './levelup/sections/ArmorSelectionSection';
+import { StatPoolSelectionSection } from './levelup/sections/StatPoolSelectionSection';
 import { SelectionOverlay } from './levelup/sections/SelectionOverlay';
 import { LoadingOverlay } from './levelup/sections/LoadingOverlay';
 import { LevelUpFooter } from './levelup/sections/LevelUpFooter';
@@ -162,6 +163,14 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                             required={state.statSelection.required}
                                             selected={state.statSelection.selected}
                                             onToggle={actions.handleStatToggle}
+                                        />
+                                    )}
+
+                                    {state.statPool && state.statPool.total > 0 && (
+                                        <StatPoolSelectionSection
+                                            total={state.statPool.total}
+                                            allocated={state.statPool.allocated}
+                                            onChange={actions.handleStatPoolChange}
                                         />
                                     )}
 

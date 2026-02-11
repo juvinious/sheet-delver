@@ -43,7 +43,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
  * POST /api/shadowdark/actors/[id]/level-up/roll-hp
  * Roll HP for level-up
  */
-export async function handleRollHP(actorId: string | undefined, request: Request, client: any) {
+export async function handleRollHP(actorId: string | undefined, request: Request, client: any, userSession?: any) {
     logger.info(`[API] handleRollHP called for actorId: ${actorId}`);
     try {
         if (!client || !client.isConnected) {
@@ -98,9 +98,32 @@ export async function handleRollHP(actorId: string | undefined, request: Request
 
         logger.info(`[API] Rolling HP with formula: ${hitDie}`);
 
+        // Determine speaker override
+        let speakerOverride = undefined;
+        if (actorId && actorId !== 'new') {
+            // Existing actor: use actor's name
+            try {
+                const actor = await client.getActor(actorId);
+                if (actor) {
+                    speakerOverride = {
+                        actor: actor._id || actor.id,
+                        alias: actor.name
+                    };
+                }
+            } catch (e) {
+                logger.warn(`[API] Could not fetch actor for speaker: ${e}`);
+            }
+        } else {
+            // New character (generator): use player's name from userSession
+            if (userSession?.username) {
+                speakerOverride = {
+                    alias: userSession.username
+                };
+            }
+        }
+
         // Roll using Foundry Client (Socket)
-        // This ensures the roll is performed by Foundry's logic/modules and sent to chat
-        const chatMessage = await client.roll(hitDie, "Hit Point Roll (Level Up)");
+        const chatMessage = await client.roll(hitDie, "Hit Point Roll (Level Up)", speakerOverride);
 
         if (!chatMessage) {
             throw new Error("Failed to execute roll via Foundry Client");
@@ -143,7 +166,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
     }
 }
 
-export async function handleRollGold(actorId: string | undefined, request: Request, client: any) {
+export async function handleRollGold(actorId: string | undefined, request: Request, client: any, userSession?: any) {
     if (!client || !client.isConnected) {
         return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
@@ -156,8 +179,32 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
     try {
         logger.info(`[API] Rolling Gold with formula: ${formula}`);
 
+        // Determine speaker override
+        let speakerOverride = undefined;
+        if (actorId && actorId !== 'new') {
+            // Existing actor: use actor's name
+            try {
+                const actor = await client.getActor(actorId);
+                if (actor) {
+                    speakerOverride = {
+                        actor: actor._id || actor.id,
+                        alias: actor.name
+                    };
+                }
+            } catch (e) {
+                logger.warn(`[API] Could not fetch actor for speaker: ${e}`);
+            }
+        } else {
+            // New character (generator): use player's name from userSession
+            if (userSession?.username) {
+                speakerOverride = {
+                    alias: userSession.username
+                };
+            }
+        }
+
         // Roll using Foundry Client (Socket)
-        const chatMessage = await client.roll(formula, "Starting Gold Roll");
+        const chatMessage = await client.roll(formula, "Starting Gold Roll", speakerOverride);
 
         if (!chatMessage) {
             throw new Error("Failed to execute gold roll via Foundry Client");

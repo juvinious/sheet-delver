@@ -742,16 +742,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         return await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [data] });
     }
 
-    public async roll(formula: string, flavor?: string, userId?: string): Promise<any> {
+    public async roll(formula: string, flavor?: string, userId?: string, speakerOverride?: { actor?: string; alias?: string }): Promise<any> {
         try {
             // Dynamic import to avoid circular dependencies if any (though Roll is standalone)
             const { Roll } = await import('../classes/Roll'); // Path check required
             const roll = new Roll(formula);
             await roll.evaluate();
 
-            const chatData = {
+            const chatData: any = {
                 author: userId || this.userId,
-                // speaker: { alias: ... } // Foundry often auto-populates speaker from author if missing, or we can add it
                 content: String(roll.total),
                 flavor: flavor,
                 type: 0, // In v13, style 5 is deprecated; rolls are defined by the rolls array
@@ -759,6 +758,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 flags: {},
                 sound: 'sounds/dice.wav' // Optional: generic sound
             };
+
+            // Add speaker if provided
+            if (speakerOverride) {
+                chatData.speaker = speakerOverride;
+            }
 
             const response: any = await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [chatData] });
             return response?.result?.[0];
