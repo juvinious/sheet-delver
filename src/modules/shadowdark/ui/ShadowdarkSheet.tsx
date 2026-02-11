@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import RollDialog from '@/app/ui/components/RollDialog';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingModal from '@/app/ui/components/LoadingModal';
+import { shadowdarkTheme } from './themes/shadowdark';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
@@ -284,7 +285,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     return (
         <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
             {/* Loading Overlay */}
-            <LoadingModal message="Loading System Data..." visible={loadingSystem} />
+            <LoadingModal message="Loading System Data..." visible={loadingSystem} theme={shadowdarkTheme.loadingModal} />
 
             {/* Header / Top Nav */}
             <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
@@ -546,6 +547,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                 title={rollDialog.title}
                 type={rollDialog.type}
                 defaults={rollDialog.defaults}
+                theme={shadowdarkTheme.rollDialog}
                 onConfirm={(options) => {
                     if (rollDialog.callback) rollDialog.callback(options);
                     setRollDialog(prev => ({ ...prev, open: false }));

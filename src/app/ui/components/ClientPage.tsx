@@ -11,7 +11,8 @@ import { logger, LOG_LEVEL } from '../logger';
 import { Users, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { ConfirmationModal } from './ConfirmationModal';
-
+import GlobalChat from './GlobalChat';
+import { getMatchingAdapter } from '@/modules/core/registry';
 interface User {
   id?: string;
   _id?: string;
@@ -84,6 +85,51 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
     actorId: '',
     actorName: ''
   });
+
+  // Chat State
+  const [messages, setMessages] = useState<any[]>([]);
+
+  const fetchWithAuthChat = useCallback(async () => {
+    try {
+      const headers: any = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/chat', { headers });
+      const data = await res.json();
+      if (data.messages && Array.isArray(data.messages)) {
+        setMessages(data.messages);
+      }
+    } catch (e) {
+      logger.error('Failed to fetch chat:', e);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (step === 'dashboard') {
+      fetchWithAuthChat();
+      const interval = setInterval(fetchWithAuthChat, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [step, fetchWithAuthChat]);
+
+  const handleChatSend = async (message: string) => {
+    try {
+      const headers: any = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch('/api/chat/send', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ message })
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchWithAuthChat();
+      } else {
+        addNotification('Failed: ' + data.error, 'error');
+      }
+    } catch (e: any) {
+      addNotification('Error: ' + e.message, 'error');
+    }
+  };
 
   const handleLogin = async () => {
     setLoading(true);
@@ -825,6 +871,16 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       {/* Persistent Player List when logged in */}
       {(step === 'dashboard') && <PlayerList users={users} currentUserId={currentUserId} onLogout={handleLogout} />}
 
+      {/* Global Chat / Dice Tray when logged in */}
+      {(step === 'dashboard') && (
+        <GlobalChat
+          messages={messages}
+          onSend={handleChatSend}
+          foundryUrl={configUrl || url}
+          adapter={getMatchingAdapter(null)}
+        />
+      )}
+
       <ConfirmationModal
         isOpen={confirmDelete.isOpen}
         title="Delete Character"
@@ -834,12 +890,17 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         isDanger={true}
         onConfirm={handleDeleteActor}
         onCancel={() => setConfirmDelete({ ...confirmDelete, isOpen: false })}
+        theme={system?.componentStyles?.modal}
       />
 
       <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
 
       {/* Loading Overlay */}
-      <LoadingModal message={loginMessage} visible={loading && !!loginMessage} />
+      <LoadingModal
+        message={loginMessage}
+        visible={loading && !!loginMessage}
+        theme={system?.componentStyles?.loadingModal}
+      />
     </main >
   );
 }

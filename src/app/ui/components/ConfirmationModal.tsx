@@ -10,7 +10,30 @@ interface ConfirmationModalProps {
     onConfirm: () => void;
     onCancel: () => void;
     isDanger?: boolean;
+    theme?: {
+        overlay?: string;
+        container?: string;
+        header?: string;
+        title?: string;
+        body?: string;
+        footer?: string;
+        confirmBtn?: (isDanger?: boolean) => string;
+        cancelBtn?: string;
+        closeBtn?: string;
+    };
 }
+
+const defaultTheme = {
+    overlay: "absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity",
+    container: "relative z-10 bg-neutral-900/95 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200",
+    header: "flex justify-between items-center border-b border-white/5 pb-3 mb-4",
+    title: "font-sans font-bold text-xl text-white",
+    body: "text-neutral-400 font-sans mb-8 leading-relaxed",
+    footer: "flex justify-end gap-3",
+    confirmBtn: (isDanger?: boolean) => `px-6 py-2.5 font-bold font-sans rounded-xl transition-all active:scale-95 ${isDanger ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg shadow-red-500/20' : 'bg-white hover:bg-neutral-200 text-neutral-900 shadow-lg shadow-white/5'}`,
+    cancelBtn: "px-5 py-2.5 font-bold font-sans rounded-xl border border-white/10 hover:bg-white/5 transition-all text-neutral-400 hover:text-white",
+    closeBtn: "text-neutral-500 hover:text-white transition-colors"
+};
 
 export function ConfirmationModal({
     isOpen,
@@ -20,9 +43,11 @@ export function ConfirmationModal({
     cancelLabel = "Cancel",
     onConfirm,
     onCancel,
-    isDanger = false
+    isDanger = false,
+    theme
 }: ConfirmationModalProps) {
     const [mounted, setMounted] = useState(false);
+    const t = { ...defaultTheme, ...theme };
 
     useEffect(() => {
         setMounted(true);
@@ -43,33 +68,43 @@ export function ConfirmationModal({
 
     return createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            {/* Overlay */}
+            {/* Overlay background - absolute to parent fixed wrapper */}
             <div
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+                className={t.overlay}
                 onClick={onCancel}
             />
 
-            {/* Modal Card */}
-            <div className="relative bg-white border-2 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
-                <h3 className="font-serif font-bold text-xl mb-2 text-black border-b-2 border-neutral-100 pb-2">
-                    {title}
-                </h3>
+            {/* Modal Card - relative z-10 for sharp text above blur/overlay */}
+            <div className={t.container}>
+                <div className={t.header}>
+                    <h3 className={t.title}>
+                        {title}
+                    </h3>
+                    <button
+                        onClick={onCancel}
+                        className={t.closeBtn || "text-neutral-400 hover:text-white transition-colors"}
+                        aria-label="Close"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                            <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                        </svg>
+                    </button>
+                </div>
 
-                <p className="text-neutral-600 font-sans mb-6 leading-relaxed">
+                <p className={t.body}>
                     {message}
                 </p>
 
-                <div className="flex justify-end gap-3">
+                <div className={t.footer}>
                     <button
                         onClick={onCancel}
-                        className="px-4 py-2 font-bold font-serif uppercase tracking-widest text-xs border border-neutral-300 hover:border-black rounded transition-colors text-neutral-600 hover:text-black hover:bg-neutral-100"
+                        className={t.cancelBtn}
                     >
                         {cancelLabel}
                     </button>
                     <button
                         onClick={onConfirm}
-                        className={`px-6 py-2 font-bold font-serif uppercase tracking-widest text-xs text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all ${isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-black hover:bg-neutral-800'
-                            }`}
+                        className={t.confirmBtn ? t.confirmBtn(isDanger) : defaultTheme.confirmBtn(isDanger)}
                     >
                         {confirmLabel}
                     </button>

@@ -36,6 +36,8 @@ export const getSheet = (systemId: string) => {
 
 
 export const getMatchingAdapter = (actor: any): SystemAdapter => {
+    if (!actor) return getAdapter('generic')!;
+
     const actorName = actor.name || 'Unknown';
     const actorId = actor.id || actor._id || 'unknown';
 

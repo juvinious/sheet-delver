@@ -7,6 +7,7 @@ import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { shadowdarkTheme } from '../ui/themes/shadowdark';
 
 interface DetailsTabProps {
     actor: any;
@@ -476,6 +477,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     setItemToDelete(null);
                 }}
                 onCancel={() => setItemToDelete(null)}
+                theme={shadowdarkTheme.modal}
             />
 
             <CompendiumSelectModal

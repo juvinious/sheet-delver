@@ -6,29 +6,31 @@ import { SystemAdapter } from '@/modules/core/interfaces';
 interface DiceTrayProps {
     onSend: (message: string) => void;
     adapter?: SystemAdapter;
+    hideHeader?: boolean;
 }
 
 const defaultStyles = {
-    container: "bg-slate-800 rounded-lg border border-slate-700 p-4 flex flex-col gap-4 h-full",
-    header: "text-slate-400 text-sm font-bold uppercase border-b border-slate-700 pb-2",
-    textarea: "w-full h-24 bg-slate-900 border border-slate-700 rounded p-3 font-mono text-lg text-amber-500 focus:border-amber-500 outline-none resize-none",
-    clearBtn: "absolute top-2 right-2 text-xs text-slate-500 hover:text-red-400 uppercase font-bold",
-    diceRow: "flex flex-wrap justify-between gap-2 bg-slate-900/50 p-2 rounded border border-slate-800",
-    diceBtn: "w-10 h-10 flex items-center justify-center bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded shadow border border-slate-600 text-xs font-bold font-mono transition-colors",
+    container: "bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 p-4 flex flex-col gap-4 h-full shadow-2xl",
+    header: "text-white/40 text-[10px] font-bold uppercase tracking-widest border-b border-white/10 pb-2",
+    textarea: "w-full h-24 bg-white/5 border border-white/10 rounded-xl p-3 font-sans text-lg text-white placeholder-white/20 focus:border-amber-500/50 outline-none resize-none transition-all",
+    clearBtn: "absolute top-2 right-2 text-[10px] text-white/20 hover:text-red-400/80 uppercase font-bold tracking-widest transition-colors",
+    diceRow: "flex flex-wrap justify-between gap-2 bg-white/5 p-2 rounded-xl border border-white/5",
+    diceBtn: "w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 active:scale-95 rounded-lg border border-white/10 text-white/80 text-xs font-bold font-sans transition-all",
     modGroup: "flex gap-1",
-    modBtn: "px-3 py-2 bg-slate-700 rounded hover:bg-slate-600 font-bold border border-slate-600",
-    advGroup: "flex bg-slate-900 rounded border border-slate-700 p-1",
+    modBtn: "px-3 py-2 bg-white/5 rounded-lg hover:bg-white/10 active:scale-95 font-bold border border-white/10 text-white/80 transition-all",
+    advGroup: "flex bg-black/40 rounded-lg border border-white/10 p-1",
     advBtn: (active: boolean, type: 'normal' | 'adv' | 'dis') => {
-        if (!active) return "px-2 py-1 text-xs font-bold rounded text-slate-500 hover:text-slate-300";
-        if (type === 'normal') return "px-2 py-1 text-xs font-bold rounded bg-slate-600 text-white";
-        if (type === 'adv') return "px-2 py-1 text-xs font-bold rounded bg-green-600 text-white";
-        return "px-2 py-1 text-xs font-bold rounded bg-red-600 text-white";
+        const base = "px-2 py-1 text-[10px] font-bold rounded-md transition-all ";
+        if (!active) return base + "text-white/20 hover:text-white/40";
+        if (type === 'normal') return base + "bg-white/10 text-white";
+        if (type === 'adv') return base + "bg-green-500/20 text-green-400";
+        return base + "bg-red-500/20 text-red-400";
     },
-    sendBtn: "flex-1 bg-amber-600 hover:bg-amber-500 text-white font-black uppercase tracking-wider py-3 rounded shadow-lg active:translate-y-0.5 transition-all text-xl",
-    helpText: "text-xs text-slate-500 text-center mt-2"
+    sendBtn: "flex-1 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase tracking-widest py-3 rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all text-xl",
+    helpText: "text-[10px] text-white/20 text-center mt-2 uppercase tracking-widest font-medium"
 };
 
-export default function DiceTray({ onSend, adapter }: DiceTrayProps) {
+export default function DiceTray({ onSend, adapter, hideHeader = false }: DiceTrayProps) {
     const [formula, setFormula] = useState('');
     const [advMode, setAdvMode] = useState<'normal' | 'adv' | 'dis'>('normal');
 
@@ -129,7 +131,7 @@ export default function DiceTray({ onSend, adapter }: DiceTrayProps) {
 
     return (
         <div className={s.container}>
-            <h3 className={s.header}>Dice Tray</h3>
+            {!hideHeader && <h3 className={s.header}>Dice Tray</h3>}
 
             {/* Display / Input */}
             <div className="relative">

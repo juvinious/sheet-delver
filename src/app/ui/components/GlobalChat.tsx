@@ -21,15 +21,42 @@ interface GlobalChatProps {
 }
 
 export default function GlobalChat(props: GlobalChatProps) {
+    const {
+        messages,
+        onSend,
+        onRoll,
+        foundryUrl,
+        adapter,
+        hideDice,
+        isDiceTrayOpen,
+        onToggleDiceTray
+    } = props;
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isDiceOpenLocal, setIsDiceOpenLocal] = useState(false);
+
+    const s = adapter?.componentStyles?.globalChat || {
+        window: "bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl rounded-2xl",
+        header: "flex justify-between items-center bg-white/5 p-3 border-b border-white/5",
+        title: "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest",
+        diceWindow: "w-[400px]",
+        chatWindow: "w-[350px] h-[500px]",
+        toggleBtn: (isOpen: boolean, isDice?: boolean) => `
+            h-12 w-12 rounded-full shadow-lg flex items-center justify-center
+            transition-all duration-300 hover:scale-110 active:scale-95 border border-white/10
+            ${isDice
+                ? (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-neutral-900 text-white hover:bg-black')
+                : (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-amber-500 text-black hover:bg-amber-400')
+            }
+        `,
+        closeBtn: "text-white/20 hover:text-white transition-colors"
+    };
 
     // Use controlled state if provided, otherwise local
     const isDiceOpen = props.isDiceTrayOpen ?? isDiceOpenLocal;
 
     const toggleDice = () => {
-        if (props.onToggleDiceTray) {
-            props.onToggleDiceTray();
+        if (onToggleDiceTray) {
+            onToggleDiceTray();
         } else {
             setIsDiceOpenLocal(!isDiceOpenLocal);
         }
@@ -77,19 +104,23 @@ export default function GlobalChat(props: GlobalChatProps) {
                 {!props.hideDice && (
                     <div className={`
                         pointer-events-auto
-                        bg-zinc-950 border border-zinc-800 shadow-2xl rounded-lg overflow-hidden
+                        ${s.window} overflow-hidden
                         transition-all duration-300 origin-bottom sm:origin-bottom-right
                         ${isDiceOpen
-                            ? 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] h-auto opacity-100 scale-100 pointer-events-auto sm:translate-x-0 sm:static sm:w-[400px]'
+                            ? `fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] h-auto opacity-100 scale-100 pointer-events-auto sm:translate-x-0 sm:static ${s.diceWindow}`
                             : 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] opacity-0 scale-90 pointer-events-none sm:translate-x-0 sm:static sm:w-[0px] sm:h-[0px]'
                         }
                     `}>
-                        <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800">
-                            <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">Dice Tray</span>
-                            <button onClick={toggleDice} className="text-zinc-500 hover:text-white px-2">✕</button>
+                        <div className={s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"}>
+                            <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>Dice Tray</span>
+                            <button onClick={toggleDice} className={`${s.closeBtn} px-2`}>✕</button>
                         </div>
-                        <div>
-                            <DiceTray onSend={(msg) => { props.onSend(msg); toggleDice(); }} adapter={props.adapter} />
+                        <div className="p-0">
+                            <DiceTray
+                                onSend={(msg) => { onSend(msg); toggleDice(); }}
+                                adapter={adapter}
+                                hideHeader={true}
+                            />
                         </div>
                     </div>
                 )}
@@ -97,19 +128,26 @@ export default function GlobalChat(props: GlobalChatProps) {
                 {/* Chat Window */}
                 <div className={`
                     pointer-events-auto
-                    bg-zinc-950 border border-zinc-800 shadow-2xl rounded-lg overflow-hidden
+                    ${s.window} overflow-hidden
                     transition-all duration-300 origin-bottom-right flex flex-col
-                    ${isChatOpen ? 'w-[350px] h-[500px] opacity-100 scale-100' : 'w-[0px] h-[0px] opacity-0 scale-90'}
+                    ${isChatOpen ? `${s.chatWindow} opacity-100 scale-100` : 'w-[0px] h-[0px] opacity-0 scale-90'}
                 `}>
-                    <div className="flex justify-between items-center bg-zinc-900 p-2 border-b border-zinc-800 flex-none">
-                        <span className="text-xs font-bold uppercase text-zinc-500 pl-2 tracking-wider">
-                            Game Chat {props.messages.length > 0 && `(${props.messages.length})`}
+                    <div className={`${s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"} flex-none`}>
+                        <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>
+                            Game Chat {messages && messages.length > 0 && `(${messages.length})`}
                         </span>
-                        <button onClick={() => setIsChatOpen(false)} className="text-zinc-500 hover:text-white px-2">✕</button>
+                        <button onClick={() => setIsChatOpen(false)} className={`${s.closeBtn} px-2`}>✕</button>
                     </div>
-                    <div className="flex-1 min-h-0 pb-2">
+                    <div className="flex-1 min-h-0">
                         {/* Hide Dice Tray inside ChatTab since we have a separate window OR if globally hidden */}
-                        <ChatTab {...props} adapter={props.adapter} hideDiceTray={true} />
+                        <ChatTab
+                            messages={messages || []}
+                            onSend={onSend}
+                            foundryUrl={foundryUrl}
+                            adapter={adapter}
+                            hideDiceTray={true}
+                            hideHeader={true}
+                        />
                     </div>
                 </div>
 
@@ -120,7 +158,7 @@ export default function GlobalChat(props: GlobalChatProps) {
             <div className="flex gap-3 items-center pointer-events-auto">
 
                 {/* Dice Toggle */}
-                {!props.hideDice && (
+                {!hideDice && (
                     <button
                         onClick={() => {
                             if (!isDiceOpen) setIsChatOpen(false);
@@ -128,15 +166,19 @@ export default function GlobalChat(props: GlobalChatProps) {
                         }}
                         className={`
                             group h-12 w-12 rounded-full shadow-lg flex items-center justify-center
-                            transition-all duration-300 hover:scale-110 active:scale-95
-                            ${isDiceOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-indigo-600 text-white hover:bg-indigo-500'}
+                            transition-all duration-300 hover:scale-110 active:scale-95 border border-white/10
+                            ${isDiceOpen ? 'bg-white/10 text-white rotate-90' : 'bg-neutral-900 text-white hover:bg-black'}
                         `}
                         title="Toggle Dice Tray"
                     >
                         {isDiceOpen ? (
                             <svg className="w-6 h-6 -rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
                         ) : (
-                            <img src="/icons/dice-d20.svg" alt="Dice" className="w-8 h-8 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]" />
+                            <img
+                                src="/icons/dice-d20.svg"
+                                alt="Dice"
+                                className="w-10 h-10 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.9)]"
+                            />
                         )}
                     </button>
                 )}
@@ -149,8 +191,8 @@ export default function GlobalChat(props: GlobalChatProps) {
                     }}
                     className={`
                         h-14 w-14 rounded-full shadow-lg flex items-center justify-center
-                        transition-all duration-300 hover:scale-110 active:scale-95
-                        ${isChatOpen ? 'bg-zinc-700 text-white rotate-90' : 'bg-amber-600 text-white hover:bg-amber-500'}
+                        transition-all duration-300 hover:scale-110 active:scale-95 border border-white/10
+                        ${isChatOpen ? 'bg-white/10 text-white rotate-90' : 'bg-amber-500 text-black hover:bg-amber-400'}
                     `}
                     title="Toggle Chat"
                 >

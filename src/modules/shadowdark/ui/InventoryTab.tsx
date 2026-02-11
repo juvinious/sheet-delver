@@ -9,6 +9,7 @@ import {
 } from './sheet-utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { shadowdarkTheme } from '../ui/themes/shadowdark';
 import { useOptimisticOverrides } from '@/app/ui/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
 import GemBagModal from './components/GemBagModal';
@@ -373,6 +374,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateIt
                 confirmLabel="Delete"
                 onConfirm={handleDelete}
                 onCancel={() => setItemToDelete(null)}
+                theme={shadowdarkTheme.modal}
             />
 
             {/* Gem Bag Modal */}

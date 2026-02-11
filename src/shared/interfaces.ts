@@ -23,6 +23,7 @@ export interface SystemInfo {
     worlds?: any[];
     theme?: any;
     config?: any;
+    componentStyles?: SystemAdapter['componentStyles'];
 }
 export interface ActorSheetData {
     id: string;
@@ -131,6 +132,47 @@ export interface SystemAdapter {
             helpText?: string;
             button?: string;
             input?: string;
+        };
+        modal?: {
+            overlay?: string;
+            container?: string;
+            header?: string;
+            title?: string;
+            body?: string;
+            footer?: string;
+            confirmBtn?: (isDanger?: boolean) => string;
+            cancelBtn?: string;
+            closeBtn?: string;
+        };
+        rollDialog?: {
+            overlay?: string;
+            container?: string;
+            header?: string;
+            title?: string;
+            body?: string;
+            inputGroup?: string;
+            label?: string;
+            input?: string;
+            footer?: string;
+            rollBtn?: (mode: 'normal' | 'adv' | 'dis') => string;
+            closeBtn?: string;
+            select?: string;
+            selectArrow?: string;
+        };
+        loadingModal?: {
+            overlay?: string;
+            container?: string;
+            spinner?: string;
+            text?: string;
+        };
+        globalChat?: {
+            window?: string;
+            header?: string;
+            title?: string;
+            diceWindow?: string;
+            chatWindow?: string;
+            toggleBtn?: (isOpen: boolean, isDice?: boolean) => string;
+            closeBtn?: string;
         };
     };
 }

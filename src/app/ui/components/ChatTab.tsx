@@ -7,26 +7,27 @@ interface ChatTabProps {
     onRoll?: (type: string, key: string) => void;
     foundryUrl?: string;
     hideDiceTray?: boolean;
+    hideHeader?: boolean;
     adapter?: SystemAdapter;
 }
 
 const defaultStyles = {
-    container: "bg-zinc-950 rounded-lg border border-zinc-800 shadow-inner",
-    header: "text-zinc-400 text-xs font-bold uppercase mb-4 border-b border-zinc-800 pb-2 flex items-center gap-2 tracking-wider",
-    msgContainer: (isRoll: boolean) => `p-3 rounded-md border text-sm ${isRoll ? 'bg-zinc-900/50 border-zinc-800' : 'bg-transparent border-t border-b border-zinc-800/50 border-l-0 border-r-0'}`,
-    user: "font-bold text-amber-500 text-xs uppercase tracking-wide",
-    time: "text-[10px] text-zinc-600 font-mono",
-    flavor: "text-xs italic text-zinc-500 mb-1",
-    content: "text-zinc-300 leading-relaxed messages-content [&_p]:mb-1 [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:rounded [&_img]:border [&_img]:border-zinc-700",
-    rollResult: "mt-2 bg-zinc-900 p-2 rounded text-center border border-zinc-800 font-mono",
-    rollFormula: "text-[10px] text-zinc-500",
-    rollTotal: "text-lg font-bold text-white",
-    button: "inline-flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded px-2 py-0.5 text-[10px] font-bold text-zinc-300 transition-all cursor-pointer my-1 shadow-sm",
-    buttonText: "text-zinc-400 uppercase",
-    buttonValue: "text-amber-500"
+    container: "bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl h-full flex flex-col",
+    header: "text-white/40 text-[10px] font-bold uppercase mb-4 border-b border-white/10 pb-2 flex items-center gap-2 tracking-widest px-4 pt-4",
+    msgContainer: (isRoll: boolean) => `mx-4 p-3 rounded-xl border text-sm transition-colors ${isRoll ? 'bg-white/5 border-white/10' : 'bg-transparent border-white/5 whitespace-pre-wrap'}`,
+    user: "font-bold text-amber-500 text-[10px] uppercase tracking-widest",
+    time: "text-[10px] text-white/20 font-sans",
+    flavor: "text-xs italic text-white/40 mb-1 font-sans",
+    content: "text-white/80 leading-relaxed messages-content [&_p]:mb-1 [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:rounded-lg [&_img]:border [&_img]:border-white/10",
+    rollResult: "mt-2 bg-black/40 p-2 rounded-lg border border-white/5 text-center font-sans",
+    rollFormula: "text-[10px] text-white/30 uppercase tracking-widest font-bold",
+    rollTotal: "text-xl font-bold text-white",
+    button: "inline-flex items-center gap-1 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-amber-500/50 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white/80 transition-all cursor-pointer my-1 shadow-sm active:scale-95",
+    buttonText: "text-white/40 uppercase tracking-widest",
+    buttonValue: "text-amber-500 font-bold"
 };
 
-export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, adapter }: ChatTabProps) {
+export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter }: ChatTabProps) {
     const s = adapter?.componentStyles?.chat || defaultStyles;
 
     // Helper to format content content with fixed image URLs AND parsing inline checks
@@ -119,7 +120,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
         <div className="flex flex-col h-full gap-4">
             {/* Chat Log (Top) */}
             <div className={`flex-1 flex flex-col p-4 overflow-hidden ${s.container}`}>
-                <h3 className={s.header}>Chat Log</h3>
+                {!hideHeader && <h3 className={s.header}>Chat Log</h3>}
                 <div
                     className="flex-1 overflow-y-auto space-y-4 pr-2"
                     onClick={handleChatClick}
@@ -134,16 +135,18 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                             <div className={s.content} dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }} />
                             {msg.rollTotal !== undefined && (
                                 <div className="mt-2 space-y-1">
-                                    <div className="bg-slate-200/50 border border-slate-300 rounded p-1 text-center text-sm font-mono text-slate-600">
-                                        {msg.rollFormula}
-                                    </div>
-                                    <div className={`
-                                        bg-slate-200/50 border border-slate-300 rounded p-2 text-center font-bold text-xl
-                                        ${msg.isCritical ? 'text-green-700' : msg.isFumble ? 'text-red-700' : 'text-slate-800'}
-                                    `}>
-                                        {msg.isCritical ? `Critical Success! (${msg.rollTotal})` :
-                                            msg.isFumble ? `Critical Failure! (${msg.rollTotal})` :
-                                                msg.rollTotal}
+                                    <div className={s.rollResult}>
+                                        <div className={s.rollFormula}>
+                                            {msg.rollFormula}
+                                        </div>
+                                        <div className={`
+                                            ${s.rollTotal}
+                                            ${msg.isCritical ? 'text-green-500' : msg.isFumble ? 'text-red-500' : ''}
+                                        `}>
+                                            {msg.isCritical ? `Critical Success! (${msg.rollTotal})` :
+                                                msg.isFumble ? `Critical Failure! (${msg.rollTotal})` :
+                                                    msg.rollTotal}
+                                        </div>
                                     </div>
                                 </div>
                             )}

@@ -3,6 +3,7 @@ import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGem
 import { logger } from '../../core/logger';
 import { dataManager } from './data/DataManager';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
+import { shadowdarkTheme } from './ui/themes/shadowdark';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
@@ -22,28 +23,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
 
 
-    componentStyles = {
-        chat: {
-            container: "bg-white border-2 border-black",
-            header: "text-black text-sm font-bold uppercase mb-4 border-b-2 border-black pb-2 font-serif tracking-widest",
-            msgContainer: (isRoll: boolean) => `p-3 border-2 border-black mb-2 shadow-sm ${isRoll ? 'bg-neutral-100' : 'bg-white'}`,
-            user: "font-serif font-bold text-black text-lg",
-            time: "text-[10px] uppercase font-bold text-neutral-400 tracking-widest",
-            flavor: "text-sm italic text-neutral-600 mb-1 font-serif",
-            content: "text-sm text-black font-serif leading-relaxed messages-content [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:border-2 [&_img]:border-black [&_img]:grayscale [&_img]:contrast-125",
-            rollResult: "mt-2 bg-white text-black p-2 text-center border-2 border-black",
-            rollFormula: "text-[10px] uppercase tracking-widest text-neutral-500",
-            rollTotal: "text-2xl font-bold font-serif",
-            button: "inline-flex items-center gap-1 bg-white hover:bg-black group border-2 border-black px-2 py-0.5 text-xs font-bold text-black hover:text-white transition-colors cursor-pointer my-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none active:translate-y-[2px]",
-            buttonText: "uppercase font-sans tracking-widest",
-            buttonValue: "font-serif font-bold group-hover:text-white"
-        },
-        diceTray: {
-            container: "bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 rounded-lg",
-            button: "bg-white text-black border-2 border-black font-serif font-bold hover:bg-black hover:text-white hover:-translate-y-0.5 hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-y-0 active:shadow-none",
-            input: "bg-white border-2 border-black text-black placeholder-neutral-400 font-serif focus:ring-0"
-        }
-    };
+    componentStyles = shadowdarkTheme;
 
     match(actor: any): boolean {
         return actor.systemId === 'shadowdark' || actor.system?.attributes?.hp?.base !== undefined; // Heuristic fallback if systemId missing, but usually systemId is there.
