@@ -606,32 +606,149 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     <span>Spells From Items</span>
                     <span className="text-xs font-normal opacity-70 tracking-normal">(Scrolls & Wands)</span>
                 </div>
+
+                {/* Header aligned with Spells Known */}
+                <div className="hidden md:flex border-b-2 border-black mb-2 items-end justify-between px-2 pb-1 text-xs font-bold uppercase tracking-widest text-neutral-400">
+                    <span className="flex-1 font-serif text-lg text-black lowercase first-letter:uppercase">Name (from Item)</span>
+                    <div className="flex items-center gap-4 w-[500px] justify-between pr-2">
+                        <span className="w-12 text-center">Tier</span>
+                        <span className="w-40 text-center uppercase">Duration</span>
+                        <span className="w-32 text-center">Range</span>
+                        <span className="w-40 text-center pr-2">Actions</span>
+                    </div>
+                </div>
+
                 <div className="space-y-2">
-                    {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type))
+                    {actor.items?.filter((i: any) => ['Scroll', 'Wand', 'Magic Item'].includes(i.type) || (i.spells && i.spells.length > 0))
                         .sort((a: any, b: any) => a.name.localeCompare(b.name))
                         .map((item: any, idx: number) => {
                             const isExpanded = expandedItems.has(item.id || item._id);
+
+                            // Lookup spell metadata for the first spell (if any)
+                            let spellMeta: any = null;
+                            if (item.spells && item.spells.length > 0 && systemData?.spells) {
+                                const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
+                                const targetUuid = normalizeUuid(item.spells[0].uuid);
+                                spellMeta = systemData.spells.find((s: any) => {
+                                    if (s.uuid && normalizeUuid(s.uuid) === targetUuid) return true;
+                                    if (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === targetUuid) return true;
+                                    return false;
+                                });
+                            }
+
                             return (
-                                <div key={item.id || item._id || `magic-item-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    <div className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
-                                        <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
-                                            <img src={resolveImageUrl(item.img)} alt="" className="w-full h-full object-cover" />
+                                <div key={item.id || item._id || `magic-item-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
+
+                                        {/* Header / Name Section */}
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">
+                                                <img src={resolveImageUrl(item.img)} alt="" className="w-full h-full object-cover" />
+                                            </div>
+                                            <div className="flex-1 flex flex-col justify-center overflow-hidden">
+                                                <div className={`font-serif font-bold text-lg uppercase leading-none truncate ${item.system?.lost ? 'line-through text-neutral-400' : 'text-black'}`}>
+                                                    {item.spells?.[0]?.name || item.name}
+                                                </div>
+                                                <div className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
+                                                    {(() => {
+                                                        const cls = spellMeta?.class || item.spells?.[0]?.system?.class;
+                                                        if (Array.isArray(cls)) return cls.join(', ');
+                                                        return cls || 'Spell';
+                                                    })()} From {item.name}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="font-serif font-bold text-lg leading-none">{item.name}</div>
-                                            <div className="text-xs text-neutral-500 uppercase tracking-widest font-bold mt-1">{item.type}</div>
+
+                                        {/* Desktop Columns */}
+                                        <div className="hidden md:flex items-center gap-4 w-[500px] justify-between">
+                                            <span className="text-sm font-serif font-bold w-12 text-center">{spellMeta?.tier || "—"}</span>
+                                            <span className="text-sm font-serif w-40 text-center">
+                                                {(() => {
+                                                    const val = spellMeta?.duration?.value;
+                                                    const type = spellMeta?.duration?.type || '-';
+                                                    const safeVal = (typeof val === 'object') ? (val.value || val.text || "") : val;
+                                                    const safeType = (typeof type === 'object') ? (type.label || type.value || "-") : type;
+                                                    if (safeVal === undefined || safeVal === null || safeVal === '' || safeVal === -1) return safeType.charAt(0).toUpperCase() + safeType.slice(1);
+                                                    return `${safeVal} ${safeType.charAt(0).toUpperCase() + safeType.slice(1)}${safeVal !== 1 ? 's' : ''}`;
+                                                })() || (spellMeta?.duration?.type || "—")}
+                                            </span>
+                                            <span className="text-sm font-serif w-32 text-center">
+                                                {(() => {
+                                                    const rng = spellMeta?.range;
+                                                    if (typeof rng === 'object' && rng !== null) return rng.value || rng.label || "Close";
+                                                    return rng || 'Close';
+                                                })() || "—"}
+                                            </span>
+
+                                            <div className="flex gap-2 items-center justify-end w-40">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const rollKey = (item.spells && item.spells.length > 0) ? item.spells[0].uuid : item.id;
+                                                        if (!item.system?.lost) triggerRollDialog('item', rollKey, item.spells?.[0]?.name || item.name);
+                                                    }}
+                                                    disabled={item.system?.lost}
+                                                    className={`h-10 px-4 flex items-center justify-center gap-2 rounded transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none border-2 border-black ${item.system?.lost ? 'bg-neutral-200 text-neutral-500 border-neutral-400 opacity-50' : 'bg-black text-white hover:bg-neutral-800'}`}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                                                        <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5z" />
+                                                    </svg>
+                                                    <span className="font-serif font-bold text-sm uppercase tracking-wider">CAST</span>
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleLostToggle(item.id, !!item.system?.lost);
+                                                    }}
+                                                    className={`w-10 h-10 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${item.system?.lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
+                                                >
+                                                    {item.system?.lost ? (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                                        </svg>
+                                                    ) : (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                            </div>
                                         </div>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                triggerRollDialog('item', item.id);
-                                            }}
-                                            className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all shadow-sm"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                                                <path fillRule="evenodd" d="M12.9 2.2c-.4-.5-1.4-.5-1.8 0L2.8 12.8c-.4.5-.2 1.2.5 1.2h17.4c.7 0 .9-.7.5-1.2L12.9 2.2zM3.4 15c-.6 0-.9.7-.5 1.2l7.3 8c.4.4 1 .4 1.4 0l7.3-8c.4-.5.1-1.2-.5-1.2H3.4z" />
-                                            </svg>
-                                        </button>
+
+                                        {/* Mobile Actions */}
+                                        <div className="md:hidden mt-3 flex items-center gap-2 border-t border-black/5 pt-2">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const rollKey = (item.spells && item.spells.length > 0) ? item.spells[0].uuid : item.id;
+                                                    if (!item.system?.lost) triggerRollDialog('item', rollKey, item.spells?.[0]?.name || item.name);
+                                                }}
+                                                disabled={item.system?.lost}
+                                                className={`flex-1 h-12 flex items-center justify-center gap-2 rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${item.system?.lost ? 'bg-neutral-200 text-neutral-500 border-neutral-400 opacity-50' : 'bg-black text-white hover:bg-neutral-800'}`}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                                    <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.803 2.61a3 3 0 001.92 1.92l2.61.803a.75.75 0 010 1.425l-2.61.803a3 3 0 00-1.92 1.92l-.803 2.61a.75.75 0 01-1.425 0l-.803-2.61a3 3 0 00-1.92-1.92l-2.61-.803a.75.75 0 010-1.425l2.61-.803a3 3 0 001.92-1.92l.803-2.61A.75.75 0 019 4.5z" />
+                                                </svg>
+                                                <span className="font-serif font-bold text-lg uppercase tracking-wider">CAST</span>
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleLostToggle(item.id, !!item.system?.lost);
+                                                }}
+                                                className={`w-12 h-12 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${item.system?.lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
+                                            >
+                                                {item.system?.lost ? (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                                    </svg>
+                                                ) : (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
                                     {isExpanded && (
                                         <div className="p-3 pt-0 mt-2 border-t border-dashed border-neutral-300">
@@ -646,7 +763,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                             );
                         })}
                 </div>
-                {actor.items?.filter((i: any) => ['Scroll', 'Wand'].includes(i.type)).length === 0 && (
+                {actor.items?.filter((i: any) => ['Scroll', 'Wand', 'Magic Item'].includes(i.type) || (i.spells && i.spells.length > 0)).length === 0 && (
                     <div className="text-center text-neutral-400 italic py-8 border-2 border-dashed border-neutral-200 rounded-lg">No magical items (Scrolls/Wands) found.</div>
                 )}
             </div>

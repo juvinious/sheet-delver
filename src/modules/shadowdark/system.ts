@@ -4,6 +4,7 @@ import { logger } from '../../core/logger';
 import { dataManager } from './data/DataManager';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 import { shadowdarkTheme } from './ui/themes/shadowdark';
+import { applyItemDataOverrides, getItemSpells } from './api/item-properties';
 
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
@@ -393,7 +394,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     type: actor.type,
                     img: resolveUrl(actor.img),
                     systemId: 'shadowdark',
-                    system: actor.system,
+                    system: actor.system || {},
                     items: items,
                     effects: effects,
                     computed: computed,
@@ -541,7 +542,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
                             results.spells.push({
                                 ...baseInfo,
                                 tier: doc.system?.tier || 0,
-                                class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                                class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
+                                duration: doc.system?.duration,
+                                range: doc.system?.range
                             });
                         }
                     }
@@ -628,27 +631,30 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     } else if (type === 'talent') {
                         results.talents.push(baseInfo);
                     } else if (type === 'spell') {
-                        // Spells need tier and class
-                        // If they aren't in index, fetch full doc (can be slow if many spells)
-                        // Optimization: if index has it, use it
+                        // Spells need tier, class, duration, range
                         const tier = item.system?.tier ?? item['system.tier'] ?? null;
                         const classes = item.system?.class ?? item['system.class'] ?? null;
+                        const duration = item.system?.duration ?? item['system.duration'] ?? null;
+                        const range = item.system?.range ?? item['system.range'] ?? null;
 
-                        if (tier !== null && classes !== null) {
+                        if (tier !== null && classes !== null && duration !== null && range !== null) {
                             results.spells.push({
                                 ...baseInfo,
-                                tier,
-                                class: Array.isArray(classes) ? classes : [classes]
+                                tier: Number(tier),
+                                class: Array.isArray(classes) ? classes : [classes].filter(Boolean),
+                                duration,
+                                range
                             });
                         } else {
-                            // Fallback fetch
                             discoveryTasks.push((async () => {
                                 const doc = await client.fetchByUuid(uuid);
                                 if (doc) {
                                     results.spells.push({
                                         ...baseInfo,
                                         tier: doc.system?.tier || 0,
-                                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean)
+                                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
+                                        duration: doc.system?.duration,
+                                        range: doc.system?.range
                                     });
                                 }
                             })());
@@ -709,7 +715,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     const found = classUuidLookup.get(cLower);
                     if (found) return found;
 
-                    const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+                    const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
                     for (const cls of knownClasses) {
                         if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
                             return cls;
@@ -956,7 +962,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // system.abilities: { str: { mod, ... }, ... }
 
         const hp = s.attributes?.hp || { value: 0, max: 0 };
-        const ac = s.attributes?.ac?.value || 10;
+        const ac = actor.computed?.ac ?? s.attributes?.ac?.value ?? 10;
+        const maxHp = actor.computed?.maxHp ?? hp.max;
 
         // Helper to ensure modifiers are calculated
         const ensureMod = (stat: any) => {
@@ -975,14 +982,33 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
 
         const abilities: any = {};
+        const computedAbilities = actor.computed?.abilities || {};
+
         if (s.abilities) {
             for (const key of Object.keys(s.abilities)) {
-                abilities[key] = ensureMod(s.abilities[key]);
+                // Try to find computed value with case-insensitive match
+                const computed = computedAbilities[key] ||
+                    computedAbilities[key.toLowerCase()] ||
+                    computedAbilities[key.toUpperCase()];
+
+                if (computed) {
+                    // Prioritize Foundry-computed values (which are effect-aware)
+                    abilities[key] = {
+                        ...s.abilities[key],
+                        value: computed.value ?? s.abilities[key].value,
+                        mod: computed.mod ?? s.abilities[key].mod
+                    };
+                } else {
+                    abilities[key] = ensureMod(s.abilities[key]);
+                }
+
+
             }
         } else {
             // Fallback default
             ['str', 'dex', 'con', 'int', 'wis', 'cha'].forEach(k => {
-                abilities[k] = { value: 10, mod: 0, base: 10 };
+                const computed = computedAbilities[k] || computedAbilities[k.toUpperCase()];
+                abilities[k] = computed ? { ...computed } : { value: 10, mod: 0, base: 10 };
             });
         }
 
@@ -1138,20 +1164,32 @@ export class ShadowdarkAdapter implements SystemAdapter {
             });
         }
 
+        // Pre-normalize items so derived calculations use correct data
+        const normalizedItems = (actor.items || []).map((i: any) => {
+            const item = { ...i, id: i.id || i._id };
+            try {
+                applyItemDataOverrides(item);
+                item.spells = getItemSpells(item);
+            } catch (e: any) {
+                logger.error(`Error processing item overrides for ${item.name}`, e);
+            }
+            return item;
+        });
+
+        // Update actor items ref for subsequent calls (calculateAttacks, categorizeInventory)
+        actor.items = normalizedItems;
+
         const sheetData: ActorSheetData = {
             id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
             img: actor.img,
             system: s, // Include raw system data for bindings
-            hp: { value: hp.value, max: hp.max },
+            hp: { value: hp.value, max: maxHp },
             ac: ac,
             attributes: abilities,
             stats: abilities,
-            items: (actor.items || []).map((i: any) => ({
-                ...i,
-                id: i.id || i._id
-            })),
+            items: normalizedItems,
             level: {
                 value: s.level?.value || 1,
                 xp: s.level?.xp || 0,
@@ -1335,7 +1373,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         totalSlots += calculateGemSlots(gems);
         totalSlots += calculateCoinSlots(actor.system?.coins);
 
-        const maxSlots = calculateMaxSlots(actor);
+        const maxSlots = actor.computed?.gearSlots ?? calculateMaxSlots(actor);
 
         return {
             inventory: {
@@ -1348,6 +1386,58 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
             }
         };
+    }
+
+    validateUpdate(path: string, value: any): boolean {
+        // Log for debugging (intentional audit trail)
+        logger.debug(`[ShadowdarkAdapter] Validating update path: ${path}`);
+
+        // 1. Whitelist for granular system paths
+        const whitelistPaths = [
+            // Stats (Base & Value only)
+            /^system\.abilities\.(str|dex|con|int|wis|cha)\.(value|base)$/,
+
+            // Attributes
+            /^system\.attributes\.hp\.(value|max|base|bonus)$/,
+            /^system\.attributes\.ac\.value$/,
+
+            // Progression & Luck
+            /^system\.level\.(value|xp)$/,
+            /^system\.luck\.available$/,
+
+            // Details
+            /^system\.languages$/,
+            /^system\.alignment$/,
+            /^system\.deity$/,
+            /^system\.details\.biography\.value$/,
+            /^system\.details\.notes\.value$/,
+            /^system\.class$/,
+            /^system\.ancestry$/,
+            /^system\.background$/,
+            /^system\.patron$/,
+            /^system\.title$/,
+
+            // Currency
+            /^system\.coins\.(gp|sp|cp)$/,
+            /^system\.currency\.(gp|sp|cp)$/
+        ];
+
+        // 2. Item-level updates
+        // Format: items.ID.system.prop
+        if (path.startsWith('items.')) {
+            const parts = path.split('.');
+            if (parts.length >= 3) {
+                // Reject derived or computed property updates on items
+                return !path.includes('derived') && !path.includes('computed');
+            }
+            return false;
+        }
+
+        // 3. Effects (Enabled/Disabled/Delete)
+        if (path.startsWith('effects.')) return true;
+
+        // 4. Match whitelist regexes
+        return whitelistPaths.some(regex => regex.test(path));
     }
 
     private calculateAttacks(actor: any, abilities: any) {
@@ -1439,8 +1529,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Options: abilityBonus, itemBonus, talentBonus, rollingMode, advantageMode
         const advMode = options.advantageMode || 'normal';
         let dice = '1d20';
-        if (advMode === 'advantage') dice = '2d20kh1';
-        if (advMode === 'disadvantage') dice = '2d20kl1';
+        if (advMode === 'advantage') dice = '2d20kh';
+        if (advMode === 'disadvantage') dice = '2d20kl';
 
         if (type === 'ability') {
             // Options already contains the overridden bonus from the dialog if passed
@@ -1470,7 +1560,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
         }
 
         if (type === 'item') {
-            const item = (actor.items || []).find((i: any) => i._id === key || i.id === key);
+            let item = (actor.items || []).find((i: any) => i._id === key || i.id === key);
+
+            // Fallback: Use provided itemData from options (e.g. for unowned spells)
+            if (!item && options.itemData) {
+                item = options.itemData;
+            }
 
             if (item) {
                 let totalBonus = 0;

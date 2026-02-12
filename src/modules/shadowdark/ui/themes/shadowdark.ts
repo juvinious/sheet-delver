@@ -12,7 +12,8 @@ export const shadowdarkTheme = {
         rollTotal: "text-xl font-bold font-serif",
         button: "inline-flex items-center gap-1 bg-white hover:bg-black group border-2 border-black px-2 py-0.5 text-xs font-bold text-black hover:text-white transition-colors cursor-pointer my-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none active:translate-y-[2px] rounded-lg",
         buttonText: "uppercase font-sans tracking-widest",
-        buttonValue: "font-serif font-bold group-hover:text-white"
+        buttonValue: "font-serif font-bold group-hover:text-white",
+        scrollButton: "bg-white hover:bg-black border-2 border-black px-3 py-1.5 text-xs font-bold text-black hover:text-white transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none active:translate-y-[2px] uppercase tracking-widest"
     },
     diceTray: {
         container: "bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4",

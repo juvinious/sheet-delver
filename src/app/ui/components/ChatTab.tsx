@@ -14,7 +14,7 @@ interface ChatTabProps {
 }
 
 const defaultStyles = {
-    container: "bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl h-full flex flex-col",
+    container: "bg-black/60 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl flex flex-col",
     header: "text-white/40 text-[10px] font-bold uppercase mb-4 border-b border-white/10 pb-2 flex items-center gap-2 tracking-widest px-4 pt-4",
     msgContainer: (isRoll: boolean) => `mx-4 p-2 rounded-xl border text-sm transition-colors ${isRoll ? 'bg-white/10 border-white/20' : 'bg-neutral-800/20 border-white/10 whitespace-pre-wrap'}`,
     user: "font-bold text-amber-500 text-[10px] uppercase tracking-widest",
@@ -26,7 +26,8 @@ const defaultStyles = {
     rollTotal: "text-lg font-bold text-white",
     button: "inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white/90 transition-all cursor-pointer my-1 shadow-sm active:scale-95",
     buttonText: "text-white/40 uppercase tracking-widest",
-    buttonValue: "text-amber-500 font-bold"
+    buttonValue: "text-amber-500 font-bold",
+    scrollButton: "bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-3 py-1.5 text-xs font-bold text-white/90 transition-all active:scale-95"
 };
 
 export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter, speaker }: ChatTabProps) {
@@ -43,17 +44,12 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
         }
     };
 
-    // Auto-scroll logic
+    // Auto-scroll logic - only scroll to bottom if user is already at bottom
     useEffect(() => {
         if (isAtBottom) {
             scrollToBottom();
         }
     }, [messages, isAtBottom]);
-
-    // Initial scroll to bottom
-    useEffect(() => {
-        setTimeout(() => scrollToBottom(true), 100);
-    }, []);
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
@@ -175,7 +171,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
     return (
         <div className="flex flex-col h-full gap-4">
             {/* Chat Log (Top) */}
-            <div className={`flex-1 flex flex-col p-4 overflow-hidden ${s.container}`}>
+            <div className={`flex-1 flex flex-col p-4 overflow-hidden min-h-0 ${s.container}`}>
                 {!hideHeader && <h3 className={s.header}>Chat Log</h3>}
                 <div
                     ref={scrollRef}
@@ -211,6 +207,22 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                         </div>
                     ))}
                     {messages.length === 0 && <div className="text-center text-slate-500 italic mt-10">No messages yet...</div>}
+                </div>
+
+                {/* Scroll Buttons */}
+                <div className="grid grid-cols-2 gap-2 px-4 pt-2">
+                    <button
+                        onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                        className={s.scrollButton || defaultStyles.scrollButton}
+                    >
+                        ↑ Top
+                    </button>
+                    <button
+                        onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
+                        className={s.scrollButton || defaultStyles.scrollButton}
+                    >
+                        ↓ Bottom
+                    </button>
                 </div>
             </div>
 

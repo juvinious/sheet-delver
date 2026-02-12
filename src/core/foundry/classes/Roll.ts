@@ -30,10 +30,10 @@ export class Roll {
         let total = 0;
 
         // Regex to match: (Dice: 1d6[kh|kl]?) OR (Operator: + - * /) OR (Number: 5)
-        // Group 1: Dice (e.g. 1d6, 2d20, 2d20kh)
+        // Group 1: Dice (e.g. 1d6, 2d20, 2d20kh1, 2d20kl1)
         // Group 2: Operator
         // Group 3: Number
-        const regex = /([0-9]+d[0-9]+(?:kh|kl)?)|([+\-*\/])|([0-9]+)/g;
+        const regex = /([0-9]+d[0-9]+(?:kh[0-9]*|kl[0-9]*)?)|([+\-*\/])|([0-9]+)/g;
 
         // We need to tokenize the formula
         // Remove spaces for easier parsing or handle them
@@ -50,14 +50,21 @@ export class Roll {
             if (match[1]) {
                 const termStr = match[1];
                 let keepMode = 'sum'; // sum, kh, kl
+                let keepCount = 1; // Default keep 1
                 let cleanDice = termStr;
 
-                if (termStr.endsWith('kh')) {
+                // Match kh or kl with optional number
+                const khMatch = termStr.match(/kh([0-9]*)/);
+                const klMatch = termStr.match(/kl([0-9]*)/);
+
+                if (khMatch) {
                     keepMode = 'kh';
-                    cleanDice = termStr.replace('kh', '');
-                } else if (termStr.endsWith('kl')) {
+                    keepCount = khMatch[1] ? parseInt(khMatch[1]) : 1;
+                    cleanDice = termStr.replace(/kh[0-9]*/, '');
+                } else if (klMatch) {
                     keepMode = 'kl';
-                    cleanDice = termStr.replace('kl', '');
+                    keepCount = klMatch[1] ? parseInt(klMatch[1]) : 1;
+                    cleanDice = termStr.replace(/kl[0-9]*/, '');
                 }
 
                 const parts = cleanDice.split('d');
@@ -76,37 +83,30 @@ export class Roll {
 
                 // Apply Keep Logic
                 if (keepMode === 'kh') {
-                    // Keep Highest
-                    const maxVal = Math.max(...results.map(r => r.result));
-                    // Mark only one instance of max as active? Or all? Usually one.
-                    // Foundry logic: sort desc, keep top N. Here N=1 implied by 'kh' without number.
-                    // Simple approach: Find first max, mark others inactive? 
-                    // Or just sum the kept ones.
-                    // For 2d20kh, we keep 1.
-
-                    // Let's implement generic keep 1 highest/lowest for now
+                    // Keep Highest N
                     results.sort((a, b) => b.result - a.result); // Descending
 
-                    // Keep index 0, discard rest
+                    // Keep first keepCount, discard rest
                     results.forEach((r, idx) => {
-                        if (idx > 0) r.active = false;
+                        if (idx >= keepCount) r.active = false;
                     });
 
-                    subTotal = results[0].result;
+                    subTotal = results.slice(0, keepCount).reduce((acc, r) => acc + r.result, 0);
                 } else if (keepMode === 'kl') {
-                    // Keep Lowest
+                    // Keep Lowest N
                     results.sort((a, b) => a.result - b.result); // Ascending
 
-                    // Keep index 0, discard rest
+                    // Keep first keepCount, discard rest
                     results.forEach((r, idx) => {
-                        if (idx > 0) r.active = false;
+                        if (idx >= keepCount) r.active = false;
                     });
 
-                    subTotal = results[0].result;
+                    subTotal = results.slice(0, keepCount).reduce((acc, r) => acc + r.result, 0);
                 } else {
                     // Sum all
                     subTotal = results.reduce((acc, r) => acc + r.result, 0);
                 }
+
 
                 this._terms.push({
                     class: "Die",

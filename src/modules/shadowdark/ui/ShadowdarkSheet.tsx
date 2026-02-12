@@ -107,21 +107,83 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             const stat = actor.stats?.[key] || {};
             defaults.abilityBonus = stat.mod || 0;
         } else if (type === 'item') {
-            const item = actor.items?.find((i: any) => i.id === key);
+            let item = actor.items?.find((i: any) => i.id === key || i._id === key);
+
+            // Fallback: Look in systemData (Compendium) for spells by UUID or ID
+            if (!item && systemData?.spells) {
+                const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
+                const targetUuid = normalizeUuid(key);
+
+                const spell = systemData.spells.find((s: any) => {
+                    if (s.uuid && normalizeUuid(s.uuid) === targetUuid) return true;
+                    if (s._id === key || s.id === key) return true;
+                    if (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === targetUuid) return true;
+                    return false;
+                });
+
+                if (spell) {
+                    item = { ...spell };
+                    if (!item.type) item.type = 'Spell';
+                }
+            }
+
             if (item) {
+                // Add itemData to defaults if it's a virtual item (not in actor.items)
+                // We check if it's NOT in actor's items
+                const itemRef = item.id || item._id;
+                const isVirtual = !actor.items?.some((i: any) => i.id === itemRef || i._id === itemRef);
+                if (isVirtual) {
+                    defaults.itemData = item;
+                }
+
                 if (item.type === 'Spell') {
                     dialogType = 'spell';
                     title = `Cast Spell: ${item.name}`;
-                    const statKey = item.system?.ability || 'int';
-                    const stat = actor.stats?.[statKey] || {};
+                    // Determine casting ability based on spell class
+                    // Wizard -> INT, Priest/Druid/Seer -> WIS, Bard/Warlock/Witch -> CHA
+                    const getAbilityForClass = (classes: string[] | string) => {
+                        const classArray = Array.isArray(classes) ? classes : [classes];
+                        const classNames = classArray.map(c => c?.toLowerCase() || "");
+
+                        const possibleAbilities: string[] = [];
+                        if (classNames.some(c => c.includes('wizard'))) possibleAbilities.push('int');
+                        if (classNames.some(c => c.includes('priest') || c.includes('druid') || c.includes('seer'))) possibleAbilities.push('wis');
+                        if (classNames.some(c => c.includes('bard') || c.includes('warlock') || c.includes('witch'))) possibleAbilities.push('cha');
+
+                        if (possibleAbilities.length === 0) return null;
+
+                        // If actor's casting ability is in the list of possible ones, use it
+                        const actorAbility = actor.computed?.spellcastingAbility?.toLowerCase();
+                        if (actorAbility && possibleAbilities.includes(actorAbility)) return actorAbility;
+
+                        // Otherwise pick the first one
+                        return possibleAbilities[0];
+                    };
+
+                    // Priority:
+                    // 1. Spell's explicit ability (if defined in system)
+                    // 2. Mapping from spell's class
+                    // 3. Actor's computed spellcasting ability
+                    // 4. Default to 'int'
+                    const spellClass = item.system?.class || item.class;
+                    const classAbility = spellClass ? getAbilityForClass(spellClass) : null;
+                    const statKey = item.system?.ability || classAbility || actor.computed?.spellcastingAbility || 'int';
+
+                    const stat = actor.stats?.[statKey.toLowerCase()] || {};
                     defaults.abilityBonus = stat.mod || 0;
-                    defaults.talentBonus = calculateSpellBonus(actor);
+
+                    const spellBonus = calculateSpellBonus(actor, item);
+                    defaults.talentBonus = spellBonus.bonus;
+                    // Note: advantage/disadvantage can be added to RollDialog later if needed
+
                     defaults.showItemBonus = false;
                 } else {
                     dialogType = 'attack';
                     title = `Roll Attack with ${item.name}`;
                     const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isRanged = item.system?.type === 'ranged';
+                    const isRanged = item.system?.type === 'ranged';// && item.system?.range === 'far'; // || item.system?.range === 'near' 
+
+                    //title = `Roll ` + (isRanged ? 'Ranged' : isFinesse ? 'Finesse' : 'Melee') + ` Attack with ${item.name}`;
 
                     const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
                     const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
@@ -142,7 +204,9 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             type: dialogType,
             defaults,
             callback: (options) => {
-                onRoll(type, key, options);
+                const finalOptions = { ...options };
+                if (defaults.itemData) finalOptions.itemData = defaults.itemData;
+                onRoll(type, key, finalOptions);
             }
         });
     };

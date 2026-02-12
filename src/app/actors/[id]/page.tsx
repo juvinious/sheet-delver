@@ -536,13 +536,13 @@ export default function ActorDetail({ params }: { params: Promise<{ id: string }
             <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 px-4 py-3 shadow-md flex items-center justify-between backdrop-blur-sm bg-opacity-95">
                 <button
                     onClick={() => router.push('/')}
-                    className="flex items-center gap-2 text-neutral-400 hover:text-amber-500 transition-colors font-semibold group text-sm uppercase tracking-wide"
+                    className="flex items-center gap-2 text-neutral-400 hover:text-amber-500 transition-colors font-semibold group text-sm uppercase tracking-wide cursor-pointer"
                 >
                     <span className="group-hover:-translate-x-1 transition-transform">←</span>
                     Back to Dashboard
                 </button>
                 <div className="text-xs text-neutral-600 font-mono hidden md:block">
-                    {actor?.name ? `Editing: ${actor.name}` : 'Loading...'}
+                    {actor?.name ? `${actor.name}` : 'Loading...'}
                 </div>
             </nav>
 

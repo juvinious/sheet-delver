@@ -252,10 +252,31 @@ export class ClientSocket extends SocketBase {
     }
 
     public async updateActor(id: string, data: any): Promise<any> {
-        return this.dispatchDocument('Actor', 'update', {
-            _id: id,
-            ...data
-        });
+        // --- Update Funnel (Defensive Approver) ---
+        const adapter = this.getSystemAdapter();
+        if (adapter && adapter.validateUpdate) {
+            const filteredData: any = {};
+            let hasValidUpdates = false;
+
+            for (const [path, value] of Object.entries(data)) {
+                if (adapter.validateUpdate(path, value)) {
+                    filteredData[path] = value;
+                    hasValidUpdates = true;
+                } else {
+                    logger.warn(`ClientSocket | Rejected unsanctioned update path: ${path} for actor ${id}`);
+                }
+            }
+
+            if (!hasValidUpdates) {
+                logger.info(`ClientSocket | No sanctioned updates to process for actor ${id}`);
+                return { success: true, message: 'No sanctioned updates' };
+            }
+
+            return this.dispatchDocument('Actor', 'update', { updates: [{ _id: id, ...filteredData }] });
+        }
+
+        // Fallback or generic systems
+        return this.dispatchDocument('Actor', 'update', { updates: [{ _id: id, ...data }] });
     }
 
     public async createActor(data: any): Promise<any> {
@@ -277,11 +298,13 @@ export class ClientSocket extends SocketBase {
     }
 
     public async updateActorItem(actorId: string, itemData: any): Promise<any> {
-        return this.dispatchDocument('Item', 'update', itemData, { type: 'Actor', id: actorId });
+        const { _id, id, ...updates } = itemData;
+        const targetId = _id || id;
+        return this.dispatchDocument('Item', 'update', { updates: [{ _id: targetId, ...updates }] }, { type: 'Actor', id: actorId });
     }
 
     public async deleteActorItem(actorId: string, itemId: string): Promise<any> {
-        return this.dispatchDocument('Item', 'delete', { _id: itemId }, { type: 'Actor', id: actorId });
+        return this.dispatchDocument('Item', 'delete', { ids: [itemId] }, { type: 'Actor', id: actorId });
     }
 
     public async fetchByUuid(uuid: string): Promise<any> {

@@ -90,16 +90,31 @@ export const resolveEntityUuid = (value: string, systemData: any, collectionName
     return value;
 };
 
-export const calculateSpellBonus = (actor: any): number => {
-    if (!actor || !actor.system) return 0;
+export const calculateSpellBonus = (actor: any, spell?: any): { bonus: number, advantage: boolean, disadvantage: boolean } => {
+    if (!actor || !actor.system) return { bonus: 0, advantage: false, disadvantage: false };
 
     let bonus = 0;
+    let advantage = false;
+    let disadvantage = false;
 
-    // Standard Shadowdark system key (from temp/shadowdark/system/src/config.mjs)
-    // The "spellCastingBonus" predefined effect maps to "system.bonuses.spellcastingCheckBonus"
+    // 1. General Spellcasting Check Bonus
     bonus += Number(actor.system.bonuses?.spellcastingCheckBonus) || 0;
 
-    return bonus;
+    // 2. Spell-Specific Advantage
+    if (spell && actor.system.bonuses?.advantage) {
+        const adv = actor.system.bonuses.advantage;
+        const spellName = spell.name?.toLowerCase() || "";
+
+        // Match specific spell name or generic "spellcasting"
+        if (adv === "spellcasting" || adv === spellName || (Array.isArray(adv) && (adv.includes("spellcasting") || adv.includes(spellName)))) {
+            advantage = true;
+        }
+    }
+
+    // 3. Class-Specific Bonuses (Placeholder for future precise mapping if needed)
+    // Note: Most Shadowdark talents apply to the general spellcastingCheckBonus.
+
+    return { bonus, advantage, disadvantage };
 };
 
 /**

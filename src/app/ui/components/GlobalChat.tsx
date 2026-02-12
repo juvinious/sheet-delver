@@ -99,41 +99,47 @@ export default function GlobalChat(props: GlobalChatProps) {
         <div ref={containerRef} className={`fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-none ${inter.className} `}>
 
             {/* --- WINDOWS --- */}
-            <div className="absolute bottom-20 right-0 flex gap-4 pointer-events-none">
+            <div className="flex flex-col-reverse items-end gap-4 pointer-events-none">
 
                 {/* Dice Window (Conditional) */}
                 {!props.hideDice && (
                     <div className={`
-                        pointer-events-auto
-                        ${s.window} overflow-hidden
-                        transition-all duration-300 origin-bottom sm:origin-bottom-right
+                        ${s.window}
+                        w-[calc(100vw-2rem)] max-w-[400px]
+                        transition-all duration-300 origin-bottom-right
                         ${isDiceOpen
-                            ? `fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] h-auto opacity-100 scale-100 pointer-events-auto sm:translate-x-0 sm:static ${s.diceWindow}`
-                            : 'fixed bottom-24 left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-[400px] opacity-0 scale-90 pointer-events-none sm:translate-x-0 sm:static sm:w-[0px] sm:h-[0px]'
+                            ? 'opacity-100 scale-100 pointer-events-auto'
+                            : 'opacity-0 scale-95 pointer-events-none h-0'
                         }
                     `}>
-                        <div className={s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"}>
-                            <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>Dice Tray</span>
-                            <button onClick={toggleDice} className={`${s.closeBtn} px-2`}>✕</button>
-                        </div>
-                        <div className="p-0">
-                            <DiceTray
-                                onSend={(msg, options) => { onSend(msg, { ...options, speaker: options?.speaker || props.speaker }); toggleDice(); }}
-                                adapter={adapter}
-                                hideHeader={true}
-                                speaker={props.speaker}
-                            />
-                        </div>
+                        {isDiceOpen && (
+                            <>
+                                <div className={s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"}>
+                                    <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>Dice Tray</span>
+                                    <button onClick={toggleDice} className={`${s.closeBtn} px-2`}>✕</button>
+                                </div>
+                                <div className="p-0">
+                                    <DiceTray
+                                        onSend={(msg, options) => { onSend(msg, { ...options, speaker: options?.speaker || props.speaker }); toggleDice(); }}
+                                        adapter={adapter}
+                                        hideHeader={true}
+                                        speaker={props.speaker}
+                                    />
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
                 {/* Chat Window */}
                 <div className={`
-                    ${s.window} overflow-hidden
-                    transition-all duration-300 origin-bottom-right flex flex-col
+                    ${s.window}
+                    ${s.chatWindow}
+                    flex flex-col
+                    transition-all duration-300 origin-bottom-right
                     ${isChatOpen
-                        ? `${s.chatWindow} opacity-100 scale-100 pointer-events-auto`
-                        : `${s.chatWindow} opacity-0 scale-95 pointer-events-none translate-y-4`}
+                        ? 'opacity-100 scale-100 pointer-events-auto'
+                        : 'opacity-0 scale-95 pointer-events-none h-0'}
                 `}>
                     <div className={`${s.header || "flex justify-between items-center bg-white/5 p-3 border-b border-white/5"} flex-none`}>
                         <span className={s.title || "text-[10px] font-bold uppercase text-white/40 pl-2 tracking-widest"}>
@@ -141,7 +147,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                         </span>
                         <button onClick={() => setIsChatOpen(false)} className={`${s.closeBtn} px-2`}>✕</button>
                     </div>
-                    <div className="flex-1 min-h-0">
+                    <div className={`flex-1 min-h-0 ${!isChatOpen ? 'hidden' : ''}`}>
                         {/* Hide Dice Tray inside ChatTab since we have a separate window OR if globally hidden */}
                         <ChatTab
                             messages={messages || []}

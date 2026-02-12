@@ -93,6 +93,7 @@ export interface SystemAdapter {
     resolveActorNames?(actor: any, cache: any): void;
     loadSupplementaryData?(cache: any): Promise<void>;
     expandTableResults?(client: any, table: any): Promise<any[] | null>;
+    validateUpdate?(path: string, value: any): boolean;
     theme?: {
         bg?: string;
         panelBg?: string;
@@ -118,6 +119,7 @@ export interface SystemAdapter {
             button?: string;
             buttonText?: string;
             buttonValue?: string;
+            scrollButton?: string;
         };
         diceTray?: {
             container?: string;
