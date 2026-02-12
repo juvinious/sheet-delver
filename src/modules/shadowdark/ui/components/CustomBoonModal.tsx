@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Settings, Power, Search } from 'lucide-react';
 import { resolveEntityName } from '../sheet-utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
+import { BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 
 interface CustomBoonModalProps {
     isOpen: boolean;
@@ -47,12 +48,16 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
 
     // Flatten predefined effects for dropdown
     const effectOptions = useMemo(() => {
-        const effects = predefinedEffects || systemConfig?.PREDEFINED_EFFECTS || {};
+        const effects = systemConfig?.PREDEFINED_EFFECTS || {};
         return Object.entries(effects).map(([key, val]: [string, any]) => ({
             key,
-            label: val.name || key
+            label: val.label || val.name || key,
+            icon: val.icon || 'icons/svg/aura.svg',
+            effectKey: val.key || '',
+            defaultValue: val.value,
+            mode: val.mode || 2
         })).sort((a, b) => a.label.localeCompare(b.label));
-    }, [predefinedEffects, systemConfig]);
+    }, [systemConfig]);
 
     // Initialize from Initial Data (Edit Mode)
     useEffect(() => {
@@ -112,7 +117,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                 id: crypto.randomUUID(),
                 key: 'custom',
                 label: 'Custom Bonus',
-                icon: 'icons/svg/aura.svg',
+                icon: 'icons/skills/melee/strike-axe-blood-red.webp',
                 effectKey: '',
                 value: '1',
                 mode: 2,
@@ -122,27 +127,17 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
             return;
         }
 
-        const config = (predefinedEffects || systemConfig?.PREDEFINED_EFFECTS)?.[key];
+        const config = systemConfig?.PREDEFINED_EFFECTS?.[key];
         if (!config) return;
-
-        // Default Value Logic
-        let val = config.defaultValue;
-        if (val === 'REPLACEME') val = 1;
-
-        let mode = 2;
-        if (config.mode && typeof config.mode === 'string') {
-            if (config.mode.includes('OVERRIDE')) mode = 5;
-            else if (config.mode.includes('MULTIPLY')) mode = 1;
-        }
 
         const newEffect = {
             id: crypto.randomUUID(),
             key: key,
-            label: config.name,
-            icon: config.img || 'icons/svg/aura.svg',
-            effectKey: config.effectKey,
-            value: val,
-            mode: mode,
+            label: config.label || config.name,
+            icon: config.icon || 'icons/svg/aura.svg',
+            effectKey: config.key || '',
+            value: config.value === 'REPLACEME' ? 1 : config.value,
+            mode: config.mode || 2,
             enabled: true
         };
 
@@ -257,8 +252,8 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                     onChange={e => setBoonType(e.target.value)}
                                     className="w-full bg-white border-2 border-black text-black px-4 py-3 focus:bg-neutral-50 outline-none font-black uppercase text-xs appearance-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    {Object.entries(predefinedEffects || {}).map(([_key, effect]) => (
-                                        <option key={_key} value={_key}>{effect.name}</option>
+                                    {Object.entries(BOON_TYPE_MAP).map(([key, label]) => (
+                                        <option key={key} value={key}>{label}</option>
                                     ))}
                                 </select>
                             </div>
@@ -336,13 +331,48 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                                         value={eff.label}
                                                         onChange={e => handleUpdateEffect(eff.id, { label: e.target.value })}
                                                     />
-                                                    <input
-                                                        type="text"
-                                                        className="bg-white border-2 border-neutral-200 text-neutral-400 font-mono text-[9px] px-2 py-1 w-full focus:border-black focus:text-black outline-none"
-                                                        placeholder="system.key..."
+                                                    <select
+                                                        className="bg-white border-2 border-neutral-200 text-neutral-600 font-mono text-[9px] px-2 py-1 w-full focus:border-black focus:text-black outline-none"
                                                         value={eff.effectKey}
                                                         onChange={e => handleUpdateEffect(eff.id, { effectKey: e.target.value })}
-                                                    />
+                                                    >
+                                                        <option value="">Select system key...</option>
+                                                        {(() => {
+                                                            const groups: Record<string, Array<{ key: string; label: string }>> = {
+                                                                'Abilities (Bonus)': [],
+                                                                'Abilities (Base/Permanent)': [],
+                                                                'Combat Bonuses': [],
+                                                                'Spellcasting': [],
+                                                                'Other': []
+                                                            };
+
+                                                            Object.entries(EFFECT_TRANSLATIONS_MAP).forEach(([key, label]) => {
+                                                                if (key.includes('abilities') && key.endsWith('.bonus')) {
+                                                                    groups['Abilities (Bonus)'].push({ key, label });
+                                                                } else if (key.includes('abilities') && key.endsWith('.base')) {
+                                                                    groups['Abilities (Base/Permanent)'].push({ key, label });
+                                                                } else if (key.includes('bonuses.melee') || key.includes('bonuses.ranged') ||
+                                                                    key.includes('bonuses.attack') || key.includes('bonuses.damage') ||
+                                                                    key.includes('bonuses.ac')) {
+                                                                    groups['Combat Bonuses'].push({ key, label });
+                                                                } else if (key.includes('spellcasting')) {
+                                                                    groups['Spellcasting'].push({ key, label });
+                                                                } else {
+                                                                    groups['Other'].push({ key, label });
+                                                                }
+                                                            });
+
+                                                            return Object.entries(groups).map(([groupName, items]) =>
+                                                                items.length > 0 && (
+                                                                    <optgroup key={groupName} label={groupName}>
+                                                                        {items.map(({ key, label }) => (
+                                                                            <option key={key} value={key}>{label}</option>
+                                                                        ))}
+                                                                    </optgroup>
+                                                                )
+                                                            );
+                                                        })()}
+                                                    </select>
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col overflow-hidden py-0.5">
@@ -381,7 +411,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                                     ? 'bg-neutral-100 border-neutral-200 text-neutral-400 hover:bg-black hover:border-black hover:text-white'
                                                     : 'bg-black border-black text-white hover:bg-neutral-800'
                                                     }`}
-                                                title={eff.enabled ? 'Enabled' : 'Disabled'}
+                                                title={eff.enabled ? 'Effect Enabled (click to disable)' : 'Effect Disabled (click to enable)'}
                                             >
                                                 <Power size={18} strokeWidth={3} />
                                             </button>

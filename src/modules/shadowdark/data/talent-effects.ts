@@ -1,8 +1,92 @@
+// TODO: Create tooling to generate custom effects (e.g. valid Item structure) from a schema
+// so we can fallback to creating them if a UUID isn't found or for custom homebrew effects.
 
 export interface PredefinedEffect {
     name: string;
     uuid: string;
 }
+
+export const BOON_TYPE_MAP: Record<string, string> = {
+    "blessing": "Blessing",
+    "oath": "Oath",
+    "secret": "Secret"
+};
+
+// TODO: Move this to a schema
+export const VARIABLE_DURATIONS = [
+    "days",
+    "hours",
+    "minutes",
+    "realTime",
+    "rounds",
+    "seconds",
+    "turns"
+];
+
+// TODO: Move this to a schema
+export const EFFECT_DURATION_MAP: Record<string, string> = {
+    "instant": "Instant",
+    "rounds": "Rounds",
+    "turns": "Turns",
+    "seconds": "Seconds",
+    "minutes": "Minutes",
+    "hours": "Hours",
+    "days": "Days",
+    "focus": "Focus",
+    "permanent": "Permanent",
+    "unlimited": "Unlimited"
+};
+
+// TODO: Move this to a schema
+export const SPELL_RANGE_MAP: Record<string, string> = {
+    "self": "Self",
+    "touch": "Touch",
+    "close": "Close",
+    "near": "Near",
+    "doubleNear": "Double Near",
+    "far": "Far",
+    "oneMile": "1 Mile",
+    "samePlane": "On the same plane",
+    "unlimited": "Unlimited"
+};
+
+export const WEAPON_TYPE_MAP: Record<string, string> = {
+    "melee": "Melee",
+    "ranged": "Ranged"
+}
+
+export const EFFECT_TRANSLATIONS_MAP: Record<string, string> = {
+    "system.abilities.cha.base": "Cha",
+    "system.abilities.cha.bonus": "Cha",
+    "system.abilities.con.base": "Con",
+    "system.abilities.con.bonus": "Con",
+    "system.abilities.dex.base": "Dex",
+    "system.abilities.dex.bonus": "Dex",
+    "system.abilities.int.base": "Int",
+    "system.abilities.int.bonus": "Int",
+    "system.abilities.str.base": "Str",
+    "system.abilities.str.bonus": "Str",
+    "system.abilities.wis.base": "Wis",
+    "system.abilities.wis.bonus": "Wis",
+    "system.bonuses.acBonus": "Armor AC Bonus",
+    "system.bonuses.advantage": "Advantage Bonus",
+    "system.bonuses.armorMastery": "Armor Mastery",
+    "system.bonuses.attackBonus": "Attack Bonus",
+    "system.bonuses.backstabDie": "Extra Backstab Die",
+    "system.bonuses.critical.failureThreshold": "Higher Critical Failure Threshold",
+    "system.bonuses.critical.multiplier": "Critical Multiplier",
+    "system.bonuses.critical.successThreshold": "Lower Critical Success Threshold",
+    "system.bonuses.damageBonus": "Damage Bonus",
+    "system.bonuses.gearSlots": "Slots",
+    "system.bonuses.meleeAttackBonus": "Melee Attack Roll Bonus",
+    "system.bonuses.meleeDamageBonus": "Melee Damage Roll Bonus",
+    "system.bonuses.rangedAttackBonus": "Ranged Attack Roll Bonus",
+    "system.bonuses.rangedDamageBonus": "Ranged Damage Roll Bonus",
+    "system.bonuses.stoneSkinTalent": "Stone Skin Talent",
+    "system.bonuses.spellcastingCheckBonus": "Spellcasting Bonus",
+    "system.bonuses.spellcastingClasses": "Bonus Spellcasting Class",
+    "system.bonuses.weaponMastery": "Weapon Mastery"
+};
 
 // TODO: Create tooling to generate custom effects (e.g. valid Item structure) from a schema
 // so we can fallback to creating them if a UUID isn't found or for custom homebrew effects.

@@ -37,7 +37,10 @@ export const calculateMaxSlots = (actor: any) => {
         bonus = Number(conObj?.mod) || 0;
     }
 
-    return base + bonus;
+    // 3. Effects: Add bonuses from system.bonuses.gearSlots
+    const effectBonus = Number(actor.system?.bonuses?.gearSlots) || 0;
+
+    return base + bonus + effectBonus;
 };
 
 export const calculateCoinSlots = (coins: any) => {

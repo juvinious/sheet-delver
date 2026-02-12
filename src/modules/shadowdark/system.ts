@@ -744,6 +744,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const effects = actor.effects || [];
         if (!effects.length) return;
 
+        logger.debug(`[ShadowdarkAdapter] Processing ${effects.length} effects for ${actor.name}`);
+
         // Constants for Effect Modes
         const MODES = {
             CUSTOM: 0,
@@ -773,12 +775,19 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Sort effects? Usually unnecessary for simple stats unless priority matters.
         // Apply effects
         for (const effect of effects) {
-            if (effect.disabled) continue;
+            if (effect.disabled) {
+                logger.debug(`[ShadowdarkAdapter] Skipping disabled effect: ${effect.name || effect.label}`);
+                continue;
+            }
 
             const changes = effect.changes || [];
+            logger.debug(`[ShadowdarkAdapter] Effect "${effect.name || effect.label}" has ${changes.length} changes`);
+
             for (const change of changes) {
                 const { key, value, mode } = change;
                 if (!key) continue;
+
+                logger.debug(`[ShadowdarkAdapter] Processing change: key="${key}", value="${value}", mode=${mode}`);
 
                 // Handle "system." prefix being optional or distinct based on how the sheet treats it.
                 // In Foundry, "system.abilities.str" is common. 
@@ -850,7 +859,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         break;
                 }
 
-                logger.debug(`[ShadowdarkAdapter] Applying Change: ${key} (${mode}) ${currentVal} -> ${finalVal}`);
+                logger.debug(`[ShadowdarkAdapter] Applying Change: ${key} (mode=${mode}) ${currentVal} -> ${finalVal}`);
                 setProperty(systemData, path, finalVal);
             }
         }
@@ -895,7 +904,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         }
 
         // Apply Active Effects to the cloned system data
-        // this.applyEffects(actor, s); // REDUNDANT: Foundry handles this if transfer: true
+        this.applyEffects(actor, s);
 
         let classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
 
@@ -1060,7 +1069,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
             classDetails: classItem,
             patronDetails: patronItem,
             xpNextLevel: nextXP,
-            levelUp: levelUp
+            levelUp: levelUp,
+            // Ensure gearSlots is always set, using browser-computed value if available,
+            // otherwise calculate it using the effect-modified system data
+            gearSlots: actor.computed?.gearSlots ?? calculateMaxSlots({ ...actor, system: s })
         };
 
         // --- ROBUST EFFECT MERGING ---
@@ -1217,7 +1229,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             },
             derived: {
                 ...this.calculateAttacks(actor, abilities),
-                ...this.categorizeInventory(actor)
+                ...this.categorizeInventory({ ...actor, computed })
             }
         };
 

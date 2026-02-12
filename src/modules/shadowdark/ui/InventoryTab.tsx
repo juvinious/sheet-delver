@@ -88,7 +88,7 @@ export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateIt
     const coinSlots = calculateCoinSlots(actor.system?.coins);
 
     const currentSlots = gearSlots + treasureSlots + gemSlots + coinSlots;
-    const maxSlots = actor.derived?.inventory?.slots?.max || calculateMaxSlots(actor);
+    const maxSlots = calculateMaxSlots(actor);//actor.derived?.inventory?.slots?.max || calculateMaxSlots(actor);
 
     // Coin Synced States
     const [localGp, setLocalGp] = useState(actor.system?.coins?.gp || 0);

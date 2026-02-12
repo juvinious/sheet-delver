@@ -591,6 +591,54 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                             onToggleEffect={onToggleEffect}
                             onDeleteEffect={onDeleteEffect}
                             onAddPredefinedEffect={onAddPredefinedEffect}
+                            systemConfig={systemData}
+                            onCreateEffect={async (effectData) => {
+                                try {
+                                    const id = actor.id || actor._id;
+                                    const headers: any = { 'Content-Type': 'application/json' };
+                                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                                    const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/create`, {
+                                        method: 'POST',
+                                        headers,
+                                        body: JSON.stringify(effectData)
+                                    });
+
+                                    if (!res.ok) {
+                                        const error = await res.json();
+                                        throw new Error(error.message || 'Failed to create effect');
+                                    }
+
+                                    addNotification('Effect created successfully', 'success');
+                                } catch (error: any) {
+                                    console.error('Failed to create effect:', error);
+                                    addNotification(`Failed to create effect: ${error.message}`, 'error');
+                                }
+                            }}
+                            onUpdateEffect={async (effectData) => {
+                                try {
+                                    const id = actor.id || actor._id;
+                                    const effectId = effectData._id || effectData.id;
+                                    const headers: any = { 'Content-Type': 'application/json' };
+                                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                                    const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
+                                        method: 'POST',
+                                        headers,
+                                        body: JSON.stringify(effectData)
+                                    });
+
+                                    if (!res.ok) {
+                                        const error = await res.json();
+                                        throw new Error(error.message || 'Failed to update effect');
+                                    }
+
+                                    addNotification('Effect updated successfully', 'success');
+                                } catch (error: any) {
+                                    console.error('Failed to update effect:', error);
+                                    addNotification(`Failed to update effect: ${error.message}`, 'error');
+                                }
+                            }}
                         />
                     )
                 }
