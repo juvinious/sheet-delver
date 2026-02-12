@@ -969,9 +969,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const ensureMod = (stat: any) => {
             if (!stat) return { value: 10, mod: 0, base: 10, bonus: 0 };
 
-            // Recalculate value from base + bonus to ensure effects are applied
-            // If value is present (from Foundry prep), trust it. Otherwise calc from base + bonus.
-            let val = Number(stat.value);
+            // Prioritize 'total' field if available, otherwise calculate from base + bonus
+            // The 'value' field can be stale in Foundry, but 'total' and 'base' are reliable
+            let val = Number(stat.total);
             if (isNaN(val)) {
                 val = Number(stat.base || 10) + Number(stat.bonus || 0);
             }
