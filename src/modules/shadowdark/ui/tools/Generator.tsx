@@ -5,7 +5,7 @@ import { Crimson_Pro, Inter } from 'next/font/google';
 import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@/app/ui/logger';
 import { useConfig } from '@/app/ui/context/ConfigContext';
-import { TALENT_HANDLERS } from '../components/levelup/talent-handlers';
+import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -135,7 +135,7 @@ export default function Generator() {
                     setFoundryUrl(data.url);
                     setConfigFoundryUrl(data.url);
                 } else {
-                    console.warn('Generator: No foundryUrl returned from connect');
+                    logger.warn('Generator: No foundryUrl returned from connect');
                 }
             } catch {
                 window.location.href = '/';
@@ -152,7 +152,7 @@ export default function Generator() {
                 setSystemData(data);
                 setLoading(false);
             })
-            .catch(err => console.error('Failed to load system data', err));
+            .catch(err => logger.error('Failed to load system data', err));
     }, [fetchWithAuth]);
 
 
@@ -215,7 +215,7 @@ export default function Generator() {
             const res = await fetchWithAuth('/api/modules/shadowdark/actors/randomize/stats', { method: 'POST' });
             const data = await res.json();
             if (data.stats) setFormData(prev => ({ ...prev, stats: data.stats }));
-        } catch (e) { console.error(e); }
+        } catch (e: any) { logger.error(e.message || String(e)); }
     };
 
     const rollSingleStat = async (stat: string) => {
@@ -231,7 +231,7 @@ export default function Generator() {
                     }
                 }));
             }
-        } catch (e) { console.error(e); }
+        } catch (e: any) { logger.error(e.message || String(e)); }
     };
 
     const randomizeAll = async () => {
@@ -292,7 +292,7 @@ export default function Generator() {
             setGearSelected(data.gear || []);
 
         } catch (e) {
-            console.error("Randomization error", e);
+            logger.error("Randomization error", e);
         } finally {
             setTimeout(() => {
                 setIsRandomizing(false);
@@ -381,7 +381,7 @@ export default function Generator() {
                 setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
 
             } catch (e) {
-                console.error("Ancestry load error", e);
+                logger.error("Ancestry load error", e);
             }
         };
         loadAncestry();
@@ -457,7 +457,7 @@ export default function Generator() {
                         description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
                     } : null).filter(d => d));
                 } catch (e) {
-                    console.error("Talent load error", e);
+                    logger.error("Talent load error", e);
                 }
             }
 
@@ -471,7 +471,7 @@ export default function Generator() {
                         description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
                     } : null).filter(d => d));
                 } catch (e) {
-                    console.error("Talent choice load error", e);
+                    logger.error("Talent choice load error", e);
                 }
             }
 
@@ -483,7 +483,7 @@ export default function Generator() {
                     const docs = await Promise.all(classDetails.system.weapons.map((u: string) => fetchDocument(u)));
                     setWeaponNames(docs.filter(d => d && d.name).map(d => d.name));
                 } catch (e) {
-                    console.error("Weapon load error", e);
+                    logger.error("Weapon load error", e);
                     setWeaponNames([]);
                 }
             } else {
@@ -496,7 +496,7 @@ export default function Generator() {
                     const docs = await Promise.all(classDetails.system.armor.map((u: string) => fetchDocument(u)));
                     setArmorNames(docs.filter(d => d && d.name).map(d => d.name));
                 } catch (e) {
-                    console.error("Armor load error", e);
+                    logger.error("Armor load error", e);
                     setArmorNames([]);
                 }
             } else {
@@ -636,6 +636,7 @@ export default function Generator() {
         try {
             // 1. Prepare Items & System Data Strings
             const items: any[] = [];
+            const addedSourceIds = new Set<string>(); // Track added items to prevent duplication
 
             // Helper to generate 16-char Foundry-like ID
             const randomID = () => {
@@ -650,6 +651,13 @@ export default function Generator() {
             // Helper to add item by UUID and return it
             const addItem = async (uuid: string) => {
                 if (!uuid) return null;
+
+                // Duplicate Check: Don't add same item source twice
+                if (addedSourceIds.has(uuid)) {
+                    logger.warn(`Generator: Skipping duplicate item source ${uuid}`);
+                    return null;
+                }
+
                 const doc = await fetchDocument(uuid);
                 if (doc) {
                     // Clone and strip ID to ensure clean creation
@@ -663,6 +671,7 @@ export default function Generator() {
                     if (!itemData.flags) itemData.flags = {};
                     if (!itemData.flags.core) itemData.flags.core = {};
                     itemData.flags.core.sourceId = uuid;
+                    addedSourceIds.add(uuid); // Track it
 
                     // Validate & Sanitize Effects using Handlers
                     // This fixes the "Cannot create property '_id' on string" crash
@@ -675,7 +684,7 @@ export default function Generator() {
                                 if (handler.mutateItem) {
                                     handler.mutateItem(itemData, {} as any);
                                 }
-                            } catch (e) {
+                            } catch (_e) {
                                 // If handler fails (e.g. missing context), just ignore
                                 // Our main goal is the missing-effects cleanup
                             }
@@ -711,7 +720,7 @@ export default function Generator() {
                     for (const ref of list) {
                         const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
                         if (uuid) {
-                            try { await addItem(uuid); } catch (e) { console.error(`Generator: Failed to add ancestry ref ${uuid}`, e); }
+                            try { await addItem(uuid); } catch (e) { logger.error(`Generator: Failed to add ancestry ref ${uuid}`, e); }
                         }
                     }
                 };
@@ -769,7 +778,7 @@ export default function Generator() {
                                 try {
                                     await addItem(uuid);
                                 } catch (e) {
-                                    console.error(`Generator: Failed to add class ref ${uuid}`, e);
+                                    logger.error(`Generator: Failed to add class ref ${uuid}`, e);
                                 }
                             }
                         }
@@ -787,6 +796,25 @@ export default function Generator() {
 
 
             for (const item of extraItems) {
+                // Determine Source ID (try flags or uuid if it was a real item)
+                const sourceId = item.flags?.core?.sourceId || item.uuid || item._id;
+
+                // 1. FILTER: Gear for Level 1 Characters
+                // Level 1 characters should start with empty inventory (except gold), no random gear/kits.
+                if (!formData.level0) {
+                    const type = (item.type || "").toLowerCase();
+                    if (['weapon', 'armor', 'basic', 'potion', 'scroll'].includes(type)) {
+                        continue; // Skip gear
+                    }
+                }
+
+                // 2. FILTER: Duplicates
+                // Prevent adding same ancestry/class feature multiple times
+                if (sourceId && addedSourceIds.has(sourceId)) {
+                    logger.warn(`Generator: Skipping duplicate extraItem ${item.name} (${sourceId})`);
+                    continue;
+                }
+
                 // These are likely fully formed objects from the modal or just data?
                 // Modal returns objects with `type`, `name`, `img`, `system`.
                 // We should probably sanitize them or ensure they have IDs.
@@ -802,6 +830,9 @@ export default function Generator() {
                 if (!cleanItem.flags.core) cleanItem.flags.core = {};
                 // If the original item had a UUID, preserve it as sourceId
                 if (item.uuid) cleanItem.flags.core.sourceId = item.uuid;
+
+                // Track added ID
+                if (sourceId) addedSourceIds.add(sourceId);
 
                 if (!formData.level0) {
                     if (!cleanItem.system) cleanItem.system = {};
@@ -882,7 +913,19 @@ export default function Generator() {
             }
 
             if (!formData.level0) {
-                await addItem(formData.class);
+                // Class already added above? No, wait.
+                // Originally lines 757 added Class if !formData.level0.
+                // Wait, I see lines 885 `if (!formData.level0) await addItem(formData.class);`.
+                // Why is it duplicated in original code? (Line 757 and 885).
+                // Ah, line 757 was checking `!formData.level0` too.
+                // Let's remove the redundant call at 885 since we handled it at 757 (and handled duplication).
+                // Actually, line 885 in original was OUTSIDE the extraItems loop.
+                // My replacement covers up to 884.
+                // I need to ensure line 885 is handled or compatible.
+                // The original code had `if (!formData.level0) { await addItem(formData.class); }` AFTER the loop.
+                // But it ALSO had it BEFORE the loop at line 757.
+                // This explains the TRIPLICATION! One from line 757, one from Backend (LevelUp), one from line 885.
+                // My deduplication logic will fix it regardless, but removing the logical redundancy is good too.
             }
 
             // Collect Language UUIDs for system.languages array
@@ -979,7 +1022,7 @@ export default function Generator() {
                 setLoading(false);
             }
         } catch (e: any) {
-            console.error(e);
+            logger.error(e);
             setCreationError('Error: ' + e.message);
             setLoading(false);
         }

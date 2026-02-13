@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { resolveGear } from './resolveGear';
-import { TALENT_HANDLERS } from './talent-handlers';
-import { ROLL_TABLE_PATTERNS } from '../../../data/roll-table-patterns';
-import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../../../data/talent-effects';
-import { logger } from '../../../../../app/ui/logger';
 import { isSpellcaster, getSpellcastingClass, isClassSpellcaster } from '../../../rules';
+import { logger } from '@/app/ui/logger';
+import { resolveGear } from './gear-resolver';
+import { resolveBaggage } from './baggage-resolver';
+import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
 
 export interface LevelUpProps {
     actorId: string;
@@ -158,7 +157,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
             return total;
         } catch (e) {
-            console.error("SimpleRoll Error", e);
+            logger.error("SimpleRoll Error", e);
             return 0;
         }
     }, []);
@@ -229,20 +228,17 @@ export const useLevelUp = (props: LevelUpProps) => {
                 }));
             }
         } catch (e) {
-            console.error("Failed to fetch level up data", e);
+            logger.error("Failed to fetch level up data", e);
             setStatuses(prev => ({ ...prev, class: 'ERROR' }));
         }
     }, [actorId, token]);
 
     const handleRollHP = async (isReroll = false) => {
-        console.log("[LevelUp] handleRollHP triggered. isReroll:", isReroll);
         setStatuses(prev => ({ ...prev, hp: 'LOADING' }));
         setError(null);
         try {
-            console.log('LevelUpAlt] Running...');
             // Prefer the UUID of the loaded class object, or the target selection, or the prop
             const cId = activeClassObj?.uuid || targetClassUuid || classUuid;
-            console.log("[LevelUp] Rolling HP for classId:", cId, "ActorId:", actorId);
 
             const headers: any = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -305,17 +301,15 @@ export const useLevelUp = (props: LevelUpProps) => {
         setStatuses(prev => ({ ...prev, talents: 'LOADING' }));
         setError(null);
         try {
-            console.log('[LevelUp] Rolling talent table:', talentTable);
-
             const headers: any = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('/api/foundry/roll-table', {
+            const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-talent`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    tableUuid: talentTable,
-                    actorId: actorId
+                    tableUuidOrName: talentTable,
+                    targetLevel
                 })
             });
 
@@ -325,90 +319,20 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
 
             const data = await res.json();
-            const resolved = data.items || [];
+            const { item, needsChoice, choiceOptions } = data;
 
-            logger.info("[LevelUp] Raw resolved items:", resolved);
-
-            if (resolved.length > 0) {
-                if (resolved.length > 1) {
-                    // If we have an instruction, use it. If not, default to "Choose One"
-                    const instructionItem = resolved.find((r: any) => {
-                        const name = r.name || "";
-                        const text = r.text || "";
-                        const desc = r.description || "";
-                        return (r.type === 0 || r.type === 'text') && (
-                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(name) ||
-                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(text) ||
-                            ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(desc) ||
-                            name.toUpperCase().includes("CHOOSE")
-                        );
-                    });
-
-                    logger.info("[LevelUp] Multiple results detected. Forcing Choice Selection.");
-                    const options = resolved.filter((r: any) => r !== instructionItem).map((r: any) => ({
-                        ...r,
-                        img: r.img || "icons/svg/d20.svg"
-                    }));
-
-                    let header = "Select an Option";
-                    if (instructionItem) {
-                        header = instructionItem.text || instructionItem.name || "Select an Option";
-                    }
-
-                    setPendingChoices({
-                        header,
-                        options,
-                        context: 'talent'
-                    });
-
-                    setStatuses(prev => ({ ...prev, talents: 'READY' }));
-                    return;
-                }
-
-                // Deduplicate
-                const newItems = resolved.filter((r: any) => {
-                    const name = r.name || r.text || r.description;
-                    const exists = existingItems.some((i: any) => i.name === name);
-                    if (exists) logger.debug(`[LevelUp] Duplicate Talent rolled: ${name}, strictly disallowed.`);
-                    return !exists;
+            if (needsChoice) {
+                setPendingChoices({
+                    header: item?.name || "Select an Option",
+                    options: choiceOptions,
+                    context: 'talent'
                 });
-
-                if (newItems.length === 0 && resolved.length > 0) {
-                    logger.warn("Rolled duplicate talent.");
-                }
-
-                const itemsToAdd: any[] = [];
-
-                // Check for Special Handlers
-                for (const item of newItems) {
-                    let suppressed = false;
-                    for (const handler of TALENT_HANDLERS) {
-                        if (handler.matches(item) && handler.onRoll) {
-                            logger.debug(`[LevelUp] Triggering handler: ${handler.id}`);
-                            const result = handler.onRoll({
-                                setStatSelection,
-                                setStatPool,
-                                setArmorMasterySelection,
-                                setWeaponMasterySelection,
-                                setExtraSpellSelection,
-                                setPendingChoices,
-                                targetLevel,
-                                rolledItem: item,
-                                talentIndex: rolledTalents.length // Pass current index for linking
-                            });
-
-                            // If handler returns true, it consumed the item (don't add to list)
-                            if (result === true) {
-                                suppressed = true;
-                            }
-                        }
-                    }
-                    if (!suppressed) {
-                        itemsToAdd.push(item);
-                    }
-                }
-
-                setRolledTalents(prev => [...prev, ...itemsToAdd]);
+            } else if (item) {
+                setRolledTalents(prev => [...prev, item]);
+            } else {
+                // Item was filtered out or invalid
+                setError("Rolled an invalid result (likely 'OR' or empty). Please roll again.");
+                setStatuses(prev => ({ ...prev, talents: 'READY' }));
             }
         } catch (e: any) {
             setError(e.message);
@@ -427,12 +351,12 @@ export const useLevelUp = (props: LevelUpProps) => {
             const headers: any = { 'Content-Type': 'application/json' };
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch('/api/foundry/roll-table', {
+            const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-boon`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    tableUuid: boonTable,
-                    actorId: actorId
+                    tableUuidOrName: boonTable,
+                    targetLevel
                 })
             });
 
@@ -442,188 +366,196 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
 
             const data = await res.json();
-            const resolved = data.items || [];
+            const { item, needsChoice, choiceOptions } = data;
 
-            if (resolved.length > 0) {
-
-                // Check for Choice Group (same logic as Talents)
-                const instructionItem = resolved.find((r: any) => {
-                    const name = r.name || "";
-                    const text = r.text || "";
-                    const desc = r.description || "";
-
-                    const matches = (r.type === 0 || r.type === 'text') && (
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(name) ||
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(text) ||
-                        ROLL_TABLE_PATTERNS.CHOICE_INSTRUCTIONS.includes(desc) ||
-                        name.toUpperCase().includes("CHOOSE") // Fallback for Boons which might just say "CHOOSE 1"
-                    );
-                    return matches;
+            if (needsChoice) {
+                setPendingChoices({
+                    header: item?.name || "Select an Option",
+                    options: choiceOptions,
+                    context: 'boon'
                 });
-
-                if (resolved.length > 1 && instructionItem) {
-                    logger.info("[LevelUp] Detected Choice Group in Boon roll.");
-
-                    const options = resolved.filter((r: any) => r !== instructionItem).map((r: any) => ({
-                        ...r,
-                        img: r.img || "icons/svg/d20.svg"
-                    }));
-
-                    setPendingChoices({
-                        header: instructionItem.text || instructionItem.name || "Choose One",
-                        options: options,
-                        context: 'boon'
-                    });
-
-                    setStatuses(prev => ({ ...prev, boons: 'READY' }));
-                    return;
-                }
-
-                // Check for Special Handlers
-                for (const item of resolved) {
-                    for (const handler of TALENT_HANDLERS) {
-                        if (handler.matches(item) && handler.onRoll) {
-                            logger.debug(`[LevelUp] Triggering Boon handler: ${handler.id}`);
-                            handler.onRoll({
-                                setStatSelection,
-                                setArmorMasterySelection,
-                                setExtraSpellSelection,
-                                targetLevel,
-                                rolledItem: item
-                            });
-                        }
-                    }
-                }
-
-                setRolledBoons(prev => [...prev, ...resolved]);
+            } else if (item) {
+                setRolledBoons(prev => [...prev, item]);
+            } else {
+                // Item was filtered out or invalid
+                setError("Rolled an invalid boon result. Please roll again.");
+                setStatuses(prev => ({ ...prev, boons: 'READY' }));
             }
         } catch (e: any) {
             setError(e.message);
             setStatuses(prev => ({ ...prev, boons: 'ERROR' }));
         }
     };
-
     const handleChoiceSelection = async (choiceOrResult: any) => {
+        // Handle closing/cancellation
+        if (!choiceOrResult) {
+            setPendingChoices(null);
+            setStatuses(prev => ({
+                ...prev,
+                talents: prev.talents === 'LOADING' ? 'READY' : prev.talents,
+                boons: prev.boons === 'LOADING' ? 'READY' : prev.boons
+            }));
+            return;
+        }
+
         const raw = choiceOrResult.original || choiceOrResult;
         const context = pendingChoices?.context || 'talent';
+        const replaceIndex = pendingChoices?.replaceIndex;
         setPendingChoices(null);
+
+        // Special handling for Distribute to Stats (Table Result)
+        // As per user feedback, we can trust the name "Distribute to Stats" to be the specific table.
+        const isDistribute = raw.name === "Distribute to Stats";
+
         setStatuses(prev => ({
             ...prev,
             [context === 'boon' ? 'boons' : 'talents']: 'LOADING'
         }));
+
         try {
-            const resolveDocs = async (r: any): Promise<any[]> => {
-                const resolvedDocs: any[] = [];
+            // If it's a RollTable AND NOT Distribute to Stats, roll on it
+            if (!isDistribute && (raw.type === 'RollTable' || raw.documentCollection === 'RollTable' || raw.documentType === 'RollTable')) {
+                const uuid = raw.documentUuid || raw.uuid || `Compendium.${raw.collection}.${raw.documentId}`;
+                const headers: any = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                // If it's a RollTable, we need to roll it to get the actual item
-                if (r.type === 'RollTable' || r.documentCollection === 'RollTable') {
-                    logger.info("[LevelUp] Selected a RollTable, rolling for result...");
-                    const rollTableHeaders: any = { 'Content-Type': 'application/json' };
-                    if (token) rollTableHeaders['Authorization'] = `Bearer ${token}`;
-                    const res = await fetch('/api/foundry/roll-table', {
-                        method: 'POST',
-                        headers: rollTableHeaders,
-                        body: JSON.stringify({
-                            tableUuid: r.documentUuid || r.uuid || `Compendium.${r.collection}.${r.documentId}`,
-                            actorId: actorId
-                        })
-                    });
+                const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-talent`, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                        tableUuidOrName: uuid,
+                        targetLevel
+                    })
+                });
 
-                    if (res.ok) {
-                        const data = await res.json();
-                        // Recursively resolve the result of the nested roll
-                        if (data.items && data.items.length > 0) {
-                            for (const child of data.items) {
-                                const childDocs = await resolveDocs(child);
-                                resolvedDocs.push(...childDocs);
+                if (res.ok) {
+                    const data = await res.json();
+                    const { item, needsChoice, choiceOptions } = data;
+
+                    if (needsChoice) {
+                        setPendingChoices({
+                            header: item?.name || "Select an Option",
+                            options: choiceOptions,
+                            context,
+                            replaceIndex
+                        });
+                    } else if (item) {
+                        if (replaceIndex !== undefined && replaceIndex !== null) {
+                            if (context === 'boon') {
+                                setRolledBoons(prev => {
+                                    const next = [...prev];
+                                    if (replaceIndex < next.length) next[replaceIndex] = item;
+                                    else return [...prev, item];
+                                    return next;
+                                });
+                            } else {
+                                setRolledTalents(prev => {
+                                    const next = [...prev];
+                                    if (replaceIndex < next.length) next[replaceIndex] = item;
+                                    else return [...prev, item];
+                                    return next;
+                                });
                             }
-                        }
-                    } else {
-                        logger.error("[LevelUp] Failed to roll nested table");
-                    }
-                    return resolvedDocs;
-                }
-
-                // If it's a "text" result (from a table), try to resolve it to a real item or valid fallback
-                if (r.type === 'text' || r.type == 0) {
-                    const text = r.text || r.name || r.description || "";
-                    const predefinedUuid = findEffectUuid(text);
-
-                    if (predefinedUuid) {
-                        const doc = await fetchByUuid(predefinedUuid);
-                        if (doc) {
-                            resolvedDocs.push(doc);
                         } else {
-                            resolvedDocs.push({
-                                type: context === 'boon' ? 'Boon' : 'Talent',
-                                name: text || "Unknown",
-                                description: r.description || text || "",
-                                isManual: true,
-                                img: r.img || "icons/svg/item-bag.svg",
-                                system: {}
-                            });
+                            if (context === 'boon') setRolledBoons(prev => [...prev, item]);
+                            else setRolledTalents(prev => [...prev, item]);
                         }
-                    } else {
-                        resolvedDocs.push({
-                            type: context === 'boon' ? 'Boon' : 'Talent',
-                            name: text || "Unknown",
-                            description: r.description || text || "",
-                            isManual: true,
-                            img: r.img || "icons/svg/item-bag.svg",
-                            system: {}
-                        });
                     }
                 }
-                // If it's already a resolved document from the server (has type and system)
-                else if (r.type && r.system && !r.isManual) {
-                    resolvedDocs.push(r);
-                } else if (r.documentUuid || r.documentId || r.uuid) {
-                    const uuid = r.documentUuid || r.uuid || `Compendium.${r.collection}.${r.documentId}`;
-                    logger.debug("Fetching document for choice:", uuid);
-                    const doc = await fetchByUuid(uuid);
-                    if (doc) {
-                        resolvedDocs.push(doc);
+            } else {
+                // Direct item selection (including Distribute to Stats)
+                if (replaceIndex !== undefined && replaceIndex !== null) {
+                    if (context === 'boon') {
+                        setRolledBoons(prev => {
+                            const next = [...prev];
+                            if (replaceIndex < next.length) next[replaceIndex] = raw;
+                            else return [...prev, raw];
+                            return next;
+                        });
                     } else {
-                        // Fallback
-                        resolvedDocs.push({
-                            type: context === 'boon' ? 'Boon' : 'Talent',
-                            name: r.text || r.name || r.description || "Unknown",
-                            description: r.description || r.text || "",
-                            isManual: true,
-                            img: r.img
+                        setRolledTalents(prev => {
+                            const next = [...prev];
+                            if (replaceIndex < next.length) next[replaceIndex] = raw;
+                            else return [...prev, raw];
+                            return next;
                         });
                     }
+                } else {
+                    if (context === 'boon') setRolledBoons(prev => [...prev, raw]);
+                    else setRolledTalents(prev => [...prev, raw]);
                 }
-                return resolvedDocs;
-            };
-            const docs = await resolveDocs(raw);
+            }
+        } catch (e: any) {
+            setError(e.message || "Failed to resolve choice");
+        } finally {
+            setStatuses(prev => ({
+                ...prev,
+                [context === 'boon' ? 'boons' : 'talents']: 'READY'
+            }));
+        }
+    };
 
-            // Trigger Handlers
-            for (const item of docs) {
-                for (const handler of TALENT_HANDLERS) {
-                    if (handler.matches(item) && handler.onRoll) {
-                        logger.debug(`[LevelUp] Triggering Selection handler: ${handler.id}`);
-                        const result = handler.onRoll({
-                            setStatSelection,
-                            setStatPool,
-                            setArmorMasterySelection,
-                            setWeaponMasterySelection,
-                            setExtraSpellSelection,
-                            targetLevel,
-                            rolledItem: item,
-                            talentIndex: context === 'boon' ? rolledBoons.length : rolledTalents.length
+
+
+    const handleResetTalents = () => {
+        setRolledTalents([]);
+        setRolledBoons([]);
+        setError(null);
+    };
+
+    const handleResolveNested = async (index: number, item: any, context: 'talent' | 'boon') => {
+        setStatuses(prev => ({
+            ...prev,
+            [context === 'boon' ? 'boons' : 'talents']: 'LOADING'
+        }));
+
+        try {
+            const uuid = item.documentUuid || item.uuid || item._id;
+            const headers: any = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-talent`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    tableUuidOrName: uuid,
+                    targetLevel
+                })
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                const { item: resultItem, needsChoice, choiceOptions } = data;
+
+                if (needsChoice) {
+                    setPendingChoices({
+                        header: resultItem?.name || "Select an Option",
+                        options: choiceOptions,
+                        context,
+                        replaceIndex: index
+                    });
+                } else if (resultItem) {
+                    if (context === 'boon') {
+                        setRolledBoons(prev => {
+                            const next = [...prev];
+                            next[index] = resultItem;
+                            return next;
+                        });
+                    } else {
+                        setRolledTalents(prev => {
+                            const next = [...prev];
+                            next[index] = resultItem;
+                            return next;
                         });
                     }
                 }
             }
-
-            if (context === 'boon') setRolledBoons(prev => [...prev, ...docs]);
-            else setRolledTalents(prev => [...prev, ...docs]);
         } catch (e: any) {
-            setError(e.message);
+            setError(e.message || "Failed to resolve nested table");
+        } finally {
             setStatuses(prev => ({
                 ...prev,
-                [context === 'boon' ? 'boons' : 'talents']: 'ERROR'
+                [context === 'boon' ? 'boons' : 'talents']: 'READY'
             }));
         }
     };
@@ -679,202 +611,51 @@ export const useLevelUp = (props: LevelUpProps) => {
         setIsSubmitting(true);
         setStatuses(prev => ({ ...prev, class: 'LOADING' }));
         try {
-            const items: any[] = [];
+            const headers: any = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const resolveToDocs = async (list: any[]) => {
-                const results = [];
-                for (const item of list) {
-                    if (item.isManual) {
-                        const effectUuid = findEffectUuid(item.name || item.text || item.description || "");
-                        let resolved = false;
-                        if (effectUuid) {
-                            const doc = await fetchByUuid(effectUuid);
-                            if (doc) {
-                                const cleaned = (doc.toObject ? doc.toObject() : { ...doc });
-                                delete cleaned._id;
-                                if (!cleaned.system) cleaned.system = {};
-                                cleaned.system.level = targetLevel;
-                                results.push(cleaned);
-                                resolved = true;
-                            }
-                        }
-
-                        if (!resolved) {
-                            results.push({
-                                name: item.name,
-                                type: item.type || 'Talent',
-                                img: item.img || 'icons/svg/book.svg',
-                                system: {
-                                    description: item.description || item.text || "",
-                                    level: targetLevel
-                                }
-                            });
-                        }
-                    } else {
-                        const cleaned = { ...item };
-                        delete cleaned._id;
-                        delete cleaned._originTable;
-                        delete cleaned._rollTotal;
-
-                        if (!cleaned.system) cleaned.system = {};
-                        cleaned.system.level = targetLevel;
-
-                        results.push(cleaned);
-                    }
-                }
-                return results;
-            };
-
-            const resolvedTalents = await resolveToDocs(rolledTalents);
-            const resolvedBoons = await resolveToDocs(rolledBoons);
-            items.push(...resolvedTalents, ...resolvedBoons);
-
-            for (const spell of selectedSpells) {
-                const cleaned = { ...spell };
-                delete cleaned._id;
-                items.push(cleaned);
-            }
-
-            if (extraSpellSelection.active && extraSpellSelection.selected.length > 0) {
-                for (const spell of extraSpellSelection.selected) {
-                    const cleaned = { ...spell };
-                    delete cleaned._id;
-                    items.push(cleaned);
-                }
-            }
-
-            for (const handler of TALENT_HANDLERS) {
-                if (handler.resolveItems) {
-                    const extraItems = await handler.resolveItems(
-                        { statSelection, weaponMasterySelection, armorMasterySelection, extraSpellSelection },
-                        targetLevel,
-                        fetchByUuid
-                    );
-                    if (extraItems && extraItems.length > 0) {
-                        items.push(...extraItems.map(i => {
-                            const c = { ...i };
-                            delete c._id;
-                            if (!c.system) c.system = {};
-                            c.system.level = targetLevel;
-                            return c;
-                        }));
-                    }
-                }
-            }
-
-            if (activeClassObj && currentLevel === 0) {
-                const classBaggage = await resolveGear(activeClassObj, fetchByUuid);
-                items.push(...classBaggage);
-            }
-            if (ancestry && currentLevel === 0) {
-                const ancestryBaggage = await resolveGear(ancestry, fetchByUuid);
-                items.push(...ancestryBaggage);
-            }
-
-            if (activeClassObj && (activeClassObj.uuid !== classObj?.uuid || currentLevel === 0)) {
-                const classItem = { ...(activeClassObj.toObject ? activeClassObj.toObject() : activeClassObj), type: 'Class' };
-                delete classItem._id;
-
-                // Clean problematic system arrays that cause creation errors
-                if (classItem.system) {
-                    delete classItem.system.armor;
-                    delete classItem.system.weapons;
-                    delete classItem.system.talents;
-                    delete classItem.system.classAbilities;
-                    delete classItem.system.languages; // Helper data, not needed on actor
-                    delete classItem.system.titles; // Helper data
-                }
-
-                if (!classItem.flags) classItem.flags = {};
-                if (!classItem.flags.core) classItem.flags.core = {};
-                if (!classItem.flags.core.sourceId) classItem.flags.core.sourceId = activeClassObj.uuid;
-                items.push(classItem);
-            }
-
-            if (selectedPatronUuid && selectedPatronUuid !== (patron?.uuid || patron?._id)) {
-                const fullPatron = await fetchByUuid(selectedPatronUuid);
-                if (fullPatron) {
-                    const patronItem = { ...(fullPatron.toObject ? fullPatron.toObject() : fullPatron) };
-                    delete patronItem._id;
-                    if (!patronItem.flags) patronItem.flags = {};
-                    if (!patronItem.flags.core) patronItem.flags.core = {};
-                    if (!patronItem.flags.core.sourceId) patronItem.flags.core.sourceId = selectedPatronUuid;
-                    items.push(patronItem);
-                }
-            }
-
-            const finalLanguageUuids = Array.from(selectedLanguages);
-
-            // Apply Handlers (mutateItem) to ALL items (Class, Ancestry, Talents, etc)
-            // This ensures standard effects are polyfilled using the 'missing-effects' handler
-            // avoiding manual ad-hoc fixes and keeping logic centralized in talent-handlers.ts
-            for (const item of items) {
-                for (const handler of TALENT_HANDLERS) {
-                    if (handler.matches(item) && handler.mutateItem) {
-                        try {
-                            handler.mutateItem(item, {
-                                statPool,
-                                statSelection,
-                                weaponMasterySelection,
-                                armorMasterySelection,
-                                extraSpellSelection,
-                                targetLevel
-                            });
-                        } catch (e) {
-                            logger.error(`[LevelUp] Error applying handler ${handler.id} to ${item.name}`, e);
-                        }
-                    }
-                }
-            }
-
-            // Final Sanitization of ALL items
-            // This catches Ancestry, Background, and any other items that might have helper arrays
-            // which Foundry tries to validate as Embedded Collections (causing _id errors)
-            // AND catches any remaining "text" items
-            const sanitizedItems = items.map((item: any) => {
-                const clean = { ...item };
-
-                // 1. Fix "text" types that slipped through
-                if (clean.type === 'text' || clean.type == 0) {
-                    clean.type = 'Talent';
-                    clean.img = clean.img || "icons/svg/item-bag.svg";
-                    clean.system = {};
-                }
-
-                // 2. Remove problematic system arrays that are just strings (Generic Approach)
-                if (clean.system) {
-                    Object.keys(clean.system).forEach(key => {
-                        const val = clean.system[key];
-                        if (Array.isArray(val)) {
-                            // Check if it contains strings (or is empty, which implies we don't need it if it was a collection)
-                            // Note: Empty arrays might be fine, but if it was meant to be a collection of Embedded Options, 
-                            // removing it is generally safe for creation as we are resolved.
-                            if (val.length === 0 || typeof val[0] === 'string') {
-                                delete clean.system[key];
-                            }
-                        }
-                    });
-                }
-
-                return clean;
+            const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/finalize`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                    targetLevel,
+                    classUuid: targetClassUuid,
+                    ancestryUuid: ancestry?.uuid,
+                    patronUuid: selectedPatronUuid,
+                    rolledTalents,
+                    rolledBoons,
+                    selectedSpells,
+                    hpRoll,
+                    gold: goldRoll,
+                    languages: selectedLanguages,
+                    statSelection,
+                    statPool,
+                    weaponMasterySelection,
+                    armorMasterySelection,
+                    extraSpellSelection
+                })
             });
 
-            const data = {
-                hpRoll: (hpRoll as any)?.total ?? hpRoll,
-                gold: (goldRoll as any)?.total ?? goldRoll,
-                items: sanitizedItems,
-                languages: finalLanguageUuids,
-                targetLevel
-            };
+            const json = await res.json();
+            if (!res.ok) {
+                throw new Error(json.error || 'Failed to finalize level-up');
+            }
 
-            logger.info('[useLevelUp] Completing Level Up with Sanitized Data:', data);
-            onComplete(data);
+            onComplete({
+                items: json.items || [],
+                hpRoll: json.hpRoll || hpRoll || 0,
+                gold: json.goldRoll || goldRoll || 0,
+                languages: selectedLanguages
+            });
+
         } catch (e: any) {
             setError(e.message);
-            setIsSubmitting(false);
             setStatuses(prev => ({ ...prev, class: 'ERROR' }));
+        } finally {
+            setIsSubmitting(false);
         }
     };
+
 
     // Initialization and Sync logic
     useEffect(() => {
@@ -1071,7 +852,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 }
 
             } catch (error: any) {
-                console.error("Error in LevelUpModal init:", error);
+                logger.error("Error in LevelUpModal init:", error);
                 setError(error.message || "An unexpected error occurred during initialization.");
                 setStatuses(prev => ({ ...prev, class: 'ERROR' }));
             } finally {
@@ -1111,7 +892,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                         setExtraSpellsList(json.spells);
                     }
                 } catch (e) {
-                    console.error("Failed to fetch extra spells", e);
+                    logger.error("Failed to fetch extra spells", e);
                 }
             };
             fetchSpells();
@@ -1165,6 +946,113 @@ export const useLevelUp = (props: LevelUpProps) => {
 
             return changed ? next : prev;
         });
+    }, [rolledTalents, rolledBoons]);
+
+    // Sync Stat Pool and Selection based on rolled talents
+    // Sync UI state based on rolled talents/boons
+    useEffect(() => {
+        let poolTotal = 0;
+        let selectionReq = 0;
+        let talentIndex: number | null = null;
+        let hasDist = false;
+
+        let wmReq = 0;
+        let amReq = 0;
+
+        let esActive = false;
+        let esSource = 'Wizard';
+
+        const processItem = (item: any, index: number | null) => {
+            const handler = TALENT_HANDLERS.find(h => h.matches(item));
+            if (handler?.action) {
+                switch (handler.action) {
+                    case 'stat-pool':
+                        poolTotal += handler.config?.total || 0;
+                        if (index !== null) {
+                            talentIndex = index;
+                            hasDist = true;
+                        }
+                        break;
+                    case 'stat-selection':
+                        selectionReq += handler.config?.required || 0;
+                        break;
+                    case 'weapon-mastery':
+                        wmReq += handler.config?.required || 0;
+                        break;
+                    case 'armor-mastery':
+                        amReq += handler.config?.required || 0;
+                        break;
+                    case 'extra-spell':
+                        esActive = true;
+
+                        // Attempt to infer source class from item name
+                        const name = (item.name || "").toLowerCase();
+                        const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+                        for (const cls of classes) {
+                            if (name.includes(cls)) {
+                                esSource = cls.charAt(0).toUpperCase() + cls.slice(1);
+                                break;
+                            }
+                        }
+                        break;
+                }
+            }
+        };
+
+        rolledTalents.forEach((item, index) => processItem(item, index));
+        rolledBoons.forEach((item) => processItem(item, null));
+
+        setStatPool(prev => {
+            if (prev.total !== poolTotal) {
+                return {
+                    total: poolTotal,
+                    allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
+                    talentIndex
+                };
+            }
+            if (prev.talentIndex !== talentIndex && hasDist) {
+                return { ...prev, talentIndex };
+            }
+            return prev;
+        });
+
+        setStatSelection(prev => {
+            if (prev.required !== selectionReq) {
+                return { required: selectionReq, selected: [] };
+            }
+            return prev;
+        });
+
+        setWeaponMasterySelection(prev => {
+            if (prev.required !== wmReq) {
+                return { required: wmReq, selected: [] };
+            }
+            return prev;
+        });
+
+        setArmorMasterySelection(prev => {
+            if (prev.required !== amReq) {
+                return { required: amReq, selected: [] };
+            }
+            return prev;
+        });
+
+        setExtraSpellSelection(prev => {
+            if (prev.active !== esActive || (esActive && prev.source !== esSource)) {
+                if (!esActive) return { active: false, maxTier: 0, source: 'Wizard', selected: [] };
+
+                const level = targetLevel || 1;
+                const maxTier = Math.min(5, Math.ceil(level / 2));
+                return {
+                    active: true,
+                    maxTier,
+                    source: esSource,
+                    selected: []
+                };
+            }
+            return prev;
+        });
+
     }, [rolledTalents, rolledBoons]);
 
     useEffect(() => {
@@ -1358,6 +1246,8 @@ export const useLevelUp = (props: LevelUpProps) => {
             handleRemoveBoon,
             setSelectedLanguages,
             handleStatPoolChange,
+            handleResetTalents,
+            handleResolveNested,
             isComplete // Expose isComplete in actions as well for signature match
         }
     };

@@ -147,15 +147,70 @@ Rolls HP for the current level.
 Rolls starting gold for a new character.
 **Response**: `{ "roll": { "total": 10, "result": "2d6 * 5" }, "success": true }`
 
-### `POST /actors/:id/level-up/finalize`
-Applied all pending level-up changes (HP, Talents, Stats) to the actor.
+### `POST /actors/:id/level-up/roll-talent`
+**Auth**: Protected
+Rolls on the class talent table.
 **Body**:
 ```json
 {
-  "hp": { "value": 4, "formula": "1d4" },
-  "talents": [ ... ],
-  "stats": { ... },
-  "gold": 10
+  "tableUuidOrName": "...",
+  "targetLevel": 1
+}
+```
+
+### `POST /actors/:id/level-up/roll-boon`
+**Auth**: Protected
+Rolls on the patron boon table.
+**Body**:
+```json
+{
+  "tableUuidOrName": "...",
+  "targetLevel": 1
+}
+```
+
+### `POST /actors/:id/level-up/resolve-choice`
+**Auth**: Protected
+Resolves a nested choice (e.g. Weapon Mastery selection).
+**Body**:
+```json
+{
+  "type": "weapon-mastery",
+  "selection": "..."
+}
+```
+
+### `POST /actors/:id/level-up/finalize`
+**Auth**: Protected
+Assembles and persistence level-up changes.
+**Body**:
+```json
+{
+  "targetLevel": 1,
+  "classUuid": "...",
+  "ancestryUuid": "...",
+  "patronUuid": "...",
+  "rolledTalents": [ ... ],
+  "rolledBoons": [ ... ],
+  "selectedSpells": [ ... ],
+  "hpRoll": 4,
+  "gold": 10,
+  "languages": [ "uuid1", "uuid2" ],
+  "statSelection": { "required": 0, "selected": [] },
+  "statPool": { "total": 0, "allocated": {}, "talentIndex": null },
+  "weaponMasterySelection": { "required": 0, "selected": [] },
+  "armorMasterySelection": { "required": 0, "selected": [] },
+  "extraSpellSelection": { "active": false, "maxTier": 0, "source": "", "selected": [] }
+}
+```
+**Response**:
+```json
+{
+  "success": true,
+  "items": [ ... ], // Assembled items
+  "updates": { ... }, // Actor updates applied
+  "hpRoll": 4,
+  "goldRoll": 10
 }
 ```
 

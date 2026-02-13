@@ -1,6 +1,6 @@
 
 import { handleImport } from './api/import';
-import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp } from "./api/level-up";
+import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp, handleRollTalent, handleRollBoon, handleResolveChoice } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } from './api/spells';
 import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
@@ -117,6 +117,30 @@ export const apiRoutes = {
         const { route } = await params;
         const actorId = route[1];
         return handleFinalizeLevelUp(actorId, request, (request as any).foundryClient);
+    },
+    'actors/level-up/roll-talent': async (request: Request) => {
+        return handleRollTalent(undefined, request, (request as any).foundryClient);
+    },
+    'actors/[id]/level-up/roll-talent': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        return handleRollTalent(actorId, request, (request as any).foundryClient);
+    },
+    'actors/level-up/roll-boon': async (request: Request) => {
+        return handleRollBoon(undefined, request, (request as any).foundryClient);
+    },
+    'actors/[id]/level-up/roll-boon': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        return handleRollBoon(actorId, request, (request as any).foundryClient);
+    },
+    'actors/level-up/resolve-choice': async (request: Request) => {
+        return handleResolveChoice(undefined, request, (request as any).foundryClient);
+    },
+    'actors/[id]/level-up/resolve-choice': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        return handleResolveChoice(actorId, request, (request as any).foundryClient);
     },
     'actors/[id]/spells/learn': async (request: Request, { params }: any) => {
         const { route } = await params;

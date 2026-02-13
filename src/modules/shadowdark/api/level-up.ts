@@ -4,6 +4,10 @@ import { logger } from '../../../app/ui/logger';
 import { getConfig } from '../../../core/config';
 import { ShadowdarkAdapter } from '../system';
 import { dataManager } from '../data/DataManager';
+import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
+import * as levelUpEngine from './level-up-engine';
+import { TALENT_HANDLERS } from './talent-handlers';
+import { resolveBaggage } from './gear-resolver';
 
 import { Roll } from '../../../core/foundry/classes/Roll';
 
@@ -50,8 +54,6 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        logger.info(`[API] Yes`);
-
         const body = await request.json();
         const { isReroll: _isReroll, classId } = body;
 
@@ -93,8 +95,6 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             // "d6" -> "1d6"
             hitDie = `1${str}`;
         }
-
-        logger.info(`[API] Rolling HP with formula: ${hitDie}`);
 
         logger.info(`[API] Rolling HP with formula: ${hitDie}`);
 
@@ -161,7 +161,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
         });
 
     } catch (error: any) {
-        console.error('[API] Roll HP Error:', error);
+        logger.error('[API] Roll HP Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to roll HP' }, { status: 500 });
     }
 }
@@ -233,6 +233,97 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
 }
 
 /**
+ * POST /api/shadowdark/actors/[id]/level-up/roll-talent
+ */
+export async function handleRollTalent(actorId: string | undefined, request: Request, client: any) {
+    try {
+        if (!client || !client.isConnected) {
+            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+        }
+
+        const body = await request.json();
+        const { tableUuidOrName, targetLevel } = body;
+
+        if (!tableUuidOrName) {
+            return NextResponse.json({ error: 'tableUuidOrName is required' }, { status: 400 });
+        }
+
+        const result = await dataManager.rollTable(tableUuidOrName);
+        if (!result) {
+            return NextResponse.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
+        }
+
+        // Process the result using the shared engine logic
+        let { item, needsChoice, choiceOptions } = await levelUpEngine.processRollResult({
+            result,
+            table: result.table
+        });
+
+        if (item) {
+            // Apply mutation handlers
+            for (const handler of TALENT_HANDLERS) {
+                if (handler.matches(item)) {
+                    // check for onRoll side effects that might force a choice
+                    if (handler.onRoll) {
+                        const block = handler.onRoll({ item, targetLevel });
+                        if (block === true) {
+                            needsChoice = true;
+                            // If handler forces choice but we don't have options yet, fetch them
+                            if (!choiceOptions || choiceOptions.length === 0) {
+                                choiceOptions = levelUpEngine.getChoices(result.table);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Normalize Name (Frontend expects .name)
+            if (!item.name && (item.text || item.description)) {
+                item.name = item.text || item.description;
+            }
+        }
+
+        return NextResponse.json({
+            success: true,
+            roll: result.total,
+            formula: result.formula,
+            item: item,
+            needsChoice,
+            choiceOptions
+        });
+
+    } catch (error: any) {
+        logger.error('[API] Roll Talent Error:', error);
+        return NextResponse.json({ error: error.message || 'Failed to roll talent' }, { status: 500 });
+    }
+}
+
+/**
+ * POST /api/shadowdark/actors/[id]/level-up/roll-boon
+ */
+export async function handleRollBoon(actorId: string | undefined, request: Request, client: any) {
+    // Similar to talent but for boons
+    return handleRollTalent(actorId, request, client);
+}
+
+/**
+ * POST /api/shadowdark/actors/[id]/level-up/resolve-choice
+ */
+export async function handleResolveChoice(actorId: string | undefined, request: Request, client: any) {
+    try {
+        const body = await request.json();
+        const { type, selection } = body;
+
+        // Implementation for resolving specific choices (Weapon Mastery, etc)
+        // This might just return structured data for the frontend to store until finalize
+        return NextResponse.json({ success: true, selection });
+
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+/**
  * POST /api/shadowdark/actors/[id]/level-up/finalize
  * Finalize level-up and apply changes
  */
@@ -247,58 +338,82 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
 
         logger.info(`[API] Finalizing Level Up for ${actorId} -> Level ${body.targetLevel || 'Unknown'}`);
 
-        const actor = await client.getActor(actorId);
-        if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+        let actor = null;
+        if (actorId && actorId !== 'new') {
+            actor = await client.getActor(actorId);
+            if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+        }
+
+        // Backend assembly and validation
+        const classObj = body.classObj || (body.classUuid ? (await dataManager.getDocument(body.classUuid) || await client.fetchByUuid(body.classUuid)) : null);
+        const ancestry = body.ancestryObj || (body.ancestryUuid ? (await dataManager.getDocument(body.ancestryUuid) || await client.fetchByUuid(body.ancestryUuid)) : null);
+
+        const state = {
+            rolledTalents: body.rolledTalents || [],
+            rolledBoons: body.rolledBoons || [],
+            selectedSpells: body.selectedSpells || [],
+            selectedLanguages: body.languages || [],
+            hpRoll: body.hpRoll,
+            goldRoll: gold,
+            statSelection: body.statSelection || { required: 0, selected: [] },
+            statPool: body.statPool || { total: 0, allocated: {}, talentIndex: null },
+            weaponMasterySelection: body.weaponMasterySelection || { required: 0, selected: [] },
+            armorMasterySelection: body.armorMasterySelection || { required: 0, selected: [] },
+            extraSpellSelection: body.extraSpellSelection || { active: false, maxTier: 0, source: '', selected: [] }
+        };
+
+        const targetLevel = body.targetLevel || (actor?.system?.level?.value || 0) + 1;
+
+        // Assembly
+        const finalItems = await assembleFinalItems(state, targetLevel, classObj, ancestry, client);
 
         const actorUpdates: any = {};
+        if (actor && actorId !== 'new') {
+            if (state.hpRoll !== undefined && state.hpRoll !== null) {
+                const currentMax = actor.system?.attributes?.hp?.max || 0;
+                const currentVal = actor.system?.attributes?.hp?.value || 0;
+                const newMax = currentMax + state.hpRoll;
+                const newVal = currentVal + state.hpRoll;
 
-        if (hpRoll !== undefined) {
-            const currentMax = actor.system?.attributes?.hp?.max || 0;
-            const currentVal = actor.system?.attributes?.hp?.value || 0;
-            const newMax = currentMax + hpRoll;
-            const newVal = currentVal + hpRoll;
+                actorUpdates['system.attributes.hp.max'] = newMax;
+                actorUpdates['system.attributes.hp.value'] = newVal;
+            }
 
-            actorUpdates['system.attributes.hp.max'] = newMax;
-            actorUpdates['system.attributes.hp.value'] = newVal;
-        }
+            actorUpdates['system.level.value'] = targetLevel;
 
-        const currentLevel = actor.system?.level?.value || 0;
-        actorUpdates['system.level.value'] = currentLevel + 1;
+            if (gold !== undefined && gold !== null) {
+                const currentCoins = actor.system?.coins?.gp || 0;
+                actorUpdates['system.coins.gp'] = currentCoins + gold;
+            }
 
-        if (gold !== undefined) {
-            const currentCoins = actor.system?.coins?.gp || 0;
-            actorUpdates['system.coins.gp'] = currentCoins + gold;
-        }
+            if (state.selectedLanguages && Array.isArray(state.selectedLanguages)) {
+                const currentLangs = actor.system?.languages || [];
+                const newLangs = Array.from(new Set([...currentLangs, ...state.selectedLanguages]));
+                actorUpdates['system.languages'] = newLangs;
+            }
 
-        if (languages && Array.isArray(languages)) {
-            const currentLangs = actor.system?.languages || [];
-            const newLangs = Array.from(new Set([...currentLangs, ...languages]));
-            actorUpdates['system.languages'] = newLangs;
-        }
+            if (Object.keys(actorUpdates).length > 0) {
+                logger.info(`[API] Updating actor ${actorId} with: ${JSON.stringify(actorUpdates)}`);
+                await client.updateActor(actorId, actorUpdates);
+            }
 
-        if (Object.keys(actorUpdates).length > 0) {
-            logger.info(`[API] Updating actor ${actorId} with: ${JSON.stringify(actorUpdates)}`);
-            await client.updateActor(actorId, actorUpdates);
-        }
-
-        if (items && Array.isArray(items) && items.length > 0) {
-            logger.info(`[API] Creating ${items.length} items for actor ${actorId}`);
-
-            try {
-                // Use Promise.all to ensure all items are created
-                // Foundry's createActorItem often takes an array, but let's be safe and map if needed
-                // Based on LegacySocketClient, it takes an array in the 'data' property
-                await client.createActorItem(actorId, items);
-            } catch (err: any) {
-                logger.error(`[API] Failed to create items: ${err.message}`, err);
-                // Don't throw, just log, so we return success for the level up even if items fail
+            if (finalItems.length > 0) {
+                logger.info(`[API] Creating ${finalItems.length} items for actor ${actorId}`);
+                await client.createActorItem(actorId, finalItems);
             }
         }
 
-        return NextResponse.json({ success: true, actorId });
+        return NextResponse.json({
+            success: true,
+            actorId,
+            items: finalItems,
+            updates: actorUpdates,
+            hpRoll: state.hpRoll,
+            goldRoll: gold
+        });
 
     } catch (error: any) {
-        console.error('[API] Finalize Level-Up Error:', error);
+        logger.error('[API] Finalize Level-Up Error:', error);
         return NextResponse.json({ error: error.message || 'Failed to finalize level-up' }, { status: 500 });
     }
 }

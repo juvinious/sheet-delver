@@ -686,44 +686,22 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         availableLanguages={systemData?.languages || []}
                         onComplete={async (data) => {
                             try {
-                                // Update Gold if rerolled (Level 0)
-                                if (typeof data.gold === 'number' && data.gold >= 0) {
-                                    await onUpdate('system.coins.gp', data.gold);
-                                }
+                                // If this was a level 1 reroll (currentLevel 0), we might need to sync gold
+                                // manually if it was rolled on the frontend, but the backend finalize
+                                // already handled it if actorId was provided.
 
-                                const id = actor._id || actor.id;
-                                const headers: any = { 'Content-Type': 'application/json' };
-                                if (token) headers['Authorization'] = `Bearer ${token}`;
+                                // Show success message and wait for data to stabilize
+                                addNotification('Level Up Successful! Updating sheet...', 'success');
 
-                                const res = await fetch(`/api/modules/shadowdark/actors/${id}/level-up/finalize`, {
-                                    method: 'POST',
-                                    headers,
-                                    body: JSON.stringify({
-                                        hpRoll: data.hpRoll,
-                                        items: data.items,
-                                        languages: data.languages,
-                                        gold: data.gold
-                                    })
-                                });
-                                const result = await res.json();
-                                if (result.success) {
-                                    // Show success message and wait for data to stabilize
-                                    addNotification('Level Up Successful! Updating sheet...', 'success');
+                                // Wait for a moment to let the backend process and the UI to acknowledge
+                                // (Polling/Socket usually handles the actual data refresh)
+                                await new Promise(resolve => setTimeout(resolve, 1000));
 
-                                    // Wait for a moment to let the backend process and the UI to acknowledge
-                                    await new Promise(resolve => setTimeout(resolve, 1500));
-
-                                    // Close modal manually after delay, assuming parent will update via polling/socket
-                                    setShowLevelUpModal(false);
-                                    setLevelUpData(null);
-
-                                    // Trigger a soft data refresh if possible (parent handles polling)
-                                } else {
-                                    addNotification('Level-up failed: ' + (result.error || 'Unknown error'), 'error');
-                                }
+                                setShowLevelUpModal(false);
+                                setLevelUpData(null);
                             } catch (e: any) {
-                                console.error('Level-up error:', e);
-                                addNotification('Level-up failed: ' + e.message, 'error');
+                                console.error('Level-up completion error:', e);
+                                addNotification('Level-up failed to complete correctly', 'error');
                             }
                         }}
                         onCancel={() => {

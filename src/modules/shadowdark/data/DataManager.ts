@@ -140,6 +140,7 @@ export class DataManager {
             if (doc.documentType === 'RollTable' && doc._id) {
                 const hydratedResults = resultsMap.get(doc._id);
                 if (hydratedResults && hydratedResults.length > 0) {
+                    logger.debug(`[DataManager] Table ${doc.name} hydrated via resultsMap with ${hydratedResults.length} items`);
                     // Sort by range start to be safe
                     doc.results = hydratedResults.sort((a, b) => (a.range?.[0] || 0) - (b.range?.[0] || 0));
                     hydratedCount++;
@@ -147,8 +148,15 @@ export class DataManager {
                     // FALLBACK: Synthetic Hydration for tables with string IDs but no external result docs found
                     // Search for those IDs in the index
                     const syntheticResults: any[] = [];
+                    logger.debug(`[DataManager] Attempting synthetic hydration for table ${doc.name} (${doc.results.length} IDs)`);
                     doc.results.forEach((id: string, index: number) => {
-                        const resultDoc = this.index.get(id);
+                        let resultDoc = this.index.get(id);
+
+                        // Try resolving as UUID if simple ID lookup fails
+                        if (!resultDoc && doc.pack) {
+                            resultDoc = this.index.get(`Compendium.shadowdark.${doc.pack}.${id}`);
+                        }
+
                         if (resultDoc) {
                             // If it's already a TableResult (has range), use it
                             if (resultDoc.range) {
@@ -164,6 +172,8 @@ export class DataManager {
                                     weight: 1
                                 });
                             }
+                        } else {
+                            logger.warn(`[DataManager] Failed to resolve result ID ${id} for table ${doc.name}`);
                         }
                     });
 
@@ -190,11 +200,36 @@ export class DataManager {
     }
 
     /**
-     * Roll on a table using the hydrated index.
-     * This conforms to the "new methods" by using the range property on result objects.
+     * Look up a document by its name and optionally its type.
+     * This is useful when a UUID is not available.
+     * 
+     * @param name - The name of the document to find
+     * @param type - The document type (e.g. 'RollTable', 'Item')
+     * @returns The document object or null if not found
      */
-    async rollTable(uuid: string): Promise<{ total: number, results: any[] } | null> {
-        const table = await this.getDocument(uuid);
+    public findDocumentByName(name: string, type?: string): any | null {
+        const normalized = name.toLowerCase();
+        for (const doc of this.index.values()) {
+            if (doc.name?.toLowerCase() === normalized) {
+                if (!type || doc.type === type || doc.documentCollection === type || doc.documentType === type) {
+                    return doc;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Roll on a table using the hydrated index.
+     * Supports lookup by UUID or Name.
+     */
+    async rollTable(uuidOrName: string): Promise<{ total: number, results: any[], items?: any[], table: any, formula: string } | null> {
+        let table = await this.getDocument(uuidOrName);
+
+        if (!table) {
+            table = this.findDocumentByName(uuidOrName, 'RollTable');
+        }
+
         if (!table || !table.results || !Array.isArray(table.results)) {
             return null;
         }
@@ -209,15 +244,37 @@ export class DataManager {
 
         if (maxRange === 0) return null;
 
+        const formula = table.formula || `1d${maxRange}`;
         const roll = Math.floor(Math.random() * maxRange) + 1;
         const matched = table.results.filter((r: any) => {
             const range = r.range || [1, 1];
             return roll >= range[0] && roll <= range[1];
         });
 
+        // Resolve results to items if they are document links
+        const items = [];
+        for (const res of matched) {
+            if (res.documentCollection && res.documentId) {
+                const uuid = `Compendium.shadowdark.${res.documentCollection}.${res.documentId}`;
+                const itemDoc = await this.getDocument(uuid);
+                if (itemDoc) items.push(itemDoc);
+                else items.push(res);
+            } else if (res.documentUuid || res.uuid) {
+                const uuid = res.documentUuid || res.uuid;
+                const itemDoc = await this.getDocument(uuid);
+                if (itemDoc) items.push(itemDoc);
+                else items.push(res);
+            } else {
+                items.push(res);
+            }
+        }
+
         return {
             total: roll,
-            results: matched
+            results: matched,
+            items: items,
+            table: table,
+            formula: formula
         };
     }
 

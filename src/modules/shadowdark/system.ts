@@ -1,5 +1,5 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
-import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots, isSpellcaster, shouldShowSpellsTab, canUseMagicItems } from './rules';
+import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots, isSpellcaster, isClassSpellcaster, shouldShowSpellsTab, canUseMagicItems } from './rules';
 import { logger } from '../../core/logger';
 import { dataManager } from './data/DataManager';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
@@ -1785,7 +1785,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const talentGained = targetLevel % 2 !== 0;
 
         // Centralized Spellcaster Check
-        const isSpellcasterChar = isSpellcaster(classDoc || { items: [] });
+        const isSpellcasterChar = classDoc ? isClassSpellcaster(classDoc) : false;
 
         const spellsToChoose: Record<number, number> = {};
         let availableSpells: any[] = [];
@@ -1828,7 +1828,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             patronBoonTable: patronDoc?.system?.boonTable,
             canRollBoons: classDoc?.system?.patron?.required || false,
             startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
-            isSpellcaster,
+            isSpellcaster: isSpellcasterChar,
             spellsToChoose,
             availableSpells,
             conMod,

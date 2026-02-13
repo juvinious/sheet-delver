@@ -63,6 +63,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                     <SelectionOverlay
                         pendingChoices={state.pendingChoices}
                         onSelect={actions.handleChoiceSelection}
+                        onClose={() => actions.handleChoiceSelection(null)}
                     />
                 )}
 
@@ -127,9 +128,11 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         boonStatus={state.statuses.boons}
                                         onRollTalent={actions.handleRollTalent}
                                         onRollBoon={actions.handleRollBoon}
-                                         onRemoveTalent={actions.handleRemoveTalent}
-                                         onRemoveBoon={actions.handleRemoveBoon}
-                                        patronName={state.fetchedPatron?.name || state.availablePatrons.find(p => (p.uuid || p._id) === state.selectedPatronUuid)?.name}
+                                        onRemoveTalent={actions.handleRemoveTalent}
+                                        onRemoveBoon={actions.handleRemoveBoon}
+                                        onResetTalents={actions.handleResetTalents}
+                                        onResolveNested={actions.handleResolveNested}
+                                        patronName={state.fetchedPatron?.name || state.availablePatrons.find((p: any) => (p.uuid || p._id) === state.selectedPatronUuid)?.name}
                                     />
 
                                     <SpellSelectionSection

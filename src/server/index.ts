@@ -421,6 +421,29 @@ async function startServer() {
         try {
             const client = (req as any).foundryClient;
             const actorData = req.body;
+
+            // Global Sanitization for items
+            if (actorData.items && Array.isArray(actorData.items)) {
+                actorData.items.forEach((item: any) => {
+                    // 1. Top-level effects sanitization
+                    if (item.effects && Array.isArray(item.effects)) {
+                        if (item.effects.length > 0 && typeof item.effects[0] === 'string') {
+                            logger.warn(`Core Service | Clearing invalid string effects for ${item.name} during creation`);
+                            item.effects = [];
+                        }
+                    }
+
+                    // 2. Remove problematic arrays in system
+                    if (item.system) {
+                        for (const key of Object.keys(item.system)) {
+                            if (Array.isArray(item.system[key]) && (item.system[key].length === 0 || typeof item.system[key][0] === 'string')) {
+                                delete item.system[key];
+                            }
+                        }
+                    }
+                });
+            }
+
             logger.debug('Core Service | Create Actor:', actorData);
             const newActor = await client.createActor(actorData);
 

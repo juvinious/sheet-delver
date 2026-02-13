@@ -9,23 +9,19 @@ interface Props {
         context: 'talent' | 'boon';
     };
     onSelect: (choice: any) => void;
+    onClose: () => void;
 }
 
-export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
+export const SelectionOverlay = ({ pendingChoices, onSelect, onClose }: Props) => {
     const { resolveImageUrl } = useConfig();
     return (
         <div className="absolute inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-300">
-            <div className="absolute inset-0 bg-neutral-900/90 backdrop-blur-sm"></div>
+            <div className="absolute inset-0 bg-neutral-900/90 backdrop-blur-sm" onClick={onClose}></div>
             <div className="relative w-full max-w-lg bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden animate-in zoom-in-95 duration-300">
                 <div className="bg-black px-6 py-4 flex items-center justify-between border-b-2 border-white">
                     <h2 className="text-xl font-black text-white uppercase tracking-widest font-serif">
                         {pendingChoices.header}
                     </h2>
-                    <div className="text-white/20">
-                        <svg className="w-6 h-6 rotate-45" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                    </div>
                 </div>
 
                 <div className="p-6">
@@ -86,6 +82,15 @@ export const SelectionOverlay = ({ pendingChoices, onSelect }: Props) => {
                             );
                         })}
                     </div>
+                </div>
+
+                <div className="bg-neutral-100 p-4 border-t-2 border-black">
+                    <button
+                        onClick={onClose}
+                        className="w-full bg-white hover:bg-neutral-50 font-serif font-black uppercase tracking-widest text-sm px-6 py-3 border-2 border-black transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-1px]"
+                    >
+                        Cancel
+                    </button>
                 </div>
             </div>
         </div>

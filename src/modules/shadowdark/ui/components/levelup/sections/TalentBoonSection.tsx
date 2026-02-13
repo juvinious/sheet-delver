@@ -13,6 +13,8 @@ interface Props {
     onRollBoon: () => void;
     onRemoveTalent: (index: number) => void;
     onRemoveBoon: (index: number) => void;
+    onResetTalents?: () => void;
+    onResolveNested?: (index: number, item: any, context: 'talent' | 'boon') => void;
     patronName?: string;
 }
 
@@ -29,6 +31,8 @@ export const TalentBoonSection = ({
     onRollBoon,
     onRemoveTalent,
     onRemoveBoon,
+    onResetTalents,
+    onResolveNested,
     patronName
 }: Props) => {
 
@@ -49,7 +53,16 @@ export const TalentBoonSection = ({
                             <span className="w-2 h-2 bg-white rotate-45"></span>
                             <span>Class Talents</span>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
+                            {onResetTalents && (
+                                <button
+                                    onClick={onResetTalents}
+                                    className="text-[10px] font-bold bg-neutral-700 hover:bg-red-600 text-white px-2 py-0.5 rounded-sm transition-colors uppercase tracking-wider"
+                                    title="Reset all talents"
+                                >
+                                    Reset
+                                </button>
+                            )}
                             {requiredTalents > 0 && (
                                 <div className="text-xs font-black bg-white text-black px-2 py-0.5 rounded-sm">
                                     Req: {Math.min(rolledTalents.length, requiredTalents)} / {requiredTalents}
@@ -64,25 +77,43 @@ export const TalentBoonSection = ({
                     </div>
 
                     <div className="grid grid-cols-1 gap-2 mb-4">
-                        {rolledTalents.map((t, i) => (
-                            <div key={i} className="bg-neutral-50 border-2 border-black p-3 flex items-center gap-3 animate-in slide-in-from-left-2 duration-200 group">
-                                <div className="bg-black text-white w-6 h-6 flex items-center justify-center font-bold text-xs ring-2 ring-black flex-shrink-0">
-                                    {i + 1}
+                        {rolledTalents.map((t, i) => {
+                            const isNestedTable = t.type === 'RollTable' || t.documentCollection === 'RollTable' || t.name === "Distribute to Stats" || (t.text || "").toLowerCase().includes("distribute +2");
+
+                            return (
+                                <div key={i} className="bg-neutral-50 border-2 border-black p-3 animate-in slide-in-from-left-2 duration-200 group flex flex-col gap-2">
+                                    <div className="flex items-center gap-3 w-full">
+                                        <div className="bg-black text-white w-6 h-6 flex items-center justify-center font-bold text-xs ring-2 ring-black flex-shrink-0">
+                                            {i + 1}
+                                        </div>
+                                        <span className="font-serif font-black uppercase text-sm tracking-wide flex-1">{t.name}</span>
+                                        <div className="flex items-center gap-1">
+                                            <button
+                                                onClick={() => onRemoveTalent(i)}
+                                                className="text-neutral-400 hover:text-red-600 transition-colors p-1"
+                                                title="Remove Talent"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {isNestedTable && onResolveNested && (
+                                        <button
+                                            onClick={() => onResolveNested(i, t, 'talent')}
+                                            className="ml-9 text-xs font-bold bg-black text-white py-1 px-3 hover:bg-neutral-800 transition-colors self-start uppercase tracking-wider flex items-center gap-2"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                            </svg>
+                                            {t.name === "Distribute to Stats" ? "Select Stats" : `Select from ${t.name}`}
+                                        </button>
+                                    )}
                                 </div>
-                                <span className="font-serif font-black uppercase text-sm tracking-wide flex-1">{t.name}</span>
-                                <div className="flex items-center gap-1">
-                                    <button
-                                        onClick={() => onRemoveTalent(i)}
-                                        className="text-neutral-400 hover:text-red-600 transition-colors p-1"
-                                        title="Remove Talent"
-                                    >
-                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {rolledTalents.length === 0 && (
                             <div className="text-neutral-400 font-bold uppercase tracking-widest text-[10px] py-4 text-center border-2 border-dashed border-neutral-200">
                                 No talents rolled yet

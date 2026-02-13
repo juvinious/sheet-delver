@@ -197,7 +197,25 @@ export const calculateAbilities = (systemData: any) => {
  */
 
 export const getSpellcastingClass = (item: any): string => {
-    return (item?.system?.spellcasting?.class || '').toLowerCase().trim();
+    if (!item || item.type !== 'Class') return '';
+
+    const system = item.system || {};
+    const spellcasting = system.spellcasting || {};
+    const explicitClass = (spellcasting.class || '').toLowerCase().trim();
+
+    if (explicitClass && explicitClass !== 'none' && explicitClass !== '__not_spellcaster__') {
+        return explicitClass;
+    }
+
+    // Heuristic: If they have spellcasting ability AND spellsknown table, they are a caster
+    const hasTable = spellcasting.spellsknown && Object.keys(spellcasting.spellsknown).length > 0;
+    const hasAbility = !!spellcasting.ability;
+
+    if (hasTable || hasAbility) {
+        return (item.name || '').toLowerCase().trim();
+    }
+
+    return '';
 };
 
 export const isClassSpellcaster = (classItem: any): boolean => {

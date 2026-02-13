@@ -233,6 +233,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                         <span className="font-bold">{item.derived?.toHit}</span> to hit, <span className="font-bold">{item.derived?.damage}</span> dmg
                                     </div>
                                 </div>
+                                {/*
                                 <button
                                     className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:scale-110 transition-all"
                                 >
@@ -240,6 +241,14 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                         <path d="M12 2L2 22h20L12 2zm0 3.5 6 12H6l6-12z" />
                                         <text x="12" y="19" fontSize="8" fontWeight="bold" textAnchor="middle" fill="black">20</text>
                                     </svg>
+                                </button>
+                                */}
+                                <button
+                                    className={`flex flex-col items-center group -mb-1 transition-colors bg-black rounded-full transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer`}
+                                >
+                                    <div className={`w-10 h-10 flex items-center justify-center transition-all duration-300`}>
+                                        <img src="/icons/dice-d20.svg" alt="Roll" className="w-full h-full brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(245,158,11,0.8)] drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+                                    </div>
                                 </button>
                             </div>
                         ))}
