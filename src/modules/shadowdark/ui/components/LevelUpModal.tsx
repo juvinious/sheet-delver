@@ -142,6 +142,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         spellsToChoose={state.spellsToChoose}
                                         availableSpells={state.availableSpells}
                                         selectedSpells={state.selectedSpells}
+                                        blockedSpells={state.extraSpellSelection?.selected || []}
                                         status={state.statuses.spells}
                                         onSelectedSpellsChange={actions.setSelectedSpells}
                                     />
@@ -153,6 +154,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                             source={state.extraSpellSelection.source}
                                             availableSpells={state.extraSpellsList}
                                             selectedSpells={state.extraSpellSelection.selected}
+                                            blockedSpells={state.selectedSpells}
                                             status={state.statuses.extraSpells}
                                             onSelectionChange={(selected) => {
                                                 actions.setExtraSpellSelection({ ...state.extraSpellSelection, selected });

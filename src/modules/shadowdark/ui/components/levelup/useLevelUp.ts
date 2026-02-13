@@ -19,7 +19,7 @@ export interface LevelUpProps {
     availableLanguages?: any[];
     knownLanguages?: any[]; // Passed for new characters (pre-gen selections)
     skipLanguageSelection?: boolean; // For when languages are handled externally (Generator)
-    onComplete: (data: { items: any[], hpRoll: number, gold?: number, languages?: string[] }) => void;
+    onComplete: (data: { items: any[], hpRoll: number, gold?: number, languages?: string[], patronUuid?: string }) => void;
     onCancel: () => void;
     foundryUrl?: string;
     actorName?: string;
@@ -231,7 +231,14 @@ export const useLevelUp = (props: LevelUpProps) => {
             logger.error("Failed to fetch level up data", e);
             setStatuses(prev => ({ ...prev, class: 'ERROR' }));
         }
-    }, [actorId, token]);
+    }, [actorId, token, selectedPatronUuid]);
+
+    const handlePatronChange = useCallback((uuid: string) => {
+        setSelectedPatronUuid(uuid);
+        setRolledBoons([]);
+        setBoonTable(null);
+        setFetchedPatron(null);
+    }, []);
 
     const handleRollHP = async (isReroll = false) => {
         setStatuses(prev => ({ ...prev, hp: 'LOADING' }));
@@ -319,13 +326,14 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
 
             const data = await res.json();
-            const { item, needsChoice, choiceOptions } = data;
+            const { item, needsChoice, choiceOptions, choiceCount } = data;
 
             if (needsChoice) {
                 setPendingChoices({
                     header: item?.name || "Select an Option",
                     options: choiceOptions,
-                    context: 'talent'
+                    context: 'talent',
+                    maxSelections: choiceCount || 1
                 });
             } else if (item) {
                 setRolledTalents(prev => [...prev, item]);
@@ -366,13 +374,14 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
 
             const data = await res.json();
-            const { item, needsChoice, choiceOptions } = data;
+            const { item, needsChoice, choiceOptions, choiceCount } = data;
 
             if (needsChoice) {
                 setPendingChoices({
                     header: item?.name || "Select an Option",
                     options: choiceOptions,
-                    context: 'boon'
+                    context: 'boon',
+                    maxSelections: choiceCount || 1
                 });
             } else if (item) {
                 setRolledBoons(prev => [...prev, item]);
@@ -386,7 +395,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             setStatuses(prev => ({ ...prev, boons: 'ERROR' }));
         }
     };
-    const handleChoiceSelection = async (choiceOrResult: any) => {
+    const handleChoiceSelection = async (choiceOrResult: any | any[]) => {
         // Handle closing/cancellation
         if (!choiceOrResult) {
             setPendingChoices(null);
@@ -398,14 +407,12 @@ export const useLevelUp = (props: LevelUpProps) => {
             return;
         }
 
-        const raw = choiceOrResult.original || choiceOrResult;
         const context = pendingChoices?.context || 'talent';
         const replaceIndex = pendingChoices?.replaceIndex;
         setPendingChoices(null);
 
-        // Special handling for Distribute to Stats (Table Result)
-        // As per user feedback, we can trust the name "Distribute to Stats" to be the specific table.
-        const isDistribute = raw.name === "Distribute to Stats";
+        // Normalize to array
+        const selections = Array.isArray(choiceOrResult) ? choiceOrResult : [choiceOrResult];
 
         setStatuses(prev => ({
             ...prev,
@@ -413,78 +420,179 @@ export const useLevelUp = (props: LevelUpProps) => {
         }));
 
         try {
-            // If it's a RollTable AND NOT Distribute to Stats, roll on it
-            if (!isDistribute && (raw.type === 'RollTable' || raw.documentCollection === 'RollTable' || raw.documentType === 'RollTable')) {
-                const uuid = raw.documentUuid || raw.uuid || `Compendium.${raw.collection}.${raw.documentId}`;
-                const headers: any = { 'Content-Type': 'application/json' };
-                if (token) headers['Authorization'] = `Bearer ${token}`;
+            for (const selection of selections) {
+                const raw = selection.original || selection;
 
-                const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-talent`, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                        tableUuidOrName: uuid,
-                        targetLevel
-                    })
-                });
+                // Special handling for Distribute to Stats (Table Result)
+                const isDistribute = raw.name === "Distribute to Stats";
+                const isPatronBoon = raw.type === 'PatronBoon' || raw.type === 'PatronBoonTwice';
 
-                if (res.ok) {
-                    const data = await res.json();
-                    const { item, needsChoice, choiceOptions } = data;
+                if (isPatronBoon) {
+                    if (!boonTable) {
+                        setError("No Patron Boon table available.");
+                        continue;
+                    }
 
-                    if (needsChoice) {
-                        setPendingChoices({
-                            header: item?.name || "Select an Option",
-                            options: choiceOptions,
-                            context,
-                            replaceIndex
+                    const iterations = raw.type === 'PatronBoonTwice' ? 2 : 1;
+                    const headers: any = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                    for (let i = 0; i < iterations; i++) {
+                        const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-boon`, {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({
+                                tableUuidOrName: boonTable,
+                                targetLevel
+                            })
                         });
-                    } else if (item) {
-                        if (replaceIndex !== undefined && replaceIndex !== null) {
-                            if (context === 'boon') {
-                                setRolledBoons(prev => {
-                                    const next = [...prev];
-                                    if (replaceIndex < next.length) next[replaceIndex] = item;
-                                    else return [...prev, item];
-                                    return next;
+
+                        if (res.ok) {
+                            const data = await res.json();
+                            const { item: resultItem, needsChoice, choiceOptions, choiceCount } = data;
+
+                            if (needsChoice) {
+                                setPendingChoices({
+                                    header: resultItem?.name || "Select an Option",
+                                    options: choiceOptions,
+                                    context, // Keep context (likely 'talent' if rolled from talent table) to fill slot
+                                    replaceIndex, // If we are replacing, this might be tricky with x2. 
+                                    // If x2, first one replaces, second one appends?
+                                    maxSelections: choiceCount || 1
                                 });
-                            } else {
-                                setRolledTalents(prev => {
-                                    const next = [...prev];
-                                    if (replaceIndex < next.length) next[replaceIndex] = item;
-                                    else return [...prev, item];
-                                    return next;
-                                });
+                            } else if (resultItem) {
+                                if (context === 'boon') {
+                                    setRolledBoons(prev => {
+                                        const next = [...prev];
+                                        // If x2, and we have replaceIndex... logic is ambiguous. 
+                                        // Assume append for safety unless explicit single replacement.
+                                        if (iterations === 1 && replaceIndex !== undefined && replaceIndex !== null && replaceIndex < next.length) {
+                                            next[replaceIndex] = resultItem;
+                                            return next;
+                                        }
+                                        return [...prev, resultItem];
+                                    });
+                                } else {
+                                    setRolledTalents(prev => {
+                                        const next = [...prev];
+                                        if (iterations === 1 && replaceIndex !== undefined && replaceIndex !== null && replaceIndex < next.length) {
+                                            next[replaceIndex] = resultItem;
+                                            return next;
+                                        }
+                                        return [...prev, resultItem];
+                                    });
+                                }
                             }
-                        } else {
-                            if (context === 'boon') setRolledBoons(prev => [...prev, item]);
-                            else setRolledTalents(prev => [...prev, item]);
                         }
                     }
+                    continue;
                 }
-            } else {
-                // Direct item selection (including Distribute to Stats)
-                if (replaceIndex !== undefined && replaceIndex !== null) {
-                    if (context === 'boon') {
-                        setRolledBoons(prev => {
-                            const next = [...prev];
-                            if (replaceIndex < next.length) next[replaceIndex] = raw;
-                            else return [...prev, raw];
-                            return next;
-                        });
-                    } else {
-                        setRolledTalents(prev => {
-                            const next = [...prev];
-                            if (replaceIndex < next.length) next[replaceIndex] = raw;
-                            else return [...prev, raw];
-                            return next;
-                        });
+
+                // If it's a RollTable AND NOT Distribute to Stats, roll on it
+                if (!isDistribute && (raw.type === 'RollTable' || raw.documentCollection === 'RollTable' || raw.documentType === 'RollTable')) {
+                    const uuid = raw.documentUuid || raw.uuid || `Compendium.${raw.collection}.${raw.documentId}`;
+                    const headers: any = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                    const res = await fetch(`/api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-talent`, {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({
+                            tableUuidOrName: uuid,
+                            targetLevel
+                        })
+                    });
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        const { item, needsChoice, choiceOptions, choiceCount } = data;
+
+                        if (needsChoice) {
+                            // WARNING: If multiple selections trigger choices, the last one wins.
+                            // Ideally we would queue them, but for Bard 12 this is rare.
+                            setPendingChoices({
+                                header: item?.name || "Select an Option",
+                                options: choiceOptions,
+                                context,
+                                replaceIndex, // Only applies to first if replacing?
+                                maxSelections: choiceCount || 1
+                            });
+                        } else if (item) {
+                            if (replaceIndex !== undefined && replaceIndex !== null) {
+                                if (context === 'boon') {
+                                    setRolledBoons(prev => {
+                                        const next = [...prev];
+                                        // Use splice to insert if array, or replace?
+                                        // For multi-select, replaceIndex implies replacing ONE slot.
+                                        // But we have multiple items. 
+                                        // We should replace the FIRST one, and push the rest?
+                                        // Or just push all?
+                                        // If we are replacing a slot (e.g. from a previous choice that was "Choose 1"),
+                                        // and now we chose 2 things... we probably shouldn't be here?
+                                        // ReplaceIndex is usually for "Roll Table" result that says "Choose 1".
+                                        // If that result became "Choose 2", effectively we are expanding that slot.
+
+                                        // Simple logic: Replace at index with first item, push others.
+                                        // Actually, simpler: Just push all. 
+                                        // But duplicate handling?
+
+                                        // If replaceIndex is set, it means we are resolving an existing slot.
+                                        // We should probably just append all for now to be safe, filtering out the original placeholder?
+                                        // The original placeholder is likely already in the array if we are resolving a nested choice.
+                                        // Wait, handleResolveNested calls this.
+
+                                        // For now, let's just append if multi-select, or replace if single.
+                                        if (selections.length === 1 && replaceIndex < next.length) {
+                                            next[replaceIndex] = item;
+                                            return next;
+                                        }
+                                        return [...prev, item];
+                                    });
+                                } else {
+                                    setRolledTalents(prev => {
+                                        const next = [...prev];
+                                        if (selections.length === 1 && replaceIndex !== undefined && replaceIndex < next.length) {
+                                            next[replaceIndex] = item;
+                                            return next;
+                                        }
+                                        return [...prev, item];
+                                    });
+                                }
+                            } else {
+                                if (context === 'boon') setRolledBoons(prev => [...prev, item]);
+                                else setRolledTalents(prev => [...prev, item]);
+                            }
+                        }
                     }
                 } else {
-                    if (context === 'boon') setRolledBoons(prev => [...prev, raw]);
-                    else setRolledTalents(prev => [...prev, raw]);
+                    // Direct item selection (including Distribute to Stats)
+                    if (replaceIndex !== undefined && replaceIndex !== null) {
+                        if (context === 'boon') {
+                            setRolledBoons(prev => {
+                                const next = [...prev];
+                                if (selections.length === 1 && replaceIndex < next.length) {
+                                    next[replaceIndex] = raw;
+                                    return next;
+                                }
+                                return [...prev, raw];
+                            });
+                        } else {
+                            setRolledTalents(prev => {
+                                const next = [...prev];
+                                if (selections.length === 1 && replaceIndex < next.length) {
+                                    next[replaceIndex] = raw;
+                                    return next;
+                                }
+                                return [...prev, raw];
+                            });
+                        }
+                    } else {
+                        if (context === 'boon') setRolledBoons(prev => [...prev, raw]);
+                        else setRolledTalents(prev => [...prev, raw]);
+                    }
                 }
             }
+
         } catch (e: any) {
             setError(e.message || "Failed to resolve choice");
         } finally {
@@ -525,14 +633,15 @@ export const useLevelUp = (props: LevelUpProps) => {
 
             if (res.ok) {
                 const data = await res.json();
-                const { item: resultItem, needsChoice, choiceOptions } = data;
+                const { item: resultItem, needsChoice, choiceOptions, choiceCount } = data;
 
                 if (needsChoice) {
                     setPendingChoices({
                         header: resultItem?.name || "Select an Option",
                         options: choiceOptions,
                         context,
-                        replaceIndex: index
+                        replaceIndex: index,
+                        maxSelections: choiceCount || 1
                     });
                 } else if (resultItem) {
                     if (context === 'boon') {
@@ -649,7 +758,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 items: json.items || [],
                 hpRoll: json.hpRoll || hpRoll || 0,
                 gold: json.goldRoll || goldRoll || 0,
-                languages: selectedLanguages
+                languages: selectedLanguages,
+                patronUuid: selectedPatronUuid
             });
 
         } catch (e: any) {
@@ -993,7 +1103,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
                         // Attempt to infer source class from item name
                         const name = (item.name || "").toLowerCase();
-                        const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+                        const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
                         for (const cls of classes) {
                             if (name.includes(cls)) {
                                 esSource = cls.charAt(0).toUpperCase() + cls.slice(1);
@@ -1147,6 +1257,14 @@ export const useLevelUp = (props: LevelUpProps) => {
         if (targetLevel > 0 && hpRoll === null) return false;
         if (targetLevel === 1 && goldRoll === null) return false;
 
+        // 11. Duplicate Spell Check
+        if (isSpellcaster && extraSpellSelection.active) {
+            const hasOverlap = selectedSpells.some(s =>
+                extraSpellSelection.selected.some(es => (es.uuid || es._id) === (s.uuid || s._id))
+            );
+            if (hasOverlap) return false;
+        }
+
         return true;
     }, [
         rolledTalents, requiredTalents, targetLevel, existingItems, statSelection, statPool, weaponMasterySelection, armorMasterySelection, activeClassObj,
@@ -1240,7 +1358,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             handleConfirm,
             handleChoiceSelection,
             setTargetClassUuid,
-            setSelectedPatronUuid,
+            setSelectedPatronUuid: handlePatronChange,
             setHpRoll,
             setGoldRoll,
             setConfirmReroll,

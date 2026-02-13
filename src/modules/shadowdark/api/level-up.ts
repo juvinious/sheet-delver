@@ -273,10 +273,13 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
         let item = null;
         let needsChoice = false;
         let choiceOptions: any[] = [];
+        let choiceCount = 1;
+        let action = undefined;
+        let config = undefined;
 
         while (attempts < maxAttempts) {
             attempts++;
-            const result = await dataManager.rollTable(tableUuidOrName);
+            const result = await dataManager.draw(tableUuidOrName);
             if (!result) {
                 return NextResponse.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
             }
@@ -290,6 +293,9 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             item = processed.item;
             needsChoice = processed.needsChoice;
             choiceOptions = processed.choiceOptions;
+            choiceCount = processed.choiceCount || 1;
+            action = processed.action;
+            config = processed.config;
 
             if (needsChoice) break; // Choices are filtered in getChoices()
 
@@ -346,7 +352,10 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             formula: finalRollResult?.formula,
             item: item,
             needsChoice,
-            choiceOptions
+            choiceOptions,
+            choiceCount,
+            action,
+            config
         });
 
     } catch (error: any) {

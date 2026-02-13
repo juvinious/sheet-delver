@@ -89,7 +89,7 @@ export async function testRollTables() {
         // Test 3: Use the new rollTable() method
         console.log('\n--- Part 3: Test rollTable() Method ---');
 
-        const tableResult = await client.rollTable(TALENT_TABLE_UUID, {
+        const tableResult = await client.draw(TALENT_TABLE_UUID, {
             displayChat: true
         });
 
@@ -102,7 +102,7 @@ export async function testRollTables() {
 
         // Test 4: Roll with specific mode (Self)
         console.log('\n--- Part 4: Test rollTable() with Mode: Self ---');
-        const selfRollResult = await client.rollTable(TALENT_TABLE_UUID, {
+        const selfRollResult = await client.draw(TALENT_TABLE_UUID, {
             displayChat: true,
             rollMode: 'self'
         });

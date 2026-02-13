@@ -230,8 +230,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             }
 
             // 3. Name Heuristic (Safeguard)
-            if (classKeys.length === 0 && name.includes('learn a') && name.includes('spell')) {
-                const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+            if (classKeys.length === 0 && name.includes('learn') && name.includes('spell')) {
+                const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
                 for (const cls of knownClasses) {
                     if (name.includes(cls)) {
                         classKeys.push(cls);
@@ -323,6 +323,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const knownSpellsForModal = useMemo(() => {
         if (!editingTier || !modalFilterClass) return [];
 
+        const source = spellSources.find((s: any) => s.classKey === modalFilterClass);
+
         return (actor.items || []).filter((i: any) => {
             if (i.type !== 'Spell') return false;
             const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
@@ -330,7 +332,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
             const classData = i.system?.class || i.class || '';
             const spellClasses = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
-            return spellClasses.includes(modalFilterClass);
+
+            // Primary class match: if spell has no class assigned, it belongs to the primary class
+            const isPrimaryClassDefault = spellClasses === "" && source?.type === 'class';
+
+            return spellClasses.includes(modalFilterClass) || isPrimaryClassDefault;
         }).map((s: any) => ({
             name: s.name,
             uuid: s.flags?.core?.sourceId || s.uuid || s._id,

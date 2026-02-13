@@ -2,6 +2,7 @@ import { logger } from '../../../core/logger';
 import { dataManager } from '../data/DataManager';
 import { TALENT_HANDLERS } from './talent-handlers';
 import { resolveBaggage, resolveGear } from './gear-resolver';
+import { ROLL_TABLE_FILTER, ROLL_TABLE_TALENT_MAP, ROLL_TABLE_PATRON_BOONS } from '../data/roll-table-patterns';
 
 interface RollResultProcessorOptions {
     result: any;
@@ -16,174 +17,269 @@ export async function processRollResult({ result, table }: RollResultProcessorOp
     let item = matchedItems.length > 0 ? { ...matchedItems[0] } : null;
     let needsChoice = false;
     let choiceOptions: any[] = [];
+    let action = undefined;
+    let config = undefined;
 
-    if (!item) {
-        logger.warn("[Engine] processRollResult: No item found in result", result);
-        // Fallback: If result has text, maybe it's a raw text result
-        if (result.text) {
-            item = { name: "", text: result.text, type: "text", original: result };
-            logger.info("[Engine] Recovered item from raw result text");
-        }
+    let rollPatterns = Object.values(ROLL_TABLE_TALENT_MAP).find((t: any) => t.UUID === table?.uuid);
+    if (!rollPatterns) {
+        logger.debug(`[Engine] No talent pattern found for ${table?.uuid} assuming patron boon`);
+        rollPatterns = Object.values(ROLL_TABLE_PATRON_BOONS).find((t: any) => t.UUID === table?.uuid);
     }
 
-    // Strategy 1: Constrained Choice
-    // If multiple functional items match the roll range, offer a choice between ONLY those items.
-    // Also, if a SINGLE item contains " or ", split it into sub-choices.
-    const functionalResults = matchedResults.filter((r: any) => {
-        const text = (r.text || r.name || "").trim().toLowerCase();
+    if (rollPatterns) {
+    } else {
+        logger.warn(`[Engine] No pattern found for ${table?.uuid}`);
+    }
 
-        // SPECIAL FILTER: Bard Level 12 Table (ZzffJkaIfmdPzdE7)
-        // Remove "Distribute to Stats" (redundant) but KEEP "Or +2 points to distribute..."
-        // Also remove individual "+1/2 to Stat" entries to prevent UI bloat.
-        if (table?._id === "ZzffJkaIfmdPzdE7") {
-            const isRedundantDistribute = text.includes("distribute") && !text.includes("points");
-            const isChooseHeader = text.includes("choose 1");
+    let choiceCount = 1;
 
-            // Filter individual stat boosts
-            const stats = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
-            const isStatBoost = text.includes('+1 to') || text.includes('+2 to');
-            const involvesStat = stats.some(s => text.includes(s));
-            const isStatEntry = isStatBoost && involvesStat;
+    if (rollPatterns) {
+        let filter = ROLL_TABLE_FILTER.None;
+        const pattern = rollPatterns.map.find((p: any) =>
+            p.range[0] <= result.total && p.range[1] >= result.total
+        );
+        if (pattern) filter = pattern.filter;
 
-            // Check if we have the "Unified" distribute option ("Or +2 points...")
-            const hasUnifiedDistribute = matchedResults.some((r: any) =>
-                (r.text || r.name || "").toLowerCase().includes("points")
-            );
+        logger.info(`[Engine] Applying Filter: ${filter} for Table: ${table?.name} (Roll: ${result.total})`);
 
-            // If we have the unified option, we can safely remove the redundant "Distribute to Stats".
-            // If we DON'T have it (e.g. data difference), we must KEEP "Distribute to Stats".
-            if (isRedundantDistribute && hasUnifiedDistribute) {
-                logger.debug(`[Engine] Filtering out redundant Bard Level 12 option (Distribute): ${text}`);
-                return false;
-            }
+        // Bitmask Checks
 
-            if (isChooseHeader || isStatEntry) {
-                logger.debug(`[Engine] Filtering out redundant Bard Level 12 option: ${text}`);
-                return false;
+        // 1. ChooseTwoInstead (Bit 5)
+        if ((filter & ROLL_TABLE_FILTER.ChooseTwoInstead) !== 0) {
+            // Fetch ALL results from the table to offer as choices
+            // We need to access the full table results, typically available in table.results
+            if (table && table.results) {
+                choiceOptions = table.results;
+                needsChoice = true;
+                choiceCount = 2;
+                logger.debug(`[Engine] ChooseTwoInstead applied. Options: ${choiceOptions.length}`);
             }
         }
 
-        // SPECIAL FILTER: Warlock Level 3-6 Table (xM3hghlK5nvo46Vo)
-        // Consolidate all 3-6 results into a single "Distribute to Stats (Warlock)" item.
-        if (table?._id === "xM3hghlK5nvo46Vo") {
-            const range = r.range || [0, 0];
-            // If we are in the 3-6 range, we want to replace this item with the synthetic header later.
-            // But here we are filtering valid results.
-            // If we return TRUE, it's kept.
-            // We need to Detect if we are in this range.
-            if (range[0] === 3 && range[1] === 6) {
-                // We'll handle the synthesis in the functionalResults check below.
-                return true;
-            }
-        }
 
-        return text && !/^(or|and|choose\s+(?:one|1)|select\s+(?:one|1))$/i.test(text);
-    });
-
-    // Post-Filter Synthesis
-    if (functionalResults.length > 0) {
-        // Check for Warlock 3-6 case to synthesize the single option
-        if (table?._id === "xM3hghlK5nvo46Vo") {
-            const range3to6 = functionalResults.filter((r: any) => {
-                const range = r.range || [0, 0];
-                return range[0] === 3 && range[1] === 6;
+        // 2. DropChooseOne | ChooseOne | HasDistributeStatsTable (Bit 1 | Bit 7 | Bit 4)
+        // MOVED UP: Specific check must happen before generic DropChooseOne | ChooseOne
+        else if ((filter & (ROLL_TABLE_FILTER.DropChooseOne | ROLL_TABLE_FILTER.ChooseOne | ROLL_TABLE_FILTER.HasDistributeStatsTable)) === (ROLL_TABLE_FILTER.DropChooseOne | ROLL_TABLE_FILTER.ChooseOne | ROLL_TABLE_FILTER.HasDistributeStatsTable)) {
+            // Find parent instruction (e.g. "Choose one option:")
+            const instructionResult = matchedResults.find((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase();
+                return name.includes("choose 1") || name.includes("choose one");
             });
 
-            if (range3to6.length > 0) {
-                // We have results in the 3-6 range. 
-                // We want to return a SINGLE synthetic item "Distribute to Stats (Warlock)".
-                // Only if the roll didn't naturally land on such an item (which it won't, raw data is split).
-
-                logger.info(`[Engine] Synthesizing Warlock Distribute option from ${range3to6.length} results.`);
-
-                const syntheticItem = {
-                    _id: "synthetic_warlock_distribute",
-                    name: "Distribute to Stats (Warlock)",
-                    text: "Distribute to Stats (Warlock)",
-                    img: "icons/magic/symbols/question-stone-yellow.webp",
-                    type: "Talent",
-                    system: { level: 0 }, // Dummy
-                    range: [3, 6]
+            if (instructionResult) {
+                item = { ...instructionResult, name: instructionResult.text || "Choose One" };
+            } else {
+                item = {
+                    _id: "synthetic-choice-parent",
+                    name: "Choose One",
+                    type: "synthetic",
+                    img: table.img,
+                    text: "Select one option from the list below."
                 };
+            }
 
-                // Replace the functional results with JUST this item (if the roll was in this range)
-                // If the roll covered OTHER ranges too? (Unlikely for 2d6 table unless range overlaps).
-                // Actually, matchedResults only contains items matching the roll.
-                // So if we have ANY 3-6 items, we probably ONLY have 3-6 items (since ranges are exclusive).
+            // ... existing Bard logic ...
+            choiceOptions = matchedResults.filter((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase();
+                if (name.includes("choose 1") || name.includes("choose one") || name.includes("or (can")) return false;
+                // if (name.includes("+1 to") || name.includes("+2 to")) return false; // Allowed for mapping
 
-                // So we can return a choice with just this item.
-                // Actually, processRollResult returns { item, needsChoice, choiceOptions }.
-                // If we have 1 item, needsChoice = false.
+                // DropBlank (Bit 14) or just always drop empty/blank names to avoid "Unknown Option"
+                if (!name.trim()) {
+                    return false;
+                }
 
-                return { item: syntheticItem, needsChoice: false, choiceOptions: [] };
+                return true;
+            }).map((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase();
+                if (name.includes("+2 points") || name.includes("distribute") || name.includes("+2 to") || name.includes("+1 to")) { // Added +1 to
+                    return {
+                        ...r,
+                        _id: "synthetic-distribute-stats-choice",
+                        name: "Distribute to Stats",
+                        text: "Distribute 2 points to any stats."
+                    };
+                }
+                if (name.includes("patron boon")) { // Added generic patron boon check for this block
+                    return {
+                        ...r,
+                        _id: "synthetic-patron-boon",
+                        name: "Patron Boon",
+                        type: "PatronBoon",
+                        img: "icons/magic/symbols/question-stone-yellow.webp",
+                        text: "Roll on your patron's boon table."
+                    };
+                }
+                return {
+                    ...r,
+                    name: r.text || r.name || "Unknown Option"
+                };
+            });
+
+            // Deduplicate options for this specific filter block (crucial for "Distribute to Stats" from multiple +1s)
+            const uniqueMap = new Map();
+            for (const opt of choiceOptions) {
+                // Use a composite key including type to avoid merging unrelated things, but merge identical synthetic items
+                const key = (opt.name || opt.text || opt.description).toLowerCase().trim();
+                if (!uniqueMap.has(key)) {
+                    uniqueMap.set(key, opt);
+                }
+            }
+            choiceOptions = Array.from(uniqueMap.values());
+
+            needsChoice = true;
+        }
+
+        // 3. DropChooseOne | ChooseOne (Bit 1 | Bit 7)
+        // If BOTH are set, we filter out the "Choose 1" header and offer remaining matched results
+        else if ((filter & (ROLL_TABLE_FILTER.DropChooseOne | ROLL_TABLE_FILTER.ChooseOne)) === (ROLL_TABLE_FILTER.DropChooseOne | ROLL_TABLE_FILTER.ChooseOne)) {
+            // Filter source: matchedResults
+            choiceOptions = matchedResults.filter((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase().trim();
+                if (!name) return false; // Filter out blanks
+                return !name.includes("choose 1") && !name.toLowerCase().includes("choose one");
+            });
+            needsChoice = true;
+        }
+
+
+        // 3. DropTwoPointsToDistribute | DistributeTwoStatsAny | DistributeTwoStatsOnlyOnce (Bit 13 | Bit 3 | Bit 2)
+        else if ((filter & (ROLL_TABLE_FILTER.DropTwoPointsToDistribute | ROLL_TABLE_FILTER.DistributeTwoStatsAny)) || (filter & ROLL_TABLE_FILTER.DistributeTwoStatsOnlyOnce)) {
+            item = {
+                _id: "synthetic-distribute-stats",
+                name: "Distribute to Stats",
+                type: "synthetic",
+                img: "icons/sundries/gaming/dice-pair-white-green.webp",
+                text: "Distribute 2 points to any stats."
+            };
+            needsChoice = false;
+        }
+
+
+
+        // 5. Warlock Filters
+        // RollAnyPatronBoon (Bit 11) or RollPatronBoon (Bit 9)
+        else if ((filter & ROLL_TABLE_FILTER.RollAnyPatronBoon) || (filter & ROLL_TABLE_FILTER.RollPatronBoon)) {
+            item = {
+                _id: "synthetic-patron-boon",
+                name: "Patron Boon",
+                type: "PatronBoon",
+                img: "icons/magic/symbols/question-stone-yellow.webp",
+                text: "Roll on your patron's boon table."
+            };
+            needsChoice = false;
+        }
+
+        // RollPatronBoonTwice (Bit 10)
+        else if (filter & ROLL_TABLE_FILTER.RollPatronBoonTwice) {
+            item = {
+                _id: "synthetic-patron-boon-twice",
+                name: "Patron Boon (x2)",
+                type: "PatronBoonTwice",
+                img: "icons/magic/symbols/question-stone-yellow.webp",
+                text: "Roll twice on your patron's boon table."
+            };
+            needsChoice = false;
+        }
+
+        // WarlockSpecificTwelve (Bit 12)
+        else if (filter & ROLL_TABLE_FILTER.WarlockSpecificTwelve) {
+            choiceOptions = matchedResults.filter((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase();
+                return !name.includes("choose 1");
+            }).map((r: any) => {
+                const name = (r.text || r.name || r.description).toLowerCase();
+                if (name.includes("+2") || name.includes("attribute")) {
+                    return {
+                        ...r,
+                        _id: "synthetic-distribute-stats-choice",
+                        name: "Distribute to Stats",
+                        text: "Distribute 2 points to any stats."
+                    };
+                }
+                if (name.includes("boon")) {
+                    return {
+                        ...r,
+                        _id: "synthetic-patron-boon",
+                        name: "Patron Boon",
+                        type: "PatronBoon",
+                        img: "icons/magic/symbols/question-stone-yellow.webp",
+                    };
+                }
+                return r;
+            });
+            needsChoice = true;
+        }
+    }
+
+    // Resolve Document Results
+    // If DataManager returned a raw table result instead of a hydrated document, we resolve it now.
+    const resolveItem = async (target: any) => {
+        if (!target) return null;
+        const type = String(target.type || "");
+        if (type === 'document' || type === '2') {
+            const uuid = target.documentUuid || target.uuid;
+            if (uuid) {
+                const resolved = await dataManager.getDocument(uuid);
+                if (resolved) {
+                    // Return a clean clone of the resolved document
+                    const clean = JSON.parse(JSON.stringify(resolved));
+                    // Preserve any temporary metadata from the table result if helpful
+                    if (target.text && !clean.name) clean.name = target.text;
+                    return clean;
+                }
             }
         }
-        // Check for "or" in a single result to split it
-        let splitOptions: any[] = [];
-        if (functionalResults.length === 1) {
-            const text = (functionalResults[0].text || functionalResults[0].name || "").trim();
+        return target;
+    };
 
-            // EXCEPTION: Do not split specific known items that contain "or" in their name
-            const noSplitItems = [
-                "priest or wizard wand", // Bard Level 12
-            ];
-            const shouldSkipSplit = noSplitItems.some(item => text.toLowerCase().includes(item));
+    if (item) {
+        item = await resolveItem(item);
+    }
 
-            if (!shouldSkipSplit && /\s+or\s+/i.test(text)) {
-                logger.info(`[Engine] Splitting single "or" result into choices: ${text}`);
-                const parts = text.split(/\s+or\s+/i);
-                splitOptions = parts.map((p: string) => ({
-                    ...functionalResults[0],
-                    name: p.trim(),
-                    text: p.trim()
-                }));
+    if (choiceOptions && choiceOptions.length > 0) {
+        const resolvedChoices = [];
+        for (const opt of choiceOptions) {
+            const resolved = await resolveItem(opt);
+            // Ensure choice options have a consistent 'text' property for UI
+            if (resolved) {
+                resolved.text = resolved.text || resolved.name || "Unknown Option";
             }
+            resolvedChoices.push(resolved);
         }
+        choiceOptions = resolvedChoices;
+    }
 
-        if (functionalResults.length > 1 || splitOptions.length > 1) {
-            logger.info(`[Engine] Choice detected: ${functionalResults.length} items or ${splitOptions.length} splits.`);
-            const options = splitOptions.length > 0 ? getChoices(table, splitOptions) : getChoices(table, matchedResults);
-
-            if (options.length > 1) {
-                needsChoice = true;
-                choiceOptions = options;
-                item = null; // Choice modal takes over
-            } else if (options.length === 1) {
-                // If filtering/deduplication left only one real item, use it directly
-                const hydratedSource = splitOptions.length > 0 ? splitOptions[0] : matchedItems[0];
-                item = hydratedSource || matchedItems[0];
+    // Determine Action and Config from TALENT_HANDLERS if we have an item
+    if (item && !needsChoice) {
+        for (const handler of TALENT_HANDLERS) {
+            if (handler.matches(item)) {
+                action = handler.action;
+                config = handler.config;
+                break;
             }
         }
     }
 
-    // Strategy 2: Global Table Choice (e.g. "Choose 1 from the following")
-    // If we haven't found a constrained choice, check if the single item is a header.
-    if (!needsChoice && item) {
-        const text = (item.text || item.name || item.description || "").toLowerCase();
+    // NEW: Attach handler data to choices if present
+    if (needsChoice && choiceOptions && choiceOptions.length > 0) {
+        choiceOptions = choiceOptions.map(opt => {
+            if (!opt) return opt;
+            const name = (opt.name || opt.text || opt.description || "").trim();
+            const option = { ...opt, name, text: name };
 
-        // Strict check for headers
-        const isChoiceHeader = /^(?:choose|select)\s+(?:one|1|\d+)(?:\s+or\s+\d+)?$/i.test(text) ||
-            /^(?:choose|select)\s+one$/i.test(text);
-
-        if (isChoiceHeader) {
-            // If it's a header, but we ONLY have this header in the results, 
-            // then we unfortunately MUST fallback to the whole table or 
-            // find items in the same range tier.
-            needsChoice = true;
-            choiceOptions = getChoices(table);
-            item = null;
-        } else if (/^(?:or|and)$/i.test(text)) {
-            // Generic "OR" instruction result, offer whole table if no functional results were found
-            needsChoice = true;
-            choiceOptions = getChoices(table);
-            item = null;
-        } else {
-            // It's a text result (instruction/flavor), NOT a choice header.
-            if (!item.name && (item.text || item.description)) item.name = item.text || item.description;
-        }
+            for (const handler of TALENT_HANDLERS) {
+                if (handler.matches(option)) {
+                    option.action = handler.action;
+                    option.config = handler.config;
+                    break;
+                }
+            }
+            return option;
+        });
     }
 
-    return { item, needsChoice, choiceOptions };
+    return { item, needsChoice, choiceOptions, choiceCount, action, config };
 }
 
 export function getChoices(table: any, sourceResults?: any[]): any[] {
@@ -195,23 +291,34 @@ export function getChoices(table: any, sourceResults?: any[]): any[] {
     // First map to potential options
     const rawOptions = results
         .filter((r: any) => {
-            // Filter out the "OR" result itself if it's just a connector
             const name = (r.text || r.name || "").trim().toLowerCase();
+            if (!name) return false;
 
-            // Filter out "Choose 1" type headers and "Reroll/Already Taken" instructions from the OPTIONS list
-            const instructionRegex = /(?:choose|select)\s+(?:one|1)|\s+or\s+|\breroll\b|\balready\s+taken\b|\balready\s+had\b/i;
+            // Filter out common instruction tokens that shouldn't be choices
+            const instructionTokens = [
+                "or", "and", "choose", "select", "reroll", "duplicates", "already", "taken", "had"
+            ];
+
+            if (instructionTokens.includes(name)) {
+                logger.debug(`[Engine] Filtering out instruction token: ${name}`);
+                return false;
+            }
+
+            // More aggressive regex for "Choose 1" type headers
+            const instructionRegex = /(?:choose|select)\s+(?:one|1|two|2|an)\b/i;
             if (instructionRegex.test(name)) {
                 logger.debug(`[Engine] Filtering out choice instruction: ${name}`);
                 return false;
             }
 
-            const keep = name && !/^(or|and|reroll)$/i.test(name) && !/^\d+$/.test(name);
-            if (!keep) logger.debug(`[Engine] Filtering out choice option: ${name}`);
-            return keep;
+            // filter out pure numbers (sometimes used for ranges in table results)
+            if (/^\d+$/.test(name)) return false;
+
+            return true;
         })
         .map((r: any) => {
             const name = (r.text || r.name || r.description || "").trim();
-            return {
+            const option: any = {
                 name: name || "Unknown Option",
                 text: name || "Unknown Option",
                 type: 'Talent',
@@ -219,6 +326,17 @@ export function getChoices(table: any, sourceResults?: any[]): any[] {
                 uuid: r.documentUuid || r.uuid || r._id,
                 original: r
             };
+
+            // Match against TALENT_HANDLERS to provide UI triggers
+            for (const handler of TALENT_HANDLERS) {
+                if (handler.matches(option)) {
+                    option.action = handler.action;
+                    option.config = handler.config;
+                    break;
+                }
+            }
+
+            return option;
         });
 
     // Deduplicate
@@ -381,8 +499,31 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
         }
     }
 
+    // Final Resolution Pass for Items
+    const resolvedItems = [];
+    for (const item of items) {
+        const type = String(item.type || "");
+        if (type === 'document' || type === '2') {
+            const uuid = item.documentUuid || item.uuid;
+            if (uuid) {
+                const resolved = await dataManager.getDocument(uuid);
+                if (resolved) {
+                    const clean = JSON.parse(JSON.stringify(resolved));
+                    // Preserve level if it was set
+                    if (item.system?.level) {
+                        if (!clean.system) clean.system = {};
+                        clean.system.level = item.system.level;
+                    }
+                    resolvedItems.push(clean);
+                    continue;
+                }
+            }
+        }
+        resolvedItems.push(item);
+    }
+
     // Sanitization
-    return items.map(item => {
+    return resolvedItems.map(item => {
         const clean = { ...item };
         if (clean.type === 'text' || clean.type === 0) {
             clean.type = 'Talent';

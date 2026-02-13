@@ -6,7 +6,6 @@ import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
 import { handleGetGear } from './api/gear';
 import { handleIndex } from './api/index';
-import { handleRollTable } from './api/tables';
 import { dataManager } from './data/DataManager';
 import { getConfig } from '../../core/config';
 import { logger } from '../../core/logger';
@@ -33,7 +32,6 @@ export const apiRoutes = {
     'index': handleIndex,
     'import': handleImport,
     'gear/list': handleGetGear,
-    'roll-table': handleRollTable,
     'document/[uuid]': handleGetDocument,
     'actors/randomize': handleRandomizeCharacter,
     'actors/randomize/name': handleRandomizeName,

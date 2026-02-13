@@ -306,17 +306,17 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         }
     },
     {
-        id: 'extra-spell-boon',
+        id: 'extra-spell-handler',
         description: "Learn an extra spell",
         matches: (item: any) => {
             const name = (item.name || item.text || item.description || "").toLowerCase();
-            return name.includes("learn a") && name.includes("spell");
+            return name.includes("learn") && name.includes("spell");
         },
         action: 'extra-spell',
         config: { active: true, count: 1 },
         mutateItem: (item: any) => {
             const name = (item.name || "").toLowerCase();
-            const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid'];
+            const classes = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
             let foundCls = '';
             for (const cls of classes) {
                 if (name.includes(cls)) {

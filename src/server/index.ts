@@ -781,9 +781,31 @@ async function startServer() {
         }
     });
 
-    appRouter.post('/foundry/roll-table', async (req, res) => {
-        const { handleRollTable } = await import('./api/tables');
-        const nextRes = await handleRollTable(req as any);
+    // --- Roll Table API (Modular) ---
+    appRouter.get('/roll-table', async (req, res) => {
+        const { handleListRollTables } = await import('../modules/shadowdark/api/tables');
+        const nextRes = await handleListRollTables();
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    appRouter.get('/roll-table/:id', async (req, res) => {
+        const { handleGetRollTable } = await import('../modules/shadowdark/api/tables');
+        const nextRes = await handleGetRollTable(req as any, req.params.id);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    appRouter.post('/roll-table/:id/draw', async (req, res) => {
+        const { handleDrawRollTable } = await import('../modules/shadowdark/api/tables');
+        const nextRes = await handleDrawRollTable(req as any, req.params.id);
+        const data = await nextRes.json();
+        res.status(nextRes.status).json(data);
+    });
+
+    appRouter.post('/roll-table/:tableId/draw/:resultId', async (req, res) => {
+        const { handleGetResultPool } = await import('../modules/shadowdark/api/tables');
+        const nextRes = await handleGetResultPool(req as any, req.params.tableId, req.params.resultId);
         const data = await nextRes.json();
         res.status(nextRes.status).json(data);
     });

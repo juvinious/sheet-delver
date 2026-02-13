@@ -6,30 +6,39 @@ The Roll Table system in SheetDelver provides a robust, system-agnostic way to r
 ## Usage
 
 ### Core Socket
-The `CoreSocket` class exposes a `rollTable` method that should be used for all table operations.
+The `CoreSocket` class exposes a `draw` method that should be used for all table operations. It aligns with Foundry VTT's native `RollTable.draw()` behavior.
 
 ```typescript
-const result = await client.rollTable(tableUuid, options);
+const result = await client.draw(tableUuid, options);
 ```
 
 #### Parameters
-- `tableUuid` (string): The UUID of the table to roll on. Supports both standard format (`Compendium.scope.pack.ID`) and verbose format (`Compendium.scope.pack.RollTable.ID`).
+- `tableUuid` (string): The UUID of the table to roll on.
 - `options` (object, optional):
   - `roll` (Roll): A pre-evaluated Roll instance to use instead of rolling randomly.
-  - `displayChat` (boolean): Whether to send the result to Foundry's chat. Default `false`.
-  - `rollMode` (string): The roll mode ('public', 'private', 'blind', 'self', 'gm'). Default 'public'.
-  - `chatMessageData` (object): Additional data for the chat message.
+  - `displayChat` (boolean): Whether to send the result to Foundry's chat. Default `true`.
+  - `rollMode` (string): The roll mode ('publicroll', 'gmroll', 'blindroll', 'selfroll').
+  - `actorId` (string): Actor ID to use as the speaker for the roll and chat message.
+  - `userId` (string): User ID to perform the roll as.
+
+#### Native Implementation Features
+- **Server-Side Evaluation**: Rolling is performed via `CoreSocket.roll` using server-side evaluation.
+- **Drawn Status**: If the table is not in a Compendium and `replacement` is false, matched results are marked as `drawn: true` in Foundry.
+- **Hydration**: Result documents (Items, Spells, etc.) are automatically hydrated with their full data.
+- **Speaker Attribution**: Rolls and chat messages are attributed to the player's actor/username.
 
 #### Return Value
 Returns a promise resolving to:
 ```typescript
 {
-    roll: Roll,           // The Foundry Roll instance
+    roll: any,            // The Roll result (JSON)
     total: number,        // The total value of the roll
-    results: TableResult[], // Array of matching TableResult objects
-    table: RollTable      // The table document
+    results: any[]        // Array of hydrated TableResult objects
 }
 ```
+
+#### Backward Compatibility
+The old `rollTable` method is maintained as an alias for `draw` for backward compatibility.
 
 ## Architecture
 

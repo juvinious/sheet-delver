@@ -638,6 +638,7 @@ export default function Generator() {
             // 1. Prepare Items & System Data Strings
             const items: any[] = [];
             const addedSourceIds = new Set<string>(); // Track added items to prevent duplication
+            const addedNames = new Set<string>(); // Secondary check for redundant features (e.g. OMEN as talent vs class ability)
 
             // Helper to generate 16-char Foundry-like ID
             const randomID = () => {
@@ -653,60 +654,67 @@ export default function Generator() {
             const addItem = async (uuid: string) => {
                 if (!uuid) return null;
 
-                // Duplicate Check: Don't add same item source twice
+                // 1. UUID Check
                 if (addedSourceIds.has(uuid)) {
                     logger.warn(`Generator: Skipping duplicate item source ${uuid}`);
                     return null;
                 }
 
                 const doc = await fetchDocument(uuid);
-                if (doc) {
-                    // Clone and strip ID to ensure clean creation
-                    const itemData = JSON.parse(JSON.stringify(doc));
+                if (!doc) return null;
 
-                    // PRE-GENERATE ID so we can link to it immediately
-                    itemData._id = randomID();
-                    delete itemData.ownership;
+                // 2. Name Check (Secondary)
+                // This catches redundant Compendium docs (e.g. OMEN as both Talent and Class Ability)
+                if (addedNames.has(doc.name)) {
+                    logger.warn(`Generator: Skipping duplicate item by name ${doc.name} (${uuid})`);
+                    return null;
+                }
 
-                    // Attach Source ID for linking (still useful for reference)
-                    if (!itemData.flags) itemData.flags = {};
-                    if (!itemData.flags.core) itemData.flags.core = {};
-                    itemData.flags.core.sourceId = uuid;
-                    addedSourceIds.add(uuid); // Track it
+                // Clone and strip ID to ensure clean creation
+                const itemData = JSON.parse(JSON.stringify(doc));
 
-                    // Validate & Sanitize Effects using Handlers
-                    // This fixes the "Cannot create property '_id' on string" crash
-                    // by converting legacy string effects to objects or removing them
-                    for (const handler of TALENT_HANDLERS) {
-                        if (handler.matches(itemData)) {
-                            try {
-                                // Some handlers expect a full state object, but for Generator base items
-                                // we just need the mutateItem logic (mostly for missing-effects)
-                                if (handler.mutateItem) {
-                                    handler.mutateItem(itemData, {} as any);
-                                }
-                            } catch (_e) {
-                                // If handler fails (e.g. missing context), just ignore
-                                // Our main goal is the missing-effects cleanup
+                // PRE-GENERATE ID so we can link to it immediately
+                itemData._id = randomID();
+                delete itemData.ownership;
+
+                // Attach Source ID for linking (still useful for reference)
+                if (!itemData.flags) itemData.flags = {};
+                if (!itemData.flags.core) itemData.flags.core = {};
+                itemData.flags.core.sourceId = uuid;
+                addedSourceIds.add(uuid); // Track it
+                addedNames.add(itemData.name); // Track it
+
+                // Validate & Sanitize Effects using Handlers
+                // This fixes the "Cannot create property '_id' on string" crash
+                // by converting legacy string effects to objects or removing them
+                for (const handler of TALENT_HANDLERS) {
+                    if (handler.matches(itemData)) {
+                        try {
+                            // Some handlers expect a full state object, but for Generator base items
+                            // we just need the mutateItem logic (mostly for missing-effects)
+                            if (handler.mutateItem) {
+                                handler.mutateItem(itemData, {} as any);
                             }
+                        } catch (_e) {
+                            // If handler fails (e.g. missing context), just ignore
+                            // Our main goal is the missing-effects cleanup
                         }
                     }
-
-                    // Safety Fallback: Nuke any remaining string effects
-                    if (itemData.effects && Array.isArray(itemData.effects) && itemData.effects.length > 0 && typeof itemData.effects[0] === 'string') {
-                        itemData.effects = [];
-                    }
-
-                    // FORCE LEVEL 1 for Level 1 Characters
-                    // Unless it's Level 0 mode, all added items should be active (Level 1)
-                    if (!formData.level0 && itemData.system && typeof itemData.system.level !== 'undefined') {
-                        itemData.system.level = 1;
-                    }
-
-                    items.push(itemData);
-                    return itemData;
                 }
-                return null;
+
+                // Safety Fallback: Nuke any remaining string effects
+                if (itemData.effects && Array.isArray(itemData.effects) && itemData.effects.length > 0 && typeof itemData.effects[0] === 'string') {
+                    itemData.effects = [];
+                }
+
+                // FORCE LEVEL 1 for Level 1 Characters
+                // Unless it's Level 0 mode, all added items should be active (Level 1)
+                if (!formData.level0 && itemData.system && typeof itemData.system.level !== 'undefined') {
+                    itemData.system.level = 1;
+                }
+
+                items.push(itemData);
+                return itemData;
             };
 
             const ancestryItem = await addItem(formData.ancestry);
@@ -727,9 +735,9 @@ export default function Generator() {
                 };
 
                 // Only add talents automatically if they are FIXED (not choices)
-                // If list length > choiceCount, they are choices -> Do NOT add them (user selections will be added later)
-                // If list length <= choiceCount, they are fixed -> Add them
-                if (talentList.length <= choiceCount) {
+                // If choiceCount is 0, ALL talents are fixed.
+                // If list length <= choiceCount, they are fixed (e.g. Human "Ambitious")
+                if (choiceCount === 0 || talentList.length <= choiceCount) {
                     await addFromList(talentList);
                 }
 
@@ -758,9 +766,10 @@ export default function Generator() {
             await addItem(formData.background);
 
             // Add Patron if selected (Warlock)
-            // let patronItem = null; // Unused
-            if (formData.patron) {
-                await addItem(formData.patron);
+            // Use patron from extraData if provided (from LevelUpModal), fallback to formData
+            const effectivePatronUuid = extraData.patronUuid || formData.patron;
+            if (effectivePatronUuid) {
+                await addItem(effectivePatronUuid);
             }
 
             // Add Class (if not Level 0)
@@ -818,7 +827,12 @@ export default function Generator() {
 
                 // 2. FILTER: Duplicates
                 // Prevent adding same ancestry/class feature multiple times
-                if (sourceId && addedSourceIds.has(sourceId)) {
+                // We check: UUID (primary), sourceId flag (secondary), and Name (tertiary for redundant docs)
+                const isDuplicate =
+                    (sourceId && addedSourceIds.has(sourceId)) ||
+                    (item.name && addedNames.has(item.name));
+
+                if (isDuplicate) {
                     logger.warn(`Generator: Skipping duplicate extraItem ${item.name} (${sourceId})`);
                     continue;
                 }
@@ -827,6 +841,7 @@ export default function Generator() {
                 // Modal returns objects with `type`, `name`, `img`, `system`.
                 // We should probably sanitize them or ensure they have IDs.
                 // If they are from `fetchTableResult`, they effectively have no ID yet.
+
                 // Let's create a clean item.
                 const cleanItem = JSON.parse(JSON.stringify(item));
                 cleanItem._id = randomID();
@@ -977,7 +992,7 @@ export default function Generator() {
                     ancestry: formData.ancestry || "",      // Link to Compendium UUID
                     background: formData.background || "",  // Link to Compendium UUID
                     class: formData.class || "",      // Link to Compendium UUID (Correct for Shadowdark)
-                    patron: formData.patron || "",    // Link to Compendium UUID (Correct for Shadowdark)
+                    patron: effectivePatronUuid || "",    // Link to Compendium UUID (Correct for Shadowdark)
                     alignment: formData.alignment,
                     deity: formData.deity,
                     languages: languageUuids, // Populate with selected language UUIDs

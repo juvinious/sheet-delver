@@ -8,8 +8,16 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
     if (!doc || !doc.system) return [];
 
     const baggage: any[] = [];
+    const talentChoiceCount = doc.system.talentChoiceCount || 0;
+    const rawTalents = doc.system.talents || [];
+
+    // Only include talents if they are FIXED (not choices)
+    const fixedTalents = (talentChoiceCount === 0 || rawTalents.length <= talentChoiceCount)
+        ? rawTalents
+        : [];
+
     const refs: string[] = [
-        ...(doc.system.talents || []),
+        ...fixedTalents,
         ...(doc.system.features || []),
         ...(doc.system.abilities || []),
         ...(doc.system.classAbilities || []),
@@ -31,6 +39,10 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
                 if (item) {
                     const sanitized = (item.toObject ? item.toObject() : { ...item });
                     delete sanitized._id;
+
+                    // ATTACH UUID: Essential for duplication checks in the Generator
+                    sanitized.uuid = uuid;
+
                     baggage.push(sanitized);
                 }
             } catch (e) {
@@ -53,11 +65,18 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
 
     for (const obj of objectsToScan) {
         for (const key of Object.keys(obj)) {
+            if (['talents', 'features', 'abilities', 'classAbilities'].includes(key)) {
+                continue;
+            }
+
             const val = obj[key];
             if (Array.isArray(val) && val.length > 0) {
                 if (typeof val[0] === 'string') {
                     val.forEach(v => {
-                        if (typeof v === 'string' && v.includes('.')) candidates.add(v);
+                        // Only add if it looks like a Gear UUID
+                        if (typeof v === 'string' && v.includes('.') && v.includes('.gear.')) {
+                            candidates.add(v);
+                        }
                     });
                 }
             }
@@ -77,6 +96,10 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
             if (item) {
                 const clean = (item.toObject ? item.toObject() : { ...item });
                 delete clean._id;
+
+                // ATTACH UUID: Essential for duplication checks
+                clean.uuid = entry;
+
                 resolvedItems.push(clean);
             }
         } catch (e) {

@@ -161,6 +161,19 @@ export class DataManager {
                             // If it's already a TableResult (has range), use it
                             if (resultDoc.range) {
                                 syntheticResults.push(resultDoc);
+                            } else if (resultDoc.documentType === 'RollTable') {
+                                // Don't hydrate nested tables, just link them
+                                syntheticResults.push({
+                                    _id: id,
+                                    type: 2, // document
+                                    documentCollection: 'RollTable',
+                                    documentId: resultDoc._id,
+                                    text: resultDoc.name,
+                                    img: resultDoc.img,
+                                    range: [index + 1, index + 1],
+                                    weight: 1,
+                                    drawn: false
+                                });
                             } else {
                                 // Create a synthetic TableResult wrapper
                                 syntheticResults.push({
@@ -219,7 +232,7 @@ export class DataManager {
         return null;
     }
 
-    async rollTable(uuidOrName: string): Promise<{ total: number, results: any[], items?: any[], table: any, formula: string } | null> {
+    async draw(uuidOrName: string, rollOverride?: number): Promise<{ id: string, roll: number, total: number, formula: string, results: any[], items: any[], table: any } | null> {
         let table = await this.getDocument(uuidOrName);
 
         if (!table) {
@@ -227,59 +240,53 @@ export class DataManager {
         }
 
         if (!table) {
-            logger.warn(`[DataManager] rollTable failed: Could not find table '${uuidOrName}'`);
+            logger.warn(`[DataManager] Draw failed: Could not find table '${uuidOrName}'`);
             return null;
         }
 
         if (!table.results || !Array.isArray(table.results)) {
-            logger.warn(`[DataManager] rollTable failed: Table '${table.name}' has no results.`);
+            logger.warn(`[DataManager] Draw failed: Table '${table.name}' has no results.`);
             return null;
         }
 
-        // Calculate max range
-        let maxRange = 0;
-        table.results.forEach((r: any) => {
-            if (r.range && Array.isArray(r.range) && r.range[1] > maxRange) {
-                maxRange = r.range[1];
-            }
-        });
+        // Use Math.random 2-12 unless overridden
+        const roll = rollOverride ?? (Math.floor(Math.random() * (12 - 2 + 1)) + 2);
 
-        if (maxRange === 0) return null;
-
-        const formula = table.formula || `1d${maxRange}`;
-        const roll = this._rollFormula(formula);
         const matched = table.results.filter((r: any) => {
             const range = r.range || [1, 1];
             return roll >= range[0] && roll <= range[1];
         });
 
-        // Resolve results to items if they are document links
-        const items = [];
+        // Hydrate results with raw data if they are just IDs or partially hydrated
+        const hydratedResults = [];
         for (const res of matched) {
+            // results are already mostly hydrated in initialize()'s resultsMap logic,
+            // but let's ensure we have the full document if it's a link.
             if (res.documentCollection && res.documentId) {
                 const collection = res.documentCollection.includes('.') ? res.documentCollection : `shadowdark.${res.documentCollection}`;
                 const uuid = `Compendium.${collection}.${res.documentId}`;
                 const itemDoc = await this.getDocument(uuid);
-                if (itemDoc) items.push(itemDoc);
-                else items.push(res);
-            } else if (res.documentUuid || res.uuid) {
-                const uuid = res.documentUuid || res.uuid;
-                const itemDoc = await this.getDocument(uuid);
-                if (itemDoc) items.push(itemDoc);
-                else items.push(res);
+                if (itemDoc) {
+                    hydratedResults.push({ ...res, document: itemDoc });
+                } else {
+                    hydratedResults.push(res);
+                }
             } else {
-                items.push(res);
+                hydratedResults.push(res);
             }
         }
 
         return {
-            total: roll,
-            results: matched,
-            items: items,
-            table: table,
-            formula: formula
+            id: table._id || table.id,
+            roll: roll,         // User requested field
+            total: roll,        // Engine compatibility
+            formula: table.system?.formula || "2d6",
+            results: hydratedResults,
+            items: hydratedResults.map(r => r.document || r).filter(Boolean),
+            table: table
         };
     }
+
 
     public async getSpellsBySource(className: string): Promise<any[]> {
         if (!this.initialized) await this.initialize();
