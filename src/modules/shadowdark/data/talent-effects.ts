@@ -118,7 +118,7 @@ export const TALENT_EFFECTS_MAP: Record<string, string> = {
     'Advantage on Melee Attacks': 'Compendium.shadowdark.talents.6iJ6ETUAKC7DR0aT',
     'Backstab +1 Dice': 'Compendium.shadowdark.talents.HzzgAIdhoAyfeItJ',
     'Backstab': 'Compendium.shadowdark.talents.KLDZKFY6SrqQKSva',
-    'Armor Mastery': 'Compendium.shadowdark.talents.0g9MUhj9Tr3AWRXl',
+    'Armor Mastery': 'Compendium.shadowdark.talents.BsRPGhKXYwJBI9ex',
     'Shield Wall': 'Compendium.shadowdark.talents.KMMpRWDsIybiDW7u',
     'Weapon Mastery': 'Compendium.shadowdark.talents.5bpWuaT0KTNzuzCu',
     'Grit (Strength)': 'Compendium.shadowdark.talents.F0NXUJcnBOYKzhMi',

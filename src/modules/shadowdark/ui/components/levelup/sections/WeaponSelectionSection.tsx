@@ -1,5 +1,4 @@
-
-import React from 'react';
+import { Swords } from 'lucide-react';
 
 interface WeaponSelectionSectionProps {
     required: number;
@@ -33,15 +32,23 @@ export const WeaponSelectionSection: React.FC<WeaponSelectionSectionProps> = ({
     };
 
     return (
-        <div className="p-4 mb-4 border-2 border-yellow-600/50 bg-black/40 rounded-lg">
-            <h3 className="text-xl font-bold text-yellow-500 mb-2 font-cinzel">
-                Weapon Mastery Selection
-            </h3>
-            <p className="text-gray-400 mb-4 text-sm">
-                Select {required} weapon type{required > 1 ? 's' : ''} to master.
+        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative animate-in fade-in slide-in-from-bottom-2 duration-300">
+            {/* Header Bar */}
+            <div className="bg-black text-white px-4 py-2 font-serif font-bold text-lg uppercase tracking-wider -mx-4 -mt-4 mb-4 flex justify-between items-center overflow-hidden">
+                <div className="flex items-center gap-2">
+                    <Swords size={18} className="text-white" />
+                    <span>Weapon Mastery</span>
+                </div>
+                <div className="text-xs font-black bg-white text-black px-2 py-0.5 rounded-sm uppercase tracking-tighter">
+                    {selected.length} / {required}
+                </div>
+            </div>
+
+            <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-[0.2em] mb-4 border-b-2 border-dashed border-neutral-100 pb-2">
+                Select {required} weapon type{required > 1 ? 's' : ''} to master
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {WEAPONS.map(weapon => {
                     const isSelected = selected.includes(weapon);
                     const isDisabled = !isSelected && selected.length >= required;
@@ -52,22 +59,19 @@ export const WeaponSelectionSection: React.FC<WeaponSelectionSectionProps> = ({
                             onClick={() => toggleWeapon(weapon)}
                             disabled={isDisabled}
                             className={`
-                                p-2 text-sm border rounded transition-all duration-200
+                                relative p-3 border-2 transition-all text-center group font-bold uppercase tracking-wider text-xs
                                 ${isSelected
-                                    ? 'bg-yellow-900/50 border-yellow-500 text-yellow-100 shadow-[0_0_10px_rgba(234,179,8,0.3)]'
-                                    : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                                    ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                    : isDisabled
+                                        ? 'bg-neutral-50 border-neutral-200 text-neutral-300 cursor-not-allowed opacity-50'
+                                        : 'bg-white border-black hover:bg-neutral-100 text-black hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
                                 }
-                                ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                             `}
                         >
                             {weapon}
                         </button>
                     );
                 })}
-            </div>
-
-            <div className="mt-2 text-right text-xs text-gray-500">
-                {selected.length}/{required} Selected
             </div>
         </div>
     );

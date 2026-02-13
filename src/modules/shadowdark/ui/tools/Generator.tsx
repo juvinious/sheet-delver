@@ -6,6 +6,7 @@ import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@/app/ui/logger';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
+import LoadingModal from '@/app/ui/components/LoadingModal';
 
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
@@ -802,9 +803,16 @@ export default function Generator() {
                 // 1. FILTER: Gear for Level 1 Characters
                 // Level 1 characters should start with empty inventory (except gold), no random gear/kits.
                 if (!formData.level0) {
-                    const type = (item.type || "").toLowerCase();
-                    if (['weapon', 'armor', 'basic', 'potion', 'scroll'].includes(type)) {
+                    // SPECIAL: Some rolled/wrapped items might have numeric types (from TableResult)
+                    // Ensure we handle them as strings
+                    const type = (String(item.type || "")).toLowerCase();
+                    if (['weapon', 'armor', 'basic', 'potion', 'scroll'].includes(type) || item.type === 'gear') {
                         continue; // Skip gear
+                    }
+
+                    // Ensure it has a name for the generator log
+                    if (!item.name && (item.text || item.description)) {
+                        item.name = item.text || item.description;
                     }
                 }
 
@@ -1032,10 +1040,22 @@ export default function Generator() {
         // Return minimal skeleton or transparent loader to let dashboard transition look smoother?
         // Or a nicer themed loader.
         return (
+            <LoadingModal
+                message="Loading Character Generator"
+                visible={true}
+                theme={{
+                    overlay: "absolute inset-0 bg-neutral-900/95 backdrop-blur-md transition-opacity",
+                    container: "relative z-10 p-8 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-white/10 shadow-2xl text-center space-y-4 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-300",
+                    spinner: "w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto",
+                    text: "text-xl font-bold text-white font-sans"
+                }}
+            />
+        )
+        return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900 text-white">
                 <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
                     <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                    <div className="text-xl font-serif text-amber-500 animate-pulse">Summoning the Shadowdark...</div>
+                    <div className="text-xl font-serif text-amber-500 animate-pulse">Loading Character Generator...</div>
                 </div>
             </div>
         );
@@ -1840,7 +1860,7 @@ export default function Generator() {
 
                 {/* Create Character CTA Button (Full Width Bottom) */}
                 <div className="bg-neutral-900 text-white p-8 border-2 border-black shadow-lg flex flex-col items-center justify-center gap-4">
-                    <p className="text-neutral-400 font-serif italic text-lg opacity-80">&quot;The darkness holds its breath...&quot;</p>
+                    <p className="text-neutral-400 font-serif italic text-lg opacity-80">&quot;Protect the light!&quot;</p>
                     {creationError && (
                         <div className="w-full max-w-md bg-red-900/50 border border-red-500 text-red-200 px-4 py-2 rounded text-center text-sm font-bold animate-pulse">
                             {creationError}
@@ -1853,7 +1873,7 @@ export default function Generator() {
                     >
                         {loading ? 'Creating...' : 'Create Character'}
                     </button>
-                    <p className="text-xs text-neutral-500">Creates a new actor in Foundry VTT</p>
+                    <p className="text-xs text-neutral-500">{systemData.title} {systemData.version}</p>
                 </div>
 
                 {/* Stat Selection Modal */}

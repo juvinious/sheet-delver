@@ -248,16 +248,73 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             return NextResponse.json({ error: 'tableUuidOrName is required' }, { status: 400 });
         }
 
-        const result = await dataManager.rollTable(tableUuidOrName);
-        if (!result) {
-            return NextResponse.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
+        // Pre-fetch actor items if checking for duplicates
+        const existingTalentNames = new Set<string>();
+        if (actorId && actorId !== 'new') {
+            try {
+                const actor = await client.getActor(actorId);
+                if (actor && actor.items) {
+                    actor.items.forEach((i: any) => {
+                        if (i.type === 'Talent' || i.type === 'Boon') {
+                            existingTalentNames.add(i.name.toLowerCase().trim());
+                        }
+                    });
+                }
+            } catch (e) {
+                logger.warn(`[API] Could not fetch actor items for duplicate check: ${e}`);
+            }
         }
 
-        // Process the result using the shared engine logic
-        let { item, needsChoice, choiceOptions } = await levelUpEngine.processRollResult({
-            result,
-            table: result.table
-        });
+        const instructionRegex = /\breroll\b|\balready\s+taken\b|\balready\s+had\b/i;
+
+        let attempts = 0;
+        const maxAttempts = 5;
+        let finalRollResult = null;
+        let item = null;
+        let needsChoice = false;
+        let choiceOptions: any[] = [];
+
+        while (attempts < maxAttempts) {
+            attempts++;
+            const result = await dataManager.rollTable(tableUuidOrName);
+            if (!result) {
+                return NextResponse.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
+            }
+
+            finalRollResult = result;
+            const processed = await levelUpEngine.processRollResult({
+                result,
+                table: result.table
+            });
+
+            item = processed.item;
+            needsChoice = processed.needsChoice;
+            choiceOptions = processed.choiceOptions;
+
+            if (needsChoice) break; // Choices are filtered in getChoices()
+
+            if (item) {
+                const itemName = (item.name || item.text || item.description || "").toLowerCase().trim();
+
+                // Check for reroll instruction
+                if (instructionRegex.test(itemName)) {
+                    logger.info(`[API] Explicit reroll instruction hit: "${itemName}". Attempt ${attempts}/${maxAttempts}`);
+                    continue;
+                }
+
+                // Check for duplicate
+                if (existingTalentNames.has(itemName)) {
+                    logger.info(`[API] Duplicate talent hit: "${itemName}". Attempt ${attempts}/${maxAttempts}`);
+                    continue;
+                }
+
+                // Valid non-duplicate item
+                break;
+            } else {
+                logger.info(`[API] Empty or instruction result. Attempt ${attempts}/${maxAttempts}`);
+                continue;
+            }
+        }
 
         if (item) {
             // Apply mutation handlers
@@ -270,7 +327,7 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
                             needsChoice = true;
                             // If handler forces choice but we don't have options yet, fetch them
                             if (!choiceOptions || choiceOptions.length === 0) {
-                                choiceOptions = levelUpEngine.getChoices(result.table);
+                                choiceOptions = finalRollResult ? levelUpEngine.getChoices(finalRollResult.table) : [];
                             }
                         }
                     }
@@ -285,8 +342,8 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
 
         return NextResponse.json({
             success: true,
-            roll: result.total,
-            formula: result.formula,
+            roll: finalRollResult?.total,
+            formula: finalRollResult?.formula,
             item: item,
             needsChoice,
             choiceOptions

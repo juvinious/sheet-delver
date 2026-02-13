@@ -131,6 +131,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         onRemoveTalent={actions.handleRemoveTalent}
                                         onRemoveBoon={actions.handleRemoveBoon}
                                         onResetTalents={actions.handleResetTalents}
+                                        onResetBoons={actions.handleResetTalents}
                                         onResolveNested={actions.handleResolveNested}
                                         patronName={state.fetchedPatron?.name || state.availablePatrons.find((p: any) => (p.uuid || p._id) === state.selectedPatronUuid)?.name}
                                     />

@@ -125,6 +125,58 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         }
     },
     {
+        id: 'stat-distribution-warlock',
+        description: "Distribute +2 points (max 1 per stat)",
+        matches: (item: any) => {
+            return item.name === "Distribute to Stats (Warlock)";
+        },
+        action: 'stat-pool',
+        config: { total: 2, maxPerStat: 1 },
+        mutateItem: (item: any, state: any) => {
+            // Re-use logic from stat-distribution
+            if (state.statPool && state.statPool.total > 0) {
+                const allocated = state.statPool.allocated;
+                const effects: string[] = [];
+
+                if (!item.effects) item.effects = [];
+                item.effects = (item.effects || []).filter((e: any) =>
+                    !e.name.startsWith("Stat Distribution") &&
+                    !e.name.startsWith("Ability Score Improvement")
+                );
+
+                Object.entries(allocated).forEach(([stat, val]) => {
+                    const value = Number(val);
+                    if (value > 0) {
+                        const statName = stat.charAt(0).toUpperCase() + stat.slice(1);
+                        const effectKey = `abilityImprovement${statName}`;
+                        effects.push(effectKey);
+
+                        const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
+                        if (config) {
+                            item.effects.push({
+                                name: `Ability Score Improvement (${config.label})`,
+                                icon: config.icon,
+                                changes: [
+                                    {
+                                        key: config.key,
+                                        mode: config.mode,
+                                        value: String(value)
+                                    }
+                                ],
+                                transfer: true
+                            });
+                        }
+                    }
+                });
+
+                if (effects.length > 0) {
+                    if (!item.system) item.system = {};
+                    item.system.predefinedEffects = effects.join(',');
+                }
+            }
+        }
+    },
+    {
         id: 'weapon-mastery',
         description: "Choose one type of weapon",
         matches: (item: any) => {
@@ -156,6 +208,18 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                         cleaned.system.bonuses.weaponMastery = selection.toLowerCase();
                     }
                     cleaned.name = `${cleaned.name} (${selection})`;
+
+                    // Update embedded effects
+                    if (cleaned.effects) {
+                        cleaned.effects.forEach((effect: any) => {
+                            if (effect.changes) {
+                                effect.changes.forEach((c: any) => {
+                                    if (c.value === 'REPLACEME') c.value = selection.toLowerCase();
+                                });
+                            }
+                        });
+                    }
+
                     items.push(cleaned);
                 } else {
                     items.push({
@@ -178,7 +242,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         description: "Choose one type of armor",
         matches: (item: any) => {
             const name = (item.name || item.text || item.description || "").toLowerCase();
-            return name === 'armor mastery' || item._id === '0g9MUhj9Tr3AWRXl';
+            return name === 'armor mastery' || item._id === 'BsRPGhKXYwJBI9ex' || item._id === '0g9MUhj9Tr3AWRXl';
         },
         action: 'armor-mastery',
         config: { required: 1 },
@@ -186,7 +250,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             const items = [];
             if (state.armorMasterySelection && state.armorMasterySelection.selected.length > 0) {
                 const selection = state.armorMasterySelection.selected[0];
-                const uuid = 'Compendium.shadowdark.talents.0g9MUhj9Tr3AWRXl';
+                const uuid = 'Compendium.shadowdark.talents.BsRPGhKXYwJBI9ex';
 
                 let doc = null;
                 if (client) {
@@ -206,6 +270,18 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                     }
                     cleaned.name = `${cleaned.name} (${selection})`;
 
+                    // Update embedded effects
+                    if (cleaned.effects) {
+                        cleaned.effects.forEach((effect: any) => {
+                            if (effect.changes) {
+                                effect.changes.forEach((c: any) => {
+                                    if (c.value === 'REPLACEME') c.value = selection.toLowerCase();
+                                });
+                            }
+                        });
+                    }
+
+                    // Legacy check for 'changes' on top level (if some older DB format exists)
                     if (cleaned.changes) {
                         cleaned.changes.forEach((c: any) => {
                             if (c.value === 'REPLACEME') c.value = selection.toLowerCase();

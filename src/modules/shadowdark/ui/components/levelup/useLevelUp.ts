@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isSpellcaster, getSpellcastingClass, isClassSpellcaster } from '../../../rules';
 import { logger } from '@/app/ui/logger';
-import { resolveGear } from './gear-resolver';
+import { resolveGear } from '@/modules/shadowdark/api/gear-resolver';
 import { resolveBaggage } from './baggage-resolver';
 import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
 
@@ -110,7 +110,7 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [spellsToChooseTotal, setSpellsToChooseTotal] = useState(0);
     const [existingItems, setExistingItems] = useState<any[]>([]);
     const [statSelection, setStatSelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
-    const [statPool, setStatPool] = useState<{ total: number; allocated: Record<string, number>; talentIndex: number | null }>({ total: 0, allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, talentIndex: null });
+    const [statPool, setStatPool] = useState<{ total: number; allocated: Record<string, number>; talentIndex: number | null; maxPerStat?: number }>({ total: 0, allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, talentIndex: null });
     const [weaponMasterySelection, setWeaponMasterySelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
     const [armorMasterySelection, setArmorMasterySelection] = useState<{ required: number; selected: string[] }>({ required: 0, selected: [] });
     const [extraSpellSelection, setExtraSpellSelection] = useState<{ active: boolean; maxTier: number; source: string; selected: any[] }>({ active: false, maxTier: 0, source: 'Wizard', selected: [] });
@@ -576,6 +576,10 @@ export const useLevelUp = (props: LevelUpProps) => {
         setStatPool(prev => {
             const currentVal = prev.allocated[stat] || 0;
             const newVal = Math.max(0, currentVal + delta);
+
+            // Enforce maxPerStat
+            if (prev.maxPerStat && newVal > prev.maxPerStat) return prev;
+
             const totalUsed = Object.values(prev.allocated).reduce((a: number, b: any) => a + (Number(b) || 0), 0) - currentVal + newVal;
 
             if (totalUsed > prev.total) return prev;
@@ -955,6 +959,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         let selectionReq = 0;
         let talentIndex: number | null = null;
         let hasDist = false;
+        let maxPerStat = 0;
 
         let wmReq = 0;
         let amReq = 0;
@@ -968,6 +973,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 switch (handler.action) {
                     case 'stat-pool':
                         poolTotal += handler.config?.total || 0;
+                        if (handler.config?.maxPerStat) maxPerStat = handler.config.maxPerStat;
                         if (index !== null) {
                             talentIndex = index;
                             hasDist = true;
@@ -1007,7 +1013,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 return {
                     total: poolTotal,
                     allocated: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 },
-                    talentIndex
+                    talentIndex,
+                    maxPerStat
                 };
             }
             if (prev.talentIndex !== talentIndex && hasDist) {

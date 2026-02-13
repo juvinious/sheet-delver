@@ -219,10 +219,6 @@ export class DataManager {
         return null;
     }
 
-    /**
-     * Roll on a table using the hydrated index.
-     * Supports lookup by UUID or Name.
-     */
     async rollTable(uuidOrName: string): Promise<{ total: number, results: any[], items?: any[], table: any, formula: string } | null> {
         let table = await this.getDocument(uuidOrName);
 
@@ -230,7 +226,13 @@ export class DataManager {
             table = this.findDocumentByName(uuidOrName, 'RollTable');
         }
 
-        if (!table || !table.results || !Array.isArray(table.results)) {
+        if (!table) {
+            logger.warn(`[DataManager] rollTable failed: Could not find table '${uuidOrName}'`);
+            return null;
+        }
+
+        if (!table.results || !Array.isArray(table.results)) {
+            logger.warn(`[DataManager] rollTable failed: Table '${table.name}' has no results.`);
             return null;
         }
 
@@ -245,7 +247,7 @@ export class DataManager {
         if (maxRange === 0) return null;
 
         const formula = table.formula || `1d${maxRange}`;
-        const roll = Math.floor(Math.random() * maxRange) + 1;
+        const roll = this._rollFormula(formula);
         const matched = table.results.filter((r: any) => {
             const range = r.range || [1, 1];
             return roll >= range[0] && roll <= range[1];
@@ -255,7 +257,8 @@ export class DataManager {
         const items = [];
         for (const res of matched) {
             if (res.documentCollection && res.documentId) {
-                const uuid = `Compendium.shadowdark.${res.documentCollection}.${res.documentId}`;
+                const collection = res.documentCollection.includes('.') ? res.documentCollection : `shadowdark.${res.documentCollection}`;
+                const uuid = `Compendium.${collection}.${res.documentId}`;
                 const itemDoc = await this.getDocument(uuid);
                 if (itemDoc) items.push(itemDoc);
                 else items.push(res);
@@ -363,6 +366,42 @@ export class DataManager {
             result[uuid] = doc.name;
         }
         return result;
+    }
+
+    /**
+     * Simple dice formula parser (e.g., "2d6", "1d20+2", etc.)
+     */
+    private _rollFormula(formula: string): number {
+        try {
+            // Trim and normalize
+            const f = formula.toLowerCase().replace(/\s+/g, '');
+
+            // Match standard [count]d[die][+|-][mod]
+            const match = f.match(/^(\d+)d(\d+)(?:([+-])(\d+))?$/);
+            if (!match) {
+                // If it's just a number, return it
+                const n = parseInt(f);
+                return isNaN(n) ? 0 : n;
+            }
+
+            const count = parseInt(match[1]);
+            const die = parseInt(match[2]);
+            const op = match[3];
+            const mod = match[4] ? parseInt(match[4]) : 0;
+
+            let total = 0;
+            for (let i = 0; i < count; i++) {
+                total += Math.floor(Math.random() * die) + 1;
+            }
+
+            if (op === '+') total += mod;
+            if (op === '-') total -= mod;
+
+            return total;
+        } catch (e) {
+            logger.error(`[DataManager] Error rolling formula "${formula}":`, e);
+            return 0;
+        }
     }
 }
 

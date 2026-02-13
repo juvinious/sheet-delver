@@ -10,7 +10,10 @@ interface RollResultProcessorOptions {
 
 export async function processRollResult({ result, table }: RollResultProcessorOptions) {
     logger.info(`[Engine] processRollResult for table: ${table?.name}`, { result });
-    let item = result.items && result.items.length > 0 ? { ...result.items[0] } : null;
+    const matchedItems = result.items || [];
+    const matchedResults = result.results || [];
+
+    let item = matchedItems.length > 0 ? { ...matchedItems[0] } : null;
     let needsChoice = false;
     let choiceOptions: any[] = [];
 
@@ -23,88 +26,200 @@ export async function processRollResult({ result, table }: RollResultProcessorOp
         }
     }
 
-    if (item) {
-        // Filter invalid item result immediately
-        const itemName = (item.text || item.name || "").trim().toLowerCase();
-        // Filter out "or", "and", empty string, or pure numbers if they are the ONLY result
-        // But we want to keep them if we are going to offer a choice
-        if (!itemName || /^(or|and)$/.test(itemName) || /^\\d+$/.test(itemName)) {
-            logger.debug(`[Engine] Item name '${itemName}' matches invalid pattern. Checking choice potential...`);
-            // We DO NOT set item to null here, we just flag it potential invalid
-            // If needsChoice doesn't pick it up, it might be an issue.
+    // Strategy 1: Constrained Choice
+    // If multiple functional items match the roll range, offer a choice between ONLY those items.
+    // Also, if a SINGLE item contains " or ", split it into sub-choices.
+    const functionalResults = matchedResults.filter((r: any) => {
+        const text = (r.text || r.name || "").trim().toLowerCase();
+
+        // SPECIAL FILTER: Bard Level 12 Table (ZzffJkaIfmdPzdE7)
+        // Remove "Distribute to Stats" (redundant) but KEEP "Or +2 points to distribute..."
+        // Also remove individual "+1/2 to Stat" entries to prevent UI bloat.
+        if (table?._id === "ZzffJkaIfmdPzdE7") {
+            const isRedundantDistribute = text.includes("distribute") && !text.includes("points");
+            const isChooseHeader = text.includes("choose 1");
+
+            // Filter individual stat boosts
+            const stats = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+            const isStatBoost = text.includes('+1 to') || text.includes('+2 to');
+            const involvesStat = stats.some(s => text.includes(s));
+            const isStatEntry = isStatBoost && involvesStat;
+
+            // Check if we have the "Unified" distribute option ("Or +2 points...")
+            const hasUnifiedDistribute = matchedResults.some((r: any) =>
+                (r.text || r.name || "").toLowerCase().includes("points")
+            );
+
+            // If we have the unified option, we can safely remove the redundant "Distribute to Stats".
+            // If we DON'T have it (e.g. data difference), we must KEEP "Distribute to Stats".
+            if (isRedundantDistribute && hasUnifiedDistribute) {
+                logger.debug(`[Engine] Filtering out redundant Bard Level 12 option (Distribute): ${text}`);
+                return false;
+            }
+
+            if (isChooseHeader || isStatEntry) {
+                logger.debug(`[Engine] Filtering out redundant Bard Level 12 option: ${text}`);
+                return false;
+            }
+        }
+
+        // SPECIAL FILTER: Warlock Level 3-6 Table (xM3hghlK5nvo46Vo)
+        // Consolidate all 3-6 results into a single "Distribute to Stats (Warlock)" item.
+        if (table?._id === "xM3hghlK5nvo46Vo") {
+            const range = r.range || [0, 0];
+            // If we are in the 3-6 range, we want to replace this item with the synthetic header later.
+            // But here we are filtering valid results.
+            // If we return TRUE, it's kept.
+            // We need to Detect if we are in this range.
+            if (range[0] === 3 && range[1] === 6) {
+                // We'll handle the synthesis in the functionalResults check below.
+                return true;
+            }
+        }
+
+        return text && !/^(or|and|choose\s+(?:one|1)|select\s+(?:one|1))$/i.test(text);
+    });
+
+    // Post-Filter Synthesis
+    if (functionalResults.length > 0) {
+        // Check for Warlock 3-6 case to synthesize the single option
+        if (table?._id === "xM3hghlK5nvo46Vo") {
+            const range3to6 = functionalResults.filter((r: any) => {
+                const range = r.range || [0, 0];
+                return range[0] === 3 && range[1] === 6;
+            });
+
+            if (range3to6.length > 0) {
+                // We have results in the 3-6 range. 
+                // We want to return a SINGLE synthetic item "Distribute to Stats (Warlock)".
+                // Only if the roll didn't naturally land on such an item (which it won't, raw data is split).
+
+                logger.info(`[Engine] Synthesizing Warlock Distribute option from ${range3to6.length} results.`);
+
+                const syntheticItem = {
+                    _id: "synthetic_warlock_distribute",
+                    name: "Distribute to Stats (Warlock)",
+                    text: "Distribute to Stats (Warlock)",
+                    img: "icons/magic/symbols/question-stone-yellow.webp",
+                    type: "Talent",
+                    system: { level: 0 }, // Dummy
+                    range: [3, 6]
+                };
+
+                // Replace the functional results with JUST this item (if the roll was in this range)
+                // If the roll covered OTHER ranges too? (Unlikely for 2d6 table unless range overlaps).
+                // Actually, matchedResults only contains items matching the roll.
+                // So if we have ANY 3-6 items, we probably ONLY have 3-6 items (since ranges are exclusive).
+
+                // So we can return a choice with just this item.
+                // Actually, processRollResult returns { item, needsChoice, choiceOptions }.
+                // If we have 1 item, needsChoice = false.
+
+                return { item: syntheticItem, needsChoice: false, choiceOptions: [] };
+            }
+        }
+        // Check for "or" in a single result to split it
+        let splitOptions: any[] = [];
+        if (functionalResults.length === 1) {
+            const text = (functionalResults[0].text || functionalResults[0].name || "").trim();
+
+            // EXCEPTION: Do not split specific known items that contain "or" in their name
+            const noSplitItems = [
+                "priest or wizard wand", // Bard Level 12
+            ];
+            const shouldSkipSplit = noSplitItems.some(item => text.toLowerCase().includes(item));
+
+            if (!shouldSkipSplit && /\s+or\s+/i.test(text)) {
+                logger.info(`[Engine] Splitting single "or" result into choices: ${text}`);
+                const parts = text.split(/\s+or\s+/i);
+                splitOptions = parts.map((p: string) => ({
+                    ...functionalResults[0],
+                    name: p.trim(),
+                    text: p.trim()
+                }));
+            }
+        }
+
+        if (functionalResults.length > 1 || splitOptions.length > 1) {
+            logger.info(`[Engine] Choice detected: ${functionalResults.length} items or ${splitOptions.length} splits.`);
+            const options = splitOptions.length > 0 ? getChoices(table, splitOptions) : getChoices(table, matchedResults);
+
+            if (options.length > 1) {
+                needsChoice = true;
+                choiceOptions = options;
+                item = null; // Choice modal takes over
+            } else if (options.length === 1) {
+                // If filtering/deduplication left only one real item, use it directly
+                const hydratedSource = splitOptions.length > 0 ? splitOptions[0] : matchedItems[0];
+                item = hydratedSource || matchedItems[0];
+            }
         }
     }
 
-    // Detect if choice is needed
-    // 1. Text Item Check - Only IF it matches a choice pattern
-    if (!needsChoice && item && (item.type === 'text' || item.type === 0)) {
-        const text = (item.text || item.name || "").toLowerCase();
-        // Strict check: Must imply a choice (Choose, Select, OR connectivity)
-        const isChoiceHeader = /^(?:choose|select)\s+(?:one|1|\d+)(?:\s+or\s+\d+)?$/i.test(text) ||
-            /(?:^|\s)or(?:$|\s)/i.test(text) ||
-            text === 'choose 1' || text === 'select 1'; // explicit fallback
-
-        if (isChoiceHeader) {
-            needsChoice = true;
-        } else {
-            // It's a text result (instruction/flavor), NOT a choice header. 
-            // Ensure it has a name for display
-            if (!item.name && item.text) item.name = item.text;
-        }
-    }
-
-    // 2. Result Text Check (Regex backup for non-text types that might rely on name/text)
+    // Strategy 2: Global Table Choice (e.g. "Choose 1 from the following")
+    // If we haven't found a constrained choice, check if the single item is a header.
     if (!needsChoice && item) {
         const text = (item.text || item.name || item.description || "").toLowerCase();
-        // Allow "or" at start/end or surrounded by spaces. Matches "or", "1 or 2", "choose one", etc.
-        const regex = /(?:choose|select)\s+(?:one|1)|(?:^|\s)or(?:$|\s)/i;
-        if (regex.test(text)) {
-            needsChoice = true;
-        }
-    }
 
-    if (needsChoice && table && table.results) {
-        choiceOptions = getChoices(table);
-        // If we found valid options, and the current item is just an instruction (text), set item to null
-        // so the frontend uses the header logic.
-        if (choiceOptions.length > 1) {
-            // Only clear item if it was a text instruction
-            if (item.type === 'text' || item.type === 0) item = null;
+        // Strict check for headers
+        const isChoiceHeader = /^(?:choose|select)\s+(?:one|1|\d+)(?:\s+or\s+\d+)?$/i.test(text) ||
+            /^(?:choose|select)\s+one$/i.test(text);
+
+        if (isChoiceHeader) {
+            // If it's a header, but we ONLY have this header in the results, 
+            // then we unfortunately MUST fallback to the whole table or 
+            // find items in the same range tier.
+            needsChoice = true;
+            choiceOptions = getChoices(table);
+            item = null;
+        } else if (/^(?:or|and)$/i.test(text)) {
+            // Generic "OR" instruction result, offer whole table if no functional results were found
+            needsChoice = true;
+            choiceOptions = getChoices(table);
+            item = null;
+        } else {
+            // It's a text result (instruction/flavor), NOT a choice header.
+            if (!item.name && (item.text || item.description)) item.name = item.text || item.description;
         }
     }
 
     return { item, needsChoice, choiceOptions };
 }
 
-export function getChoices(table: any): any[] {
-    if (!table || !table.results) return [];
+export function getChoices(table: any, sourceResults?: any[]): any[] {
+    const results = sourceResults || (table && table.results) || [];
+    if (results.length === 0) return [];
 
-    logger.info(`[Engine] processing choices for table ${table.name} (${table.results.length} results)`);
+    logger.info(`[Engine] processing choices for ${table?.name || 'unknown'} (${results.length} results)`);
 
     // First map to potential options
-    const rawOptions = table.results
+    const rawOptions = results
         .filter((r: any) => {
             // Filter out the "OR" result itself if it's just a connector
             const name = (r.text || r.name || "").trim().toLowerCase();
 
-            // Filter out "Choose 1" type headers from the OPTIONS list
-            if (/choose\s+(?:one|1)|\s+or\s+/i.test(name)) {
-                logger.debug(`[Engine] Filtering out choice header: ${name}`);
+            // Filter out "Choose 1" type headers and "Reroll/Already Taken" instructions from the OPTIONS list
+            const instructionRegex = /(?:choose|select)\s+(?:one|1)|\s+or\s+|\breroll\b|\balready\s+taken\b|\balready\s+had\b/i;
+            if (instructionRegex.test(name)) {
+                logger.debug(`[Engine] Filtering out choice instruction: ${name}`);
                 return false;
             }
 
-            const keep = name && !/^(or|and)$/.test(name) && !/^\d+$/.test(name);
+            const keep = name && !/^(or|and|reroll)$/i.test(name) && !/^\d+$/.test(name);
             if (!keep) logger.debug(`[Engine] Filtering out choice option: ${name}`);
             return keep;
         })
-        .map((r: any) => ({
-            name: r.text || r.name,
-            text: r.text || r.name,
-            type: 'Talent',
-            img: r.img || table.img,
-            uuid: r.documentUuid || r.uuid || r._id,
-            original: r
-        }));
+        .map((r: any) => {
+            const name = (r.text || r.name || r.description || "").trim();
+            return {
+                name: name || "Unknown Option",
+                text: name || "Unknown Option",
+                type: 'Talent',
+                img: r.img || (table ? table.img : ""),
+                uuid: r.documentUuid || r.uuid || r._id,
+                original: r
+            };
+        });
 
     // Deduplicate
     const uniqueOptions = new Map();

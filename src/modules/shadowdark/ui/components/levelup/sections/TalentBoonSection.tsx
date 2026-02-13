@@ -14,6 +14,7 @@ interface Props {
     onRemoveTalent: (index: number) => void;
     onRemoveBoon: (index: number) => void;
     onResetTalents?: () => void;
+    onResetBoons?: () => void;
     onResolveNested?: (index: number, item: any, context: 'talent' | 'boon') => void;
     patronName?: string;
 }
@@ -32,6 +33,7 @@ export const TalentBoonSection = ({
     onRemoveTalent,
     onRemoveBoon,
     onResetTalents,
+    onResetBoons,
     onResolveNested,
     patronName
 }: Props) => {
@@ -145,6 +147,15 @@ export const TalentBoonSection = ({
                             <span>Boons</span>
                         </div>
                         <div className="flex gap-2">
+                            {onResetBoons && (
+                                <button
+                                    onClick={onResetBoons}
+                                    className="text-[10px] font-bold bg-neutral-700 hover:bg-red-600 text-white px-2 py-0.5 rounded-sm transition-colors uppercase tracking-wider"
+                                    title="Reset all boons"
+                                >
+                                    Reset
+                                </button>
+                            )}
                             {startingBoons > 0 && (
                                 <div className="text-xs font-black bg-white text-purple-900 px-2 py-0.5 rounded-sm">
                                     Req: {Math.min(rolledBoons.length, startingBoons)} / {startingBoons}
