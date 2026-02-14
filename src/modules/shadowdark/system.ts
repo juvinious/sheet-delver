@@ -27,7 +27,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
     componentStyles = shadowdarkTheme;
 
     match(actor: any): boolean {
-        return actor.systemId === 'shadowdark' || actor.system?.attributes?.hp?.base !== undefined; // Heuristic fallback if systemId missing, but usually systemId is there.
+        // Broaden heuristic to protect against partial system object or missing systemId
+        const hasShadowdarkType = ['player', 'character', 'npc'].includes(actor.type?.toLowerCase());
+        const hasShadowdarkSystem = actor.system?.attributes?.hp !== undefined ||
+            actor.system?.abilities?.str !== undefined;
+
+        return actor.systemId === 'shadowdark' || (hasShadowdarkType && hasShadowdarkSystem);
     }
 
     async getActor(client: any, actorId: string): Promise<any> {
@@ -869,28 +874,21 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const actorName = actor.name || 'Unknown Actor';
         logger.debug(`[ShadowdarkAdapter] Normalizing Actor Data: ${actorName} (${actor.id || actor._id})`);
 
-        // Log all item types for debugging
-        if (actor.items) {
-            const types = [...new Set(actor.items.map((i: any) => i.type))];
-            logger.debug(`[ShadowdarkAdapter] Found items with types: ${types.join(', ')}`);
-        } else {
-            logger.debug(`[ShadowdarkAdapter] No items found on actor.`);
-        }
-
         // Clone system data to apply effects without mutating raw data
         const s = typeof structuredClone === 'function'
             ? structuredClone(actor.system)
             : JSON.parse(JSON.stringify(actor.system));
 
-        // Sanitization
+        // Sanitization & Derived Data (Avoid mutating original actor)
+        let actorImg = actor.img;
+        let actorItems = actor.items ? [...actor.items] : [];
+
         if (client) {
-            actor.img = client.resolveUrl(actor.img);
-            if (actor.items) {
-                actor.items = actor.items.map((i: any) => ({
-                    ...i,
-                    img: client.resolveUrl(i.img)
-                }));
-            }
+            actorImg = client.resolveUrl(actorImg);
+            actorItems = actorItems.map((i: any) => ({
+                ...i,
+                img: client.resolveUrl(i.img)
+            }));
 
             if (s.details?.biography?.value) {
                 s.details.biography.value = client.resolveHtml(s.details.biography.value);
@@ -906,7 +904,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Apply Active Effects to the cloned system data
         this.applyEffects(actor, s);
 
-        let classItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'class');
+        let classItem = actorItems.find((i: any) => (i.type || "").toLowerCase() === 'class');
 
         // If no Class item found, try to resolve from system.class (UUID or name)
         if (!classItem && actor.system?.class && typeof window === 'undefined') {
@@ -939,12 +937,21 @@ export class ShadowdarkAdapter implements SystemAdapter {
             logger.debug(`[ShadowdarkAdapter] No Class item found. actor.system.class: ${actor.system?.class}`);
         }
 
-        let patronItem = (actor.items || []).find((i: any) => (i.type || "").toLowerCase() === 'patron');
+        let patronItem = actorItems.find((i: any) => (i.type || "").toLowerCase() === 'patron');
 
-        // If no Patron item found, try to resolve from system.patron
-        if (!patronItem && actor.system?.patron && typeof window === 'undefined') {
+        // If Patron item exists but system.patron link has changed (Foundry hasn't swapped the item yet?)
+        // prioritize the link for the name resolution
+        if (actor.system?.patron && typeof window === 'undefined') {
             const patronRef = actor.system.patron;
-            if (typeof patronRef === 'string') {
+            const patronLinkMatches = patronItem && (
+                patronItem.name === patronRef ||
+                patronItem.id === patronRef ||
+                patronItem._id === patronRef ||
+                patronItem.uuid === patronRef ||
+                patronItem.flags?.core?.sourceId === patronRef
+            );
+
+            if (!patronLinkMatches) {
                 let doc = dataManager.index.get(patronRef) ||
                     dataManager.index.get(`Compendium.${patronRef.replace('Compendium.', '')}`);
 
@@ -959,8 +966,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 }
 
                 if (doc) {
+                    // Update actorItems list so normalizedItems used by sheet will have the correct patron
+                    const existingIdx = actorItems.findIndex((i: any) => (i.type || "").toLowerCase() === 'patron');
+                    if (existingIdx > -1) {
+                        actorItems[existingIdx] = doc;
+                    } else {
+                        actorItems.push(doc);
+                    }
                     patronItem = doc;
-                    logger.debug(`[ShadowdarkAdapter] Resolved missing Patron item from Ref: ${patronRef} -> ${doc.name}`);
+                    logger.debug(`[ShadowdarkAdapter] Resolved Patron from Link (Override): ${patronRef} -> ${doc.name}`);
                 }
             }
         }
@@ -1024,14 +1038,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
         // Resolve helper for items
         const findItemName = (type: string, uuidField?: string) => {
             // 1. Try finding by Type (Case-Insensitive)
-            // @ts-ignore
-            const itemByType = (actor.items || []).find((i: any) => i.type.toLowerCase() === type.toLowerCase());
+            const itemByType = actorItems.find((i: any) => i.type.toLowerCase() === type.toLowerCase());
             if (itemByType) return itemByType.name;
 
             // 2. If we have a UUID in the system field, look for an item with that UUID (or Source ID)
             if (uuidField && typeof uuidField === 'string' && uuidField.length > 0) {
-                // @ts-ignore
-                const itemByUuid = (actor.items || []).find((i: any) => i.uuid === uuidField || i.flags?.core?.sourceId === uuidField || i.id === uuidField);
+                const itemByUuid = actorItems.find((i: any) => i.uuid === uuidField || i.flags?.core?.sourceId === uuidField || i.id === uuidField);
                 if (itemByUuid) return itemByUuid.name;
             }
 
@@ -1049,13 +1061,13 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const className = findItemName('Class', s.class || s.details?.class) || resolved.class || s.class || s.details?.class || '';
         const ancestryName = findItemName('Ancestry', s.ancestry || s.details?.ancestry) || resolved.ancestry || s.ancestry || s.details?.ancestry || '';
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
+        const patronName = findItemName('Patron', s.patron || s.details?.patron) || resolved.patron || s.patron || s.details?.patron || '';
 
         // Unified Spellcaster Logic (v2: Broad Keyword Match + Collection Robustness)
-        const isCaster = isSpellcaster(actor);
-        const showSpellsTab = shouldShowSpellsTab(actor);
+        const isCaster = isSpellcaster({ ...actor, items: actorItems, system: s });
+        const showSpellsTab = shouldShowSpellsTab({ ...actor, items: actorItems, system: s });
 
         // Map items for the view
-        const items = actor.items || [];
         const levelVal = s.level?.value || 0;
         const xpVal = s.level?.xp || 0;
         const nextXP = Number(s.level?.xp_max) || (Math.max(1, levelVal) * 10);
@@ -1064,7 +1076,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const computed = {
             ...(actor.computed || {}),
             isSpellCaster: isCaster,
-            canUseMagicItems: canUseMagicItems(actor),
+            canUseMagicItems: canUseMagicItems({ ...actor, items: actorItems, system: s }),
             showSpellsTab: showSpellsTab,
             classDetails: classItem,
             patronDetails: patronItem,
@@ -1072,7 +1084,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             levelUp: levelUp,
             // Ensure gearSlots is always set, using browser-computed value if available,
             // otherwise calculate it using the effect-modified system data
-            gearSlots: actor.computed?.gearSlots ?? calculateMaxSlots({ ...actor, system: s })
+            gearSlots: actor.computed?.gearSlots ?? calculateMaxSlots({ ...actor, items: actorItems, system: s })
         };
 
         // --- ROBUST EFFECT MERGING ---
@@ -1084,7 +1096,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         for (const e of actorEffects) allFoundryEffects.push(e);
 
         // 2. Crawl Items for any effects NOT already captured
-        const itemsToCrawl = actor.items?.contents || Array.from(actor.items || []);
+        const itemsToCrawl = actorItems;
         for (const item of itemsToCrawl) {
             const itemEffects = item.effects?.contents || Array.from(item.effects || []);
             for (const e of itemEffects) {
@@ -1177,7 +1189,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         }
 
         // Pre-normalize items so derived calculations use correct data
-        const normalizedItems = (actor.items || []).map((i: any) => {
+        const normalizedItems = actorItems.map((i: any) => {
             const item = { ...i, id: i.id || i._id };
             try {
                 applyItemDataOverrides(item);
@@ -1188,14 +1200,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
             return item;
         });
 
-        // Update actor items ref for subsequent calls (calculateAttacks, categorizeInventory)
-        actor.items = normalizedItems;
-
         const sheetData: ActorSheetData = {
             id: actor.id || actor._id,
             name: actor.name,
             type: actor.type,
-            img: actor.img,
+            img: actorImg,
             system: s, // Include raw system data for bindings
             hp: { value: hp.value, max: maxHp },
             ac: ac,
@@ -1212,6 +1221,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 background: backgroundName,
                 ancestry: ancestryName,
                 class: className,
+                patron: patronName,
                 deity: s.deity,
                 languages: s.languages || [],
                 classLanguages: classItem?.system?.languages || [],

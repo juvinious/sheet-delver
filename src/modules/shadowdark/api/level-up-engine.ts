@@ -383,12 +383,16 @@ export async function calculateAdvancement(actor: any, targetLevel: number, clas
     if (requiresPatron) {
         if (targetLevel === 1) {
             requiredBoons = 1;
+            choiceRolls = 0;
             requiredTalents = 0;
         } else if (isOddLevel) {
             choiceRolls = 1;
+            requiredBoons = 0;
             requiredTalents = 0;
         } else {
             requiredTalents = 0;
+            requiredBoons = 0;
+            choiceRolls = 0;
         }
     }
 
@@ -525,7 +529,7 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
     // Sanitization
     return resolvedItems.map(item => {
         const clean = { ...item };
-        if (clean.type === 'text' || clean.type === 0) {
+        if (clean.type === 'text' || clean.type === 0 || clean.type === 'PatronBoon' || clean.type === 'PatronBoonTwice') {
             clean.type = 'Talent';
             clean.system = clean.system || {};
         }

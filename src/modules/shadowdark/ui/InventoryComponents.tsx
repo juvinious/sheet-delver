@@ -92,24 +92,25 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
         e.stopPropagation();
         const newValue = !equipped;
         setEquipped(newValue);
-        onUpdate(`items.${item.id}.system.equipped`, newValue);
+        onUpdate(`items.${itemId}.system.equipped`, newValue);
     };
 
     const handleToggleStash = (e: React.MouseEvent) => {
         e.stopPropagation();
         const newValue = !stashed;
         setStashed(newValue);
-        onUpdate(`items.${item.id}.system.stashed`, newValue);
+        onUpdate(`items.${itemId}.system.stashed`, newValue);
     };
 
     const handleToggleLight = (e: React.MouseEvent) => {
         e.stopPropagation();
         const newValue = !lightActive;
         setLightActive(newValue);
-        onUpdate(`items.${item.id}.system.light.active`, newValue);
+        onUpdate(`items.${itemId}.system.light.active`, newValue);
     };
 
-    const isExpanded = expandedItems.has(item.id);
+    const itemId = item.id || item._id;
+    const isExpanded = expandedItems.has(itemId);
 
     // Attribute logic
     const light = item.system?.light;
@@ -162,7 +163,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                     e.stopPropagation();
                     return;
                 }
-                toggleItem(item.id);
+                toggleItem(itemId);
             }}
         >
             <div className="grid grid-cols-12 p-2 gap-2 items-center font-serif text-sm">
@@ -201,7 +202,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                             <QuantityControl
                                 value={item.system?.quantity ?? 1}
                                 max={item.system?.slots?.per_slot || 0}
-                                onChange={(val) => onUpdate(`items.${item.id}.system.quantity`, val)}
+                                onChange={(val) => onUpdate(`items.${itemId}.system.quantity`, val)}
                             />
                         ) : (
                             item.showQuantity ? (item.system?.quantity || 1) : ''
@@ -275,7 +276,7 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onDelete(item.id);
+                                onDelete(itemId);
                             }}
                             title="Delete Item"
                             className="w-10 h-10 flex items-center justify-center rounded hover:bg-red-100 text-neutral-300 hover:text-red-600 transition-colors group/trash touch-manipulation"
@@ -287,28 +288,26 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                         </button>
                     )}
                 </div>
-            </div >
+            </div>
 
             {/* Expanded Description */}
-            {
-                isExpanded && (
-                    <div className="px-4 py-2 bg-neutral-50 text-sm border-t border-b border-neutral-200 col-span-12 font-serif">
-                        <div className="flex gap-2 mb-2 text-xs font-bold uppercase text-neutral-500">
-                            <span className="bg-neutral-200 px-1 rounded">{item.type}</span>
-                            {isWeapon && <span>{weaponType} • {range} • {damage}</span>}
-                            {isArmor && <span>AC +{item.system?.ac?.base || 0}</span>}
-                            {propertiesDisplay.map((p, pIdx) => (
-                                <span key={`${p}-${pIdx}`} className="bg-neutral-200 px-1 rounded">{p}</span>
-                            ))}
-                        </div>
-
-                        <div
-                            dangerouslySetInnerHTML={{ __html: formatDescription(description) }}
-                            className="prose prose-sm max-w-none"
-                        />
+            {isExpanded && (
+                <div className="px-4 py-2 bg-neutral-50 text-sm border-t border-b border-neutral-200 col-span-12 font-serif">
+                    <div className="flex gap-2 mb-2 text-xs font-bold uppercase text-neutral-500">
+                        <span className="bg-neutral-200 px-1 rounded">{item.type}</span>
+                        {isWeapon && <span>{weaponType} • {range} • {damage}</span>}
+                        {isArmor && <span>AC +{item.system?.ac?.base || 0}</span>}
+                        {propertiesDisplay.map((p, pIdx) => (
+                            <span key={`${p}-${pIdx}`} className="bg-neutral-200 px-1 rounded">{p}</span>
+                        ))}
                     </div>
-                )
-            }
-        </div >
+
+                    <div
+                        dangerouslySetInnerHTML={{ __html: formatDescription(description) }}
+                        className="prose prose-sm max-w-none"
+                    />
+                </div>
+            )}
+        </div>
     );
 }

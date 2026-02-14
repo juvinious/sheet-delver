@@ -235,6 +235,26 @@ export default function Generator() {
         } catch (e: any) { logger.error(e.message || String(e)); }
     };
 
+    const rollName = async () => {
+        if (!formData.ancestry) return;
+
+        try {
+            const res = await fetchWithAuth('/api/modules/shadowdark/actors/randomize/name', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ancestryUuid: formData.ancestry })
+            });
+
+            if (!res.ok) throw new Error('Name randomization failed');
+            const data = await res.json();
+            if (data.name) {
+                setFormData(prev => ({ ...prev, name: data.name }));
+            }
+        } catch (e) {
+            logger.error("Name randomization error", e);
+        }
+    };
+
     const randomizeAll = async () => {
         if (isRandomizing) return;
         setIsRandomizing(true);
@@ -1133,9 +1153,22 @@ export default function Generator() {
                     <div className="space-y-6">
                         {/* Name (Moved to top) */}
                         <div className={`bg-white p-6 border-2 shadow-sm ${formErrors.name ? 'border-red-600' : 'border-black'}`}>
-                            <h2 className={`text-black font-black font-serif text-xl border-b-2 mb-4 pb-1 flex justify-between items-center ${formErrors.name ? 'border-red-600 text-red-600' : 'border-black'}`}>
-                                <span>Name {formErrors.name && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
-                            </h2>
+                            <div className="flex justify-between items-center mb-4 border-b-2 border-black pb-1">
+                                <h2 className={`text-black font-black font-serif text-xl ${formErrors.name ? 'text-red-600' : ''}`}>
+                                    <span>Name {formErrors.name && <span className="text-xs uppercase font-sans font-bold float-right mt-1 ml-2">Required</span>}</span>
+                                </h2>
+                                {formData.ancestry && (
+                                    <button
+                                        onClick={rollName}
+                                        className="group relative flex items-center justify-center"
+                                        title="Randomize Name"
+                                    >
+                                        <div className="w-10 h-10 flex items-center justify-center transition-transform group-hover:scale-110 bg-indigo-600 group-hover:bg-indigo-500 rounded-lg shadow-md">
+                                            <img src="/icons/dice-d6.svg" alt="Roll dice" className="w-8 h-8 brightness-0 invert transition-all group-hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.9)]" />
+                                        </div>
+                                    </button>
+                                )}
+                            </div>
                             <div>
                                 <input
                                     type="text"

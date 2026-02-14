@@ -21,7 +21,7 @@ async function getRandomClass(client: any, systemData?: any) {
         const adapter = new ShadowdarkAdapter();
         systemData = await adapter.getSystemData(client);
     }
-    const options = systemData.classes || [];
+    const options = (systemData.classes || []).filter((c: any) => c.name !== "Level 0");
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     return await client.fetchByUuid(selection.uuid);

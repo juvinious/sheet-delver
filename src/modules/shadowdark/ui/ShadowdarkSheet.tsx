@@ -181,9 +181,13 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                     dialogType = 'attack';
                     title = `Roll Attack with ${item.name}`;
                     const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isRanged = item.system?.type === 'ranged';// && item.system?.range === 'far'; // || item.system?.range === 'near' 
+                    const isThrown = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('thrown'));
+                    const isRangedType = item.system?.type === 'ranged';
+                    const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
 
-                    //title = `Roll ` + (isRanged ? 'Ranged' : isFinesse ? 'Finesse' : 'Melee') + ` Attack with ${item.name}`;
+                    const isRanged = isRangedType || hasRange || (item.system?.type === 'melee' && isThrown);
+
+                    // title = `Roll ` + (isRanged ? 'Ranged' : isFinesse ? 'Finesse' : 'Melee') + ` Attack with ${item.name}`;
 
                     const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
                     const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;

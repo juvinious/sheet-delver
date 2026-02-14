@@ -400,7 +400,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         }
 
         const body = await request.json();
-        const { hpRoll, items, languages, gold } = body;
+        const { hpRoll, items, languages, gold, patron } = body;
 
         logger.info(`[API] Finalizing Level Up for ${actorId} -> Level ${body.targetLevel || 'Unknown'}`);
 
@@ -446,6 +446,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
             }
 
             actorUpdates['system.level.value'] = targetLevel;
+            actorUpdates['system.level.xp'] = 0;
 
             if (gold !== undefined && gold !== null) {
                 const currentCoins = actor.system?.coins?.gp || 0;
@@ -456,6 +457,10 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
                 const currentLangs = actor.system?.languages || [];
                 const newLangs = Array.from(new Set([...currentLangs, ...state.selectedLanguages]));
                 actorUpdates['system.languages'] = newLangs;
+            }
+
+            if (patron) {
+                actorUpdates['system.patron'] = patron;
             }
 
             if (Object.keys(actorUpdates).length > 0) {

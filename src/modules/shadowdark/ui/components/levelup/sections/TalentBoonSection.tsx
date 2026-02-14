@@ -48,7 +48,7 @@ export const TalentBoonSection = ({
     return (
         <div className="space-y-6">
             {/* Show Talent Section if required OR if we have choices allowed (even if 0 required) */}
-            {(requiredTalents > 0 || choiceRolls > 0) && (
+            {(requiredTalents > 0 || choiceRolls > 0 || rolledTalents.length > 0) && (
                 <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden p-4">
                     <div className="bg-black text-white px-4 py-2 font-serif font-bold text-lg uppercase tracking-wider -mx-4 -mt-4 mb-4 flex justify-between items-center">
                         <div className="flex items-center gap-2">
@@ -139,7 +139,7 @@ export const TalentBoonSection = ({
             )}
 
             {/* Show Boon Section if needed (Warlock) */}
-            {needsBoon && (
+            {needsBoon && (startingBoons > 0 || choiceRolls > 0 || rolledBoons.length > 0) && (
                 <div className="bg-purple-50 border-2 border-purple-900 shadow-[4px_4px_0px_0px_rgba(88,28,135,1)] relative overflow-hidden p-4">
                     <div className="bg-purple-900 text-white px-4 py-2 font-serif font-bold text-lg uppercase tracking-wider -mx-4 -mt-4 mb-4 flex justify-between items-center">
                         <div className="flex items-center gap-2">

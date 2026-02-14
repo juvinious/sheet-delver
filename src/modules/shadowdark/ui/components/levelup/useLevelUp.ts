@@ -128,6 +128,18 @@ export const useLevelUp = (props: LevelUpProps) => {
     const [startingBoons, setStartingBoons] = useState(0);
     const [choiceRolls, setChoiceRolls] = useState(0);
 
+    // Calculate Granted Boons from Talents (e.g. Patron Boon (x2))
+    const grantedBoons = useMemo(() => {
+        let count = 0;
+        rolledTalents.forEach(t => {
+            if (t.type === 'PatronBoonTwice' || t.name === 'Patron Boon (x2)') count += 2;
+            else if (t.type === 'PatronBoon' || t.name === 'Patron Boon') count += 1;
+        });
+        return count;
+    }, [rolledTalents]);
+
+    const totalRequiredBoons = startingBoons + grantedBoons;
+
     // Session State
     const [token, setToken] = useState<string | null>(null);
 
@@ -1198,8 +1210,23 @@ export const useLevelUp = (props: LevelUpProps) => {
 
         if (rolledTalents.length < requiredTalents) return false;
 
-        // 2. Boons
-        if (needsBoon && rolledBoons.length < startingBoons + choiceRolls) return false;
+        // 2. Boons & Choices
+        // 2. Boons & Choices
+        // Core requirement (Level 1 Warlock = 1) + Granted via Talent (e.g. Boon x2 = +2)
+        // If we have choices available, we can use them for talents OR boons.
+        // But granted boons MUST be used for boons.
+
+        // Total Boons we SHOULD have = startingBoons + grantedBoons
+        // Plus any we decided to spend "choices" on (if mechanics allowed, but usually choice is for Talent OR Boon)
+
+        // Minimal check: Do we have enough boons to satisfy the fixed requirements?
+        if (rolledBoons.length < totalRequiredBoons) return false;
+
+        const extraTalents = Math.max(0, rolledTalents.length - requiredTalents);
+        // We only count "extra" boons if they exceed what was strictly required + granted
+        const extraBoons = Math.max(0, rolledBoons.length - totalRequiredBoons);
+
+        if ((extraTalents + extraBoons) < choiceRolls) return false;
 
         // 3. Stats
         if (statSelection.required > 0 && statSelection.selected.length < statSelection.required) return false;
@@ -1336,7 +1363,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             isSpellcaster,
             requiredTalents,
             needsBoon,
-            startingBoons,
+            startingBoons: totalRequiredBoons, // Use the total for UI display
             choiceRolls,
             extraSpellsList,
             // Add missing properties that were previously there if needed by other components

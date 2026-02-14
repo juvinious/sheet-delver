@@ -25,6 +25,13 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
         setOptimisticOverrides({});
     }, [actor]);
 
+    // HP State Sync
+    const [hpVal, setHpVal] = useState(actor.system?.attributes?.hp?.value || 0);
+
+    useEffect(() => {
+        setHpVal(actor.system?.attributes?.hp?.value || 0);
+    }, [actor.system?.attributes?.hp?.value]);
+
     const handleOptimisticUpdate = (path: string, value: any) => {
         setOptimisticOverrides(prev => ({ ...prev, [path]: value }));
         onUpdate(path, value);
@@ -50,9 +57,9 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         </div>
                         <div className="flex justify-center items-baseline gap-2 font-serif text-3xl font-bold pt-2">
                             <input
-                                key={actor.system.attributes.hp.value}
                                 type="number"
-                                defaultValue={actor.system.attributes.hp.value}
+                                value={hpVal}
+                                onChange={(e) => setHpVal(parseInt(e.target.value) || 0)}
                                 onBlur={(e) => {
                                     let val = parseInt(e.target.value);
                                     const max = actor.computed?.maxHp || 1;

@@ -38,7 +38,107 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     private consecutiveFailures = 0;
     private lastLaunchActivity = 0;
     private userMap = new Map<string, any>();
-    private actorCache = new Map<string, string>();
+    private actorDataCache = new Map<string, any>();
+
+    private _deepMerge(target: any, source: any) {
+        if (!source || typeof source !== 'object') return target;
+        if (!target || typeof target !== 'object') return source;
+
+        for (const [key, value] of Object.entries(source)) {
+            // Handle Case: Flattened Keys (e.g. "system.details.patron")
+            if (key.includes('.')) {
+                const parts = key.split('.');
+                let current = target;
+                for (let i = 0; i < parts.length - 1; i++) {
+                    const part = parts[i];
+                    if (!current[part] || typeof current[part] !== 'object') {
+                        current[part] = {};
+                    }
+                    current = current[part];
+                }
+                const lastPart = parts[parts.length - 1];
+                logger.debug(`CoreSocket | DeepMerge Dotted: ${key} -> ${JSON.stringify(value)}`);
+                current[lastPart] = value;
+                continue;
+            }
+
+            // Standard Nested Merge
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                if (!target[key] || typeof target[key] !== 'object') {
+                    target[key] = {};
+                }
+                this._deepMerge(target[key], value);
+            } else {
+                logger.debug(`CoreSocket | DeepMerge Set: ${key} -> ${JSON.stringify(value)}`);
+                target[key] = value;
+            }
+        }
+        return target;
+    }
+
+    private _updateActorCache(type: string, action: string, result: any, operation?: any) {
+        if (!result && action !== 'delete') return;
+
+        if (type === 'Actor') {
+            const docs = Array.isArray(result) ? result : [result];
+            if (action === 'delete') {
+                const ids = operation?.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
+                ids.forEach((id: string) => this.actorDataCache.delete(id));
+            } else {
+                docs.forEach((actor: any) => {
+                    const id = actor?._id || actor?.id;
+                    if (id) {
+                        const existing = this.actorDataCache.get(id);
+                        if (existing && action === 'update') {
+                            logger.debug(`CoreSocket | Updating cached actor ${id} (${type} ${action}) with diff: ${JSON.stringify(actor)}`);
+                            this._deepMerge(existing, actor);
+                            this.actorDataCache.set(id, existing);
+                        } else if (action === 'update') {
+                            // Partial update on a cache miss: Delete to force fresh fetch on next GET
+                            logger.debug(`CoreSocket | Cache miss on update for actor ${id}, invalidating...`);
+                            this.actorDataCache.delete(id);
+                        } else {
+                            // Create or get: Full object
+                            logger.debug(`CoreSocket | Setting new cached actor ${id} (${type} ${action})`);
+                            this.actorDataCache.set(id, actor);
+                        }
+                    }
+                });
+            }
+        } else if (type === 'Item') {
+            // Resolve parent Actor ID
+            let actorId = operation?.parentId;
+            if (!actorId && operation?.parentUuid) {
+                const parts = operation.parentUuid.split('.');
+                // Format could be 'Actor.ID' or 'Actor.ID.Item.ID'
+                if (parts[0] === 'Actor') actorId = parts[1];
+            }
+
+            if (!actorId) return;
+
+            const actor = this.actorDataCache.get(actorId);
+            if (!actor) return;
+
+            const docs = Array.isArray(result) ? result : [result];
+            if (!actor.items) actor.items = [];
+
+            if (action === 'delete') {
+                const ids = operation.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
+                actor.items = actor.items.filter((i: any) => !ids.includes(i._id || i.id));
+            } else if (action === 'update') {
+                docs.forEach((item: any) => {
+                    const itemId = item?._id || item?.id;
+                    const idx = actor.items.findIndex((i: any) => (i._id || i.id) === itemId);
+                    if (idx !== -1) {
+                        this._deepMerge(actor.items[idx], item);
+                    }
+                });
+            } else if (action === 'create') {
+                actor.items.push(...docs);
+            }
+            this.actorDataCache.set(actorId, actor);
+        }
+    }
 
 
     constructor(config: any) {
@@ -271,6 +371,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                             }
                         });
                     }
+                    else {
+                        this._updateActorCache(data.type, data.action, data.result, data.operation);
+                    }
                 });
 
                 // Legacy/Module Compatibility Listeners
@@ -387,8 +490,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
 
         try {
-            const result = await this.emitSocketEvent('modifyDocument', { type, action, operation }, 5000);
+            const result: any = await this.emitSocketEvent('modifyDocument', { type, action, operation }, 5000);
             this.consecutiveFailures = 0;
+
+            // Proactive Cache Update (Initiator Confirmation)
+            if (result && (type === 'Actor' || type === 'Item')) {
+                this._updateActorCache(type, action, result.result, result.operation || operation);
+            }
+
             return result;
         } catch (error: any) {
             if (failHard) this.consecutiveFailures++;
@@ -582,19 +691,36 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
     public async getActor(id: string, forceSystemId?: string): Promise<any> {
-        // CoreSocket returns the actor. Caller handles permissions if needed or we trust internal logic.
-        const response: any = await this.dispatchDocumentSocket('Actor', 'get', { query: { _id: id }, broadcast: false });
-        // Normalize
-        const data = response?.result?.[0];
-        if (data && this.adapter) {
-            return await this.adapter.normalizeActorData(data, this);
+        let data = this.actorDataCache.get(id);
+
+        if (!data) {
+            logger.debug(`CoreSocket | Cache miss for actor ${id}, fetching from Foundry...`);
+            // CoreSocket returns the actor. Caller handles permissions if needed or we trust internal logic.
+            const response: any = await this.dispatchDocumentSocket('Actor', 'get', { query: { _id: id }, broadcast: false });
+            data = response?.result?.[0];
+            if (data) {
+                this.actorDataCache.set(id, data);
+            }
+        } else {
+            logger.debug(`CoreSocket | Cache hit for actor ${id}`);
         }
-        return data;
+
+        // RETURN CLONE: Never return the cached reference as it may be mutated by adapters
+        return data ? structuredClone(data) : null;
     }
 
     public async getActorRaw(id: string): Promise<any> {
-        const response: any = await this.dispatchDocumentSocket('Actor', 'get', { query: { _id: id }, broadcast: false });
-        return response?.result?.[0];
+        let data = this.actorDataCache.get(id);
+
+        if (!data) {
+            const response: any = await this.dispatchDocumentSocket('Actor', 'get', { query: { _id: id }, broadcast: false });
+            data = response?.result?.[0];
+            if (data) {
+                this.actorDataCache.set(id, data);
+            }
+        }
+
+        return data ? structuredClone(data) : null;
     }
 
     public async fetchByUuid(uuid: string): Promise<any> {

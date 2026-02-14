@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { resolveEntityName } from './sheet-utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
@@ -43,6 +43,13 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         multiSelect: false,
         onSelect: () => { }
     });
+
+    // XP State Sync
+    const [xpVal, setXpVal] = useState(actor.system?.level?.xp || 0);
+
+    useEffect(() => {
+        setXpVal(actor.system?.level?.xp || 0);
+    }, [actor.system?.level?.xp]);
 
     const openSelection = (field: string, title: string, dataKey?: string, multiSelect = false) => {
         // Resolve options from systemData
@@ -199,19 +206,19 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         </div>
                         <div className={`p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white min-h-[44px] ${(!actor.system?.level?.value || actor.system.level.value === 0) ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
                             <input
-                                key={actor.system?.level?.xp}
                                 type="number"
-                                defaultValue={actor.system?.level?.xp || 0}
+                                value={xpVal}
                                 min={0}
                                 max={actor.level?.next || 10}
                                 disabled={!actor.system?.level?.value || actor.system.level.value === 0}
+                                onChange={(e) => setXpVal(parseInt(e.target.value) || 0)}
                                 onBlur={(e) => {
                                     const nextXP = actor.level?.next || 10;
                                     let val = parseInt(e.target.value);
                                     if (isNaN(val)) val = 0;
                                     if (val < 0) val = 0;
                                     if (val > nextXP) val = nextXP;
-                                    if (val.toString() !== e.target.value) e.target.value = val.toString();
+                                    // if (val !== xpVal) setXpVal(val); // Optional local clamp
                                     if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
                                 }}
                                 className={`w-12 bg-neutral-100 border-b border-black text-center outline-none px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
@@ -259,7 +266,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         <div className="p-1 bg-white">
                             <select
                                 className="w-full bg-neutral-50 outline-none cursor-pointer font-serif font-bold text-lg px-1 border border-dashed border-neutral-200"
-                                defaultValue={actor.system?.alignment || 'neutral'}
+                                value={actor.system?.alignment || 'neutral'}
                                 onChange={(e) => onUpdate('system.alignment', e.target.value)}
                             >
                                 <option value="lawful">Lawful</option>
@@ -301,14 +308,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 </button>
                             </div>
                             <div className="p-2 font-serif text-lg bg-white font-bold">
-                                {(() => {
-                                    const patronItem = (actor.items || []).find((i: any) => i.type?.toLowerCase() === 'patron');
-                                    const val = actor.system?.patron;
-                                    const resolvedName = resolveEntityName(val, actor, systemData, 'patrons');
-                                    const displayName = patronItem ? patronItem.name : (resolvedName || '-');
-
-                                    return displayName;
-                                })()}
+                                {actor.details?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || '-'}
                             </div>
                         </div>
                     )}

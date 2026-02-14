@@ -63,7 +63,8 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
     }
 
     // 3. Fallback to generic
-    logger.debug(`[Registry] No match for ${actorName} (${actorId}). Falling back to generic.`);
+    const keys = actor.system ? Object.keys(actor.system) : 'no system';
+    logger.debug(`[Registry] No match for ${actorName} (${actorId}). Keys present: ${JSON.stringify(keys)}. Falling back to generic.`);
     return getAdapter('generic')!;
 };
 
