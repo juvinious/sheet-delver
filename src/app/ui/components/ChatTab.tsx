@@ -51,6 +51,14 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
         }
     }, [messages, isAtBottom]);
 
+    const [now, setNow] = useState<number>(() => messages.length > 0 ? messages[0].timestamp : Date.now());
+
+    useEffect(() => {
+        setNow(Date.now());
+        const interval = setInterval(() => setNow(Date.now()), 30000);
+        return () => clearInterval(interval);
+    }, []);
+
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -59,9 +67,8 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
         setIsAtBottom(atBottom);
     };
 
-    const getTimeAgo = (timestamp: number) => {
-        const now = Date.now();
-        const diff = Math.max(0, now - timestamp);
+    const getTimeAgo = (timestamp: number, current: number) => {
+        const diff = Math.max(0, current - timestamp);
         const seconds = Math.floor(diff / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
@@ -183,7 +190,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                         <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={s.user}>{msg.user}</span>
-                                <span className={s.time}>{getTimeAgo(msg.timestamp)}</span>
+                                <span className={s.time}>{getTimeAgo(msg.timestamp, now)}</span>
                             </div>
                             {msg.flavor && <div className={s.flavor} dangerouslySetInnerHTML={{ __html: msg.flavor }} />}
                             <div className={s.content} dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }} />

@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { createFoundryClient } from '../core/foundry';
+
 import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
 import { getAdapter } from '../modules/core/registry';
@@ -12,7 +12,7 @@ async function startServer() {
         process.exit(1);
     }
 
-    const { host, port, apiPort } = config.app;
+    const { apiPort } = config.app;
     const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
 
     const app = express();
@@ -146,7 +146,7 @@ async function startServer() {
                         }
                     }
                 }
-            } catch (e) {
+            } catch {
                 // Suppress expected transient errors
             }
 
@@ -484,7 +484,7 @@ async function startServer() {
     appRouter.post('/actors/:id/roll', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
-            const userSession = (req as any).userSession;
+
             const { type, key, options } = req.body;
             const actor = await client.getActor(req.params.id);
             if (!actor) return res.status(404).json({ error: 'Actor not found' });

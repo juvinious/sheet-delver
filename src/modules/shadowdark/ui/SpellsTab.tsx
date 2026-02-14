@@ -255,7 +255,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             });
         });
         return Array.from(sources.values());
-    }, [actor.items, actor.computed?.classDetails, systemData]);
+    }, [actor.items, actor.computed?.classDetails, systemData, actor.system]);
 
     const getAccessibleTiers = (source: any) => {
         const level = actor.level?.value || actor.system?.level?.value || 0;
@@ -344,7 +344,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             img: s.img,
             system: s.system
         }));
-    }, [actor.items, editingTier, modalFilterClass]);
+    }, [actor.items, editingTier, modalFilterClass, spellSources]);
 
     return (
         <div className="space-y-8 pb-20">

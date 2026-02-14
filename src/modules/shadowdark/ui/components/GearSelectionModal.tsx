@@ -1,8 +1,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Search, ChevronDown, ChevronRight, Shield, Backpack, Swords, Sparkles, Sprout, Briefcase, Plus, Flame, Sun, CircleDollarSign, ArrowRight, Target } from 'lucide-react';
+import { X, Search, ChevronDown, ChevronRight, Shield, Backpack, Swords, Sparkles, Sprout, Briefcase, Plus, Flame, Sun, Target } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
-import { dataManager } from '../../data/DataManager';
 
 interface GearSelectionModalProps {
     isOpen: boolean;
@@ -82,7 +81,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
             };
             fetchData();
         }
-    }, [isOpen]);
+    }, [isOpen, items.length]);
 
     const toggleCategory = (category: GearCategory) => {
         const newSet = new Set(expandedCategories);

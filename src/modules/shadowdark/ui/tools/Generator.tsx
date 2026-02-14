@@ -143,7 +143,7 @@ export default function Generator() {
             }
         };
         checkConnection();
-    }, [fetchWithAuth]);
+    }, [fetchWithAuth, setConfigFoundryUrl]);
 
     // Load System Data
     useEffect(() => {
@@ -202,7 +202,6 @@ export default function Generator() {
             // calculateGold(); // Randomizes.
             // User might want to keep rolled gold.
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [classDetails, formData.level0]);
 
 
@@ -406,7 +405,7 @@ export default function Generator() {
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData, fetchDocument]);
+    }, [formData.ancestry, systemData, fetchDocument, ancestryDetails]);
 
 
 
@@ -715,7 +714,7 @@ export default function Generator() {
                             if (handler.mutateItem) {
                                 handler.mutateItem(itemData, {} as any);
                             }
-                        } catch (_e) {
+                        } catch {
                             // If handler fails (e.g. missing context), just ignore
                             // Our main goal is the missing-effects cleanup
                         }
@@ -972,7 +971,7 @@ export default function Generator() {
             }
 
             // Collect Language UUIDs for system.languages array
-            let languageUuids: string[] = extraData.languages || [];
+            const languageUuids: string[] = extraData.languages || [];
 
             if (!extraData.languages) {
                 // Fixed languages - handle both string UUIDs and objects with uuid property

@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { isSpellcaster, getSpellcastingClass, isClassSpellcaster } from '../../../rules';
+import { isClassSpellcaster } from '../../../rules';
 import { logger } from '@/app/ui/logger';
-import { resolveGear } from '@/modules/shadowdark/api/gear-resolver';
-import { resolveBaggage } from './baggage-resolver';
 import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
 
 export interface LevelUpProps {
@@ -82,7 +80,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         if (!selectedPatronUuid && (patronUuid || patron?.uuid)) {
             setSelectedPatronUuid(patronUuid || patron?.uuid || "");
         }
-    }, [patronUuid, patron]);
+    }, [patronUuid, patron, selectedPatronUuid]);
 
     const [fetchedPatron, setFetchedPatron] = useState<any>(null);
     const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
@@ -149,30 +147,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         if (stored) setToken(stored);
     }, []);
 
-    const simpleRoll = useCallback((formula: string): number => {
-        try {
-            const match = formula.match(/(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?/);
-            if (!match) {
-                const num = parseInt(formula);
-                return isNaN(num) ? 0 : num;
-            }
-            const [, countStr, dieStr, op, modStr] = match;
-            const count = parseInt(countStr);
-            const die = parseInt(dieStr);
-            let total = 0;
-            for (let i = 0; i < count; i++) {
-                total += Math.floor(Math.random() * die) + 1;
-            }
-            if (op && modStr) {
-                const mod = parseInt(modStr);
-                total = op === '+' ? total + mod : total - mod;
-            }
-            return total;
-        } catch (e) {
-            logger.error("SimpleRoll Error", e);
-            return 0;
-        }
-    }, []);
+
 
     const fetchByUuid = useCallback(async (uuid: string) => {
         try {
@@ -830,8 +805,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                     return false;
                 };
 
-                const matchesTarget = targetClassUuid && isMatch(currentUuid, targetClassUuid);
-                const matchesInitial = !targetClassUuid && isMatch(currentUuid, classUuid);
+
 
                 const needsFetch = !classLoaded && (targetClassUuid || classUuid);
 
@@ -1002,7 +976,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {
@@ -1182,7 +1156,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             return prev;
         });
 
-    }, [rolledTalents, rolledBoons]);
+    }, [rolledTalents, rolledBoons, targetLevel]);
 
     useEffect(() => {
         if (targetClassUuid && targetClassUuid !== classUuid) {
@@ -1300,7 +1274,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         languageGroups, availableLanguages, fixedLanguages, selectedLanguages, knownLanguages,
         isSpellcaster, spellsToChooseTotal, availableSpells, selectedSpells, spellsToChoose,
         pendingChoices,
-        hpRoll, goldRoll
+        hpRoll, goldRoll, totalRequiredBoons
     ]);
 
     // HP Formula & Max
@@ -1313,7 +1287,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         const dieMatch = hitDieStr.match(/d?(\d+)/);
         const dieVal = dieMatch ? parseInt(dieMatch[1]) : 6;
 
-        let baseDie = `1d${dieVal}`;
+        const baseDie = `1d${dieVal}`;
         const formula = baseDie;
         const max = dieVal; // Max is just the die face value
 
