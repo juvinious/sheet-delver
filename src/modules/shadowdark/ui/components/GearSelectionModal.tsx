@@ -1,4 +1,4 @@
-
+import { logger } from '@/app/ui/logger';
 import { useState, useEffect, useMemo } from 'react';
 import { X, Search, ChevronDown, ChevronRight, Shield, Backpack, Swords, Sparkles, Sprout, Briefcase, Plus, Flame, Sun, Target } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
@@ -58,7 +58,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                     if (!response.ok) throw new Error(`API Error: ${response.status}`);
                     const allDocs = await response.json();
 
-                    console.log('[GearSelectionModal] Fetched docs:', allDocs.length);
+                    logger.debug(`[GearSelectionModal] Fetched ${allDocs.length} docs`);
 
                     const gearItems = allDocs.filter((d: any) => {
                         // Filter out non-items or folders
@@ -74,7 +74,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                     });
                     setItems(gearItems);
                 } catch (e) {
-                    console.error("Failed to load gear", e);
+                    logger.error("Failed to load gear:", e);
                 } finally {
                     setLoading(false);
                 }

@@ -12,13 +12,11 @@ interface UserDetail {
     characterName?: string;
 }
 
-interface PlayerListProps {
-    users: any[]; // UserDetail[] but matching ClientPage state type
-    currentUserId: string | null;
-    onLogout: () => void;
-}
+import { useFoundry } from '@/app/ui/context/FoundryContext';
 
-export default function PlayerList({ users, currentUserId, onLogout }: PlayerListProps) {
+export default function PlayerList() {
+    const { users, currentUser, handleLogout } = useFoundry();
+    const currentUserId = currentUser?._id || currentUser?.id || null;
     const [isOpen, setIsOpen] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -121,9 +119,7 @@ export default function PlayerList({ users, currentUserId, onLogout }: PlayerLis
 
                 <div className="p-2 border-t border-white/5 bg-black/20">
                     <button
-                        onClick={async () => {
-                            onLogout();
-                        }}
+                        onClick={handleLogout}
                         className="w-full text-xs bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 rounded py-1.5 transition-colors font-bold uppercase tracking-wider"
                     >
                         Logout

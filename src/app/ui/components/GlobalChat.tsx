@@ -1,3 +1,4 @@
+'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import ChatTab from './ChatTab';
@@ -8,32 +9,23 @@ import { SystemAdapter, RollMode } from '@/shared/interfaces';
 
 const inter = Inter({ subsets: ['latin'] });
 
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { useUI } from '@/app/ui/context/UIContext';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+
 interface GlobalChatProps {
-    messages: any[];
-    onSend: (msg: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
-    onRoll?: (type: string, key: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
-    foundryUrl?: string;
-    adapter?: SystemAdapter;
     hideDice?: boolean;
     speaker?: string;
-    // Controlled props for Dice Tray
-    isDiceTrayOpen?: boolean;
-    onToggleDiceTray?: () => void;
 }
 
 export default function GlobalChat(props: GlobalChatProps) {
-    const {
-        messages,
-        onSend,
-        onRoll,
-        foundryUrl,
-        adapter,
-        hideDice,
-        isDiceTrayOpen,
-        onToggleDiceTray
-    } = props;
-    const [isChatOpen, setIsChatOpen] = useState(false);
-    const [isDiceOpenLocal, setIsDiceOpenLocal] = useState(false);
+    const { hideDice, speaker } = props;
+    const { messages, handleChatSend: onSend, activeAdapter: adapter, system } = useFoundry();
+    const { isChatOpen, setChatOpen, isDiceTrayOpen, setDiceTrayOpen } = useUI();
+    const { foundryUrl } = useConfig();
+
+    const onToggleDiceTray = () => setDiceTrayOpen(!isDiceTrayOpen);
+    const setIsChatOpen = (open: boolean) => setChatOpen(open);
 
     const s = adapter?.componentStyles?.globalChat || {
         window: "bg-neutral-900/95 backdrop-blur-xl border border-white/20 shadow-2xl rounded-xl",
@@ -52,16 +44,10 @@ export default function GlobalChat(props: GlobalChatProps) {
         closeBtn: "text-white/40 hover:text-white transition-colors"
     };
 
-    // Use controlled state if provided, otherwise local
-    const isDiceOpen = props.isDiceTrayOpen ?? isDiceOpenLocal;
+    // Use controlled state from context
+    const isDiceOpen = isDiceTrayOpen;
 
-    const toggleDice = () => {
-        if (onToggleDiceTray) {
-            onToggleDiceTray();
-        } else {
-            setIsDiceOpenLocal(!isDiceOpenLocal);
-        }
-    };
+    const toggleDice = onToggleDiceTray;
 
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -73,17 +59,10 @@ export default function GlobalChat(props: GlobalChatProps) {
                 if ((event.target as Element).closest('.dice-tray-toggle')) return;
 
                 // Only close if we are actually open
-                if (isChatOpen) setIsChatOpen(false);
+                if (isChatOpen) setChatOpen(false);
 
                 // Close controlled or local
-                if (isDiceOpen) {
-                    if (props.onToggleDiceTray) {
-                        // Only close if it's open
-                        if (props.isDiceTrayOpen) props.onToggleDiceTray();
-                    } else {
-                        setIsDiceOpenLocal(false);
-                    }
-                }
+                if (isDiceOpen) setDiceTrayOpen(false);
             }
         };
 
@@ -93,7 +72,7 @@ export default function GlobalChat(props: GlobalChatProps) {
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isChatOpen, isDiceOpen, props]);
+    }, [isChatOpen, isDiceOpen, setChatOpen, setDiceTrayOpen]);
 
     return (
         <div ref={containerRef} className={`fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-none ${inter.className} `}>
@@ -121,7 +100,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                                 <div className="p-0">
                                     <DiceTray
                                         onSend={(msg, options) => { onSend(msg, { ...options, speaker: options?.speaker || props.speaker }); toggleDice(); }}
-                                        adapter={adapter}
+                                        adapter={adapter || undefined}
                                         hideHeader={true}
                                         speaker={props.speaker}
                                     />
@@ -153,7 +132,7 @@ export default function GlobalChat(props: GlobalChatProps) {
                             messages={messages || []}
                             onSend={onSend}
                             foundryUrl={foundryUrl}
-                            adapter={adapter}
+                            adapter={adapter || undefined}
                             hideDiceTray={true}
                             hideHeader={true}
                             speaker={props.speaker}

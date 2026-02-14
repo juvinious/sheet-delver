@@ -4,6 +4,11 @@ import "./globals.css";
 
 import ShutdownWatcher from "@/app/ui/components/ShutdownWatcher";
 import { ConfigProvider } from "@/app/ui/context/ConfigContext";
+import { NotificationProvider } from "@/app/ui/components/NotificationSystem";
+import { FoundryProvider } from "@/app/ui/context/FoundryContext";
+import { UIProvider } from "@/app/ui/context/UIContext";
+import GlobalChat from "@/app/ui/components/GlobalChat";
+import PlayerList from "@/app/ui/components/PlayerList";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,8 +42,18 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ConfigProvider>
-          <ShutdownWatcher />
-          {children}
+          <NotificationProvider>
+            <FoundryProvider>
+              <UIProvider>
+                <div className="relative min-h-screen">
+                  <ShutdownWatcher />
+                  {children}
+                  <GlobalChat />
+                  <PlayerList />
+                </div>
+              </UIProvider>
+            </FoundryProvider>
+          </NotificationProvider>
         </ConfigProvider>
       </body>
     </html>

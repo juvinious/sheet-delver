@@ -4,61 +4,39 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { logger } from '../logger';
 
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+
 type SharedContent = {
     type: 'image' | 'journal' | null;
     data: any;
     timestamp: number;
 };
 
-interface SharedContentModalProps {
-    token: string | null;
-    foundryUrl: string;
-}
-
-export function SharedContentModal({ token, foundryUrl }: SharedContentModalProps) {
-    const [content, setContent] = useState<SharedContent | null>(null);
+export function SharedContentModal() {
+    const { sharedContent, token } = useFoundry();
+    const { resolveImageUrl } = useConfig();
     const [isVisible, setIsVisible] = useState(false);
     const lastTimestampRef = useRef<number>(0);
 
-    const pollInterval = 2000; // Poll every 2 seconds
+    const [content, setContent] = useState<SharedContent | null>(null);
 
     useEffect(() => {
-        if (!token) return;
-
-        const fetchContent = async () => {
-            try {
-                // Determine API URL (assuming relative for now, or use config)
-                const res = await fetch('/api/shared-content', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-                if (!res.ok) return;
-
-                const data: SharedContent = await res.json();
-
-                if (data && data.type) {
-                    // Check if dismissed
-                    const dismissedTs = sessionStorage.getItem('sheet-delver-dismissed-share');
-                    if (dismissedTs && parseInt(dismissedTs) === data.timestamp) {
-                        return; // User already saw and closed this specific share
-                    }
-
-                    if (data.timestamp > lastTimestampRef.current) {
-                        logger.debug('Received new shared content:', data);
-                        lastTimestampRef.current = data.timestamp;
-                        setContent(data);
-                        setIsVisible(true);
-                    }
-                }
-            } catch (err) {
-                logger.error('Error polling shared content:', err);
+        if (sharedContent && sharedContent.type) {
+            // Check if dismissed
+            const dismissedTs = sessionStorage.getItem('sheet-delver-dismissed-share');
+            if (dismissedTs && parseInt(dismissedTs) === sharedContent.timestamp) {
+                return;
             }
-        };
 
-        const timer = setInterval(fetchContent, pollInterval);
-        return () => clearInterval(timer);
-    }, [token]);
+            if (sharedContent.timestamp > lastTimestampRef.current) {
+                logger.debug('Received new shared content from context:', sharedContent);
+                lastTimestampRef.current = sharedContent.timestamp;
+                setContent(sharedContent);
+                setIsVisible(true);
+            }
+        }
+    }, [sharedContent]);
 
     if (!isVisible || !content || !content.type) return null;
 
@@ -70,14 +48,7 @@ export function SharedContentModal({ token, foundryUrl }: SharedContentModalProp
     };
 
     // Resolve Image URL
-    const getImageUrl = (path: string) => {
-        if (path.startsWith('http')) return path;
-        // Remove leading slash if both have it to avoid double slash, 
-        // or ensure one exists.
-        const baseUrl = foundryUrl.endsWith('/') ? foundryUrl.slice(0, -1) : foundryUrl;
-        const imgPath = path.startsWith('/') ? path : `/${path}`;
-        return `${baseUrl}${imgPath}`;
-    };
+    const imageUrl = content.type === 'image' ? resolveImageUrl(content.data.url) : '';
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={close}>
@@ -98,7 +69,7 @@ export function SharedContentModal({ token, foundryUrl }: SharedContentModalProp
                             </div>
                         )}
                         <img
-                            src={getImageUrl(content.data.url)}
+                            src={imageUrl}
                             alt={content.data.title || 'Shared Image'}
                             className="max-h-[80vh] w-auto object-contain"
                         />

@@ -1,18 +1,16 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import PlayerList from './PlayerList';
+import { useState, useEffect } from 'react';
 import { SharedContentModal } from './SharedContentModal';
-import { useNotifications, NotificationContainer } from './NotificationSystem';
+import { Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { useUI } from '@/app/ui/context/UIContext';
+import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useNotifications } from './NotificationSystem';
+import { ConfirmationModal } from './ConfirmationModal';
+import { getMatchingAdapter } from '@/modules/core/registry';
 import SystemTools from './SystemTools';
 import LoadingModal from './LoadingModal';
-import { SystemInfo } from '@/shared/interfaces';
-import { logger, LOG_LEVEL } from '../logger';
-import { Users, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
-import { useConfig } from '@/app/ui/context/ConfigContext';
-import { ConfirmationModal } from './ConfirmationModal';
-import GlobalChat from './GlobalChat';
-import { getMatchingAdapter } from '@/modules/core/registry';
 interface User {
   id?: string;
   _id?: string;
@@ -27,181 +25,63 @@ interface ClientPageProps {
   initialUrl: string;
 }
 
-export default function ClientPage({ initialUrl }: ClientPageProps) {
-  const [step, setStep] = useState<'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing'>('init');
-  const { notifications, addNotification, removeNotification } = useNotifications();
-  const { setFoundryUrl, foundryUrl: configUrl } = useConfig();
+export default function ClientPage() {
+  const {
+    step, setStep, token, users, system, currentUser,
+    handleLogin: globalLogin, handleLogout, fetchActors,
+    ownedActors, readOnlyActors
+  } = useFoundry();
+  const { addNotification } = useNotifications();
+  const { foundryUrl: configUrl } = useConfig();
 
-  // Dashboard UI State
-  const [isReadOnlyCollapsed, setIsReadOnlyCollapsed] = useState(true);
-
-  // Debug Configuration
-  // We maintain local state for reactivity if needed, but main logic drives the singleton
-  const [debugLevel, setDebugLevel] = useState(LOG_LEVEL.INFO);
-
-  const setStepWithLog = (newStep: typeof step, origin: string, reason?: string) => {
-    // Demoted to DEBUG (Level 4) per user request
-    const timestamp = new Date().toISOString();
-    logger.debug(`[STATE CHANGE] ${timestamp} | ${step} -> ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`);
-    setStep(newStep);
-  };
-
-  // Connect State
-  const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
-
-  // Session State
-  const [token, setTokenState] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('sheet-delver-token');
-    }
-    return null;
-  });
-
-  const setToken = (newToken: string | null) => {
-    setTokenState(newToken);
-    if (typeof window !== 'undefined') {
-      if (newToken) {
-        localStorage.setItem('sheet-delver-token', newToken);
-      } else {
-        localStorage.removeItem('sheet-delver-token');
-      }
-    }
-  };
-
-  // Login State
-  const [users, setUsers] = useState<User[]>([]);
+  const [loginMessage, setLoginMessage] = useState('');
   const [selectedUser, setSelectedUser] = useState('');
   const [password, setPassword] = useState('');
-  const [system, setSystem] = useState<SystemInfo | null>(null);
-  const [appVersion, setAppVersion] = useState('');
-  const [, setActors] = useState<any[]>([]); // "All" or "Owned" fallback
-  const [ownedActors, setOwnedActors] = useState<any[]>([]);
-  const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
-  const [loginMessage, setLoginMessage] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ isOpen: boolean, actorId: string, actorName: string }>({
     isOpen: false,
     actorId: '',
     actorName: ''
   });
 
-  // Chat State
-  const [messages, setMessages] = useState<any[]>([]);
-
-  const fetchWithAuthChat = useCallback(async () => {
-    try {
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/chat', { headers });
-      const data = await res.json();
-      if (data.messages && Array.isArray(data.messages)) {
-        setMessages(data.messages);
-      }
-    } catch (e) {
-      logger.error('Failed to fetch chat:', e);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (step === 'dashboard') {
-      fetchWithAuthChat();
-      const interval = setInterval(fetchWithAuthChat, 5000);
-      return () => clearInterval(interval);
-    }
-  }, [step, fetchWithAuthChat]);
-
-  const handleChatSend = async (message: string, options?: { rollMode?: string, speaker?: string }) => {
-    try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          message,
-          rollMode: options?.rollMode,
-          speaker: options?.speaker
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchWithAuthChat();
-      } else {
-        addNotification('Failed: ' + data.error, 'error');
-      }
-    } catch (e: any) {
-      addNotification('Error: ' + e.message, 'error');
-    }
-  };
+  const currentUserId = currentUser?._id || currentUser?.id || null;
 
   const handleLogin = async () => {
     setLoading(true);
     setLoginMessage('Logging in...');
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 45000); // 45 seconds to match backend 30s + buffer
-
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: selectedUser, password }),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      const data = await res.json();
-
-      if (data.success) {
-        setToken(data.token);
-        setStepWithLog('authenticating', 'handleLogin', 'Login successful, waiting for backend session');
-        setLoading(false);
-        setLoginMessage('');
-      } else {
-        setLoading(false);
-        setLoginMessage('');
-        setPassword(''); // Clear password on failure
-        addNotification('Login failed: ' + data.error, 'error');
-      }
-    } catch (e: any) {
-      clearTimeout(timeoutId);
+      await globalLogin(selectedUser, password);
+    } catch (e) {
+      setPassword('');
+    } finally {
       setLoading(false);
       setLoginMessage('');
-      setPassword('');
-
-      if (e.name === 'AbortError') {
-        addNotification('Login timed out. Please try again.', 'error');
-      } else {
-        addNotification('Error: ' + e.message, 'error');
-      }
     }
   };
 
-  const handleLogout = async () => {
-    logger.info('[handleLogout] Initiating logout sequence...');
+  const handleDeleteActor = async () => {
+    if (!confirmDelete.actorId) return;
+    setLoading(true);
+    setLoginMessage(`Deleting ${confirmDelete.actorName}...`);
+
     try {
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      // CRITICAL: Set step to login BEFORE clearing token
-      setStepWithLog('login', 'handleLogout', 'User logged out, transitioning to login');
-
-      await fetch('/api/logout', { method: 'POST', headers });
-
-      // Clear token and let state machine handle transition to login
-      setToken(null);
-      setSelectedUser('');
-      setPassword('');
-      setUsers(prev => prev.map(u => ({ ...u, active: false }))); // Optimistically clear status
+      const res = await fetch(`/api/actors/${confirmDelete.actorId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        addNotification(`Deleted ${confirmDelete.actorName}`, 'success');
+        await fetchActors();
+      } else {
+        const data = await res.json();
+        addNotification(`Failed to delete: ${data.error || 'Unknown error'}`, 'error');
+      }
     } catch (e: any) {
-      logger.error('Logout error:', e);
-      // Even if logout fails, clear local state
-      setStepWithLog('login', 'handleLogout error', 'Logout failed, forcing login state');
-      setToken(null);
-      setSelectedUser('');
-      setPassword('');
+      addNotification(`Error: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
+      setLoginMessage('');
+      setConfirmDelete({ isOpen: false, actorId: '', actorName: '' });
     }
   };
 
@@ -229,241 +109,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
       backgroundRepeat: 'no-repeat'
     }
     : {};
-
-  // Auto-Connect Effect
-  useEffect(() => {
-    const determineStep = (data: any, currentStep: string) => {
-      const status = data.system?.status;
-      const isAuthenticated = data.isAuthenticated || false;
-
-      // 1. Are we in setup? -> Show setup screen
-      if (status !== 'active') return 'setup';
-
-      // 1b. Are we initializing system data? -> Show splash
-      if (data.initialized === false) return 'initializing';
-
-      // 2. If we're authenticating, stay there until backend confirms
-      if (currentStep === 'authenticating') {
-        if (isAuthenticated) return 'dashboard';
-        return 'authenticating';
-      }
-
-      // 3. Check if world data is complete before showing login
-      const worldTitle = data.system?.worldTitle;
-      const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
-
-      if (!hasCompleteWorldData) return 'startup';
-
-      // 4. Authenticated? -> Show dashboard, otherwise login
-      if (isAuthenticated) return 'dashboard';
-      else return 'login';
-    };
-
-    const checkConfig = async () => {
-      if (step === 'authenticating') return;
-
-      try {
-        setLoading(true);
-        setLoginMessage('Connecting to server...');
-
-        const headers: any = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch('/api/status', { headers });
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-        const data = await res.json();
-
-        // Update Debug Level from Server Config
-        if (data.debug?.level !== undefined) {
-          setDebugLevel(data.debug.level);
-          logger.setLevel(data.debug.level);
-        }
-
-        if (data.connected && data.system) {
-          setSystem(data.system);
-          setUrl(data.url);
-          setFoundryUrl(data.url);
-          setUsers((data.users || []) as User[]);
-          setCurrentUserId(data.currentUserId);
-
-          // Apply Strict Logic
-          const targetStep = determineStep(data, step);
-          setStepWithLog(targetStep as any, 'checkConfig polling', `Determined step: ${targetStep}`);
-
-          // Trigger fetchActors if transitioning to dashboard
-          if (targetStep === 'dashboard') fetchActors();
-
-        } else {
-          setStepWithLog('setup', 'checkConfig polling', 'Not connected or no system data');
-        }
-
-        if (data.appVersion) setAppVersion(data.appVersion);
-
-      } catch (error: any) {
-        if (error.message?.includes('Failed to fetch') || error.message?.includes('500')) {
-          setLoginMessage('Server is starting up, please wait...');
-          setTimeout(() => {
-            if (token !== null) checkConfig();
-          }, 2000);
-        } else {
-          setStepWithLog('setup', 'checkConfig error handler', error.message);
-          setLoading(false);
-          setLoginMessage('');
-        }
-      } finally {
-        if (!loginMessage.includes('starting up')) {
-          setLoading(false);
-          setLoginMessage('');
-        }
-      }
-    };
-    checkConfig();
-  }, [token]);
-
-  const handleDeleteActor = async () => {
-    if (!confirmDelete.actorId) return;
-
-    setLoading(true);
-    setLoginMessage(`Deleting ${confirmDelete.actorName}...`);
-
-    try {
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`/api/actors/${confirmDelete.actorId}`, {
-        method: 'DELETE',
-        headers
-      });
-
-      if (res.ok) {
-        addNotification(`Deleted ${confirmDelete.actorName}`, 'success');
-        await fetchActors();
-      } else {
-        const data = await res.json();
-        addNotification(`Failed to delete: ${data.error || 'Unknown error'}`, 'error');
-      }
-    } catch (e: any) {
-      addNotification(`Error: ${e.message}`, 'error');
-    } finally {
-      setLoading(false);
-      setLoginMessage('');
-      setConfirmDelete({ isOpen: false, actorId: '', actorName: '' });
-    }
-  };
-
-  const fetchActors = useCallback(async () => {
-    // We cannot block on loading because this might be called during the initial load sequence
-    // explicitly to populate data for the dashboard transition.
-    logger.debug('[fetchActors] Starting fetch...');
-    try {
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch('/api/actors', { headers });
-
-      if (res.status === 401) return;
-
-      const data = await res.json();
-      logger.debug('[fetchActors] Data received:', {
-        actors: data.actors?.length,
-        owned: data.ownedActors?.length,
-        readOnly: data.readOnlyActors?.length
-      });
-
-      if (data.ownedActors || data.actors) {
-        setActors(data.actors || []);
-        setOwnedActors(data.ownedActors || data.actors || []);
-        setReadOnlyActors(data.readOnlyActors || []);
-      }
-    } catch (error: any) {
-      logger.error('Fetch actors failed:', error.message);
-    }
-  }, [loading, token, debugLevel]);
-
-  // Polling for System State Changes
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (loading) return;
-      try {
-        const headers: any = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const res = await fetch('/api/session/connect', { headers, cache: 'no-store' });
-        const data = await res.json();
-
-        // Sync debug level on poll too
-        if (data.debug?.level !== undefined && data.debug.level !== debugLevel) {
-          setDebugLevel(data.debug.level);
-          logger.setLevel(data.debug.level);
-        }
-
-        if (data.system) {
-          if (data.system.status === 'active') {
-            if (JSON.stringify(data.system) !== JSON.stringify(system)) {
-              setSystem(data.system);
-            }
-            // Fix: Always sync users if they change, not just if empty
-            // This ensures "Logged In" status updates when users log out
-            if (data.users && JSON.stringify(data.users) !== JSON.stringify(users)) {
-              logger.debug('[Polling] Updating users list:', data.users.length);
-
-              // Setup change detection for notifications (only if we have an existing list)
-              if (users.length > 0) {
-                const oldUserMap = new Map(users.map(u => [u._id || u.id, u]));
-                data.users.forEach((newUser: any) => {
-                  const uid = newUser._id || newUser.id;
-                  const oldUser = oldUserMap.get(uid);
-                  if (oldUser) { // Matching user
-                    if (!oldUser.active && newUser.active) {
-                      addNotification(`${newUser.name} has logged in.`, 'success');
-                    } else if (oldUser.active && !newUser.active) {
-                      addNotification(`${newUser.name} has logged out.`, 'info');
-                    }
-                  }
-                });
-              }
-
-              setUsers(data.users as User[]);
-            }
-            if (data.currentUserId !== currentUserId) {
-              setCurrentUserId(data.currentUserId);
-            }
-          }
-
-          const status = data.system.status;
-          const isAuthenticated = data.isAuthenticated;
-          let targetStep: string = 'setup';
-
-          if (status !== 'active') {
-            targetStep = 'setup';
-          } else if (step === 'authenticating') {
-            targetStep = isAuthenticated ? 'dashboard' : 'authenticating';
-          } else {
-            const worldTitle = data.system?.worldTitle;
-            const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
-
-            if (!hasCompleteWorldData) targetStep = 'startup';
-            else if (isAuthenticated) targetStep = 'dashboard';
-            else targetStep = 'login';
-          }
-
-          if (step !== targetStep) {
-            logger.debug(`[State] Transitioning ${step} -> ${targetStep}`);
-            setStepWithLog(targetStep as any, 'session/connect polling', `Transitioning to ${targetStep}`);
-
-            // Also reload actors on transition to dashboard
-            if (targetStep === 'dashboard') fetchActors();
-          }
-        } else {
-          if (step !== 'setup') setStepWithLog('setup', 'session/connect polling', 'No system data');
-        }
-      } catch {
-        // Network error - ignore
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [step, loading, system, users, token, debugLevel]);
 
   const renderActorCard = (actor: any, index: number, clickable: boolean = true) => {
     return (
@@ -718,7 +363,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
             <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
               SheetDelver
             </h1>
-            <p className="text-xs font-mono opacity-40 mb-8">v{appVersion}</p>
+            <p className="text-xs font-mono opacity-40 mb-8">v{system?.appVersion || '...'}</p>
 
             <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl w-full">
               <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
@@ -760,7 +405,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           step === 'dashboard' && (
             <div className="max-w-7xl mx-auto space-y-8 p-6 bg-black/60 rounded-xl backdrop-blur-sm border border-white/10">
               {/* Overlays */}
-              <SharedContentModal token={token} foundryUrl={configUrl || url} />
+              <SharedContentModal />
 
               {/* Header / Status */}
               <div className="flex justify-between items-center bg-black/40 p-4 rounded-lg border border-white/5">
@@ -780,7 +425,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
                         Connected as {users.find(u => (u._id || u.id) === currentUserId)?.name || 'Connecting...'}
                       </span>
                       <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                      <span>{url}</span>
+                      <span>{configUrl}</span>
                     </div>
                   </div>
                 </div>
@@ -857,7 +502,7 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
           </div>
         )}
         <div className="text-[10px] opacity-30 font-mono tracking-wide mb-4">
-          v{appVersion}
+          v{system?.appVersion || '...'}
         </div>
 
         <div className="flex justify-center md:justify-end gap-4">
@@ -872,20 +517,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         </div>
       </div>
 
-      {/* Persistent Player List when logged in */}
-      {(step === 'dashboard') && <PlayerList users={users} currentUserId={currentUserId} onLogout={handleLogout} />}
-
-      {/* Global Chat / Dice Tray when logged in */}
-      {(step === 'dashboard') && (
-        <GlobalChat
-          messages={messages}
-          onSend={handleChatSend}
-          foundryUrl={configUrl || url}
-          adapter={getMatchingAdapter(null)}
-          speaker={users.find(u => (u._id || u.id) === currentUserId)?.name}
-        />
-      )}
-
       <ConfirmationModal
         isOpen={confirmDelete.isOpen}
         title="Delete Character"
@@ -898,9 +529,6 @@ export default function ClientPage({ initialUrl }: ClientPageProps) {
         theme={system?.componentStyles?.modal}
       />
 
-      <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
-
-      {/* Loading Overlay */}
       <LoadingModal
         message={loginMessage}
         visible={loading && !!loginMessage}

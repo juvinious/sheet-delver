@@ -123,6 +123,7 @@ async function startServer() {
 
                     system = {
                         ...gameData.system,
+                        appVersion: config.app.version,
                         worldTitle: gameData.world?.title || 'Foundry VTT',
                         worldDescription: gameData.world?.description,
                         worldBackground: systemClient.resolveUrl(gameData.world?.background),
@@ -197,7 +198,7 @@ async function startServer() {
                 users: sanitizedUsers,
                 system: system,
                 url: config.foundry.url,
-                appVersion: '0.5.0',
+                appVersion: config.app.version,
                 debug: config.debug
             });
         } catch (error: any) {
@@ -313,6 +314,13 @@ async function startServer() {
                 if (!actor.computed) actor.computed = {};
                 if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
                 if (adapter.resolveActorNames) adapter.resolveActorNames(actor, cache);
+
+                // Resolve top-level image
+                if (actor.img) actor.img = client.resolveUrl(actor.img);
+                if (actor.prototypeToken?.texture?.src) {
+                    actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
+                }
+
                 return adapter.normalizeActorData(actor, client);
             }));
 
@@ -403,6 +411,13 @@ async function startServer() {
             const { getMatchingAdapter } = await import('../modules/core/registry');
             const adapter = getMatchingAdapter(resolvedActor);
             const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
+
+            if (normalizedActor.img) {
+                normalizedActor.img = client.resolveUrl(normalizedActor.img);
+            }
+            if (normalizedActor.prototypeToken?.texture?.src) {
+                normalizedActor.prototypeToken.texture.src = client.resolveUrl(normalizedActor.prototypeToken.texture.src);
+            }
 
             res.json({
                 ...normalizedActor,
@@ -849,6 +864,12 @@ async function startServer() {
             // Note: SocketClient logic stores the last received 'shareImage'/'showEntry' event.
             // This works perfectly for the specific user's view.
             const content = (client as any).getSharedContent();
+
+            // Resolve URLs in shared content
+            if (content && content.type === 'image' && content.data?.url) {
+                content.data.url = client.resolveUrl(content.data.url);
+            }
+
             res.json(content || { type: null });
         } catch (error: any) {
             console.error('Error fetching shared content:', error);
