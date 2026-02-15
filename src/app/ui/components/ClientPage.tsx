@@ -25,11 +25,11 @@ interface ClientPageProps {
   initialUrl: string;
 }
 
-export default function ClientPage() {
+export default function ClientPage({ initialUrl }: ClientPageProps) {
   const {
     step, setStep, token, users, system, currentUser,
     handleLogin: globalLogin, handleLogout, fetchActors,
-    ownedActors, readOnlyActors
+    ownedActors, readOnlyActors, appVersion
   } = useFoundry();
   const { addNotification } = useNotifications();
   const { foundryUrl: configUrl } = useConfig();
@@ -204,58 +204,39 @@ export default function ClientPage() {
       data-step={step}
       data-loading={loading}
     >
+      <LoadingModal
+        message="Initializing"
+        visible={step === 'init'}
+        theme={system?.componentStyles?.loadingModal}
+      />
+
+      <LoadingModal
+        message="Authenticating..."
+        visible={step === 'authenticating'}
+        theme={system?.componentStyles?.loadingModal}
+      />
+
+      <LoadingModal
+        message="Booting System..."
+        submessage="Warming up Compendium Cache"
+        visible={step === 'initializing'}
+        theme={{
+          ...system?.componentStyles?.loadingModal,
+          spinner: "w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"
+        }}
+      />
+
+      <LoadingModal
+        message="World Starting..."
+        submessage="Please wait while the world launches"
+        visible={step === 'startup'}
+        theme={{
+          ...system?.componentStyles?.loadingModal,
+          spinner: "w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"
+        }}
+      />
 
       <div className="flex-1 w-full">
-
-        {step === 'init' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
-            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-              SheetDelver
-            </h1>
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Initializing</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'authenticating' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
-            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-              SheetDelver
-            </h1>
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Authenticating...</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'initializing' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
-            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-              SheetDelver
-            </h1>
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-white/50 text-sm font-mono tracking-widest uppercase">Booting System...</p>
-              <p className="text-white/30 text-xs font-mono">Warming up Compendium Cache</p>
-            </div>
-          </div>
-        )}
-
-        {step === 'startup' && (
-          <div className="flex flex-col items-center justify-center min-h-[80vh] animate-in fade-in duration-700">
-            <h1 className={`text-6xl font-black tracking-tighter text-white mb-8`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
-              SheetDelver
-            </h1>
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-white ml-2 text-lg">World Starting...</p>
-              <p className="text-white/30 text-xs font-mono tracking-widest uppercase">Please wait while the world launches</p>
-            </div>
-          </div>
-        )}
 
         {
           step === 'login' && (
@@ -363,7 +344,7 @@ export default function ClientPage() {
             <h1 className={`text-6xl font-black tracking-tighter text-white mb-2 underline decoration-amber-500 underline-offset-8 decoration-4`} style={{ fontFamily: 'var(--font-cinzel), serif' }}>
               SheetDelver
             </h1>
-            <p className="text-xs font-mono opacity-40 mb-8">v{system?.appVersion || '...'}</p>
+            <p className="text-xs font-mono opacity-40 mb-8">v{appVersion || '...'}</p>
 
             <div className="bg-black/50 p-8 rounded-xl border border-white/10 backdrop-blur-md max-w-lg shadow-2xl w-full">
               <h2 className="text-2xl font-bold text-amber-500 mb-4">No World Available</h2>
@@ -502,7 +483,7 @@ export default function ClientPage() {
           </div>
         )}
         <div className="text-[10px] opacity-30 font-mono tracking-wide mb-4">
-          v{system?.appVersion || '...'}
+          v{appVersion || '...'}
         </div>
 
         <div className="flex justify-center md:justify-end gap-4">

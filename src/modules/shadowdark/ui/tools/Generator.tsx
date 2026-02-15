@@ -1084,14 +1084,6 @@ export default function Generator() {
                     text: "text-xl font-bold text-white font-sans"
                 }}
             />
-        )
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900 text-white">
-                <div className="flex flex-col items-center gap-4 animate-in fade-in duration-500">
-                    <div className="w-16 h-16 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                    <div className="text-xl font-serif text-amber-500 animate-pulse">Loading Character Generator...</div>
-                </div>
-            </div>
         );
     }
 

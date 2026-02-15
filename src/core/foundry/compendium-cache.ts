@@ -73,4 +73,11 @@ export class CompendiumCache {
     public set(uuid: string, name: string): void {
         this.cache.set(uuid, name);
     }
+
+    public reset(): void {
+        this.cache.clear();
+        this.initialized = false;
+        this.loadingPromise = null;
+        logger.info('CompendiumCache | Cache cleared.');
+    }
 }

@@ -251,6 +251,14 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.getSystem();
     }
 
+    public async getUsers(): Promise<any[]> {
+        return this.coreSocket.getUsers();
+    }
+
+    public async getFolders(type?: string): Promise<any[]> {
+        return this.coreSocket.getFolders(type);
+    }
+
     public async updateActor(id: string, data: any): Promise<any> {
         // --- Update Funnel (Defensive Approver) ---
         const adapter = this.getSystemAdapter();
