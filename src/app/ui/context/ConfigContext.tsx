@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { logger } from '../logger';
 
 interface Config {
@@ -19,14 +19,22 @@ const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 export function ConfigProvider({ children }: { children: ReactNode }) {
     const [config, setConfig] = useState<Config>({});
 
-    const setFoundryUrl = (url: string) => {
+    const setFoundryUrl = useCallback((url: string) => {
+        if (!url || url === config.foundryUrl) return;
         logger.debug(`[ConfigProvider] Setting foundryUrl: ${url}`);
         setConfig(prev => ({ ...prev, foundryUrl: url }));
-    };
+    }, [config.foundryUrl]);
 
-    const resolveImageUrl = (path: string) => {
+    React.useEffect(() => {
+        if (typeof window !== 'undefined') {
+            (window as any)._sd_config_actions = { setFoundryUrl, foundryUrl: config.foundryUrl };
+        }
+    }, [setFoundryUrl, config.foundryUrl]);
+
+    const resolveImageUrl = useCallback((path: string) => {
         if (!path) return '/placeholder.png';
-        if (path.startsWith('http') || path.startsWith('data:')) return path;
+        // If it's already an absolute URL or data URL, return as is
+        if (path.startsWith('http') || path.startsWith('https') || path.startsWith('data:')) return path;
 
         const baseUrl = config.foundryUrl;
         if (baseUrl) {
@@ -35,7 +43,7 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
             return `${cleanUrl}${cleanPath}`;
         }
         return path;
-    };
+    }, [config.foundryUrl]);
 
     return (
         <ConfigContext.Provider value={{ config, setFoundryUrl, foundryUrl: config.foundryUrl, resolveImageUrl }}>

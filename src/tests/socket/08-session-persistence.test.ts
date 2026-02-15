@@ -1,7 +1,6 @@
 
 import { SessionManager } from '../../core/session/SessionManager';
 import { loadConfig } from '../../core/config';
-import { logger } from '../../core/logger';
 import readline from 'readline';
 
 const rl = readline.createInterface({

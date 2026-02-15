@@ -27,12 +27,13 @@ async function loadDeps() {
 }
 
 export class CoreSocket extends SocketBase implements FoundryMetadataClient {
-    public worldState: 'offline' | 'setup' | 'active' = 'offline';
+    public worldState: 'offline' | 'setup' | 'startup' | 'active' = 'offline';
     public cachedWorldData: WorldData | null = null;
     public cachedWorlds: Record<string, WorldData> = {};
     private adapter: SystemAdapter | null = null;
-    private gameDataCache: any = null;
+    public gameDataCache: any = null;
     public userId: string | null = null;
+    public lastActorChange: number = Date.now();
 
     // Core Socket maintains the singular connection
     private consecutiveFailures = 0;
@@ -80,6 +81,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         if (!result && action !== 'delete') return;
 
         if (type === 'Actor') {
+            this.lastActorChange = Date.now();
             const docs = Array.isArray(result) ? result : [result];
             if (action === 'delete') {
                 const ids = operation?.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
@@ -186,18 +188,72 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         });
     }
 
+    private isConnecting = false;
+
+    private heartbeatInterval: NodeJS.Timeout | null = null;
+
+    private startHeartbeat() {
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+
+        // Check every 15s
+        this.heartbeatInterval = setInterval(async () => {
+            if (!this.isConnected) return;
+            try {
+                const { isSetupMatch, csrfToken, users, pageTitle } = await this.performHandshake(this.getBaseUrl());
+
+                const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
+
+                // Detection: True Setup OR Gray State (No CSRF & No Users on /join AND Generic Title)
+                if (isSetupMatch || ((!csrfToken && users.length === 0) && isGenericOrErrorTitle)) {
+                    logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
+                    this.worldState = 'setup';
+                    this.disconnect(); // Close socket
+                    this.connect();    // Restart loop (which will handle setup polling)
+                }
+            } catch (e) {
+                // Network blip? Ignore or count failures?
+                // For now, silent unless it persists. 
+            }
+        }, 5000); // 5s Check for faster detection
+    }
+
+    private stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
     async connect(): Promise<void> {
-        if (this.isConnected) return;
+        // Only return if we are fully active. If we are in setup/offline, we should allow re-checks.
+        if (this.isConnected && this.worldState === 'active') return;
+        if (this.isConnecting) return;
+
+        this.stopHeartbeat(); // Ensure clean slate
+        this.isConnecting = true;
         const baseUrl = this.getBaseUrl();
         logger.info(`CoreSocket | Connecting to ${baseUrl}...`);
 
         try {
             // 1. Handshake & CSRF & Scraped Users
-            const { csrfToken, isSetupMatch, users: scrapedUsers } = await this.performHandshake(baseUrl);
-            if (isSetupMatch) {
-                logger.info('CoreSocket | Detected Setup Mode. World is closed.');
+            const { csrfToken, isSetupMatch, users: scrapedUsers, pageTitle } = await this.performHandshake(baseUrl);
+
+            // Detection: True Setup OR Gray State (No CSRF & No Users on /join AND Title indicates failure/generic)
+            // If the title is a specific world name, we should try to connect even if scraping failed.
+            const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
+
+            if (isSetupMatch || ((!csrfToken && scrapedUsers.length === 0) && isGenericOrErrorTitle)) {
+                logger.info(`CoreSocket | Detected Setup/Gray State (Title="${pageTitle}"). World is closed. Retrying in 5s...`);
                 this.worldState = 'setup';
+                setTimeout(() => this.connect(), 5000);
                 return;
+            }
+
+            // If we have a specific world title, transition to STARTUP immediately to give UI feedback
+            // This happens before the potentially slow Probe/Login steps.
+            if (pageTitle && !isGenericOrErrorTitle && this.worldState !== 'active') {
+                this.worldState = 'startup';
+                logger.info(`CoreSocket | World Detected (${pageTitle}). Transitioning to startup...`);
             }
 
             // 2. Discovery (Guest Probe)
@@ -216,8 +272,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 this.worldState = 'active'; // Assume active if we have users
                 scrapedUsers.forEach((u: any) => this.userMap.set(u._id, u));
             } else {
-                logger.warn('CoreSocket | Discovery failed completely. No world data or users found.');
+                logger.warn('CoreSocket | Discovery failed completely. No world data or users found. Retrying in 5s...');
                 this.worldState = 'offline';
+                setTimeout(() => this.connect(), 5000);
                 return;
             }
 
@@ -229,6 +286,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     logger.info(`CoreSocket | Resolved Service Account ID: ${this.userId} (Username: ${this.config.username})`);
                 } else {
                     logger.warn(`CoreSocket | Could not resolve User ID for ${this.config.username}`);
+                    return;
                 }
             }
 
@@ -277,6 +335,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     if (!isActive) {
                         logger.warn('CoreSocket | Socket connected but world is NOT active.');
                         this.worldState = 'setup';
+                        this.gameDataCache = null; // Clear potential stale cache
+                        this.userMap.clear();
                         clearTimeout(timeout);
                         this.emit('connect');
                         resolve();
@@ -285,6 +345,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
                     logger.info('CoreSocket | World is ACTIVE. Fetching game data via socket...');
                     this.worldState = 'active';
+
+                    // Start Heartbeat to detect return to setup
+                    this.startHeartbeat();
 
                     // 6. Fetch Game Data via Socket (The canonical bootstrap way)
                     const gameData = await this.getWorldData();
@@ -300,6 +363,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                             // Sync the cache array as well
                             gameData.users = gameData.users.map((u: any) => ({
                                 ...u,
+                                ...this.userMap.get(u._id || u.id),
                                 active: activeIds.includes(u._id || u.id)
                             }));
                         }
@@ -325,6 +389,13 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 this.socket.on('disconnect', (reason: string) => {
                     logger.info(`CoreSocket | Socket Disconnected: ${reason}`);
                     this.isSocketConnected = false;
+                    this.stopHeartbeat();
+                    // Don't overwrite setup state if we manually triggered it via heartbeat
+                    if (this.worldState !== 'setup') {
+                        this.worldState = 'offline';
+                    }
+                    this.gameDataCache = null; // Clear cache to prevent stale data
+                    this.userMap.clear();
                     this.emit('disconnect', reason);
                 });
 
@@ -392,7 +463,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         } catch (e: any) {
             logger.error(`CoreSocket | Connection flow failed: ${e.message}`);
             this.worldState = 'offline';
-            throw e;
+            // Retry on error
+            setTimeout(() => this.connect(), 5000);
+        } finally {
+            this.isConnecting = false;
         }
     }
 
@@ -479,7 +553,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async dispatchDocumentSocket(type: string, action: string, operation: any = {}, parent?: { type: string, id: string }, failHard: boolean = true): Promise<any> {
         if (!this.socket?.connected) throw new Error('Socket not connected');
-        //if (parent) operation.parentUuid = `${parent.type}.${parent.id}`;
+
+        // Normalize data and updates to arrays if provided
+        if (operation.data && !Array.isArray(operation.data)) {
+            operation.data = [operation.data];
+        }
+        if (operation.updates && !Array.isArray(operation.updates)) {
+            operation.updates = [operation.updates];
+        }
+
         if (parent) {
             // Mapping simplistic type/id to UUID
             operation.parentUuid = `${parent.type}.${parent.id}`;
@@ -675,8 +757,19 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         // If no ownership[userId], check ownership['default']
         return all.filter((j: any) => {
             const level = j.ownership?.[userId] !== undefined ? j.ownership[userId] : (j.ownership?.default || 0);
-            return level >= 1; // Limited or better
+            return level >= 2; // Observer or better
         });
+    }
+
+    public async getFolders(type?: string): Promise<any[]> {
+        const result: any = await this.dispatchDocumentSocket('Folder', 'get', { broadcast: false });
+        let all = result?.result || [];
+
+        if (type) {
+            all = all.filter((f: any) => f.type === type);
+        }
+
+        return all;
     }
 
     public async getActors(userId?: string): Promise<any[]> {
@@ -686,7 +779,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
         return all.filter((a: any) => {
             const level = a.ownership?.[userId] !== undefined ? a.ownership[userId] : (a.ownership?.default || 0);
-            return level >= 1;
+            return level >= 2;
         });
     }
 

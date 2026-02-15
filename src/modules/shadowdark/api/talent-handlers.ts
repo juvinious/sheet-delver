@@ -1,4 +1,4 @@
-import { SYSTEM_PREDEFINED_EFFECTS, findEffectUuid } from '../data/talent-effects';
+import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { logger } from '../../../core/logger';
 import { dataManager } from '../data/DataManager';
 
@@ -420,7 +420,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return regex.test(name) || regex.test(text);
         },
         action: undefined, // Handled implicitly by choice system
-        mutateItem: async (item: any) => {
+        mutateItem: (_item: any) => {
             // This is mostly handled by the UI modal forcing a selection
             // but we keep the matcher for consistency
         }

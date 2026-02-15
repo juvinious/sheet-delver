@@ -33,23 +33,10 @@ const defaultStyles = {
 export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter, speaker }: ChatTabProps) {
     const s = adapter?.componentStyles?.chat || defaultStyles;
     const scrollRef = useRef<HTMLDivElement>(null);
-    const [isAtBottom, setIsAtBottom] = useState(true);
-
-    const scrollToBottom = (instant = false) => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTo({
-                top: scrollRef.current.scrollHeight,
-                behavior: instant ? 'auto' : 'smooth'
-            });
-        }
-    };
-
-    // Auto-scroll logic - only scroll to bottom if user is already at bottom
-    useEffect(() => {
-        if (isAtBottom) {
-            scrollToBottom();
-        }
-    }, [messages, isAtBottom]);
+    const [isAtTop, setIsAtTop] = useState(true);
+    // We no longer auto-scroll to bottom. In fact, we might want to stay at top.
+    // However, if we reverse, new messages are at the very top.
+    // If we are at the top, they just appear.
 
     const [now, setNow] = useState<number>(() => messages.length > 0 ? messages[0].timestamp : Date.now());
 
@@ -61,10 +48,17 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
 
     const handleScroll = () => {
         if (!scrollRef.current) return;
-        const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-        // Threshold of 100px from bottom to be considered "at bottom"
-        const atBottom = scrollHeight - scrollTop - clientHeight < 100;
-        setIsAtBottom(atBottom);
+        const { scrollTop } = scrollRef.current;
+        const atTop = scrollTop < 50;
+        setIsAtTop(atTop);
+    };
+
+    const [chatInput, setChatInput] = useState('');
+
+    const handleInputSend = () => {
+        if (!chatInput.trim()) return;
+        onSend(chatInput, { speaker });
+        setChatInput('');
     };
 
     const getTimeAgo = (timestamp: number, current: number) => {
@@ -186,7 +180,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                     onClick={handleChatClick}
                     onScroll={handleScroll}
                 >
-                    {messages.map((msg, idx) => (
+                    {[...messages].reverse().map((msg, idx) => (
                         <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={s.user}>{msg.user}</span>
@@ -218,17 +212,36 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
 
                 {/* Scroll Buttons */}
                 <div className="grid grid-cols-2 gap-2 px-4 pt-2">
+                    {/* Chat Input at bottom for easy access */}
+                    <div className="col-span-2 flex gap-2 p-1 bg-neutral-900/50 backdrop-blur-sm rounded-lg border border-white/5 mb-2">
+                        <input
+                            type="text"
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleInputSend()}
+                            placeholder="Type a message..."
+                            className="flex-1 bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500/50 text-white placeholder:text-white/20"
+                        />
+                        <button
+                            onClick={handleInputSend}
+                            disabled={!chatInput.trim()}
+                            className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:hover:bg-amber-600 text-black px-4 py-1.5 rounded-md text-xs font-black transition-colors"
+                        >
+                            SEND
+                        </button>
+                    </div>
+
                     <button
                         onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                         className={s.scrollButton || defaultStyles.scrollButton}
                     >
-                        ↑ Top
+                        ↑ Newest
                     </button>
                     <button
                         onClick={() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })}
                         className={s.scrollButton || defaultStyles.scrollButton}
                     >
-                        ↓ Bottom
+                        ↓ Older
                     </button>
                 </div>
             </div>

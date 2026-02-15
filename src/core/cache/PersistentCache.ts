@@ -122,6 +122,10 @@ export class PersistentCache {
         }
     }
 
+    public async delete(namespace: string, key: string): Promise<void> {
+        return this.remove(namespace, key);
+    }
+
     public async remove(namespace: string, key: string): Promise<void> {
         if (isBrowser) return;
         const filePath = await this.getFilePath(namespace, key);

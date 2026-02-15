@@ -84,7 +84,7 @@ export async function handleGetSpellsBySource(request: Request) {
 
         // 2. Fetch Remote Spells (Foundry)
         const client = getClient();
-        let remoteSpells: any[] = [];
+        const remoteSpells: any[] = [];
         const remoteSpellIds = new Set<string>();
 
         if (client && client.isConnected) {
@@ -95,7 +95,6 @@ export async function handleGetSpellsBySource(request: Request) {
 
                 // Fetch Compendium Spells (Indices)
                 const packs = await client.getAllCompendiumIndices();
-                const compendiumSpells: any[] = [];
 
                 // Helper to check class match
                 const checkClassMatch = (spellClasses: any) => {
@@ -176,7 +175,7 @@ export async function handleGetSpellsBySource(request: Request) {
 
         const spellMap = new Map<string, any>();
 
-        const addToMap = (spells: any[], origin: string) => {
+        const addToMap = (spells: any[], _origin: string) => {
             for (const s of spells) {
                 const key = `${s.name}-${s.tier || 0}`;
                 if (!spellMap.has(key)) {

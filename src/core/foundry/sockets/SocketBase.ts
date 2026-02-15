@@ -48,7 +48,7 @@ export abstract class SocketBase extends EventEmitter {
         this.sessionCookie = Array.from(this.cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
-    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, users: any[] }> {
+    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, users: any[], pageTitle: string }> {
         logger.info(`[${this.constructor.name}] Performing Handshake (GET /join)...`);
         const joinResponse = await fetch(`${baseUrl}/join`, {
             headers: { 'User-Agent': 'SheetDelver/1.0' }
@@ -65,8 +65,19 @@ export abstract class SocketBase extends EventEmitter {
 
         const html = await joinResponse.text();
 
-        // Check for Setup Mode (Redirect or HTML ID)
-        const isSetup = joinResponse.url.includes('/setup') || html.includes('id="setup"');
+        const titleMatch = html.match(/<title>(.*?)<\/title>/);
+        const pageTitle = titleMatch?.[1] || '';
+
+        // Check for Setup Mode (Redirect, HTML ID, or specific visual indicators)
+        const isSetup = joinResponse.url.includes('/setup') ||
+            joinResponse.url.includes('/auth') ||
+            html.includes('id="setup"') ||
+            html.includes('Administrator Access Required') ||
+            html.includes('There is currently no active game session') ||
+            pageTitle.includes('Foundry Virtual Tabletop');
+
+        logger.debug(`[${this.constructor.name}] Handshake Analysis: URL=${joinResponse.url}, Title=${pageTitle}, isSetup=${isSetup}`);
+        logger.debug(`[${this.constructor.name}] HTML Snippet: ${html.substring(0, 150)}`);
 
         // Parse CSRF
         let csrfToken: string | null = null;
@@ -85,7 +96,7 @@ export abstract class SocketBase extends EventEmitter {
         }
         logger.debug(`[${this.constructor.name}] Scraped ${users.length} users from /join HTML.`);
 
-        return { csrfToken, isSetupMatch: isSetup, users };
+        return { csrfToken, isSetupMatch: isSetup, users, pageTitle };
     }
 
     protected async performLogin(baseUrl: string, userId: string, csrfToken: string | null): Promise<void> {

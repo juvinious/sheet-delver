@@ -34,6 +34,40 @@ async function startServer() {
     });
 
     // Start Service Account Client for World Verification
+    const systemClient = sessionManager.getSystemClient();
+
+    // Service Initialization Hook
+    systemClient.on('connect', () => {
+        if (systemClient.worldState === 'setup') {
+            logger.warn('Core Service | World in Setup Mode. Clearing all sessions.');
+            sessionManager.clearAllSessions();
+            return;
+        }
+
+        if (systemClient.worldState !== 'active') return;
+
+        logger.info('Core Service | System Client Connected. Initializing Backend Services...');
+        (async () => {
+            try {
+                const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+                const cache = CompendiumCache.getInstance();
+                await cache.initialize(systemClient);
+                sessionManager.setCache(cache);
+            } catch (e: any) {
+                logger.error(`Core Service | Compendium Cache initialization failed: ${e.message}`);
+            }
+        })();
+    });
+
+    systemClient.on('disconnect', () => {
+        logger.info('Core Service | System Client Disconnected. Clearing Backend Services...');
+        (async () => {
+            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+            CompendiumCache.getInstance().reset();
+            sessionManager.setCache(null);
+        })();
+    });
+
     await sessionManager.initialize();
 
     // --- Middleware: Session Authentication ---
@@ -123,27 +157,31 @@ async function startServer() {
 
                     system = {
                         ...gameData.system,
+                        appVersion: config.app.version,
                         worldTitle: gameData.world?.title || 'Foundry VTT',
                         worldDescription: gameData.world?.description,
                         worldBackground: systemClient.resolveUrl(gameData.world?.background),
                         background: systemClient.resolveUrl(gameData.system?.background || gameData.system?.worldBackground),
                         nextSession: gameData.world?.nextSession,
                         status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
+                        actorSyncToken: (systemClient as any).lastActorChange,
                         users: {
                             active: activeCount,
                             total: totalCount
                         }
                     };
                     users = usersList;
+                } else {
+                    system.appVersion = config.app.version;
+                }
 
-                    // Add adapter config to system info
-                    if (system.id) {
-                        const sid = system.id.toLowerCase();
-                        const adapter = getAdapter(sid);
-                        if (adapter && typeof (adapter as any).getConfig === 'function') {
-                            const config = (adapter as any).getConfig();
-                            if (config) system.config = config;
-                        }
+                // Add adapter config to system info
+                if (system.id) {
+                    const sid = system.id.toLowerCase();
+                    const adapter = getAdapter(sid);
+                    if (adapter && typeof (adapter as any).getConfig === 'function') {
+                        const config = (adapter as any).getConfig();
+                        if (config) system.config = config;
                     }
                 }
             } catch {
@@ -197,7 +235,7 @@ async function startServer() {
                 users: sanitizedUsers,
                 system: system,
                 url: config.foundry.url,
-                appVersion: '0.5.0',
+                appVersion: config.app.version,
                 debug: config.debug
             });
         } catch (error: any) {
@@ -313,6 +351,13 @@ async function startServer() {
                 if (!actor.computed) actor.computed = {};
                 if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
                 if (adapter.resolveActorNames) adapter.resolveActorNames(actor, cache);
+
+                // Resolve top-level image
+                if (actor.img) actor.img = client.resolveUrl(actor.img);
+                if (actor.prototypeToken?.texture?.src) {
+                    actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
+                }
+
                 return adapter.normalizeActorData(actor, client);
             }));
 
@@ -403,6 +448,13 @@ async function startServer() {
             const { getMatchingAdapter } = await import('../modules/core/registry');
             const adapter = getMatchingAdapter(resolvedActor);
             const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
+
+            if (normalizedActor.img) {
+                normalizedActor.img = client.resolveUrl(normalizedActor.img);
+            }
+            if (normalizedActor.prototypeToken?.texture?.src) {
+                normalizedActor.prototypeToken.texture.src = client.resolveUrl(normalizedActor.prototypeToken.texture.src);
+            }
 
             res.json({
                 ...normalizedActor,
@@ -716,31 +768,52 @@ async function startServer() {
             const client = (req as any).foundryClient;
             const currentUserId = client.userId;
             const allJournals = await client.getJournals();
+            const allFolders = await client.getFolders('JournalEntry');
 
-            // Filter by ownership (1 = Limited, 2 = Observer, 3 = Owner)
-            // GM (role 4) sees all, but client.userId will match their ownership usually.
-            // Wait, standard foundry permission check:
-            // If user is GM -> sees all.
-            // If not GM -> must have ownership[userId] >= 1 OR default >= 1.
-
-            // We can check if current user is GM from client.getUsersDetails() but better to trust ownership map if we map it right?
-            // Actually, for GM users, the ownership map might not explicitly say "3", they just have override.
-
-            // Let's get the user's role to be safe
-            // We can't easily get it synchronously here unless we cache it or fetch it.
-            // client.getUsersDetails() returns cached users.
-
-            const users = await client.getUsersDetails();
-            const currentUser = users.find((u: any) => u.id === currentUserId);
-            const isGM = currentUser?.isGM || false;
+            const users = await client.getUsers();
+            const currentUser = users.find((u: any) => (u._id || u.id) === currentUserId);
+            const isGM = (currentUser?.role >= 3) || false;
 
             const visibleJournals = allJournals.filter((j: any) => {
                 if (isGM) return true;
                 const level = j.ownership?.[currentUserId] ?? j.ownership?.default ?? 0;
-                return level >= 1; // Show if at least Limited
+                return level >= 2; // Observer or better
             });
 
-            res.json({ journals: visibleJournals });
+            // Filter folders: only show if they contain (directly or indirectly) a visible journal
+            const getFolderIdsWithVisibleJournals = (): Set<string> => {
+                const folderIds = new Set<string>();
+                visibleJournals.forEach((j: any) => {
+                    if (j.folder) {
+                        let currentFolderId = j.folder;
+                        while (currentFolderId) {
+                            folderIds.add(currentFolderId);
+                            const folder = allFolders.find((f: any) => f._id === currentFolderId);
+                            currentFolderId = folder?.folder || null;
+                        }
+                    }
+                });
+                return folderIds;
+            };
+
+            const visibleFolderIds = getFolderIdsWithVisibleJournals();
+            const visibleFolders = allFolders.filter((f: any) => isGM || visibleFolderIds.has(f._id));
+
+            res.json({ journals: visibleJournals, folders: visibleFolders });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.post('/journals', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const { type, data } = req.body; // type: 'JournalEntry' | 'Folder'
+            const result = await client.dispatchDocumentSocket(type || 'JournalEntry', 'create', {
+                data: [data], // Wrap in array as required by DatabaseBackend#create
+                broadcast: true
+            });
+            res.json(result);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
@@ -750,8 +823,6 @@ async function startServer() {
         try {
             const client = (req as any).foundryClient;
             const uuid = req.params.id;
-            // First try by ID from the full list (efficient if cached, but we don't cache journals yet)
-            // Or use dispatch with query
             const response = await client.dispatchDocumentSocket('JournalEntry', 'get', {
                 query: { _id: uuid },
                 broadcast: false
@@ -760,6 +831,34 @@ async function startServer() {
 
             if (!doc) return res.status(404).json({ error: 'Journal not found' });
             res.json(doc);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.patch('/journals/:id', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const { type, data } = req.body;
+            const result = await client.dispatchDocumentSocket(type || 'JournalEntry', 'update', {
+                updates: [{ ...data, _id: req.params.id }],
+                broadcast: true
+            });
+            res.json(result);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.delete('/journals/:id', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const { type } = req.query;
+            const result = await client.dispatchDocumentSocket((type as string) || 'JournalEntry', 'delete', {
+                ids: [req.params.id],
+                broadcast: true
+            });
+            res.json(result);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
@@ -849,6 +948,12 @@ async function startServer() {
             // Note: SocketClient logic stores the last received 'shareImage'/'showEntry' event.
             // This works perfectly for the specific user's view.
             const content = (client as any).getSharedContent();
+
+            // Resolve URLs in shared content
+            if (content && content.type === 'image' && content.data?.url) {
+                content.data.url = client.resolveUrl(content.data.url);
+            }
+
             res.json(content || { type: null });
         } catch (error: any) {
             console.error('Error fetching shared content:', error);

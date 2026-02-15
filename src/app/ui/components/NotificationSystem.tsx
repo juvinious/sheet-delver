@@ -1,4 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+'use client';
+
+import { useState, useRef, useCallback, createContext, useContext, ReactNode } from 'react';
 
 export type NotificationType = 'info' | 'success' | 'error';
 
@@ -14,13 +16,21 @@ interface NotificationOptions {
     duration?: number;
 }
 
-export const useNotifications = (defaultDuration = 5000) => {
+interface NotificationContextType {
+    notifications: Notification[];
+    addNotification: (content: string, type?: NotificationType, options?: NotificationOptions) => void;
+    removeNotification: (id: number) => void;
+}
+
+const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+
+export function NotificationProvider({ children }: { children: ReactNode }) {
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const notificationIdRef = useRef(0);
 
     const addNotification = useCallback((content: string, type: NotificationType = 'info', options?: NotificationOptions) => {
         const id = ++notificationIdRef.current;
-        const duration = options?.duration || defaultDuration;
+        const duration = options?.duration || 5000;
 
         setNotifications(prev => [...prev, { id, content, type, html: options?.html }]);
 
@@ -28,13 +38,26 @@ export const useNotifications = (defaultDuration = 5000) => {
         setTimeout(() => {
             setNotifications(prev => prev.filter(n => n.id !== id));
         }, duration);
-    }, [defaultDuration]);
+    }, []);
 
     const removeNotification = useCallback((id: number) => {
         setNotifications(prev => prev.filter(n => n.id !== id));
     }, []);
 
-    return { notifications, addNotification, removeNotification };
+    return (
+        <NotificationContext.Provider value={{ notifications, addNotification, removeNotification }}>
+            {children}
+            <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
+        </NotificationContext.Provider>
+    );
+}
+
+export const useNotifications = () => {
+    const context = useContext(NotificationContext);
+    if (!context) {
+        throw new Error('useNotifications must be used within a NotificationProvider');
+    }
+    return context;
 };
 
 export const NotificationContainer = ({ notifications, removeNotification }: { notifications: Notification[], removeNotification: (id: number) => void }) => {

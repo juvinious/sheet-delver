@@ -7,6 +7,7 @@ export interface SystemInfo {
     id: string;
     title: string;
     version: string;
+    appVersion?: string;
     worldTitle?: string;
     worldBackground?: string;
     worldDescription?: string;

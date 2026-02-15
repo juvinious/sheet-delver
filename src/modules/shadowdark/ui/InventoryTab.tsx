@@ -25,7 +25,7 @@ interface InventoryTabProps {
     onCreateItem?: (itemData: any) => Promise<void>;
     onUpdateItem?: (itemData: any) => Promise<void>;
 }
-export default function InventoryTab({ actor, onUpdate, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
+export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isGemModalOpen, setIsGemModalOpen] = useState(false);

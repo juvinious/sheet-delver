@@ -90,17 +90,6 @@ export class SessionManager {
             });
             logger.info('SessionManager | Core System Socket Ready.');
 
-            // Initialize Compendium Cache (System Level) - Non-blocking background task
-            (async () => {
-                try {
-                    const { CompendiumCache } = await import('../foundry/compendium-cache');
-                    this.cacheInstance = CompendiumCache.getInstance();
-                    await this.cacheInstance.initialize(this.systemClient);
-                } catch (e: any) {
-                    logger.error(`SessionManager | Compendium Cache failed to initialize: ${e.message}`);
-                }
-            })();
-
         } catch (e: any) {
             logger.error(`SessionManager | Core Socket failed to initialize: ${e.message}`);
         }
@@ -112,6 +101,10 @@ export class SessionManager {
 
     public isCacheReady(): boolean {
         return this.cacheInstance?.hasLoaded() || false;
+    }
+
+    public setCache(cache: any) {
+        this.cacheInstance = cache;
     }
 
     public async createSession(username: string, password?: string): Promise<{ sessionId: string, userId: string }> {
@@ -168,6 +161,10 @@ export class SessionManager {
             return session;
         }
 
+        if (this.systemClient.worldState === 'setup') {
+            return undefined;
+        }
+
         // Try to restore from disk with minor retries (for transient startup/world discovery issues)
         for (let i = 0; i < 3; i++) {
             const restored = await this.tryRestoreSession(sessionId, false);
@@ -189,6 +186,15 @@ export class SessionManager {
             this.sessions.delete(sessionId);
             await this.clearSession(sessionId);
         }
+    }
+
+    public async clearAllSessions() {
+        logger.info('SessionManager | Invalidating all sessions due to world disconnect/setup.');
+        for (const sessionId of this.sessions.keys()) {
+            await this.destroySession(sessionId);
+        }
+        this.sessions.clear();
+        await persistentCache.delete(this.CACHE_NS, this.CACHE_KEY);
     }
 
     public isValidSession(sessionId: string): boolean {
@@ -215,8 +221,9 @@ export class SessionManager {
             // Check World State via Core Socket
             const currentWorldId = this.systemClient.getGameData()?.world?.id;
 
-            if (currentWorldId && currentWorldId !== sessionData.worldId) {
-                logger.warn(`SessionManager | World mismatch. Purging key ${username}.`);
+            // Strict Validation: Must have an active world, and it must match the session's world
+            if (!currentWorldId || currentWorldId !== sessionData.worldId) {
+                logger.warn(`SessionManager | World mismatch or not active (Current: ${currentWorldId}). Purging key ${username}.`);
                 await this.clearSession(username);
                 return null;
             }

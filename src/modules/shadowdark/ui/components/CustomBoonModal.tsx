@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Trash2, Settings, Power, Search } from 'lucide-react';
-import { resolveEntityName } from '../sheet-utils';
+import { X, Trash2, Power, Search } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 

@@ -294,12 +294,6 @@ export class DataManager {
         // const spells: any[] = [];
         const normalizedClass = className.toLowerCase();
 
-        for (const [_key, _doc] of this.index.entries()) {
-            // Unpack if duplicated (we store short and long UUIDs)
-            // Just iterate unique objects? The map values are references, so strict equality works, 
-            // but we iterate entries.
-            // Let's iterate values uniquely.
-        }
 
         const uniqueDocs = new Set(this.index.values());
 
@@ -369,8 +363,8 @@ export class DataManager {
     public async getIndex(): Promise<Record<string, string>> {
         if (!this.initialized) await this.initialize();
         const result: Record<string, string> = {};
-        for (const [uuid, doc] of this.index.entries()) {
-            result[uuid] = doc.name;
+        for (const [_uuid, doc] of this.index.entries()) {
+            result[_uuid] = doc.name;
         }
         return result;
     }

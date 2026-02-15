@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 import { useConfig } from '@/app/ui/context/ConfigContext';
-import { logger } from '@/app/ui/logger';
 import { Plus, Edit2 } from 'lucide-react';
 import AddEffectsModal from './components/AddEffectsModal';
 
@@ -20,10 +19,10 @@ interface EffectsTabProps {
 
 export default function EffectsTab({
     actor,
-    token,
+    token: _token,
     onToggleEffect,
     onDeleteEffect,
-    onAddPredefinedEffect,
+    onAddPredefinedEffect: _onAddPredefinedEffect,
     onCreateEffect,
     onUpdateEffect,
     systemConfig

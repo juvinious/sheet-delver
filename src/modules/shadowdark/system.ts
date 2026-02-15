@@ -137,7 +137,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     return itemData;
                 }).filter((i: any) => i !== null);
                 // --- SHADOWDARK EFFECTS PROCESSING ---
-                let effects: any[] = [];
+                const effects: any[] = [];
                 try {
                     // Collect all applicable effects
                     // @ts-ignore
@@ -219,7 +219,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                                         sourceName = e.origin;
                                     }
                                 }
-                            } catch (err) { /* ignore */ }
+                            } catch (_err) { /* ignore */ }
                         }
 
                         // Fallback: Check if ANY item on actor has this effect by ID
@@ -436,32 +436,54 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
-        // 1. Fetch System Config (Live)
-        if (!this.systemConfig) {
-            // Server-only dynamic import
-            const { persistentCache } = await import('../../core/cache/PersistentCache');
-
-            // Try cache first
-            this.systemConfig = await persistentCache.get(this.CACHE_NS, this.CACHE_KEY);
-
-            // If no cache or first run, fetch from client
-            if (!this.systemConfig && client.getSystemConfig) {
-                try {
-                    logger.info('ShadowdarkAdapter | Fetching official system configuration...');
-                    const liveConfig = await client.getSystemConfig();
-                    if (liveConfig && Object.keys(liveConfig).length > 0) {
-                        this.systemConfig = liveConfig;
-                        await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, liveConfig);
-                        logger.info('ShadowdarkAdapter | Official system configuration cached.');
-                    }
-                } catch (e) {
-                    logger.error('ShadowdarkAdapter | Failed to fetch system config:', e);
-                }
-            }
-        }
+        await this._ensureSystemConfig(client);
 
         const sysInfo = await client.getSystem();
-        const results = {
+        const results = this._initializeResults(sysInfo);
+
+        if (options?.minimal) return results;
+
+        try {
+            const processedUuids = new Set<string>();
+
+            await this._discoverFromDataManager(results, processedUuids);
+
+            await this._discoverFromSocket(client, results, processedUuids);
+
+            await this._processWorldItems(client, results, processedUuids);
+
+            this._resolveSpellClasses(results);
+
+        } catch (e) {
+            logger.error('ShadowdarkAdapter | getSystemData failed:', e);
+        }
+
+        return results;
+    }
+
+    private async _ensureSystemConfig(client: any) {
+        if (this.systemConfig) return;
+
+        try {
+            const { persistentCache } = await import('../../core/cache/PersistentCache');
+            this.systemConfig = await persistentCache.get(this.CACHE_NS, this.CACHE_KEY);
+
+            if (!this.systemConfig && client.getSystemConfig) {
+                logger.info('ShadowdarkAdapter | Fetching official system configuration...');
+                const liveConfig = await client.getSystemConfig();
+                if (liveConfig && Object.keys(liveConfig).length > 0) {
+                    this.systemConfig = liveConfig;
+                    await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, liveConfig);
+                    logger.info('ShadowdarkAdapter | Official system configuration cached.');
+                }
+            }
+        } catch (e) {
+            logger.error('ShadowdarkAdapter | Failed to ensure system config:', e);
+        }
+    }
+
+    private _initializeResults(sysInfo: any) {
+        return {
             id: sysInfo.id,
             title: sysInfo.title,
             version: sysInfo.version,
@@ -484,265 +506,281 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 ...(this.systemConfig?.PREDEFINED_EFFECTS || {})
             },
         };
+    }
 
-        if (options?.minimal) return results;
+    private async _discoverFromDataManager(results: any, processedUuids: Set<string>) {
+        if (typeof window !== 'undefined') return;
 
         try {
-            const processedUuids = new Set<string>();
+            const { dataManager } = await import('./data/DataManager');
+            const localDocs = await dataManager.getAllDocuments();
 
-            // 1. Fetch from DataManager (Server-side High Reliability)
-            if (typeof window === 'undefined') {
-                try {
-                    const { dataManager } = await import('./data/DataManager');
-                    const localDocs = await dataManager.getAllDocuments();
+            for (const doc of localDocs) {
+                const type = (typeof doc.type === 'string' ? doc.type : '').toLowerCase();
+                const uuid = doc.uuid;
 
-                    for (const doc of localDocs) {
-                        const type = (typeof doc.type === 'string' ? doc.type : '').toLowerCase();
-                        const uuid = doc.uuid;
+                if (!uuid || processedUuids.has(uuid)) continue;
+                processedUuids.add(uuid);
 
-                        if (!uuid || processedUuids.has(uuid)) continue;
-                        processedUuids.add(uuid);
+                const baseInfo = { name: doc.name, uuid, img: doc.img };
 
-                        const baseInfo = { name: doc.name, uuid, img: doc.img };
-
-                        if (type === 'class') {
-                            results.classes.push({
-                                ...baseInfo,
-                                system: {
-                                    description: doc.system?.description || "",
-                                    languages: doc.system?.languages || [],
-                                    talents: doc.system?.talents || [],
-                                    talentChoices: doc.system?.talentChoices || [],
-                                    talentChoiceCount: doc.system?.talentChoiceCount || 0
-                                }
-                            });
-                            if (doc.system?.titles) {
-                                (results.titles as any)[doc.name] = doc.system.titles;
-                            }
-                        } else if (type === 'ancestry') {
-                            results.ancestries.push({
-                                ...baseInfo,
-                                system: {
-                                    description: doc.system?.description || "",
-                                    languages: doc.system?.languages || [],
-                                    talents: doc.system?.talents || [],
-                                    talentChoices: doc.system?.talentChoices || [],
-                                    talentChoiceCount: doc.system?.talentChoiceCount || 0
-                                }
-                            });
-                        } else if (type === 'background') {
-                            results.backgrounds.push(baseInfo);
-                        } else if (type === 'language') {
-                            results.languages.push({
-                                ...baseInfo,
-                                rarity: (doc.system?.rarity || 'common').toLowerCase()
-                            });
-                        } else if (type === 'deity') {
-                            results.deities.push(baseInfo);
-                        } else if (type === 'patron') {
-                            results.patrons.push(baseInfo);
-                        } else if (type === 'talent') {
-                            results.talents.push(baseInfo);
-                        } else if (type === 'spell') {
-                            results.spells.push({
-                                ...baseInfo,
-                                tier: doc.system?.tier || 0,
-                                class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
-                                duration: doc.system?.duration,
-                                range: doc.system?.range
-                            });
+                if (type === 'class') {
+                    results.classes.push({
+                        ...baseInfo,
+                        system: {
+                            description: doc.system?.description || "",
+                            languages: doc.system?.languages || [],
+                            talents: doc.system?.talents || [],
+                            talentChoices: doc.system?.talentChoices || [],
+                            talentChoiceCount: doc.system?.talentChoiceCount || 0
                         }
-                    }
-                } catch (e) {
-                    logger.error("ShadowdarkAdapter | DataManager fallback failed:", e);
+                    });
+                    if (doc.system?.titles) results.titles[doc.name] = doc.system.titles;
+                } else if (type === 'ancestry') {
+                    results.ancestries.push({
+                        ...baseInfo,
+                        system: {
+                            description: doc.system?.description || "",
+                            languages: doc.system?.languages || [],
+                            talents: doc.system?.talents || [],
+                            talentChoices: doc.system?.talentChoices || [],
+                            talentChoiceCount: doc.system?.talentChoiceCount || 0
+                        }
+                    });
+                } else if (type === 'background') {
+                    results.backgrounds.push(baseInfo);
+                } else if (type === 'language') {
+                    results.languages.push({ ...baseInfo, rarity: (doc.system?.rarity || 'common').toLowerCase() });
+                } else if (type === 'deity') {
+                    results.deities.push(baseInfo);
+                } else if (type === 'patron') {
+                    results.patrons.push(baseInfo);
+                } else if (type === 'talent') {
+                    results.talents.push(baseInfo);
+                } else if (type === 'spell') {
+                    results.spells.push({
+                        ...baseInfo,
+                        tier: doc.system?.tier || 0,
+                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
+                        duration: doc.system?.duration,
+                        range: doc.system?.range
+                    });
                 }
             }
+        } catch (e) {
+            logger.error("ShadowdarkAdapter | DataManager discovery failed:", e);
+        }
+    }
 
-            // 2. Fetch all compendium packs from Socket (If available/different)
-            logger.info('ShadowdarkAdapter | Fetching compendium indices...');
-            const packs = await client.getAllCompendiumIndices();
-            const discoveryTasks: Promise<void>[] = [];
-            logger.info(`ShadowdarkAdapter | Discovered ${packs.length} packs.`);
+    private async _discoverFromSocket(client: any, results: any, processedUuids: Set<string>) {
+        const packs = await client.getAllCompendiumIndices();
+        const discoveryTasks: Promise<void>[] = [];
 
-            for (const pack of packs) {
-                // We only care about Item packs
-                // V13 metadata usually has 'type' or 'documentName' or 'documentClass'
-                const metadata = pack.metadata || {};
-                const docType = metadata.type || metadata.documentName || metadata.documentClass;
-                if (docType !== 'Item') continue;
+        for (const pack of packs) {
+            const metadata = pack.metadata || {};
+            const docType = metadata.type || metadata.documentName || metadata.documentClass;
+            if (docType !== 'Item') continue;
 
-                const packId = pack.id;
-                const index = pack.index || [];
+            const packId = pack.id;
+            const index = pack.index || [];
 
-                for (const item of index) {
-                    const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
-                    const uuid = `Compendium.${packId}.Item.${item._id || item.id}`;
-
-                    if (processedUuids.has(uuid)) continue;
-                    processedUuids.add(uuid);
-
-                    const baseInfo = { name: item.name, uuid, img: item.img };
-
-                    if (type === 'class') {
-                        discoveryTasks.push((async () => {
-                            const doc = await client.fetchByUuid(uuid);
-                            if (doc) {
-                                results.classes.push({
-                                    ...baseInfo,
-                                    system: {
-                                        description: doc.system?.description || "",
-                                        languages: doc.system?.languages || [],
-                                        talents: doc.system?.talents || [],
-                                        talentChoices: doc.system?.talentChoices || [],
-                                        talentChoiceCount: doc.system?.talentChoiceCount || 0,
-                                        spellcasting: doc.system?.spellcasting || null
-                                    }
-                                });
-                                if (doc.system?.titles) {
-                                    (results.titles as any)[doc.name] = doc.system.titles;
-                                }
-                            }
-                        })());
-                    } else if (type === 'ancestry') {
-                        discoveryTasks.push((async () => {
-                            const doc = await client.fetchByUuid(uuid);
-                            if (doc) {
-                                results.ancestries.push({
-                                    ...baseInfo,
-                                    system: {
-                                        description: doc.system?.description || "",
-                                        languages: doc.system?.languages || [],
-                                        talents: doc.system?.talents || [],
-                                        talentChoices: doc.system?.talentChoices || [],
-                                        talentChoiceCount: doc.system?.talentChoiceCount || 0
-                                    }
-                                });
-                            }
-                        })());
-                    } else if (type === 'background') {
-                        results.backgrounds.push(baseInfo);
-                    } else if (type === 'language') {
-                        discoveryTasks.push((async () => {
-                            const doc = await client.fetchByUuid(uuid);
-                            results.languages.push({
-                                ...baseInfo,
-                                rarity: (doc?.system?.rarity || 'common').toLowerCase()
-                            });
-                        })());
-                    } else if (type === 'deity') {
-                        results.deities.push(baseInfo);
-                    } else if (type === 'patron') {
-                        results.patrons.push(baseInfo);
-                    } else if (type === 'talent') {
-                        results.talents.push(baseInfo);
-                    } else if (type === 'spell') {
-                        // Spells need tier, class, duration, range
-                        const tier = item.system?.tier ?? item['system.tier'] ?? null;
-                        const classes = item.system?.class ?? item['system.class'] ?? null;
-                        const duration = item.system?.duration ?? item['system.duration'] ?? null;
-                        const range = item.system?.range ?? item['system.range'] ?? null;
-
-                        if (tier !== null && classes !== null && duration !== null && range !== null) {
-                            results.spells.push({
-                                ...baseInfo,
-                                tier: Number(tier),
-                                class: Array.isArray(classes) ? classes : [classes].filter(Boolean),
-                                duration,
-                                range
-                            });
-                        } else {
-                            discoveryTasks.push((async () => {
-                                const doc = await client.fetchByUuid(uuid);
-                                if (doc) {
-                                    results.spells.push({
-                                        ...baseInfo,
-                                        tier: doc.system?.tier || 0,
-                                        class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
-                                        duration: doc.system?.duration,
-                                        range: doc.system?.range
-                                    });
-                                }
-                            })());
-                        }
-                    }
-                }
-            }
-
-            // Wait for all discovered items to be fully fetched
-            if (discoveryTasks.length > 0) {
-                logger.info(`ShadowdarkAdapter | Waiting for ${discoveryTasks.length} discovery tasks...`);
-                await Promise.all(discoveryTasks);
-                logger.info('ShadowdarkAdapter | Discovery tasks complete.');
-            }
-
-            // 3. Fetch World Items
-            const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
-            const items = worldItems?.result || [];
-
-            for (const item of items) {
+            for (const item of index) {
                 const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
-                const uuid = item.uuid || `Item.${item._id || item.id}`;
+                const uuid = `Compendium.${packId}.Item.${item._id || item.id}`;
 
                 if (processedUuids.has(uuid)) continue;
                 processedUuids.add(uuid);
 
-                const baseInfo = { name: item.name, uuid, img: item.img };
+                const baseInfo = { name: item.name, uuid, img: client.resolveUrl(item.img) };
 
-                if (type === 'spell') {
-                    results.spells.push({
-                        ...baseInfo,
-                        tier: item.system?.tier || 0,
-                        class: Array.isArray(item.system?.class) ? item.system.class : [item.system?.class].filter(Boolean)
-                    });
-                } else if (type === 'class') {
-                    results.classes.push(baseInfo);
-                    if (item.system?.titles) (results.titles as any)[item.name] = item.system.titles;
-                } else if (type === 'talent') {
-                    results.talents.push(baseInfo);
+                if (type === 'class') {
+                    discoveryTasks.push(this._fetchClassDiscovery(client, uuid, baseInfo, results));
                 } else if (type === 'ancestry') {
-                    results.ancestries.push(baseInfo);
+                    discoveryTasks.push(this._fetchAncestryDiscovery(client, uuid, baseInfo, results));
                 } else if (type === 'background') {
                     results.backgrounds.push(baseInfo);
+                } else if (type === 'language') {
+                    discoveryTasks.push(this._fetchLanguageDiscovery(client, uuid, baseInfo, results));
+                } else if (type === 'deity') {
+                    results.deities.push(baseInfo);
+                } else if (type === 'patron') {
+                    results.patrons.push(baseInfo);
+                } else if (type === 'talent') {
+                    results.talents.push(baseInfo);
+                } else if (type === 'spell') {
+                    this._processSpellDiscovery(client, item, uuid, baseInfo, results, discoveryTasks);
                 }
             }
-
-            // 3. Resolve Class Names in Spells (Case-Insensitive)
-            const classUuidLookup = new Map<string, string>();
-            results.classes.forEach((c: any) => {
-                if (c.uuid) classUuidLookup.set(c.uuid.toLowerCase(), c.name.toLowerCase());
-            });
-
-            results.spells = results.spells.map((s: any) => {
-                const rawClasses = Array.isArray(s.class) ? s.class : [s.class].filter(Boolean);
-                const resolved = rawClasses.map((c: any) => {
-                    const cStr = String(c);
-                    const cLower = cStr.toLowerCase();
-                    const found = classUuidLookup.get(cLower);
-                    if (found) return found;
-
-                    const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
-                    for (const cls of knownClasses) {
-                        if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
-                            return cls;
-                        }
-                    }
-                    return (cStr.includes('.') ? cStr : cLower);
-                });
-                return { ...s, class: resolved };
-            });
-
-        } catch (e) {
-            logger.error('ShadowdarkAdapter | getSystemData failed:', e);
         }
 
-        return results;
+        if (discoveryTasks.length > 0) {
+            await Promise.all(discoveryTasks);
+        }
     }
 
+    private async _fetchClassDiscovery(client: any, uuid: string, baseInfo: any, results: any) {
+        try {
+            const doc = await Promise.race([
+                client.fetchByUuid(uuid),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout fetching ${uuid}`)), 5000))
+            ]) as any;
 
+            if (doc) {
+                results.classes.push({
+                    ...baseInfo,
+                    system: {
+                        description: doc.system?.description || "",
+                        languages: doc.system?.languages || [],
+                        talents: doc.system?.talents || [],
+                        talentChoices: doc.system?.talentChoices || [],
+                        talentChoiceCount: doc.system?.talentChoiceCount || 0,
+                        spellcasting: doc.system?.spellcasting || null
+                    }
+                });
+                if (doc.system?.titles) results.titles[doc.name] = doc.system.titles;
+            }
+        } catch (e) {
+            logger.error(`ShadowdarkAdapter | Failed to fetch class ${uuid}:`, e);
+        }
+    }
 
-    // ... existing normalizeActorData below ...
+    private async _fetchAncestryDiscovery(client: any, uuid: string, baseInfo: any, results: any) {
+        try {
+            const doc = await Promise.race([
+                client.fetchByUuid(uuid),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout fetching ${uuid}`)), 5000))
+            ]) as any;
 
-    // --- Active Effect Application ---
+            if (doc) {
+                results.ancestries.push({
+                    ...baseInfo,
+                    system: {
+                        description: doc.system?.description || "",
+                        languages: doc.system?.languages || [],
+                        talents: doc.system?.talents || [],
+                        talentChoices: doc.system?.talentChoices || [],
+                        talentChoiceCount: doc.system?.talentChoiceCount || 0
+                    }
+                });
+            }
+        } catch (e) {
+            logger.error(`ShadowdarkAdapter | Failed to fetch ancestry ${uuid}:`, e);
+        }
+    }
+
+    private async _fetchLanguageDiscovery(client: any, uuid: string, baseInfo: any, results: any) {
+        try {
+            const doc = await Promise.race([
+                client.fetchByUuid(uuid),
+                new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout fetching ${uuid}`)), 5000))
+            ]) as any;
+
+            results.languages.push({
+                ...baseInfo,
+                rarity: (doc?.system?.rarity || 'common').toLowerCase()
+            });
+        } catch (e) {
+            logger.error(`ShadowdarkAdapter | Failed to fetch language ${uuid}:`, e);
+            results.languages.push({ ...baseInfo, rarity: 'common' });
+        }
+    }
+
+    private _processSpellDiscovery(client: any, item: any, uuid: string, baseInfo: any, results: any, discoveryTasks: Promise<void>[]) {
+        const tier = item.system?.tier ?? item['system.tier'] ?? null;
+        const classes = item.system?.class ?? item['system.class'] ?? null;
+        const duration = item.system?.duration ?? item['system.duration'] ?? null;
+        const range = item.system?.range ?? item['system.range'] ?? null;
+
+        if (tier !== null && classes !== null && duration !== null && range !== null) {
+            results.spells.push({
+                ...baseInfo,
+                tier: Number(tier),
+                class: Array.isArray(classes) ? classes : [classes].filter(Boolean),
+                duration,
+                range
+            });
+        } else {
+            discoveryTasks.push((async () => {
+                try {
+                    const doc = await Promise.race([
+                        client.fetchByUuid(uuid),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout fetching ${uuid}`)), 5000))
+                    ]) as any;
+
+                    if (doc) {
+                        results.spells.push({
+                            ...baseInfo,
+                            tier: doc.system?.tier || 0,
+                            class: Array.isArray(doc.system?.class) ? doc.system.class : [doc.system?.class].filter(Boolean),
+                            duration: doc.system?.duration,
+                            range: doc.system?.range
+                        });
+                    }
+                } catch (e) {
+                    logger.error(`ShadowdarkAdapter | Failed to fetch spell ${uuid}:`, e);
+                }
+            })());
+        }
+    }
+
+    private async _processWorldItems(client: any, results: any, processedUuids: Set<string>) {
+        const worldItems = await client.dispatchDocumentSocket('Item', 'get', { broadcast: false });
+        const items = worldItems?.result || [];
+
+        for (const item of items) {
+            const type = (typeof item.type === 'string' ? item.type : '').toLowerCase();
+            const uuid = item.uuid || `Item.${item._id || item.id}`;
+
+            if (processedUuids.has(uuid)) continue;
+            processedUuids.add(uuid);
+
+            const baseInfo = { name: item.name, uuid, img: item.img };
+
+            if (type === 'spell') {
+                results.spells.push({
+                    ...baseInfo,
+                    tier: item.system?.tier || 0,
+                    class: Array.isArray(item.system?.class) ? item.system.class : [item.system?.class].filter(Boolean)
+                });
+            } else if (type === 'class') {
+                results.classes.push(baseInfo);
+                if (item.system?.titles) results.titles[item.name] = item.system.titles;
+            } else if (type === 'talent') {
+                results.talents.push(baseInfo);
+            } else if (type === 'ancestry') {
+                results.ancestries.push(baseInfo);
+            } else if (type === 'background') {
+                results.backgrounds.push(baseInfo);
+            }
+        }
+    }
+
+    private _resolveSpellClasses(results: any) {
+        const classUuidLookup = new Map<string, string>();
+        results.classes.forEach((c: any) => {
+            if (c.uuid) classUuidLookup.set(c.uuid.toLowerCase(), c.name.toLowerCase());
+        });
+
+        results.spells = results.spells.map((s: any) => {
+            const rawClasses = Array.isArray(s.class) ? s.class : [s.class].filter(Boolean);
+            const resolved = rawClasses.map((c: any) => {
+                const cStr = String(c);
+                const cLower = cStr.toLowerCase();
+                const found = classUuidLookup.get(cLower);
+                if (found) return found;
+
+                const knownClasses = ['wizard', 'priest', 'witch', 'warlock', 'ranger', 'bard', 'druid', 'seer'];
+                for (const cls of knownClasses) {
+                    if (cLower.includes(`.${cls}.`) || cLower.includes(`/${cls}/`) || cLower.includes(`item.${cls}`)) {
+                        return cls;
+                    }
+                }
+                return (cStr.includes('.') ? cStr : cLower);
+            });
+            return { ...s, class: resolved };
+        });
+    }
+
     // --- Active Effect Application ---
 
     private applyEffects(actor: any, systemData: any) {
@@ -1410,7 +1448,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
     }
 
-    validateUpdate(path: string, value: any): boolean {
+    validateUpdate(path: string, _value: any): boolean {
         // Log for debugging (intentional audit trail)
         logger.debug(`[ShadowdarkAdapter] Validating update path: ${path}`);
 

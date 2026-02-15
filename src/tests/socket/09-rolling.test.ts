@@ -1,7 +1,6 @@
 
 import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
-import { logger } from '../../logger'; // Use project logger
 import { fileURLToPath } from 'url';
 
 export async function testRolling() {

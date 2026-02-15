@@ -12,14 +12,15 @@ interface UserDetail {
     characterName?: string;
 }
 
-interface PlayerListProps {
-    users: any[]; // UserDetail[] but matching ClientPage state type
-    currentUserId: string | null;
-    onLogout: () => void;
-}
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { useUI } from '@/app/ui/context/UIContext';
 
-export default function PlayerList({ users, currentUserId, onLogout }: PlayerListProps) {
-    const [isOpen, setIsOpen] = useState(false);
+export default function PlayerList() {
+    const { users, currentUser, handleLogout } = useFoundry();
+    const currentUserId = currentUser?._id || currentUser?.id || null;
+    const { isPlayerListOpen, setPlayerListOpen } = useUI();
+    const isOpen = isPlayerListOpen;
+    const setIsOpen = setPlayerListOpen;
     const containerRef = useRef<HTMLDivElement>(null);
 
     // Click Outside Handler
@@ -36,7 +37,7 @@ export default function PlayerList({ users, currentUserId, onLogout }: PlayerLis
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isOpen]);
+    }, [isOpen, setIsOpen]);
 
     if (!users || users.length === 0) return null;
 
@@ -73,12 +74,12 @@ export default function PlayerList({ users, currentUserId, onLogout }: PlayerLis
     };
 
     return (
-        <div ref={containerRef} className="fixed bottom-6 left-6 z-[110] flex flex-col items-start gap-4">
+        <div ref={containerRef} className="fixed bottom-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-[110] flex flex-col items-center sm:items-end gap-4">
 
             {/* List Popup */}
             <div className={`
                 bg-black/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl overflow-hidden
-                transition-all duration-300 origin-bottom-left flex flex-col
+                transition-all duration-300 origin-bottom flex flex-col hud-panel
                 ${isOpen ? 'w-[240px] opacity-100 scale-100 mb-0 translate-y-0' : 'w-[0px] h-[0px] opacity-0 scale-90 -mb-10 translate-y-10'}
             `}>
                 {/* Header */}
@@ -121,40 +122,13 @@ export default function PlayerList({ users, currentUserId, onLogout }: PlayerLis
 
                 <div className="p-2 border-t border-white/5 bg-black/20">
                     <button
-                        onClick={async () => {
-                            onLogout();
-                        }}
+                        onClick={handleLogout}
                         className="w-full text-xs bg-red-900/30 hover:bg-red-900/50 text-red-200 border border-red-900/50 rounded py-1.5 transition-colors font-bold uppercase tracking-wider"
                     >
                         Logout
                     </button>
                 </div>
             </div>
-
-            {/* Toggle Button */}
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className={`
-                    h-12 w-12 rounded-full shadow-xl flex items-center justify-center border border-white/10 backdrop-blur-sm
-                    transition-all duration-300 hover:scale-110 active:scale-95 group z-50
-                    ${isOpen ? 'bg-neutral-800 text-white rotate-90 border-amber-500/50' : 'bg-black/60 text-neutral-400 hover:text-white hover:bg-black/80'}
-                `}
-                title="Toggle Player List"
-            >
-                {isOpen ? (
-                    <div className="-rotate-90">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </div>
-                ) : (
-                    <div className="relative">
-                        <Users className="w-5 h-5" />
-                        {/* Active Count Badge */}
-                        <span className="absolute -top-2 -right-2 bg-green-600 text-white text-[9px] font-bold h-4 w-4 flex items-center justify-center rounded-full ring-2 ring-black">
-                            {activeCount}
-                        </span>
-                    </div>
-                )}
-            </button>
         </div>
     );
 }

@@ -106,7 +106,7 @@ export async function verifyEffects() {
                 if (createdActorId) {
                     try {
                         await client.deleteActor(createdActorId);
-                    } catch (e) {
+                    } catch (_e) {
                         // ignore cleanup errors
                     }
                 }
@@ -139,7 +139,7 @@ export async function verifyEffects() {
 import { fileURLToPath } from 'url';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    verifyEffects().then(result => {
+    verifyEffects().then(_result => {
         process.exit(0); // Always exit 0 to not break CI/automation, we just want the report
     });
 }
