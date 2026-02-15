@@ -6,22 +6,26 @@ The Sheet Delver API provides access to Foundry VTT data through a headless sess
 All protected routes require a `Bearer` token in the `Authorization` header.
 Tokens are obtained via `/api/login`.
 
+---
+
 ## Session & Status
 
 ### `GET /api/status`
-**Auth**: Public (Limited) / Protected
-Returns the current connection status of the headless client and the Foundry world.
-Also used for polling via `/api/session/connect`.
+**Auth**: Try-Auth (Aggregates system + user state)
+Returns the current connection status, world metadata, and active user list.
 
 **Response:**
 ```json
 {
   "connected": true,
   "isAuthenticated": true,
+  "currentUserId": "...",
   "initialized": true,
   "users": [
     {
+      "_id": "...",
       "name": "Gamemaster",
+      "curor": "...",
       "role": 4,
       "isGM": true,
       "active": true,
@@ -30,19 +34,13 @@ Also used for polling via `/api/session/connect`.
   ],
   "system": {
     "id": "shadowdark",
-    "status": "active"
-  }
-}
-```
-
-### `GET /api/session/users`
-**Auth**: Protected
-Returns a list of all users in the world, with sanitized URLs and role flags.
-
-**Response:**
-```json
-{
-  "users": [ ... ]
+    "status": "active",
+    "worldTitle": "...",
+    "actorSyncToken": 1739634420,
+    "config": { ... }
+  },
+  "url": "http://foundryServer:30000",
+  "appVersion": "0.5.0"
 }
 ```
 
@@ -52,86 +50,108 @@ Returns a list of all users in the world, with sanitized URLs and role flags.
 
 ### `POST /api/logout`
 **Auth**: Protected
-Destroys the current session.
-
-## Foundry System Data
+Destroys the current user session and closes their dedicated socket.
 
 ### `GET /api/system`
+**Auth**: Protected
 Returns basic system information (id, version, world title).
 
 ### `GET /api/system/data`
-Returns full system-specific data (ancestries, classes, roll tables) scraped or adapted from the world.
+**Auth**: Protected
+Returns full system-specific data (ancestries, classes, etc.) adapted from the world.
+
+---
 
 ## Actors & Items
 
 ### `GET /api/actors`
-Returns a list of actors visible to the current user (Owned + Observed).
+**Auth**: Protected
+Returns actors visible to the current user, separated into `ownedActors` and `readOnlyActors`.
 
 ### `GET /api/actors/:id`
-Returns detailed data for a specific actor.
+**Auth**: Protected
+Returns fully normalized actor data. Automatically resolves UUIDs and handles name resolution via the Compendium Cache.
 
 ### `PATCH /api/actors/:id`
-Updates actor data.
-**Body**: `{ "system.abilities.str.value": 14 }` (Dot notation supported)
+**Auth**: Protected
+Updates actor-level data using dot notation.
+
+### `POST /api/actors/:id/update`
+**Auth**: Protected
+**Hybrid Update**: Routes updates to either the actor or specific embedded items based on the provided paths (e.g., `items.ID.system.equipped`).
 
 ### `POST /api/actors/:id/roll`
-Executes a roll for an actor.
-**Body**: `{ "type": "ability", "key": "str" }` or `{ "type": "item", "key": "itemId" }`
+**Auth**: Protected
+**Body**: 
+- `{ "type": "ability", "key": "str" }`
+- `{ "type": "formula", "key": "1d20+5" }`
+- `{ "type": "use-item", "key": "itemId" }`
 
-### `POST /api/actors/:id/items`
-Creates a new item on the actor.
+---
 
-### `DELETE /api/actors/:id/items?itemId=...`
-Deletes an item from the actor.
-
-## Chat & Journal
-
-### `GET /api/chat`
-Returns recent chat messages.
-
-### `POST /api/chat/send`
-Sends a message or roll command to chat.
+## Journals & Shared Content
 
 ### `GET /api/journals`
-Returns visible journal entries.
+**Auth**: Protected
+Returns a hierarchical list of journals and folders visible to the user.
+**Response**: `{ "journals": [...], "folders": [...] }`
+
+### `POST /api/journals`
+**Auth**: Protected
+Creates a new journal entry or folder.
+**Body**: `{ "type": "JournalEntry" | "Folder", "data": { ... } }`
+
+### `GET /api/journals/:id`
+**Auth**: Protected
+Returns detailed data for a specific journal entry.
+
+### `PATCH /api/journals/:id`
+**Auth**: Protected
+Updates an existing journal entry or folder.
+**Body**: `{ "type": "JournalEntry" | "Folder", "data": { ... } }`
+
+### `DELETE /api/journals/:id`
+**Auth**: Protected
+Deletes a journal entry or folder.
+**Query**: `type=JournalEntry` or `type=Folder`
+
+### `GET /api/shared-content`
+**Auth**: Protected
+Returns the latest media or journal shared by the GM with the current user.
 
 ### `GET /api/foundry/document?uuid=...`
-Fetches a specific document by UUID.
+**Auth**: Protected
+Fetches any document (Actor, Item, Journal, Scene) by its universal UUID.
+
+---
 
 ## Roll Tables
+> [!NOTE]
+> These endpoints are currently powered by the Shadowdark-specific `DataManager`.
 
-### `POST /api/foundry/roll-table`
+### `GET /api/roll-table`
 **Auth**: Protected
-Executes a roll on a specific RollTable by UUID.
+Lists all available roll tables from the local Shadowdark data packs.
 
-**Body**: 
-```json
-{ 
-  "uuid": "Compendium.shadowdark.rollable-tables.RQ0vogfVtJGuT9oT",
-  "rollMode": "self", // optional: public, private, blind, self (default)
-  "displayChat": true // optional: default true
-}
-```
+### `GET /api/roll-table/:id`
+**Auth**: Protected
+Returns detailed table data, including results.
 
-**Response**:
-```json
-{
-  "roll": { ... }, // Roll object
-  "results": [ ... ], // Array of TableResult objects
-  "total": 12
-}
-```
+### `POST /api/roll-table/:id/draw`
+**Auth**: Protected
+Executes a **local draw** using the backend's Math.random logic.
+**Body**: `{ "rollMode": "self", "displayChat": true }`
+
+---
 
 ## Shadowdark Module Routes
 Base URL: `/api/modules/shadowdark`
 
 ### `GET /gear/list`
 Returns a list of all gear items from the `gear` and `magic-items` compendiums.
-**Response**: Array of Item objects.
 
 ### `GET /spells/list`
 Returns a list of all spells from the `spells` compendium.
-**Response**: Array of Item objects.
 
 ### `GET /effects/predefined-effects`
 Returns the system's predefined effects (e.g., "Blind", "Blessed").
@@ -141,79 +161,35 @@ Returns context data for the Level Up wizard (class, ancestry, available talents
 
 ### `POST /actors/:id/level-up/roll-hp`
 Rolls HP for the current level.
-**Response**: `{ "roll": { "total": 4, "result": "1d4" }, "success": true }`
 
 ### `POST /actors/:id/level-up/roll-gold`
 Rolls starting gold for a new character.
-**Response**: `{ "roll": { "total": 10, "result": "2d6 * 5" }, "success": true }`
 
 ### `POST /actors/:id/level-up/roll-talent`
-**Auth**: Protected
 Rolls on the class talent table.
-**Body**:
-```json
-{
-  "tableUuidOrName": "...",
-  "targetLevel": 1
-}
-```
 
 ### `POST /actors/:id/level-up/roll-boon`
-**Auth**: Protected
 Rolls on the patron boon table.
-**Body**:
-```json
-{
-  "tableUuidOrName": "...",
-  "targetLevel": 1
-}
-```
 
 ### `POST /actors/:id/level-up/resolve-choice`
-**Auth**: Protected
 Resolves a nested choice (e.g. Weapon Mastery selection).
-**Body**:
-```json
-{
-  "type": "weapon-mastery",
-  "selection": "..."
-}
-```
 
 ### `POST /actors/:id/level-up/finalize`
-**Auth**: Protected
-Assembles and persistence level-up changes.
-**Body**:
-```json
-{
-  "targetLevel": 1,
-  "classUuid": "...",
-  "ancestryUuid": "...",
-  "patronUuid": "...",
-  "rolledTalents": [ ... ],
-  "rolledBoons": [ ... ],
-  "selectedSpells": [ ... ],
-  "hpRoll": 4,
-  "gold": 10,
-  "languages": [ "uuid1", "uuid2" ],
-  "statSelection": { "required": 0, "selected": [] },
-  "statPool": { "total": 0, "allocated": {}, "talentIndex": null },
-  "weaponMasterySelection": { "required": 0, "selected": [] },
-  "armorMasterySelection": { "required": 0, "selected": [] },
-  "extraSpellSelection": { "active": false, "maxTier": 0, "source": "", "selected": [] }
-}
-```
-**Response**:
-```json
-{
-  "success": true,
-  "items": [ ... ], // Assembled items
-  "updates": { ... }, // Actor updates applied
-  "hpRoll": 4,
-  "goldRoll": 10
-}
-```
+Assembles and persists level-up changes to the actor.
 
 ### `POST /actors/:id/spells/learn`
-Adds a spell to the actor's "Known Spells" (or relevant ability).
-**Body**: `{ "spellId": "uuid" }`
+Adds a spell to the actor's "Known Spells".
+
+---
+
+## Admin API (Localhost Only)
+
+### `GET /admin/status`
+Returns the status of the System Client.
+
+### `POST /admin/world/launch`
+**Body**: `{ "worldId": "..." }`
+Launches a specific world from setup.
+
+### `POST /admin/world/shutdown`
+Shuts down the currently active world.

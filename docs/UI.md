@@ -1,251 +1,54 @@
-# Reusable UI Components
+# UI Documentation
 
-SheetDelver provides a set of core UI components to ensure consistency across different system sheets. These components are designed to be system-agnostic and themable via the `SystemAdapter`, interfacing with a headless Socket.io backend.
+SheetDelver's UI is built with **Next.js**, **React**, and **Tailwind CSS**, following a "Foundry-Modern" aesthetic: dark, high-contrast, with cinematic typography (Cinzel/Inter) and rich glassmorphism.
 
-## Notification System (Toast)
+## Core Interaction Model
 
-A robust toast notification system that supports HTML content (e.g., for dice roll results) and auto-dismissal.
+The UI is driven by a hierarchy of React Contexts that synchronize state with the Backend API:
+- **`FoundryContext`**: Manages authentication, world status polling, and actor synchronization. It implements a robust state machine (`init`, `setup`, `login`, `authenticating`, `dashboard`) to ensure smooth transitions.
+- **`JournalProvider`**: Manages journal entry loading, folder hierarchies, pagination (v13 standard), and GM-shared content.
+- **`UIContext`**: Controls global visibility of sidebars, modals, and the Floating HUD.
 
-**Path**: `@/components/NotificationSystem`
+---
 
-### Usage
+## Key Components
 
-1.  **Initialize Hook**:
-    ```tsx
-    import { useNotifications, NotificationContainer } from '@/components/NotificationSystem';
+### 1. Floating HUD (`src/app/ui/components/FloatingHUD.tsx`)
+A permanent, stylish navigation bar anchored to the bottom of the screen. It provides quick access to:
+- **Character Select**: Switch between owned and observable actors.
+- **Journal Browser**: Browse world journals and folders.
+- **Global Chat**: Access integrated chat and dice rolls.
+- **User List**: Monitor active players and GM presence.
 
-    export default function MyPage() {
-        const { notifications, addNotification, removeNotification } = useNotifications(5000); // 5s default duration
+### 2. Journal Browser & Modal
+- **JournalBrowser**: A folder-aware explorer for all visible journals.
+- **JournalModal**: A high-fidelity viewer supporting rich text rendering, multi-page navigation, and editor modes for owners.
 
-        return (
-            <>
-                <button onClick={() => addNotification('Hello!', 'success')}>Notify</button>
-                <NotificationContainer notifications={notifications} removeNotification={removeNotification} />
-            </>
-        );
-    }
-    ```
+### 3. Global Chat (`src/app/ui/components/GlobalChat.tsx`)
+- **Integrated DiceTray**: Visual interface for common dice rolls.
+- **Roll Parsing**: Automatically detects and executes `/roll` commands.
+- **Actor Attribution**: Automatically attaches the current user's selected actor as the "speaker".
 
-2.  **HTML Content**:
-    ```tsx
-    addNotification('<b>Bold Message</b>', 'info', { html: true });
-    ```
+### 4. Shadowdark Sheet (`src/modules/shadowdark/ui/ShadowdarkSheet.tsx`)
+Specialized interface for the Shadowdark RPG, featuring:
+- **Tabbed Navigation**: Abilities, Inventory, Spells, Talents, and Effects.
+- **Real-Time Persistence**: Changes to stats or configuration are instantly synced to Foundry.
+- **Level Up Wizard**: Guided UI for character progression.
 
-## RichTextEditor
+---
 
-A wrapper around Tiptap for editing HTML content (biographies, notes).
+## Technical Patterns
 
-**Path**: `@/components/RichTextEditor`
+### 1. Notification System
+A robust toast system supporting HTML content for dice results.
+- **Usage**: `const { addNotification } = useNotifications();`
 
-```tsx
-<RichTextEditor 
-    content={actor.system.notes} 
-    onChange={(html) => onUpdate('system.notes', html)} 
-/>
-```
+### 2. Loading & Reconnecting
+The UI includes full-screen overlays for:
+- **Initial Load**: Shows while the backend warms its compendium cache.
+- **Auto-Reconnection**: Appears non-disruptively if the socket connection is lost.
 
-## ConfirmationModal
-
-A standard modal for destructive actions. Uses React Portal.
-
-**Path**: `@/components/ui/ConfirmationModal`
-
-```tsx
-<ConfirmationModal
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onConfirm={handleDelete}
-    title="Delete Item?"
-    message="Are you sure you want to delete this content?"
-    confirmLabel="Delete"
-    isDanger={true}
-/>
-```
-
-## RollDialog
-
-A unified dialog for configuring dice rolls (Ability checks, Attacks, Spells). Supports generic options or system-specific extensions.
-
-**Path**: `@/components/RollDialog`
-
-```tsx
-<RollDialog
-    isOpen={isOpen}
-    onClose={() => setIsOpen(false)}
-    onRoll={(options) => onRoll('attack', 'dagger', options)}
-    title="Dagger Attack"
-    config={{
-        modes: ['normal', 'advantage', 'disadvantage'],
-        bonuses: ['ability', 'item', 'talent']
-    }}
-/>
-```
-
-## DiceTray
-
-A persistent tray for manual dice rolling. Generally handled by the layout but accessible if needed. Styles can be overridden via `SystemAdapter.componentStyles.diceTray`.
-
-**Path**: `@/components/DiceTray`
-
-```tsx
-<DiceTray 
-    onSend={(msg) => handleSend(msg)} 
-    adapter={currentAdapter} 
-/>
-```
-
-## GlobalChat
-
-The main chat interface, including the collapsible chat window and dice tray integration. It sits at the layout level usually.
-
-**Path**: `@/components/GlobalChat`
-
-```tsx
-<GlobalChat
-    messages={messages}
-    onSend={handleChatSend}
-    adapter={adapter}
-    foundryUrl={foundryUrl}
-/>
-```
-
-## LoadingModal
-
-A unified, full-screen loading overlay to be used whenever a blocking load state is required (e.g., initial connection, loading codex, fetching system data).
-
-**Path**: `@/components/LoadingModal`
-
-```tsx
-import LoadingModal from '@/components/LoadingModal';
-
-<LoadingModal 
-    message="Loading Codex..." 
-    visible={isLoading} 
-/>
-```
-
-
-## Reconnecting Overlay
-
-A non-disruptive, full-screen overlay that automatically appears when the socket connection to Foundry is lost while the system is in an "Active" world state. This preserves the current UI context (e.g., an open character sheet) while the backend attempts to reconnect.
-
-**Implementation**: Integrated directly into `ClientPage.tsx`.
-
-```tsx
-// Pattern:
-{step === 'dashboard' && system?.status !== 'active' && (
-  <div className="fixed inset-0 z-[60] ...">
-    {/* Reconnecting UI */}
-  </div>
-)}
-```
-
-## ClientPage State Machine
-
-The `ClientPage` component implements a robust state machine to manage UI transitions during authentication, world loading, and logout scenarios. This prevents UI flashing and ensures smooth user experience.
-
-**Implementation**: `src/app/ui/components/ClientPage.tsx`
-
-### States
-
-| State | Description | UI Display |
-|:------|:------------|:-----------|
-| `init` | Initial page load | Loading spinner |
-| `startup` | World is starting or data is loading | Loading spinner with "Starting up..." |
-| `setup` | No world available | "No World Available" message |
-| `login` | World active, user not authenticated | Login form |
-| `authenticating` | Login submitted, waiting for backend session | Loading spinner with "Authenticating..." |
-| `dashboard` | User authenticated, world active | Character sheets and dashboard |
-
-### State Transitions
-
-```mermaid
-graph TD
-    A[init] --> B[startup]
-    B --> C{World Status}
-    C -->|Not Active| D[setup]
-    C -->|Active, Data Loading| B
-    C -->|Active, Data Ready| E{Authenticated?}
-    E -->|No| F[login]
-    E -->|Yes| G[dashboard]
-    F -->|Login Submitted| H[authenticating]
-    H -->|Session Confirmed| G
-    G -->|Logout| F
-    G -->|World Stops| D
-```
-
-### Key Implementation Details
-
-#### Transitional States
-- **`authenticating`**: Prevents polling loops from overriding the login state before backend session is established
-- **`startup`**: Shows loading screen while world data is being fetched (prevents showing login with incomplete data)
-
-#### State Machine Logic
-
-The `determineStep()` function centralizes state decision logic:
-
-```typescript
-const determineStep = (data: any, currentStep: string) => {
-  const status = data.system?.status;
-  const isAuthenticated = data.isAuthenticated || false;
-
-  // 1. World not active -> setup
-  if (status !== 'active') return 'setup';
-
-  // 2. Authenticating -> wait for confirmation
-  if (currentStep === 'authenticating') {
-    return isAuthenticated ? 'dashboard' : 'authenticating';
-  }
-
-  // 3. Check world data completeness
-  const worldTitle = data.system?.worldTitle;
-  const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
-  if (!hasCompleteWorldData) return 'startup';
-
-  // 4. Authenticated -> dashboard, else login
-  return isAuthenticated ? 'dashboard' : 'login';
-};
-```
-
-#### Polling Protection
-
-Two polling loops (`checkConfig` and `session/connect`) both use the same state machine logic to ensure consistency:
-
-- **`checkConfig` guard**: Skips execution when `step === 'authenticating'`
-- **World data check**: Both loops verify world data completeness before transitioning to login
-
-#### Logout Flow
-
-Critical order of operations to prevent UI flash:
-
-```typescript
-const handleLogout = async () => {
-  // 1. Set step to login FIRST (before clearing token)
-  setStepWithLog('login', 'handleLogout', 'User logged out');
-  
-  // 2. Call logout API
-  await fetch('/api/logout', { method: 'POST', headers });
-  
-  // 3. THEN clear token
-  setToken(null);
-};
-```
-
-### Debugging
-
-The `setStepWithLog()` wrapper provides comprehensive state change logging:
-
-```typescript
-const setStepWithLog = (newStep, origin, reason?) => {
-  console.log(`[STATE CHANGE] ${timestamp} | ${step} → ${newStep} | Origin: ${origin}`);
-  console.trace('State change call stack:');
-  setStep(newStep);
-};
-```
-
-Check browser console for detailed state transition logs including:
-- Timestamp
-- Source/destination states
-- Origin (which function triggered the change)
-- Reason for the change
-- Full call stack trace
+### 3. Aesthetic Guidelines
+- **Typography**: `Cinzel` for cinematic headings; `Inter` for functional body text.
+- **Color Palette**: `Zinc-900` backgrounds with `Amber-500` (Gold) interactive accents.
+- **Glassmorphism**: Extensive use of backdrop-blur (`backdrop-blur-md`) and semi-transparent layers.

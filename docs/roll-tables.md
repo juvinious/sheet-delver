@@ -1,71 +1,42 @@
 # Roll Table System
 
 ## Overview
-The Roll Table system in SheetDelver provides a robust, system-agnostic way to roll on Foundry VTT tables via the headless socket client. It addresses specific issues with data integrity (stale result IDs) found in some system exports (like Shadowdark) by using an **Adapter Pattern**.
+Unlike standard Foundry VTT interactions, SheetDelver implements its own **Headless Roll Table engine**. Instead of requesting a "draw" from the Foundry socket (which often fails due to stale database indices in exported modules), SheetDelver resolves and rolls on tables locally using the `DataManager`.
 
-## Usage
+> [!IMPORTANT]
+> The Roll Table system is currently **Shadowdark-centric**. Data is sourced from the local `src/modules/shadowdark/data/packs` directory and indexed by the `DataManager`.
 
-### Core Socket
-The `CoreSocket` class exposes a `draw` method that should be used for all table operations. It aligns with Foundry VTT's native `RollTable.draw()` behavior.
+---
 
-```typescript
-const result = await client.draw(tableUuid, options);
-```
+## 1. Local Draw Logic
+Rolling is performed entirely on the backend server. The `DataManager` simulates the roll and resolves the result against its local index.
 
-#### Parameters
-- `tableUuid` (string): The UUID of the table to roll on.
-- `options` (object, optional):
-  - `roll` (Roll): A pre-evaluated Roll instance to use instead of rolling randomly.
-  - `displayChat` (boolean): Whether to send the result to Foundry's chat. Default `true`.
-  - `rollMode` (string): The roll mode ('publicroll', 'gmroll', 'blindroll', 'selfroll').
-  - `actorId` (string): Actor ID to use as the speaker for the roll and chat message.
-  - `userId` (string): User ID to perform the roll as.
+### `DataManager.draw(uuidOrName, rollOverride?)`
+- **Resolution**: Finds the table by UUID or Name in the local index.
+- **Rolling**: Uses `Math.random` to generate a result (defaulting to 2d12 for Shadowdark tables unless specified).
+- **Expansion**: Automatically resolve result "links" (type 'document') into full JSON data from the local packs.
 
-#### Native Implementation Features
-- **Server-Side Evaluation**: Rolling is performed via `CoreSocket.roll` using server-side evaluation.
-- **Drawn Status**: If the table is not in a Compendium and `replacement` is false, matched results are marked as `drawn: true` in Foundry.
-- **Hydration**: Result documents (Items, Spells, etc.) are automatically hydrated with their full data.
-- **Speaker Attribution**: Rolls and chat messages are attributed to the player's actor/username.
+---
 
-#### Return Value
-Returns a promise resolving to:
-```typescript
-{
-    roll: any,            // The Roll result (JSON)
-    total: number,        // The total value of the roll
-    results: any[]        // Array of hydrated TableResult objects
-}
-```
+## 2. Architecture: DataManager
 
-#### Backward Compatibility
-The old `rollTable` method is maintained as an alias for `draw` for backward compatibility.
+The `DataManager` (`src/modules/shadowdark/data/DataManager.ts`) is responsible for:
+1.  **Indexing**: Scanning the `.db` (JSON) files in the data packs.
+2.  **Hydration**: Reconstructing `RollTable` objects by linking their `TableResult` children (marked with `!tables.results!`).
+3.  **Drawing**: A logic-heavy method that handles ranges, weights, and recursive document resolution.
 
-## Architecture
+---
 
-### The Problem: Stale Data
-In some Foundry systems (e.g., Shadowdark), the `RollTable` documents returned by the server API via socket may contain "stale" `results` arrays. specifically, `table.results` might be an array of IDs that correspond to **old** versions of the results, or results that don't exist in the server's ephemeral database index, even though they exist on disk.
+## 3. API Integration
+The core API routes in `src/server/index.ts` (/api/roll-table) are currently hard-coded to use the Shadowdark module's `DataManager`.
 
-When this happens, standard fetching (`client.fetchByUuid` or `table.getEmbeddedDocument`) fails, returning `null` or throwing errors.
+### Unified Interface
+Even though the implementation is local, the API provides a standard interface for the UI:
+- `GET /api/roll-table`: List all indexed tables.
+- `GET /api/roll-table/:id`: Get full table metadata.
+- `POST /api/roll-table/:id/draw`: Execute a local draw and return hydrated results.
 
-### The Solution: Adapter Pattern
-`CoreSocket` detects when standard result expansion fails (i.e., we have IDs but can't fetch the objects). It then delegates to the registered **System Adapter**.
+---
 
-#### System Adapter Interface
-Adapters implement `expandTableResults(tableId: string): Promise<any[]>`.
-
-#### Shadowdark Adapter Implementation
-The `ShadowdarkAdapter` uses the `DataManager` to look up the result data directly from the local file system cache (`!tables.results!`). This bypasses the broken server index and ensures we always get the valid result data as defined in the system's source files.
-
-## API Endpoint
-The backend API endpoint `/api/foundry/roll-table` wraps this logic, providing a simple REST interface for the frontend.
-
-`POST /api/foundry/roll-table`
-```json
-{
-  "tableUuid": "Compendium.shadowdark.rollable-tables.ID",
-  "options": {
-    "displayChat": true,
-    "rollMode": "self" // Optional. Defaults to 'self'.
-  }
-}
-```
+## 4. Why Local?
+Foundry v13 modules (especially system-specific ones like Shadowdark) often contain "broken" roll tables in their compendium exports where the internal result IDs don't match the live server's expected indices. By rolling locally against the source JSON packs, SheetDelver ensures 100% data integrity and allows for complex "Choice" logic during level-ups (Weapon Mastery, Boons, etc.) that would be difficult to coordinate via standard socket events.

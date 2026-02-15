@@ -6,9 +6,9 @@ This document serves as the authoritative source of truth for the SheetDelver ar
 SheetDelver is designed as a **Headless Client Proxy** for Foundry VTT. It follows a "Clean Architecture" approach, strictly separating business logic from delivery mechanisms.
 
 ### Core Principles
-- **Multi-User Proxy**: The backend acts as an orchestrator, maintaining multiple individual socket connections to Foundry—one for each authenticated user.
-- **Frontend Agnosticism**: The Frontend (UI) never communicates with Foundry directly. It interacts solely with the SheetDelver API. The backend proxies and transforms all data.
-- **Stateless Frontend**: The UI assumes no state ownership. It reflects the state provided by the API endpoints.
+- **Dual-Socket Model**: The backend maintains a permanent **System Client** for global world monitoring and a transient **User Client** pool for individual player sessions.
+- **Frontend Agnosticism**: The Frontend (UI) never communicates with Foundry directly. It interacts solely with the SheetDelver API.
+- **Context-Driven State**: The UI uses React Contexts as the single source of truth, synchronized via periodic polling of the Backend API.
 
 ---
 
@@ -19,109 +19,81 @@ graph TD
     subgraph "Backend Core Service"
         API["Express API (Proxy Interface)"]
         SM["Session Manager"]
-        POOL["Socket Session Pool"]
+        CACHE["Compendium Cache"]
         
         API --> SM
-        SM --> POOL
+        SM --> SYS["System Client (Service Account)"]
+        SM --> POOL["User Client Pool"]
         
-        subgraph "Session Pool"
-            S1["Socket Session (Use A)"]
-            S2["Socket Session (User B)"]
-            SYS["System Scraper (Guest)"]
-        end
+        SYS --> CACHE
     end
 
-    subgraph "Frontend Shell"
-        APP["Next.js App"]
+    subgraph "Frontend Shell (Contexts)"
+        FC["FoundryContext (Auth & Sync)"]
+        JC["JournalContext (Navigation)"]
+        UC["UIContext (Global Modals)"]
+        
+        FC -. Polling .-> API
+        JC -. Polling .-> API
     end
     
     subgraph "Foundry VTT"
         FVTT["Foundry Server"]
     end
 
-    APP <-- JSON/REST --> API
+    FC <-- JSON/REST --> API
+    SYS <-- Socket.io --> FVTT
     POOL <-- Socket.io --> FVTT
 ```
 
 ### 2.1 The Core Description
 - **Session Manager (`src/core/session`)**:
-    - Manages the lifecycle of user sessions.
-    - Maps API Tokens (JWT/Session ID) to active `SocketFoundryClient` instances.
-    - Handles "Guest" requests via a dedicated System/Scraper instance (read-only/discovery).
-- **Socket Session (`src/core/foundry`)**:
-    - Represents a single authenticated connection to Foundry.
-    - Maintains its own cookies, user ID, and actor cache.
+    - Manages the lifecycle of user sessions and maps API Tokens to `ClientSocket` instances.
+    - Maintains the **System Client** (`CoreSocket`) for unauthenticated status checks and world monitoring.
+- **Foundry Sockets (`src/core/foundry/sockets`)**:
+    - **CoreSocket**: A singleton connection acting as a service account. Tracks player lists, world status, and system metadata.
+    - **ClientSocket**: A per-user connection. Receives personal notifications (Item sharing, whispered chat) and performs user-authorized writes.
+- **Compendium Cache**: A centralized service that pre-processes and caches compendium indices for rapid name resolution and data retrieval.
 
 ### 2.2 The Delivery Layers
 - **Server (`src/server`)**:
-    - **Endpoints**:
-        - `/api/auth/login`: Authenticates with Foundry, creates a Socket Session, returns an API Token.
-        - `/api/data/*`: Validates API Token, retrieves the correct Socket Session, proxies the request.
-        - `/api/guest/status`: Returns world availability (Discovery) without session.
+    - **Status Handler**: Aggregates data from both the System Client and the specific User Client to provide a complete view of the world state.
+    - **Module Routing**: RegEx-based routing that allows system-specific packages (like Shadowdark) to mount their own API logic dynamically.
+    - **Shared Content**: Tracks shared media (images/journals) targeted at the current user.
 
 ---
 
-## 3. Project Structure
+## 3. Frontend Architecture
 
-| Directory | Layer | Purpose |
-| :--- | :--- | :--- |
-| `src/core/session/` | **Orchestrator** | Manages multi-user sessions and token mapping. |
-| `src/core/foundry/` | **Domain** | `SocketClient` instances (one per user). |
-| `src/server/` | **Delivery** | Express API routing requests to specific sessions. |
-| `src/app/` | **UI** | Consumes API. Sends Token in headers. |
+### 3.1 React Contexts
+- **FoundryProvider**: The heart of the application. Manages the connection step (`init` -> `login` -> `dashboard`), authenticates users, and polls for real-time state updates (actors, users, system info).
+- **JournalProvider**: Manages journal entry loading, folder hierarchies, and pagination logic. 
+- **UIProvider**: Manages the state of global overlays like the sidebars, floating HUD, and shared content modals.
 
 ---
 
 ## 4. Key Workflows
 
-### 4.1 Guest / Discovery
-1.  Frontend calls `/api/guest/status`.
-2.  Backend checks `Settings.yaml` or uses a `SystemScraper` to find active worlds.
-3.  Returns `{ status: 'active', world: 'My World' }` or `{ status: 'setup' }`.
+### 4.1 World Discovery & Status
+1.  Frontend polls `/api/status`.
+2.  Backend queries the `SystemClient` for world status and active user counts.
+3.  If a valid `Authorization` header is present, the backend also checks the specific `UserClient`'s connection state.
 
-### 4.2 Authentication
-1.  Frontend POST `/api/auth/login` with `{ username, password }`.
-2.  Backend instantiates a new `SocketClient`.
-3.  `SocketClient` connects to Foundry and emits `login`.
-4.  If successful:
-    - Backend generates `authToken`.
-    - Stores `authToken` -> `SocketClient` mapping in `SessionManager`.
-    - Returns `authToken` to Frontend.
-5.  Frontend stores `authToken` (sessionStorage).
-6.  **State Machine Transition**:
-    - Frontend transitions to `'authenticating'` state (shows loading screen).
-    - Polling loops wait for backend session confirmation.
-    - Once confirmed, transitions to `'dashboard'` state.
-    - This prevents UI flashing during session establishment.
+### 4.2 Authentication & Handshake
+1.  Frontend POST `/api/login`.
+2.  Backend creates a new `ClientSocket`, performs the Foundry login handshake, and returns a token.
+3.  `FoundryContext` transitions to `'authenticating'` until the next status poll confirms the specific socket session is ready.
 
-### 4.2.1 Logout
-1.  Frontend calls `handleLogout()`.
-2.  Frontend transitions to `'login'` state **before** clearing token (prevents flash).
-3.  Backend POST `/api/logout` to destroy session.
-4.  Frontend clears `authToken` from sessionStorage.
-5.  State machine remains on `'login'` screen (smooth transition).
-
-### 4.3 Data Access (Personalized)
-1.  Frontend GET `/api/actors` with `Authorization: Bearer <token>`.
-2.  Backend middleware extracts `<token>`.
-3.  `SessionManager` retrieves the specific `SocketClient` for that user.
-4.  `SocketClient` requests Actors (Foundry returns only what this user can see).
-5.  Backend normalizes and returns data.
-
-### 4.4 Compendium Fetching (Hybrid)
-1.  **HTML Scraping**: `SocketClient` fetches the `/game` page over HTTPS using the authenticated session cookie.
-2.  **Pack Discovery**: Parses the `game.data.packs` array from the HTML source to identify available compendiums.
-3.  **Index Retrieval**: Uses the Socket.io connection to fetch indices for each identified compendium.
-4.  **Rationale**: Direct socket commands for listing all compendiums are unreliable or restricted in Foundry V13 for headless clients.
+### 4.3 Data Normalization
+All data returned by the API passes through a **System Adapter**. For example, the `ShadowdarkAdapter` resolves item names from the `CompendiumCache`, calculates encoded inventory slots, and formats roll formulas before the UI ever sees the data.
 
 ---
 
 ## 5. Security & Isolation
-- **No Shared State**: Each user has their own socket. Leakage between users is impossible by design as Foundry enforces permissions per socket connection.
-- **Token Based**: API Tokens are the only key to a session.
-- **Timeout**: The `SessionManager` should auto-close sockets after inactivity to save resources.
+- **Per-User Sockets**: Every user has their own dedicated socket. Foundry's native permission model is enforced at the transport layer.
+- **Local Admin API**: Critical world management functions (Launch/Shutdown) are restricted to `localhost` requests only.
 
 ## 6. Ports & Config
 - **Frontend**: 3000
-- **Backend**: 3001
-- **Foundry**: Configurable (e.g. 30000)
+- **Backend (API)**: 3001
+- **Foundry**: Configurable via `settings.yaml`

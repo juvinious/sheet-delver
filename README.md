@@ -7,9 +7,11 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 
 ## Key Features
 - **Real-Time Interactions**: Instant display of images and journals shared by the GM ("Show to Players"), with support for both broadcast and targeted sharing.
-- **Global Chat**: Integrated chat with roll parsing and dice support, accessible from any view.
-- **User Monitoring**: Real-time list of active players and connection status.
-- **Resilient Connection**: High-stability socket client with auto-reconnection and a dedicated "Reconnecting" overlay for non-disruptive UX.
+- **Rich Journal Browser**: Advanced journal viewing with folder support, rich text rendering, and pagination.
+- **Global Chat**: Integrated chat with roll parsing, dice support, and actor-specific roll buttons.
+- **Floating HUD**: Centralized access to character sheets, journals, and global settings.
+- **User Monitoring**: Real-time list of active players with connection status and avatar resolution.
+- **Resilient Connection**: Dual-layered socket system (System/User) with high-stability auto-reconnection.
 - **Mobile Friendly**: Optimized touch targets and responsive layouts.
 
 ## Supported Systems
@@ -24,19 +26,19 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 - **Interactive Toggles**: Custom icons for managing item states directly from the inventory list.
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
 - **Character Import**: Import characters via JSON from Shadowdarklings.
+- **Level Up Wizard**: Guided level-up process with talent/boon rolling and choice resolution.
 
 ## Planned System Support
-- **Mörk Borg**: Initial skeleton support (HP, Omens, Abilities).
-- **D&D 5e**: Basic adapter support (Stats, Skills).
 - **Generic**: Fallback support for any Foundry system (Raw data view).
+- **D&D 5e**: Basic adapter support (Stats, Skills).
 
 ## Architecture
-SheetDelver follows a **Decoupled Core/Shell** architecture:
-1.  **Core Service** (`src/core`, `src/server`): A standalone Express API server that maintains the persistent socket connection to Foundry VTT and exposes REST endpoints.
-2.  **Frontend Shell** (`src/app`): A Next.js application that provides the user interface. API requests are forwarded to the Core Service via Next.js rewrite rules.
+SheetDelver follows a **Decoupled Core/Shell** architecture with a centralized **Context Driven State**:
+1.  **Core Service** (`src/core`, `src/server`): A standalone Express API server that manages multiple persistent socket connections to Foundry VTT.
+2.  **Frontend Shell** (`src/app`): A Next.js application. State is managed via React Context (`FoundryContext`, `JournalProvider`, `UIContext`), providing a reactive experience across all components.
 3.  **Shared Layer** (`src/shared`): Common TypeScript interfaces and constants used by both Core and Shell.
 4.  **System Modules** (`src/modules`): Pluggable RPG system logic (Adapters and UI).
-5.  **Admin CLI** (`src/cli`): Command-line tool for world management and administrative tasks.
+5.  **Admin CLI** (`src/cli`): Command-line tool for world management and setup.
 
 ---
 
