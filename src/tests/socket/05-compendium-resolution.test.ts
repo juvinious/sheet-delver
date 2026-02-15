@@ -1,25 +1,24 @@
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { CompendiumCache } from '../../core/foundry/compendium-cache';
 import { loadConfig } from '../../core/config';
 import { ShadowdarkAdapter } from '../../modules/shadowdark/system';
+import { fileURLToPath } from 'url';
 
-describe('Compendium Resolution & Pulse Verification', () => {
-    let socket: CoreSocket;
-    let cache: CompendiumCache;
-    let adapter: ShadowdarkAdapter;
+export async function testCompendiumResolution() {
+    console.log('🧪 Test 5 (Alt): Compendium Resolution & Pulse Verification\n');
 
-    beforeAll(async () => {
-        const config = await loadConfig();
-        if (!config) throw new Error("Config not found");
+    const configLine = await loadConfig();
+    if (!configLine) throw new Error("Config not found");
+    const config = configLine.foundry || configLine;
 
-        // Initialize CoreSocket (Headless Mode)
-        socket = new CoreSocket(config.foundry);
+    // Initialize CoreSocket (Headless Mode)
+    const socket = new CoreSocket(config);
+    try {
         await socket.connect();
 
         // Initialize Cache - forcing wait for readiness
-        cache = CompendiumCache.getInstance();
+        const cache = CompendiumCache.getInstance();
         await cache.initialize(socket);
 
         // Wait for cache to actually load if it takes time
@@ -35,62 +34,63 @@ describe('Compendium Resolution & Pulse Verification', () => {
         }
 
         // Initialize Adapter
-        adapter = new ShadowdarkAdapter();
-    }, 60000); // Allow time for connection & discovery
+        const adapter = new ShadowdarkAdapter();
 
-    afterAll(() => {
-        socket.disconnect();
-    });
-
-    it('should have standardized UUIDs in the cache', () => {
+        // 1. Check Standardized UUIDs
+        console.log('--- Part 1: Standardized UUIDs ---');
         const keys = cache.getKeys();
-        expect(keys.length).toBeGreaterThan(0);
+        if (keys.length === 0) throw new Error('Cache is empty');
 
-        // Check if any key includes '.Item.' which we added
-        const itemUuid = keys.find(k => k.includes('.Item.')); // e.g. Compendium.shadowdark.ancestries.Item.ID
-
+        const itemUuid = keys.find(k => k.includes('.Item.'));
         console.log('Sample Cache Keys:', keys.slice(0, 5));
 
-        // We expect at least some items to be standardized
-        expect(itemUuid).toBeDefined();
-        if (itemUuid) {
-            expect(itemUuid).toMatch(/^Compendium\.[^.]+\.[^.]+\.Item\.[^.]+$/);
+        if (!itemUuid) throw new Error('No standardized Item UUIDs found in cache');
+        if (!itemUuid.match(/^Compendium\.[^.]+\.[^.]+\.Item\.[^.]+$/)) {
+            throw new Error(`UUID ${itemUuid} does not match expected pattern`);
         }
-    });
+        console.log('✅ Standardized UUIDs Verified');
 
-    it('should be able to fetchByUuid via CoreSocket', async () => {
-        // Pick a random item from cache to test fetch
-        const keys = cache.getKeys();
+        // 2. Fetch By UUID
+        console.log('\n--- Part 2: Fetch By UUID ---');
         const validUuid = keys.find(k => k.includes('shadowdark.ancestries') || k.includes('shadowdark.classes'));
-
         if (!validUuid) {
             console.warn("Skipping fetchByUuid test - no suitable UUID found in cache");
-            return;
+        } else {
+            console.log(`Testing fetchByUuid with: ${validUuid}`);
+            const doc = await socket.fetchByUuid(validUuid);
+            if (!doc || !doc.name || !doc._id) {
+                throw new Error(`fetchByUuid failed for ${validUuid}`);
+            }
+            console.log(`✅ Fetch Verified: ${doc.name}`);
         }
 
-        console.log(`Testing fetchByUuid with: ${validUuid}`);
-        const doc = await socket.fetchByUuid(validUuid);
-
-        expect(doc).toBeDefined();
-        expect(doc.name).toBeDefined();
-        expect(doc._id).toBeDefined();
-    }, 10000);
-
-    it('should resolve system data using adapter without crashing', async () => {
-        // This simulates the call that was crashing (TypeError: fetchByUuid is not a function)
+        // 3. System Data Resolution
+        console.log('\n--- Part 3: System Data Resolution ---');
         const systemData = await adapter.getSystemData(socket);
-
-        expect(systemData).toBeDefined();
-        expect(systemData.classes).toBeDefined();
-        expect(systemData.ancestries).toBeDefined();
-
-        // Check if classes are populated
-        if (systemData.classes.length > 0) {
-            console.log('Resolved Class:', systemData.classes[0]);
-            expect(systemData.classes[0].name).toBeDefined();
-            // Languages are fetched via fetchByUuid, so they should be present if logic works
-            // Note: Some classes might not have languages, but the field should exist if we fetched doc
-            expect(systemData.classes[0].languages).toBeDefined();
+        if (!systemData || !systemData.classes || !systemData.ancestries) {
+            throw new Error('System data resolution failed - missing fields');
         }
-    }, 20000);
-});
+
+        if (systemData.classes.length > 0) {
+            console.log('Resolved Class:', systemData.classes[0].name);
+            if (!systemData.classes[0].system?.languages && !systemData.classes[0].languages) {
+                throw new Error('Class languages field missing');
+            }
+        }
+        console.log('✅ System Data Resolution Verified');
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('❌ Test failed:', error.message);
+        return { success: false, error: error.message };
+    } finally {
+        socket.disconnect();
+    }
+}
+
+// Self-execution check
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+    testCompendiumResolution().then(result => {
+        process.exit(result.success ? 0 : 1);
+    });
+}
