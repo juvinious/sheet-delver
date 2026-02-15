@@ -21,6 +21,7 @@ import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
+import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -54,6 +55,13 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
+
+    const [viewMode, setViewMode] = useState<'simple' | 'advanced'>(() => {
+        if (typeof window !== 'undefined') {
+            return (localStorage.getItem('shadowdark-view-mode') as 'simple' | 'advanced') || 'simple';
+        }
+        return 'simple';
+    });
 
     const [serverSideCasterInfo, setServerSideCasterInfo] = useState<{
         isSpellcaster: boolean;
@@ -350,6 +358,22 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const primaryTabs = visibleTabs; // Use mapped state
     const secondaryTabs = overflowTabs;
 
+    if (viewMode === 'simple') {
+        return (
+            <ShadowdarkPaperSheet
+                actor={actor}
+                systemData={systemData}
+                onUpdate={onUpdate}
+                triggerRollDialog={triggerRollDialog}
+                onRoll={onRoll}
+                onToggleView={() => {
+                    localStorage.setItem('shadowdark-view-mode', 'advanced');
+                    setViewMode('advanced');
+                }}
+            />
+        );
+    }
+
     return (
         <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
             {/* Loading Overlay */}
@@ -366,9 +390,20 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                     <div className="py-2 flex-1 flex flex-row items-center justify-between md:block">
                         <div>
                             <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
-                            <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
-                            </p>
+                            <div className="flex items-center gap-2">
+                                <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
+                                    {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                </p>
+                                <button
+                                    onClick={() => {
+                                        localStorage.setItem('shadowdark-view-mode', 'simple');
+                                        setViewMode('simple');
+                                    }}
+                                    className="text-[10px] text-amber-500 hover:text-amber-400 font-bold uppercase tracking-widest mt-1 border border-amber-500/30 px-1 rounded"
+                                >
+                                    View Single Page Sheet
+                                </button>
+                            </div>
                         </div>
                         {/* Level displayed inline on mobile for space or block on desktop */}
                         <div className="text-xl font-bold font-serif md:hidden">
