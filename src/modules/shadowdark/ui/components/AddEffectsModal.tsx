@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Trash2, Power, Search } from 'lucide-react';
+import { X, Power, Search } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 

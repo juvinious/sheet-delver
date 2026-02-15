@@ -25,9 +25,11 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         setConfig(prev => ({ ...prev, foundryUrl: url }));
     }, [config.foundryUrl]);
 
-    if (typeof window !== 'undefined') {
-        (window as any)._sd_config_actions = { setFoundryUrl, foundryUrl: config.foundryUrl };
-    }
+    React.useEffect(() => {
+        if (typeof window !== 'undefined') {
+            (window as any)._sd_config_actions = { setFoundryUrl, foundryUrl: config.foundryUrl };
+        }
+    }, [setFoundryUrl, config.foundryUrl]);
 
     const resolveImageUrl = useCallback((path: string) => {
         if (!path) return '/placeholder.png';

@@ -1,7 +1,5 @@
 import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
-import { logger } from '../../core/logger';
-import { CompendiumCache } from '../../core/foundry/compendium-cache';
 
 /**
  * Test 4: User and Compendium Data

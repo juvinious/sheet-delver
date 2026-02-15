@@ -35,8 +35,6 @@ export default function JournalModal() {
         }
     }, [activeJournalId, getJournal]);
 
-    if (!activeJournalId) return null;
-
     const close = () => {
         setActiveJournalId(null);
         setSharedJournalId(null);
@@ -98,6 +96,8 @@ export default function JournalModal() {
             }
         );
     }, [rawContent, foundryUrl]);
+
+    if (!activeJournalId) return null;
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8 bg-black/70 backdrop-blur-md animate-in fade-in duration-300">

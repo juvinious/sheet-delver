@@ -1,6 +1,5 @@
 import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
 import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { logger } from '../../core/logger';
 import { loadConfig } from '../../core/config';
 import 'dotenv/config';
 

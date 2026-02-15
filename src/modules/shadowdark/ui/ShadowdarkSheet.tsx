@@ -79,7 +79,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         };
 
         fetchCasterInfo();
-    }, [actor._id, actor.id]);
+    }, [actor._id, actor.id, token]);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -289,7 +289,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor.computed?.showSpellsTab, getVisibleCount, serverSideCasterInfo, actor.items, actor.effects, actor.system?.class]);
+    }, [tabsOrder, actor, getVisibleCount, serverSideCasterInfo]);
 
     // Auto-close Level Up Modal when level effectively changes
     useEffect(() => {
@@ -622,7 +622,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                             onUpdateEffect={async (effectData) => {
                                 try {
                                     const id = actor.id || actor._id;
-                                    const effectId = effectData._id || effectData.id;
+                                    const _effectId = effectData._id || effectData.id;
                                     const headers: any = { 'Content-Type': 'application/json' };
                                     if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -688,7 +688,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         spells={levelUpData.spells}
                         availableClasses={systemData?.classes || []}
                         availableLanguages={systemData?.languages || []}
-                        onComplete={async (data) => {
+                        onComplete={async (_data) => {
                             try {
                                 // If this was a level 1 reroll (currentLevel 0), we might need to sync gold
                                 // manually if it was rolled on the frontend, but the backend finalize

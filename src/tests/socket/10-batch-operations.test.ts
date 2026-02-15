@@ -79,5 +79,5 @@ export async function testBatchOperations() {
 
 import { fileURLToPath } from 'url';
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    testBatchOperations().then(res => process.exit(res.success ? 0 : 1));
+    testBatchOperations().then(_res => process.exit(_res.success ? 0 : 1));
 }

@@ -137,7 +137,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     return itemData;
                 }).filter((i: any) => i !== null);
                 // --- SHADOWDARK EFFECTS PROCESSING ---
-                let effects: any[] = [];
+                const effects: any[] = [];
                 try {
                     // Collect all applicable effects
                     // @ts-ignore
@@ -219,7 +219,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                                         sourceName = e.origin;
                                     }
                                 }
-                            } catch (err) { /* ignore */ }
+                            } catch (_err) { /* ignore */ }
                         }
 
                         // Fallback: Check if ANY item on actor has this effect by ID
@@ -1448,7 +1448,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
     }
 
-    validateUpdate(path: string, value: any): boolean {
+    validateUpdate(path: string, _value: any): boolean {
         // Log for debugging (intentional audit trail)
         logger.debug(`[ShadowdarkAdapter] Validating update path: ${path}`);
 

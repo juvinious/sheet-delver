@@ -134,7 +134,7 @@ export async function testConnectionHandoff() {
 import { fileURLToPath } from 'url';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-    testConnectionHandoff().then(result => {
-        process.exit(result.success ? 0 : 1);
+    testConnectionHandoff().then(_result => {
+        process.exit(_result.success ? 0 : 1);
     });
 }
