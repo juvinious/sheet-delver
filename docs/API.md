@@ -123,26 +123,6 @@ Returns the latest media or journal shared by the GM with the current user.
 **Auth**: Protected
 Fetches any document (Actor, Item, Journal, Scene) by its universal UUID.
 
----
-
-## Roll Tables
-> [!NOTE]
-> These endpoints are currently powered by the Shadowdark-specific `DataManager`.
-
-### `GET /api/roll-table`
-**Auth**: Protected
-Lists all available roll tables from the local Shadowdark data packs.
-
-### `GET /api/roll-table/:id`
-**Auth**: Protected
-Returns detailed table data, including results.
-
-### `POST /api/roll-table/:id/draw`
-**Auth**: Protected
-Executes a **local draw** using the backend's Math.random logic.
-**Body**: `{ "rollMode": "self", "displayChat": true }`
-
----
 
 ## Shadowdark Module Routes
 Base URL: `/api/modules/shadowdark`
@@ -155,6 +135,16 @@ Returns a list of all spells from the `spells` compendium.
 
 ### `GET /effects/predefined-effects`
 Returns the system's predefined effects (e.g., "Blind", "Blessed").
+
+### `GET /roll-table`
+Lists all available roll tables from the local Shadowdark data packs.
+
+### `GET /roll-table/:id`
+Returns detailed table data, including results.
+
+### `POST /roll-table/:id/draw`
+Executes a **local draw** using the backend's Math.random logic.
+**Body**: `{ "rollMode": "self", "displayChat": true }`
 
 ### `GET /actors/:id/level-up/data`
 Returns context data for the Level Up wizard (class, ancestry, available talents).

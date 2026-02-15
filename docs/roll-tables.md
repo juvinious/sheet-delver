@@ -28,13 +28,13 @@ The `DataManager` (`src/modules/shadowdark/data/DataManager.ts`) is responsible 
 ---
 
 ## 3. API Integration
-The core API routes in `src/server/index.ts` (/api/roll-table) are currently hard-coded to use the Shadowdark module's `DataManager`.
+The roll table API routes are implemented as part of the Shadowdark module's route registry in `src/modules/shadowdark/server.ts`.
 
 ### Unified Interface
-Even though the implementation is local, the API provides a standard interface for the UI:
-- `GET /api/roll-table`: List all indexed tables.
-- `GET /api/roll-table/:id`: Get full table metadata.
-- `POST /api/roll-table/:id/draw`: Execute a local draw and return hydrated results.
+The API provides a standard interface for the UI via module-prefixed routes:
+- `GET /api/modules/shadowdark/roll-table`: List all indexed tables.
+- `GET /api/modules/shadowdark/roll-table/:id`: Get full table metadata.
+- `POST /api/modules/shadowdark/roll-table/:id/draw`: Execute a local draw and return hydrated results.
 
 ---
 

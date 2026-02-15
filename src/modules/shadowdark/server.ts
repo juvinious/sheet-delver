@@ -6,6 +6,7 @@ import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
 import { handleGetGear } from './api/gear';
 import { handleIndex } from './api/index';
+import { handleListRollTables, handleGetRollTable, handleDrawRollTable, handleGetResultPool } from './api/tables';
 import { dataManager } from './data/DataManager';
 import { getConfig } from '../../core/config';
 import { logger } from '../../core/logger';
@@ -166,6 +167,25 @@ export const apiRoutes = {
     },
     'spells/list': async (request: Request) => {
         return handleGetSpellsBySource(request);
+    },
+    'roll-table': async (request: Request) => {
+        return handleListRollTables();
+    },
+    'roll-table/[id]': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const id = route[1];
+        return handleGetRollTable(request, id);
+    },
+    'roll-table/[id]/draw': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const id = route[1];
+        return handleDrawRollTable(request, id);
+    },
+    'roll-table/[tableId]/draw/[resultId]': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const tableId = route[1];
+        const resultId = route[3];
+        return handleGetResultPool(request, tableId, resultId);
     }
 };
 
