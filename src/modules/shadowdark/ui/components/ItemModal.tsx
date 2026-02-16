@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Flame, Utensils, Shield, Sword, Package, Archive, Minus, Plus } from 'lucide-react';
 import { resolveEntityName } from '../sheet-utils';
 
@@ -14,11 +14,23 @@ interface ItemModalProps {
 export default function ItemModal({
     isOpen,
     onClose,
-    item,
+    item: initialItem,
     onUpdate,
     actor,
     systemData
 }: ItemModalProps) {
+    // Find the actual item in the actor's list to ensure reactivity when parent state updates
+    const item = actor?.items?.find((i: any) => (i.id || i._id) === (initialItem?.id || initialItem?._id)) || initialItem;
+
+    const [localQuantity, setLocalQuantity] = useState(item?.system?.quantity || 0);
+
+    // Sync local state when external data changes (e.g. from server or other UI parts)
+    useEffect(() => {
+        if (item?.system?.quantity !== undefined) {
+            setLocalQuantity(item.system.quantity);
+        }
+    }, [item?.system?.quantity]);
+
     if (!isOpen || !item) return null;
 
     const isLightSource = (item: any) => {
@@ -103,6 +115,7 @@ export default function ItemModal({
         if (!item.system?.equipped) {
             onUpdate(`items.${item.id}.system.stashed`, false);
         }
+        onClose();
     };
 
     const handleToggleStashed = () => {
@@ -110,6 +123,7 @@ export default function ItemModal({
         if (!item.system?.stashed) {
             onUpdate(`items.${item.id}.system.equipped`, false);
         }
+        onClose();
     };
 
     const handleToggleLight = () => {
@@ -125,13 +139,16 @@ export default function ItemModal({
 
     const handleIncreaseQuantity = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onUpdate(`items.${item.id}.system.quantity`, (item.system?.quantity || 0) + 1);
+        const newVal = (localQuantity || 0) + 1;
+        setLocalQuantity(newVal);
+        onUpdate(`items.${item.id}.system.quantity`, newVal);
     };
 
     const handleDecreaseQuantity = (e: React.MouseEvent) => {
         e.stopPropagation();
-        const qty = Math.max(0, (item.system?.quantity || 0) - 1);
-        onUpdate(`items.${item.id}.system.quantity`, qty);
+        const newVal = Math.max(0, (localQuantity || 0) - 1);
+        setLocalQuantity(newVal);
+        onUpdate(`items.${item.id}.system.quantity`, newVal);
     };
 
     return (
@@ -184,7 +201,7 @@ export default function ItemModal({
 
                     {/* Quick Stats / Info */}
                     <div className="grid grid-cols-2 gap-4">
-                        {(item.system?.quantity > 1 || isRation(item)) && (
+                        {(localQuantity > 1 || isRation(item)) && (
                             <div className="bg-neutral-50 border-2 border-black p-2 flex flex-col items-center">
                                 <span className="text-[10px] uppercase font-black text-neutral-500">Quantity</span>
                                 <div className="flex items-center gap-3 pt-1">
@@ -194,7 +211,7 @@ export default function ItemModal({
                                     >
                                         <Minus size={12} strokeWidth={3} />
                                     </button>
-                                    <span className="text-xl font-black text-black w-6 text-center">{item.system.quantity}</span>
+                                    <span className="text-xl font-black text-black w-6 text-center">{localQuantity}</span>
                                     <button
                                         onClick={handleIncreaseQuantity}
                                         className="p-1 hover:bg-neutral-200 border border-black/20 hover:border-black transition-all active:scale-95"
@@ -248,7 +265,7 @@ export default function ItemModal({
                     {isRation(item) && (
                         <button
                             onClick={handleUseRation}
-                            disabled={(item.system?.quantity || 0) <= 0}
+                            disabled={(localQuantity || 0) <= 0}
                             className="col-span-2 mt-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-black bg-white text-black font-black uppercase tracking-widest text-sm transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:translate-x-0 disabled:translate-y-0"
                         >
                             <Utensils size={16} />

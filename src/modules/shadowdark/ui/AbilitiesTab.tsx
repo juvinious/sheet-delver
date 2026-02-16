@@ -177,20 +177,26 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         {(actor.derived?.attacks?.melee || []).map((item: any, idx: number) => (
                             <div
                                 key={item.id || item._id || `melee-${idx}`}
-                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Melee' })}
+                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Melee', handedness: item.derived?.handedness })}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                            {item.derived?.handedness || (item.system?.damage?.twoHanded ? '2H' : '1H')}
-                                        </span>
                                     </div>
                                     <div className="text-sm text-neutral-700 font-sans mt-1">
                                         <span className="font-bold">{item.derived?.toHit}</span> to hit, <span className="font-bold">{item.derived?.damage}</span> dmg
-                                        {item.system?.properties?.length > 0 && <span className="text-neutral-400 text-xs ml-2 italic">({item.system.properties.length} props)</span>}
                                     </div>
+                                    {/* Property Pills */}
+                                    {item.derived?.properties && item.derived.properties.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {item.derived.properties.map((prop: string, pIdx: number) => (
+                                                <div key={`prop-${pIdx}`} className="flex items-center bg-black/5 px-1.5 py-0.5 border border-black/20 rounded-sm">
+                                                    <span className="text-[9px] font-black uppercase text-black/70">{prop}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 {/*
                                 <button
@@ -226,19 +232,31 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         {(actor.derived?.attacks?.ranged || []).map((item: any, idx: number) => (
                             <div
                                 key={item.id || item._id || `ranged-${idx}`}
-                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Ranged' })}
+                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Ranged', handedness: item.derived?.handedness })}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
-                                        <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                            {item.derived?.range ? item.derived.range.charAt(0).toUpperCase() + item.derived.range.slice(1) : '-'} • {item.derived?.handedness}
-                                        </span>
+                                        {item.derived?.range && (
+                                            <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
+                                                {item.derived.range.charAt(0).toUpperCase() + item.derived.range.slice(1)}
+                                            </span>
+                                        )}
                                     </div>
                                     <div className="text-sm text-neutral-700 font-sans mt-1">
                                         <span className="font-bold">{item.derived?.toHit}</span> to hit, <span className="font-bold">{item.derived?.damage}</span> dmg
                                     </div>
+                                    {/* Property Pills */}
+                                    {item.derived?.properties && item.derived.properties.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5">
+                                            {item.derived.properties.map((prop: string, pIdx: number) => (
+                                                <div key={`prop-${pIdx}`} className="flex items-center bg-black/5 px-1.5 py-0.5 border border-black/20 rounded-sm">
+                                                    <span className="text-[9px] font-black uppercase text-black/70">{prop}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 {/*
                                 <button

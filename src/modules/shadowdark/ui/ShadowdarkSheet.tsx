@@ -108,6 +108,8 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         let title = '';
         const defaults: any = {};
 
+        if (options.handedness) defaults.handedness = options.handedness;
+
         if (type === 'ability') {
             dialogType = 'ability';
             title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`;
@@ -222,6 +224,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             callback: (rollOptions) => {
                 const finalOptions = { ...rollOptions };
                 if (defaults.itemData) finalOptions.itemData = defaults.itemData;
+                if (defaults.handedness) finalOptions.handedness = defaults.handedness;
                 onRoll(type, key, finalOptions);
             }
         });
@@ -479,26 +482,16 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                     <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed.ac}</span>
                                 </div>
                             )}
-                            <div className="flex flex-col items-center">
-                                <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">Luck</span>
-                                <button
-                                    onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
-                                    className="mt-1 transition-all group"
-                                    title="Toggle Luck"
-                                >
-                                    <div className={`w-6 h-6 border-2 border-amber-500/50 flex items-center justify-center transition-all ${actor.system?.luck?.available ? 'bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]' : 'bg-transparent hover:border-amber-500'}`}>
-                                        {actor.system?.luck?.available && <Check className="text-black w-4 h-4 stroke-[4px]" />}
-                                    </div>
-                                </button>
-                            </div>
-
-                            {/* Dice Tray Button */}
                             <button
                                 onClick={() => onToggleDiceTray?.()}
-                                className="p-2 hover:bg-white/10 rounded transition-colors"
-                                title="Toggle Dice Tray"
+                                className="ml-4 transition-all duration-300 hover:scale-110 active:scale-95 group shrink-0"
+                                title="Open Dice Tray"
                             >
-                                <img src="/icons/dice-d20.svg" className="w-6 h-6 invert opacity-70" alt="" />
+                                <img
+                                    src="/icons/dice-d20.svg"
+                                    className="w-14 h-14 invert opacity-70 group-hover:opacity-100 transition-all"
+                                    alt="Roll d20"
+                                />
                             </button>
                         </div>
                     </div>

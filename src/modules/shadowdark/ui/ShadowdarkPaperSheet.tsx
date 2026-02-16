@@ -19,7 +19,14 @@ interface ShadowdarkPaperSheetProps {
     onRoll: (type: string, key: string, options?: any) => void;
 }
 
-export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onToggleView, triggerRollDialog, onRoll }: ShadowdarkPaperSheetProps) {
+export default function ShadowdarkPaperSheet({
+    actor,
+    systemData,
+    onUpdate,
+    onToggleView,
+    triggerRollDialog,
+    onRoll
+}: ShadowdarkPaperSheetProps) {
     const [selectedItem, setSelectedItem] = useState<any>(null);
     // Helper to safely render values that might be objects (Foundry data structure)
     const getDisplayValue = (val: any) => {
@@ -189,7 +196,6 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                             </div>
                         </div>
 
-                        {/* Luck Box */}
                         <div
                             className="border-2 border-black h-16 relative flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-50 transition-colors"
                             onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
@@ -212,7 +218,7 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                                 ]).slice(0, 5).map((atk: any, i: number) => (
                                     <div
                                         key={i}
-                                        onClick={() => triggerRollDialog('item', atk._realId || atk.id || atk._id, { attackType: atk._displayType })}
+                                        onClick={() => triggerRollDialog('item', atk._realId || atk.id || atk._id, { attackType: atk._displayType, handedness: atk.derived?.handedness })}
                                         className="flex flex-col border-b border-black border-dotted pb-1 cursor-pointer hover:bg-neutral-100 transition-colors"
                                     >
                                         <div className="flex justify-between items-baseline">

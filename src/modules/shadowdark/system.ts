@@ -1589,15 +1589,24 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (totalMeleeDamageBonus > 0) damage += `+${totalMeleeDamageBonus}`;
                     else if (totalMeleeDamageBonus < 0) damage += `${totalMeleeDamageBonus}`;
 
+                    // Build properties array for UI display
+                    const props: string[] = [];
+                    if (handed === '1H') props.push('1-Handed');
+                    if (handed === '2H') props.push('2-Handed');
+                    if (isVersatile) props.push('Versatile');
+                    if (isFinesse) props.push('Finesse');
+
                     melee.push({
                         ...item,
+                        name: item.name, // Remove suffix
                         id: `${item.id || item._id}-${handed}`,
                         _realId: item.id || item._id,
                         derived: {
                             toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
                             damage: damage,
                             isFinesse,
-                            handedness: handed
+                            handedness: handed,
+                            properties: props
                         }
                     });
                 };
@@ -1622,15 +1631,24 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (totalRangedDamageBonus > 0) damage += `+${totalRangedDamageBonus}`;
                     else if (totalRangedDamageBonus < 0) damage += `${totalRangedDamageBonus}`;
 
+                    // Build properties array for UI display
+                    const props: string[] = [];
+                    if (handed === '1H') props.push('1-Handed');
+                    if (handed === '2H') props.push('2-Handed');
+                    if (isThrown && item.system?.type === 'melee') props.push('Thrown');
+                    if (isFinesse) props.push('Finesse');
+
                     ranged.push({
                         ...item,
+                        name: item.name, // Remove suffix
                         id: `${item.id || item._id}-Ranged-${handed}`,
                         _realId: item.id || item._id,
                         derived: {
                             toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
                             damage: damage,
                             range: item.system?.range,
-                            handedness: handed
+                            handedness: handed,
+                            properties: props
                         }
                     });
                 };
