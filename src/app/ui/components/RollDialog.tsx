@@ -56,6 +56,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
     const [itemBonus, setItemBonus] = useState(0);
     const [talentBonus, setTalentBonus] = useState(0);
     const [rollingMode, setRollingMode] = useState<string>('publicroll');
+    const [isManual, setIsManual] = useState(false);
+    const [manualValue, setManualValue] = useState<string>('');
     const popupRef = useRef<HTMLDivElement>(null);
 
     const t = { ...defaultTheme, ...theme };
@@ -103,7 +105,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
             itemBonus,
             talentBonus,
             rollingMode,
-            advantageMode
+            advantageMode,
+            manualValue: isManual ? Number(manualValue) : undefined
         });
     };
 
@@ -121,16 +124,20 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
             >
                 {/* Main Content */}
                 <div className={t.header + (theme?.header ? "" : " flex justify-between items-center")}>
-                    <h2 className={t.title}>{title}</h2>
-                    <button
-                        onClick={onClose}
-                        className={t.closeBtn}
-                        aria-label="Close"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                            <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                        </svg>
-                    </button>
+                    <div className="flex flex-col">
+                        <h2 className={t.title}>{title}</h2>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={onClose}
+                            className={t.closeBtn}
+                            aria-label="Close"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                                <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
 
                 <div className={t.body}>
@@ -193,29 +200,64 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
 
                 {/* Footer Buttons */}
                 <div className={t.footer}>
-                    <button
-                        onClick={() => handleRoll('normal')}
-                        className={t.rollBtn ? t.rollBtn('normal') : defaultTheme.rollBtn('normal')}
-                    >
-                        Roll Normal
-                    </button>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-3 pt-4 border-t border-black/5">
                         <button
-                            onClick={() => handleRoll('advantage')}
-                            className={t.rollBtn ? t.rollBtn('adv') : defaultTheme.rollBtn('adv')}
+                            onClick={() => setIsManual(!isManual)}
+                            className={`w-full py-2 px-4 font-bold text-xs uppercase tracking-widest rounded-none transition-all ${isManual
+                                ? 'bg-black text-white hover:bg-neutral-800'
+                                : 'bg-neutral-200 text-neutral-600 hover:bg-neutral-300'
+                                }`}
                         >
-                            Advantage
+                            {isManual ? 'Revert to Roll' : 'Manual Input'}
                         </button>
+
+                        {isManual && (
+                            <div className="py-2">
+                                <div className={t.inputGroup}>
+                                    <label className={t.label}>Result</label>
+                                    <input
+                                        type="number"
+                                        value={manualValue}
+                                        onChange={e => setManualValue(e.target.value)}
+                                        placeholder="Enter result..."
+                                        className={t.input}
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         <button
-                            onClick={() => handleRoll('disadvantage')}
-                            className={t.rollBtn ? t.rollBtn('dis') : defaultTheme.rollBtn('dis')}
+                            onClick={() => handleRoll('normal')}
+                            disabled={isManual && !manualValue.trim()}
+                            className={t.rollBtn ? t.rollBtn('normal') : defaultTheme.rollBtn('normal')}
+                            style={{
+                                opacity: (isManual && !manualValue.trim()) ? 0.5 : 1,
+                                cursor: (isManual && !manualValue.trim()) ? 'not-allowed' : 'pointer'
+                            }}
                         >
-                            Disadvantage
+                            {isManual ? 'Send Result' : 'Roll Normal'}
                         </button>
+
+                        {!isManual && (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleRoll('advantage')}
+                                    className={t.rollBtn ? t.rollBtn('adv') : defaultTheme.rollBtn('adv')}
+                                >
+                                    Advantage
+                                </button>
+                                <button
+                                    onClick={() => handleRoll('disadvantage')}
+                                    className={t.rollBtn ? t.rollBtn('dis') : defaultTheme.rollBtn('dis')}
+                                >
+                                    Disadvantage
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
         </div>
     );
 }
-

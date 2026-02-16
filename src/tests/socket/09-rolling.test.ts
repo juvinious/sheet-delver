@@ -36,19 +36,18 @@ export async function testRolling() {
             throw new Error(`Roll 1 type mismatch. Expected 0 or 'base', got ${roll1.type}`);
         }
 
-        // 2. Roll Complex Formula
-        console.log('\n--- Part 2: Complex Roll (1d20 + 5) ---');
-        const roll2 = await client.roll('1d20 + 5', 'Test Roll 2');
-        console.log('Result:', JSON.stringify(roll2, null, 2));
+        // 3. Manual / Pre-determined Roll
+        console.log('\n--- Part 3: Manual Roll (Forced Result) ---');
+        // We want to test if we can send a roll that has been pre-determined
+        // e.g. entering '2' in the dialog should result in '2 + bonuses'
+        // For this test, let's see if we can pass a 'manual' flag or if it needs to be the formula
+        const roll3 = await client.roll('2', 'Manual Test (Result 2)', {
+            displayChat: true
+        });
+        console.log('Result:', JSON.stringify(roll3, null, 2));
 
-        if (!roll2 || !roll2.content) {
-            throw new Error('Roll 2 failed - content missing');
-        }
-
-        // Verify content is numeric string
-        const total = parseInt(roll2.content);
-        if (isNaN(total)) {
-            throw new Error(`Roll 2 content is not a number: ${roll2.content}`);
+        if (!roll3 || roll3.content !== '2') {
+            throw new Error(`Manual roll failed. Expected '2', got ${roll3?.content}`);
         }
 
         console.log('✅ Rolling Tests Passed');

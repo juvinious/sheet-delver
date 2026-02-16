@@ -1560,8 +1560,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
             if (item.type !== 'Weapon' || !item.system?.equipped) return;
 
             // Attack Bonus Calculation
-            const isFinesse = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('finesse'));
-            const isThrown = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('thrown'));
+            const properties = item.system?.properties || [];
+            const isFinesse = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('finesse') || p.includes('9P7X1Gq5Qo2Nq2Xj')));
+            const isThrown = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('thrown') || p.includes('m17A6nb0epkHZ3lR')));
+            const isVersatile = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('versatile') || p.includes('qEIYaQ9j2EUmSrx6')));
+            const isTwoHanded = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('two-handed') || p.includes('b6Gm2ULKj2qyy2xJ')));
             const isRangedType = item.system?.type === 'ranged';
             const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
 
@@ -1576,52 +1579,67 @@ export class ShadowdarkAdapter implements SystemAdapter {
             // Item Bonus
             const itemBonus = Number(item.system?.bonuses?.attackBonus || 0);
 
-            // Damage String
-            let damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}${item.system?.damage?.oneHanded || 'd4'}`;
-
             // Melee Logic
             if (item.system?.type === 'melee') {
                 const totalMeleeBonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + itemBonus + globalAttackBonus + meleeAttackBonus;
+                const totalMeleeDamageBonus = globalDamageBonus + meleeDamageBonus;
 
-                // Add damage bonus to string if > 0
-                const totalDamageBonus = globalDamageBonus + meleeDamageBonus;
-                if (totalDamageBonus > 0) {
-                    damage += `+${totalDamageBonus}`;
-                } else if (totalDamageBonus < 0) {
-                    damage += `${totalDamageBonus}`;
+                const pushMeleeAtk = (handed: '1H' | '2H', damageFormula: string) => {
+                    let damage = damageFormula;
+                    if (totalMeleeDamageBonus > 0) damage += `+${totalMeleeDamageBonus}`;
+                    else if (totalMeleeDamageBonus < 0) damage += `${totalMeleeDamageBonus}`;
+
+                    melee.push({
+                        ...item,
+                        id: `${item.id || item._id}-${handed}`,
+                        _realId: item.id || item._id,
+                        derived: {
+                            toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
+                            damage: damage,
+                            isFinesse,
+                            handedness: handed
+                        }
+                    });
+                };
+
+                if (isVersatile) {
+                    pushMeleeAtk('1H', item.system?.damage?.oneHanded || 'd4');
+                    pushMeleeAtk('2H', item.system?.damage?.twoHanded || 'd6');
+                } else if (isTwoHanded) {
+                    pushMeleeAtk('2H', item.system?.damage?.twoHanded || item.system?.damage?.oneHanded || 'd4');
+                } else {
+                    pushMeleeAtk('1H', item.system?.damage?.oneHanded || 'd4');
                 }
-
-                melee.push({
-                    ...item,
-                    derived: {
-                        toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
-                        damage: damage,
-                        isFinesse
-                    }
-                });
             }
 
             // Ranged Logic (includes Thrown melees)
             if (isRangedType || hasRange || (item.system?.type === 'melee' && isThrown)) {
                 const totalRangedBonus = dexMod + itemBonus + globalAttackBonus + rangedAttackBonus;
+                const totalRangedDamageBonus = globalDamageBonus + rangedDamageBonus;
 
-                // Add damage bonus to string if > 0
-                const totalDamageBonus = globalDamageBonus + rangedDamageBonus;
-                let rangedDamage = damage;
-                if (totalDamageBonus > 0) {
-                    rangedDamage += `+${totalDamageBonus}`;
-                } else if (totalDamageBonus < 0) {
-                    rangedDamage += `${totalDamageBonus}`;
+                const pushRangedAtk = (handed: '1H' | '2H', damageFormula: string) => {
+                    let damage = damageFormula;
+                    if (totalRangedDamageBonus > 0) damage += `+${totalRangedDamageBonus}`;
+                    else if (totalRangedDamageBonus < 0) damage += `${totalRangedDamageBonus}`;
+
+                    ranged.push({
+                        ...item,
+                        id: `${item.id || item._id}-Ranged-${handed}`,
+                        _realId: item.id || item._id,
+                        derived: {
+                            toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
+                            damage: damage,
+                            range: item.system?.range,
+                            handedness: handed
+                        }
+                    });
+                };
+
+                if (isTwoHanded) {
+                    pushRangedAtk('2H', item.system?.damage?.twoHanded || item.system?.damage?.oneHanded || 'd4');
+                } else {
+                    pushRangedAtk('1H', item.system?.damage?.oneHanded || 'd4');
                 }
-
-                ranged.push({
-                    ...item,
-                    derived: {
-                        toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
-                        damage: rangedDamage,
-                        range: item.system?.range
-                    }
-                });
             }
         });
 
@@ -1633,7 +1651,38 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
     }
 
-    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string } | null {
+    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string; flags?: any } | null {
+        // If manual value is provided, sum it with bonuses if they exist
+        if (options.manualValue !== undefined && options.manualValue !== null) {
+            let label = 'Manual Roll';
+            if (type === 'ability') label = `${key.toUpperCase().replace('ABILITY', '')} (Manual)`;
+            if (type === 'item') {
+                const item = (actor.items || []).find((i: any) => i._id === key || i.id === key);
+                label = item ? `${item.name} (Manual)` : 'Item (Manual)';
+            }
+
+            // Sum bonuses if they are provided in options
+            let total = Number(options.manualValue);
+            const bonuses = [];
+            if (options.abilityBonus !== undefined && options.abilityBonus !== null) bonuses.push(Number(options.abilityBonus));
+            if (options.itemBonus !== undefined && options.itemBonus !== null) bonuses.push(Number(options.itemBonus));
+            if (options.talentBonus !== undefined && options.talentBonus !== null) bonuses.push(Number(options.talentBonus));
+
+            const totalBonus = bonuses.reduce((acc, b) => acc + b, 0);
+            const formula = totalBonus !== 0
+                ? `${total} + ${totalBonus}`
+                : String(total);
+
+            return {
+                formula,
+                type: 'manual',
+                label: label,
+                flags: {
+                    shadowdark: { isManual: true }
+                }
+            };
+        }
+
         // Options: abilityBonus, itemBonus, talentBonus, rollingMode, advantageMode
         const advMode = options.advantageMode || 'normal';
         let dice = '1d20';

@@ -7,7 +7,7 @@ import { useConfig } from '@/app/ui/context/ConfigContext';
 interface AbilitiesTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
-    triggerRollDialog: (type: string, key: string, name?: string) => void;
+    triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll?: (type: string, key: string, options?: any) => void;
 }
 
@@ -177,14 +177,14 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         {(actor.derived?.attacks?.melee || []).map((item: any, idx: number) => (
                             <div
                                 key={item.id || item._id || `melee-${idx}`}
-                                onClick={() => triggerRollDialog('item', item.id || item._id)}
+                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Melee' })}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
                                         <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                            {item.system?.damage?.twoHanded ? '(2H)' : '(1H)'}
+                                            {item.derived?.handedness || (item.system?.damage?.twoHanded ? '2H' : '1H')}
                                         </span>
                                     </div>
                                     <div className="text-sm text-neutral-700 font-sans mt-1">
@@ -226,14 +226,14 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         {(actor.derived?.attacks?.ranged || []).map((item: any, idx: number) => (
                             <div
                                 key={item.id || item._id || `ranged-${idx}`}
-                                onClick={() => triggerRollDialog('item', item.id || item._id)}
+                                onClick={() => triggerRollDialog('item', item._realId || item.id || item._id, { attackType: 'Ranged' })}
                                 className="bg-neutral-50 p-2 border border-neutral-200 flex justify-between items-center hover:border-black transition-colors cursor-pointer group"
                             >
                                 <div>
                                     <div className="flex items-center gap-2">
                                         <span className="font-bold font-serif text-lg leading-none">{item.name}</span>
                                         <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-bold">
-                                            ({item.derived?.range ? item.derived.range.charAt(0).toUpperCase() + item.derived.range.slice(1) : '-'})
+                                            {item.derived?.range ? item.derived.range.charAt(0).toUpperCase() + item.derived.range.slice(1) : '-'} • {item.derived?.handedness}
                                         </span>
                                     </div>
                                     <div className="text-sm text-neutral-700 font-sans mt-1">

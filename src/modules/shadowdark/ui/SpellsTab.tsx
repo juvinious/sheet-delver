@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-react';
 interface SpellsTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
-    triggerRollDialog: (type: string, key: string, name?: string) => void;
+    triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
     systemData?: any;
     onDeleteItem?: (itemId: string) => void;

@@ -567,7 +567,8 @@ async function startServer() {
 
             const result = await client.roll(rollData.formula, rollData.label, {
                 rollMode: options?.rollMode,
-                speaker: speaker
+                speaker: speaker,
+                flags: rollData.flags
             });
             res.json({ success: true, result, label: rollData.label });
         } catch (error: any) {

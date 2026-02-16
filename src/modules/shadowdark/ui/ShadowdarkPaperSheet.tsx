@@ -5,7 +5,7 @@ import {
     resolveEntityName,
     resolveEntityUuid
 } from './sheet-utils';
-import { Flame, Utensils, Info } from 'lucide-react';
+import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import { logger } from '@/core/logger';
 /* eslint-disable @next/next/no-img-element */
@@ -15,7 +15,7 @@ interface ShadowdarkPaperSheetProps {
     systemData: any;
     onUpdate: (path: string, value: any) => void;
     onToggleView: () => void;
-    triggerRollDialog: (type: string, key: string) => void;
+    triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
 }
 
@@ -75,7 +75,7 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
     };
 
     return (
-        <div className="relative w-full min-h-screen bg-black p-8 flex justify-center items-start font-serif text-sm">
+        <div className="relative w-full h-full bg-black p-4 md:p-8 flex justify-center items-start font-serif text-sm overflow-y-auto">
             <style jsx global>{`
                 input[type=number]::-webkit-inner-spin-button, 
                 input[type=number]::-webkit-outer-spin-button { 
@@ -87,7 +87,7 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                 }
             `}</style>
             {/* Sheet Container - Responsive */}
-            <div className="bg-white text-black w-full max-w-[1500px] min-h-screen lg:min-h-[850px] border-[3px] border-black shadow-2xl p-4 md:p-6 relative flex flex-col gap-4">
+            <div className="bg-white text-black w-full max-w-[1200px] border-[3px] border-black shadow-2xl p-4 md:p-6 relative flex flex-col gap-4 mb-8">
 
                 {/* Header Row */}
                 <div className="flex flex-col md:grid md:grid-cols-12 gap-4 items-start mb-4">
@@ -189,6 +189,19 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                             </div>
                         </div>
 
+                        {/* Luck Box */}
+                        <div
+                            className="border-2 border-black h-16 relative flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-50 transition-colors"
+                            onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
+                        >
+                            <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Luck</div>
+                            <div className="flex items-center justify-center">
+                                <div className={`w-10 h-10 border-2 border-black flex items-center justify-center transition-all ${actor.system?.luck?.available ? 'bg-black' : 'bg-transparent'}`}>
+                                    {actor.system?.luck?.available && <Check className="text-white w-8 h-8 stroke-[4px]" />}
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Attacks Box */}
                         <div className="border-2 border-black flex flex-col">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit">Attacks</div>
@@ -199,7 +212,7 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                                 ]).slice(0, 5).map((atk: any, i: number) => (
                                     <div
                                         key={i}
-                                        onClick={() => triggerRollDialog('item', atk.id || atk._id)}
+                                        onClick={() => triggerRollDialog('item', atk._realId || atk.id || atk._id, { attackType: atk._displayType })}
                                         className="flex flex-col border-b border-black border-dotted pb-1 cursor-pointer hover:bg-neutral-100 transition-colors"
                                     >
                                         <div className="flex justify-between items-baseline">
@@ -209,7 +222,7 @@ export default function ShadowdarkPaperSheet({ actor, systemData, onUpdate, onTo
                                                 <span>{atk.derived?.damage}</span>
                                             </div>
                                         </div>
-                                        <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{atk._displayType}</span>
+                                        <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">{atk._displayType} • {atk.derived?.handedness}</span>
                                     </div>
                                 ))}
                             </div>
