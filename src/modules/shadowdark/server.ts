@@ -1,4 +1,5 @@
 
+
 import { handleImport } from './api/import';
 import { handleGetLevelUpData, handleRollHP, handleRollGold, handleFinalizeLevelUp, handleRollTalent, handleRollBoon, handleResolveChoice } from "./api/level-up";
 import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } from './api/spells';
@@ -7,6 +8,7 @@ import { handleEffects } from './api/effects';
 import { handleGetGear } from './api/gear';
 import { handleIndex } from './api/index';
 import { handleListRollTables, handleGetRollTable, handleDrawRollTable, handleGetResultPool } from './api/tables';
+import { handleGetNotes, handleUpdateNotes } from './api/notes';
 import { dataManager } from './data/DataManager';
 import { getConfig } from '../../core/config';
 import { logger } from '../../core/logger';
@@ -94,6 +96,21 @@ export const apiRoutes = {
         const { effectId } = await request.json();
         const result = await handleEffects(actorId, client, 'toggle', { effectId });
         return Response.json({ success: true, result });
+    },
+    'actors/[id]/notes': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+
+        if (request.method === 'GET') {
+            const result = await handleGetNotes(actorId, client);
+            return Response.json(result);
+        } else if (request.method === 'POST') {
+            const result = await handleUpdateNotes(actorId, request, client);
+            return Response.json(result);
+        }
+
+        return Response.json({ error: 'Method not allowed' }, { status: 405 });
     },
     'actors/level-up/roll-hp': async (request: Request) => {
         return handleRollHP(undefined, request, (request as any).foundryClient, (request as any).userSession);

@@ -7,6 +7,7 @@ import {
 } from './sheet-utils';
 import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
+import NotesModal from './components/NotesModal';
 import { logger } from '@/core/logger';
 /* eslint-disable @next/next/no-img-element */
 
@@ -17,6 +18,7 @@ interface ShadowdarkPaperSheetProps {
     onToggleView: () => void;
     triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
+    token?: string | null;
 }
 
 export default function ShadowdarkPaperSheet({
@@ -25,9 +27,11 @@ export default function ShadowdarkPaperSheet({
     onUpdate,
     onToggleView,
     triggerRollDialog,
-    onRoll
+    onRoll,
+    token
 }: ShadowdarkPaperSheetProps) {
     const [selectedItem, setSelectedItem] = useState<any>(null);
+    const [notesModalOpen, setNotesModalOpen] = useState(false);
     // Helper to safely render values that might be objects (Foundry data structure)
     const getDisplayValue = (val: any) => {
         if (val && typeof val === 'object' && 'value' in val) {
@@ -80,6 +84,16 @@ export default function ShadowdarkPaperSheet({
         const name = item.name?.toLowerCase() || "";
         return name.includes('ration');
     };
+
+    const truncateNotes = (html: string, maxLength: number = 150): string => {
+        if (!html) return '';
+        // Strip HTML tags
+        const text = html.replace(/<[^>]*>/g, '');
+        // Truncate to maxLength and add ellipsis if needed
+        if (text.length <= maxLength) return text;
+        return text.substring(0, maxLength).trim() + '...';
+    };
+
 
     return (
         <div className="relative w-full h-full bg-black p-4 md:p-8 flex justify-center items-start font-serif text-sm overflow-y-auto">
@@ -448,10 +462,15 @@ export default function ShadowdarkPaperSheet({
                         </div>
 
                         {/* Notes Box */}
-                        <div className="border-2 border-black flex flex-col relative flex-1 min-h-[8rem]">
+                        <div
+                            className="border-2 border-black flex flex-col relative flex-1 min-h-[8rem] cursor-pointer hover:bg-neutral-50 transition-colors"
+                            onClick={() => setNotesModalOpen(true)}
+                        >
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Notes</div>
-                            <div className="w-full h-full p-4 pt-8 font-serif text-sm bg-transparent whitespace-pre-wrap overflow-y-auto">
-                                <div dangerouslySetInnerHTML={{ __html: getDisplayValue(actor.system?.details?.notes) || '' }} />
+                            <div className="w-full h-full p-4 pt-8 font-serif text-sm bg-transparent overflow-hidden">
+                                <div className="text-black">
+                                    {truncateNotes(actor.details?.notes || '', 150) || <span className="italic text-neutral-400">Click to add notes...</span>}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -563,6 +582,14 @@ export default function ShadowdarkPaperSheet({
                 onUpdate={onUpdate}
                 actor={actor}
                 systemData={systemData}
+            />
+
+            <NotesModal
+                isOpen={notesModalOpen}
+                onClose={() => setNotesModalOpen(false)}
+                actor={actor}
+                onUpdate={onUpdate}
+                token={token}
             />
         </div>
     );

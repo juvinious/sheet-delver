@@ -377,6 +377,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                     onUpdate={onUpdate}
                     triggerRollDialog={triggerRollDialog}
                     onRoll={onRoll}
+                    token={token}
                     onToggleView={() => {
                         setViewMode('advanced');
                     }}
@@ -616,6 +617,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 <NotesTab
                                     actor={actor}
                                     onUpdate={onUpdate}
+                                    token={token}
                                 />
                             )
                         }
