@@ -1022,7 +1022,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         return await this.dispatchDocumentSocket('ChatMessage', 'create', { data: [data] });
     }
 
-    public async roll(formula: string, flavor?: string, options?: { userId?: string, rollMode?: string, speaker?: any, displayChat?: boolean }): Promise<any> {
+    public async roll(formula: string, flavor?: string, options?: { userId?: string, rollMode?: string, speaker?: any, displayChat?: boolean, flags?: any }): Promise<any> {
         try {
             // Dynamic import to avoid circular dependencies if any (though Roll is standalone)
             const { Roll } = await import('../classes/Roll'); // Path check required
@@ -1037,7 +1037,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 flavor: flavor,
                 type: 5, // ROLL (standard Foundry ChatMessage type)
                 rolls: [JSON.stringify(roll.toJSON())], // Explicit stringification for safe transport
-                flags: {},
+                flags: options?.flags || {},
                 sound: 'sounds/dice.wav' // Optional: generic sound
             };
 

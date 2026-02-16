@@ -126,12 +126,6 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
     const isArmor = item.type === 'Armor';
     const weaponType = item.system?.type === 'melee' ? 'Melee' : item.system?.type === 'ranged' ? 'Ranged' : '';
     const range = item.system?.range ? item.system?.range.charAt(0).toUpperCase() + item.system?.range.slice(1) : '-';
-    // const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
-    const damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}d${item.system?.damage?.die || 6}`;
-
-    // Description
-    const rawDesc = getSafeDescription(item.system);
-    const description = rawDesc;
 
     // Properties Logic
     const rawProps = item.system?.properties;
@@ -140,6 +134,24 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
         propertiesDisplay = rawProps.map(String);
     } else if (typeof rawProps === 'object' && rawProps !== null) {
         propertiesDisplay = Object.keys(rawProps).filter(k => rawProps[k]);
+    }
+
+    const isVersatile = propertiesDisplay.some((p: any) => p.toLowerCase().includes('versatile') || p.includes('qEIYaQ9j2EUmSrx6'));
+    const isTwoHanded = propertiesDisplay.some((p: any) => p.toLowerCase().includes('two-handed') || p.includes('b6Gm2ULKj2qyy2xJ'));
+
+    // Description
+    const rawDesc = getSafeDescription(item.system);
+    const description = rawDesc;
+
+    let damage = item.system?.damage?.value;
+    if (!damage) {
+        if (isVersatile) {
+            damage = `${item.system?.damage?.oneHanded || 'd4'}/${item.system?.damage?.twoHanded || 'd6'}`;
+        } else if (isTwoHanded) {
+            damage = item.system?.damage?.twoHanded || item.system?.damage?.oneHanded || 'd4';
+        } else {
+            damage = item.system?.damage?.oneHanded || 'd4';
+        }
     }
 
     // Cost Formatter

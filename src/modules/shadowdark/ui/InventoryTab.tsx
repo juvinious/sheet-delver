@@ -87,8 +87,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
     const gemSlots = calculateGemSlots(gems.filter(g => !g.system?.stashed));
     const coinSlots = calculateCoinSlots(actor.system?.coins);
 
-    const currentSlots = gearSlots + treasureSlots + gemSlots + coinSlots;
-    const maxSlots = calculateMaxSlots(actor);//actor.derived?.inventory?.slots?.max || calculateMaxSlots(actor);
+    // Use backend computed value for the total to ensure consistency
+    // We still calculate individual categories for the breakdown display, but the total comes from the source of truth
+    const currentSlots = actor.computed?.slotsUsed ?? (gearSlots + treasureSlots + gemSlots + coinSlots);
+    const maxSlots = actor.system?.slots?.max || calculateMaxSlots(actor);
 
     // Coin Synced States
     const [localGp, setLocalGp] = useState(actor.system?.coins?.gp || 0);

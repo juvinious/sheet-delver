@@ -5,15 +5,36 @@ import RichTextEditor from '@/app/ui/components/RichTextEditor';
 interface NotesTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
+    token?: string | null;
 }
 
-export default function NotesTab({ actor, onUpdate }: NotesTabProps) {
-    // Try to find the notes content
-    // Shadowdark stores notes at system.notes (not system.details.notes.value)
-    const notesContent = actor.system?.notes || actor.system?.details?.notes?.value || actor.system?.details?.biography?.value || actor.details?.notes || actor.details?.biography || '';
+export default function NotesTab({ actor, onUpdate, token }: NotesTabProps) {
 
-    // Shadowdark uses system.notes for character notes
-    const updatePath = 'system.notes';
+    // Use normalized notes path from system.ts
+    const notesContent = actor.details?.notes || '';
+
+    const handleSave = async (html: string) => {
+        try {
+            const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/notes`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ notes: html })
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to save notes');
+            }
+
+            // Update local state to reflect the change
+            onUpdate('details.notes', html);
+        } catch (error) {
+            console.error('Error saving notes:', error);
+            throw error;
+        }
+    };
 
     return (
         <div className="h-full flex flex-col gap-4 pb-20">
@@ -26,9 +47,7 @@ export default function NotesTab({ actor, onUpdate }: NotesTabProps) {
             <div className="bg-white border-black border-2 shadow-sm flex-1 flex flex-col overflow-hidden relative text-black">
                 <RichTextEditor
                     content={notesContent}
-                    onSave={(html) => {
-                        onUpdate(updatePath, html);
-                    }}
+                    onSave={handleSave}
                 />
             </div>
         </div>

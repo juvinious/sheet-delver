@@ -9,7 +9,7 @@ import { useNotifications, NotificationContainer } from '@/app/ui/components/Not
 import { Crimson_Pro, Inter } from 'next/font/google';
 import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { shouldShowSpellsTab } from '../rules';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Check } from 'lucide-react';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
 // Sub-components
@@ -21,6 +21,7 @@ import DetailsTab from './DetailsTab';
 import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
+import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
 const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
@@ -54,6 +55,13 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
+
+    const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
+
+    // Reset view mode when actor changes
+    useEffect(() => {
+        setViewMode('simple');
+    }, [actor._id, actor.id]);
 
     const [serverSideCasterInfo, setServerSideCasterInfo] = useState<{
         isSpellcaster: boolean;
@@ -95,11 +103,12 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         callback: null
     });
 
-    const triggerRollDialog = (type: string, key: string) => {
-        // ... (existing implementation)
+    const triggerRollDialog = (type: string, key: string, options: any = {}) => {
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
         const defaults: any = {};
+
+        if (options.handedness) defaults.handedness = options.handedness;
 
         if (type === 'ability') {
             dialogType = 'ability';
@@ -185,7 +194,12 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                     const isRangedType = item.system?.type === 'ranged';
                     const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
 
-                    const isRanged = isRangedType || hasRange || (item.system?.type === 'melee' && isThrown);
+                    let isRanged = options.attackType === 'Ranged' || options.attackType === 'ranged';
+
+                    // Fallback logic if attackType wasn't explicitly provided
+                    if (options.attackType === undefined || options.attackType === null) {
+                        isRanged = isRangedType || hasRange || (item.system?.type === 'melee' && isThrown);
+                    }
 
                     // title = `Roll ` + (isRanged ? 'Ranged' : isFinesse ? 'Finesse' : 'Melee') + ` Attack with ${item.name}`;
 
@@ -207,9 +221,10 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             title,
             type: dialogType,
             defaults,
-            callback: (options) => {
-                const finalOptions = { ...options };
+            callback: (rollOptions) => {
+                const finalOptions = { ...rollOptions };
                 if (defaults.itemData) finalOptions.itemData = defaults.itemData;
+                if (defaults.handedness) finalOptions.handedness = defaults.handedness;
                 onRoll(type, key, finalOptions);
             }
         });
@@ -351,312 +366,334 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const secondaryTabs = overflowTabs;
 
     return (
-        <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black`}>
+        <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans ${viewMode === 'simple' ? 'bg-black' : 'bg-neutral-100'} text-black`}>
             {/* Loading Overlay */}
             <LoadingModal message="Loading System Data..." visible={loadingSystem} theme={shadowdarkTheme.loadingModal} />
 
-            {/* Header / Top Nav */}
-            <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
-                <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
-                    <img
-                        src={resolveImageUrl(actor.img)}
-                        alt={actor.name}
-                        className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
-                    />
-                    <div className="py-2 flex-1 flex flex-row items-center justify-between md:block">
-                        <div>
-                            <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
-                            <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
-                            </p>
-                        </div>
-                        {/* Level displayed inline on mobile for space or block on desktop */}
-                        <div className="text-xl font-bold font-serif md:hidden">
-                            {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
-                        </div>
-                        <p className="hidden md:block text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                            {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
-                        </p>
-                    </div>
-                </div>
+            {viewMode === 'simple' ? (
+                <ShadowdarkPaperSheet
+                    actor={actor}
+                    systemData={systemData}
+                    onUpdate={onUpdate}
+                    triggerRollDialog={triggerRollDialog}
+                    onRoll={onRoll}
+                    token={token}
+                    onToggleView={() => {
+                        setViewMode('advanced');
+                    }}
+                />
+            ) : (
+                <>
 
-                {/* Stats Summary */}
-                <div className="flex gap-4 md:gap-6 items-center px-4 md:pr-6 pb-2 md:pb-0 justify-around md:justify-end w-full md:w-auto bg-neutral-900 md:bg-transparent">
-
-                    {actor.computed?.levelUp && (
-                        <button
-                            onClick={() => {
-                                setLevelUpData({
-                                    currentLevel: actor.system?.level?.value || 0,
-                                    targetLevel: (actor.system?.level?.value || 0) + 1,
-                                    classObj: actor.computed?.classDetails,
-                                    ancestry: actor.system?.ancestry,
-                                    patron: actor.computed?.patronDetails,
-                                    abilities: actor.system?.abilities,
-                                    spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
-                                    // If Level 0, force empty classUuid so modal prompts for class selection
-                                    classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
-                                    // Pass explicit UUIDs for class/patron in case objects are missing
-                                    patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
-                                });
-                                setShowLevelUpModal(true);
-                            }}
-                            className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
-                        >
-                            LEVEL UP!
-                        </button>
-                    )}
-                    {actor.system?.attributes?.hp && (
-                        <div className="flex flex-col items-center">
-                            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
-                            <div className="flex items-center gap-1 font-serif font-bold text-xl md:text-2xl">
-                                <input
-                                    key={actor.system.attributes.hp.value} // Force remount to sync when other tabs update it
-                                    type="number"
-                                    defaultValue={actor.system.attributes.hp.value}
-                                    onBlur={(e) => {
-                                        let val = parseInt(e.target.value);
-                                        const max = actor.computed?.maxHp || 1;
-                                        // Enforce Max HP Cap
-                                        if (val > max) val = max;
-                                        // Reset input display if it was capped
-                                        if (val !== parseInt(e.target.value)) e.target.value = val.toString();
-
-                                        if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
-                                    }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.currentTarget.blur();
-                                        }
-                                    }}
-                                    className="w-10 md:w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                />
-                                <span className="opacity-50">/</span>
-                                <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
+                    {/* Header / Top Nav */}
+                    <div className="bg-neutral-900 text-white shadow-md sticky top-0 z-10 flex flex-col md:flex-row items-stretch justify-between mb-6 border-b-4 border-black min-h-[6rem] transition-all">
+                        <div className="flex items-center gap-4 md:gap-6 p-4 md:p-0 md:pl-0 w-full md:w-auto border-b md:border-b-0 border-white/10 md:border-none">
+                            <img
+                                src={resolveImageUrl(actor.img)}
+                                alt={actor.name}
+                                className="h-16 w-16 md:h-24 md:w-24 object-cover border-r-2 border-white/10 bg-neutral-800 shrink-0"
+                            />
+                            <div className="py-2 flex-1 flex flex-row items-center justify-between md:block">
+                                <div>
+                                    <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-x-3 gap-y-1">
+                                        <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
+                                            {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                setViewMode('simple');
+                                            }}
+                                            className="text-[10px] text-amber-500 hover:text-amber-400 font-bold uppercase tracking-widest mt-1 border border-amber-500/30 px-2 py-0.5 rounded w-fit"
+                                        >
+                                            View Single Page Sheet
+                                        </button>
+                                    </div>
+                                </div>
+                                {/* Level displayed inline on mobile for space or block on desktop */}
+                                <div className="text-xl font-bold font-serif md:hidden flex flex-col items-end">
+                                    <span className="text-[10px] text-neutral-500 uppercase tracking-widest leading-none">Level</span>
+                                    <span>{actor.system?.level?.value !== undefined ? actor.system.level.value : ''}</span>
+                                </div>
+                                <p className="hidden md:block text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
+                                    {actor.system?.level?.value !== undefined ? `Level ${actor.system.level.value}` : ''}
+                                </p>
                             </div>
                         </div>
-                    )}
-                    {(actor.computed?.ac !== undefined) && (
-                        <div className="flex flex-col items-center">
-                            <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
-                            <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed.ac}</span>
-                        </div>
-                    )}
 
-                    {/* Dice Tray Button */}
-                    <button
-                        onClick={() => onToggleDiceTray?.()}
-                        className={`dice-tray-toggle flex flex-col items-center group -mb-1 transition-colors ${isDiceTrayOpen ? 'text-amber-500' : 'text-neutral-500'}`}
-                        title={isDiceTrayOpen ? "Close Dice Tray" : "Open Dice Tray"}
-                    >
-                        <span className={`text-[10px] uppercase font-bold tracking-widest transition-colors ${isDiceTrayOpen ? 'text-amber-500' : 'text-neutral-500 group-hover:text-amber-500'}`}>
-                            {isDiceTrayOpen ? 'Close' : 'Roll'}
-                        </span>
-                        <div className={`w-10 h-10 flex items-center justify-center transition-all duration-300 ${isDiceTrayOpen ? 'rotate-90 scale-110' : 'group-hover:scale-110'}`}>
-                            {isDiceTrayOpen ? (
-                                <X className="w-8 h-8 text-amber-500 -rotate-90" />
-                            ) : (
-                                <img src="/icons/dice-d20.svg" alt="Roll" className="w-full h-full brightness-0 invert transition-all group-hover:drop-shadow-[0_0_8px_rgba(245,158,11,0.8)] drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]" />
+                        {/* Stats Summary */}
+                        <div className="flex gap-4 md:gap-6 items-center px-4 md:pr-6 pb-2 md:pb-0 justify-around md:justify-end w-full md:w-auto bg-neutral-900 md:bg-transparent">
+
+                            {actor.computed?.levelUp && (
+                                <button
+                                    onClick={() => {
+                                        setLevelUpData({
+                                            currentLevel: actor.system?.level?.value || 0,
+                                            targetLevel: (actor.system?.level?.value || 0) + 1,
+                                            classObj: actor.computed?.classDetails,
+                                            ancestry: actor.system?.ancestry,
+                                            patron: actor.computed?.patronDetails,
+                                            abilities: actor.system?.abilities,
+                                            spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
+                                            // If Level 0, force empty classUuid so modal prompts for class selection
+                                            classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
+                                            // Pass explicit UUIDs for class/patron in case objects are missing
+                                            patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
+                                        });
+                                        setShowLevelUpModal(true);
+                                    }}
+                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
+                                >
+                                    LEVEL UP!
+                                </button>
                             )}
-                        </div>
-                    </button>
-                </div>
-            </div>
+                            {actor.system?.attributes?.hp && (
+                                <div className="flex flex-col items-center">
+                                    <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
+                                    <div className="flex items-center gap-1 font-serif font-bold text-xl md:text-2xl">
+                                        <input
+                                            key={actor.system.attributes.hp.value} // Force remount to sync when other tabs update it
+                                            type="number"
+                                            defaultValue={actor.system.attributes.hp.value}
+                                            onBlur={(e) => {
+                                                let val = parseInt(e.target.value);
+                                                const max = actor.computed?.maxHp || 1;
+                                                // Enforce Max HP Cap
+                                                if (val > max) val = max;
+                                                // Reset input display if it was capped
+                                                if (val !== parseInt(e.target.value)) e.target.value = val.toString();
 
-            {/* Navigation Tabs (Unified) */}
-            <div className="flex border-b-2 border-black bg-white mb-6 mx-0 md:mx-4 sticky top-24 z-20 shadow-sm md:shadow-none overflow-visible">
-                {/* Primary Tabs */}
-                {/* Use w-full and split evenly or just flex? User wanted tabs to show if large enough. */}
-                <div className="flex flex-1 overflow-hidden">
-                    {
-                        primaryTabs.map(tab => (
+                                                if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.currentTarget.blur();
+                                                }
+                                            }}
+                                            className="w-10 md:w-12 text-center bg-transparent border-b border-neutral-300 hover:border-black focus:border-amber-500 outline-none transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                        <span className="opacity-50">/</span>
+                                        <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
+                                    </div>
+                                </div>
+                            )}
+                            {(actor.computed?.ac !== undefined) && (
+                                <div className="flex flex-col items-center">
+                                    <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
+                                    <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed.ac}</span>
+                                </div>
+                            )}
                             <button
-                                key={tab.id}
-                                onClick={() => handleTabSelect(tab.id)}
-                                className={`flex-1 py-3 md:py-2 text-xs md:text-sm font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-2 md:px-4 border-r border-black/10 md:border-black last:border-r-0 md:last:border-r-0
-                                ${activeTab === tab.id ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}
-                                `}
+                                onClick={() => onToggleDiceTray?.()}
+                                className="ml-4 transition-all duration-300 hover:scale-110 active:scale-95 group shrink-0"
+                                title="Open Dice Tray"
                             >
-                                {tab.label}
+                                <img
+                                    src="/icons/dice-d20.svg"
+                                    className="w-14 h-14 invert opacity-70 group-hover:opacity-100 transition-all"
+                                    alt="Roll d20"
+                                />
                             </button>
-                        ))
-                    }
-                </div>
+                        </div>
+                    </div>
 
-                {/* Overflow Menu */}
-                {secondaryTabs.length > 0 && (
-                    <div className="relative border-l-2 border-black flex-none" ref={menuRef}>
-                        <button
-                            onClick={() => setMenuOpen(!menuOpen)}
-                            className={`h-full px-4 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs md:text-sm transition-colors
-                                ${menuOpen || secondaryTabs.some(t => t.id === activeTab) ? 'bg-black text-white' : 'hover:bg-neutral-200 text-neutral-600'}`}
-                        >
-                            <span className="hidden sm:inline">More</span>
-                            {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
-                        </button>
-
-                        {menuOpen && (
-                            <div className="absolute top-full right-0 mt-0 w-48 bg-white border-2 border-black shadow-xl z-30 animate-in fade-in slide-in-from-top-2 duration-200">
-                                {secondaryTabs.map(tab => (
+                    {/* Navigation Tabs (Unified) */}
+                    <div className="flex border-b-2 border-black bg-white mb-6 mx-0 md:mx-4 sticky top-24 z-20 shadow-sm md:shadow-none overflow-visible">
+                        {/* Primary Tabs */}
+                        {/* Use w-full and split evenly or just flex? User wanted tabs to show if large enough. */}
+                        <div className="flex flex-1 overflow-hidden">
+                            {
+                                primaryTabs.map(tab => (
                                     <button
                                         key={tab.id}
                                         onClick={() => handleTabSelect(tab.id)}
-                                        className={`w-full text-left px-4 py-3 text-sm font-bold uppercase tracking-widest transition-colors border-b border-neutral-100 last:border-0
-                                            ${activeTab === tab.id ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:bg-neutral-50 hover:text-black'}`}
+                                        className={`flex-1 py-3 md:py-2 text-xs md:text-sm font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-2 md:px-4 border-r border-black/10 md:border-black last:border-r-0 md:last:border-r-0
+                                ${activeTab === tab.id ? 'bg-black text-white' : 'text-neutral-600 hover:bg-neutral-200'}
+                                `}
                                     >
                                         {tab.label}
                                     </button>
-                                ))}
+                                ))
+                            }
+                        </div>
+
+                        {/* Overflow Menu */}
+                        {secondaryTabs.length > 0 && (
+                            <div className="relative border-l-2 border-black flex-none" ref={menuRef}>
+                                <button
+                                    onClick={() => setMenuOpen(!menuOpen)}
+                                    className={`h-full px-4 flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs md:text-sm transition-colors
+                                ${menuOpen || secondaryTabs.some(t => t.id === activeTab) ? 'bg-black text-white' : 'hover:bg-neutral-800 text-neutral-400'}`}
+                                >
+                                    <span className="hidden sm:inline">More</span>
+                                    {menuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+                                </button>
+
+                                {menuOpen && (
+                                    <div className="absolute top-full right-0 mt-0 w-48 bg-white border-2 border-black shadow-xl z-30 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        {secondaryTabs.map(tab => (
+                                            <button
+                                                key={tab.id}
+                                                onClick={() => handleTabSelect(tab.id)}
+                                                className={`w-full text-left px-4 py-3 text-sm font-bold uppercase tracking-widest transition-colors border-b border-neutral-100 last:border-0
+                                            ${activeTab === tab.id ? 'bg-neutral-100 text-black' : 'text-neutral-500 hover:bg-neutral-50 hover:text-black'}`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
-                )}
-            </div>
 
-            {/* Content Area */}
-            <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
-                {activeTab === 'details' && (
-                    <DetailsTab
-                        actor={actor}
-                        systemData={systemData}
-                        onUpdate={onUpdate}
-                        onCreateItem={onCreateItem}
-                        onUpdateItem={onUpdateItem}
-                        onDeleteItem={onDeleteItem}
-                        onToggleEffect={onToggleEffect}
-                    />
-                )
-                }
-
-                {
-                    activeTab === 'abilities' && (
-                        <AbilitiesTab
-                            actor={actor}
-                            onUpdate={onUpdate}
-                            triggerRollDialog={triggerRollDialog}
-                            onRoll={onRoll}
-                        />
-                    )
-                }
-
-                {
-                    activeTab === 'spells' && (
-                        <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
-                            <SpellsTab
+                    {/* Content Area */}
+                    <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
+                        {activeTab === 'details' && (
+                            <DetailsTab
                                 actor={actor}
                                 systemData={systemData}
                                 onUpdate={onUpdate}
-                                triggerRollDialog={triggerRollDialog}
-                                onRoll={onRoll}
+                                onCreateItem={onCreateItem}
+                                onUpdateItem={onUpdateItem}
                                 onDeleteItem={onDeleteItem}
-                                addNotification={addNotification}
-                                token={token}
+                                onToggleEffect={onToggleEffect}
                             />
-                        </ErrorBoundary>
-                    )
-                }
+                        )
+                        }
 
-                {
-                    activeTab === 'talents' && (
-                        <TalentsTab
-                            actor={actor}
-                            onRoll={onRoll}
-                        />
-                    )
-                }
+                        {
+                            activeTab === 'abilities' && (
+                                <AbilitiesTab
+                                    actor={actor}
+                                    onUpdate={onUpdate}
+                                    triggerRollDialog={triggerRollDialog}
+                                    onRoll={onRoll}
+                                />
+                            )
+                        }
 
-                {
-                    activeTab === 'inventory' && (
-                        <InventoryTab
-                            actor={actor}
-                            onUpdate={onUpdate}
-                            onRoll={onRoll}
-                            onDeleteItem={onDeleteItem}
-                            onCreateItem={onCreateItem}
-                            onUpdateItem={onUpdateItem}
-                        />
-                    )
-                }
+                        {
+                            activeTab === 'spells' && (
+                                <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
+                                    <SpellsTab
+                                        actor={actor}
+                                        systemData={systemData}
+                                        onUpdate={onUpdate}
+                                        triggerRollDialog={triggerRollDialog}
+                                        onRoll={onRoll}
+                                        onDeleteItem={onDeleteItem}
+                                        addNotification={addNotification}
+                                        token={token}
+                                    />
+                                </ErrorBoundary>
+                            )
+                        }
 
-                {
-                    activeTab === 'notes' && (
-                        <NotesTab
-                            actor={actor}
-                            onUpdate={onUpdate}
-                        />
-                    )
-                }
+                        {
+                            activeTab === 'talents' && (
+                                <TalentsTab
+                                    actor={actor}
+                                    onRoll={onRoll}
+                                />
+                            )
+                        }
 
-                {
-                    activeTab === 'effects' && (
-                        <EffectsTab
-                            actor={actor}
-                            token={token}
-                            onToggleEffect={onToggleEffect}
-                            onDeleteEffect={onDeleteEffect}
-                            onAddPredefinedEffect={onAddPredefinedEffect}
-                            systemConfig={systemData}
-                            onCreateEffect={async (effectData) => {
-                                try {
-                                    const id = actor.id || actor._id;
-                                    const headers: any = { 'Content-Type': 'application/json' };
-                                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                        {
+                            activeTab === 'inventory' && (
+                                <InventoryTab
+                                    actor={actor}
+                                    onUpdate={onUpdate}
+                                    onRoll={onRoll}
+                                    onDeleteItem={onDeleteItem}
+                                    onCreateItem={onCreateItem}
+                                    onUpdateItem={onUpdateItem}
+                                />
+                            )
+                        }
 
-                                    const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/create`, {
-                                        method: 'POST',
-                                        headers,
-                                        body: JSON.stringify(effectData)
-                                    });
+                        {
+                            activeTab === 'notes' && (
+                                <NotesTab
+                                    actor={actor}
+                                    onUpdate={onUpdate}
+                                    token={token}
+                                />
+                            )
+                        }
 
-                                    if (!res.ok) {
-                                        const error = await res.json();
-                                        throw new Error(error.message || 'Failed to create effect');
-                                    }
+                        {
+                            activeTab === 'effects' && (
+                                <EffectsTab
+                                    actor={actor}
+                                    token={token}
+                                    onToggleEffect={onToggleEffect}
+                                    onDeleteEffect={onDeleteEffect}
+                                    onAddPredefinedEffect={onAddPredefinedEffect}
+                                    systemConfig={systemData}
+                                    onCreateEffect={async (effectData) => {
+                                        try {
+                                            const id = actor.id || actor._id;
+                                            const headers: any = { 'Content-Type': 'application/json' };
+                                            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                                    addNotification('Effect created successfully', 'success');
-                                } catch (error: any) {
-                                    console.error('Failed to create effect:', error);
-                                    addNotification(`Failed to create effect: ${error.message}`, 'error');
-                                }
-                            }}
-                            onUpdateEffect={async (effectData) => {
-                                try {
-                                    const id = actor.id || actor._id;
-                                    const _effectId = effectData._id || effectData.id;
-                                    const headers: any = { 'Content-Type': 'application/json' };
-                                    if (token) headers['Authorization'] = `Bearer ${token}`;
+                                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/create`, {
+                                                method: 'POST',
+                                                headers,
+                                                body: JSON.stringify(effectData)
+                                            });
 
-                                    const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
-                                        method: 'POST',
-                                        headers,
-                                        body: JSON.stringify(effectData)
-                                    });
+                                            if (!res.ok) {
+                                                const error = await res.json();
+                                                throw new Error(error.message || 'Failed to create effect');
+                                            }
 
-                                    if (!res.ok) {
-                                        const error = await res.json();
-                                        throw new Error(error.message || 'Failed to update effect');
-                                    }
+                                            addNotification('Effect created successfully', 'success');
+                                        } catch (error: any) {
+                                            console.error('Failed to create effect:', error);
+                                            addNotification(`Failed to create effect: ${error.message}`, 'error');
+                                        }
+                                    }}
+                                    onUpdateEffect={async (effectData) => {
+                                        try {
+                                            const id = actor.id || actor._id;
+                                            const _effectId = effectData._id || effectData.id;
+                                            const headers: any = { 'Content-Type': 'application/json' };
+                                            if (token) headers['Authorization'] = `Bearer ${token}`;
 
-                                    addNotification('Effect updated successfully', 'success');
-                                } catch (error: any) {
-                                    console.error('Failed to update effect:', error);
-                                    addNotification(`Failed to update effect: ${error.message}`, 'error');
-                                }
-                            }}
-                        />
-                    )
-                }
+                                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
+                                                method: 'POST',
+                                                headers,
+                                                body: JSON.stringify(effectData)
+                                            });
 
-                {/* Debug Data Card */}
-                {(actor.debugLevel ?? 0) >= 4 && (
-                    <div className="mt-20 border-t border-neutral-200 pt-4">
-                        <details className="text-xs font-mono text-neutral-400">
-                            <summary className="cursor-pointer mb-2">Debug Data</summary>
-                            <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
-                        </details>
+                                            if (!res.ok) {
+                                                const error = await res.json();
+                                                throw new Error(error.message || 'Failed to update effect');
+                                            }
+
+                                            addNotification('Effect updated successfully', 'success');
+                                        } catch (error: any) {
+                                            console.error('Failed to update effect:', error);
+                                            addNotification(`Failed to update effect: ${error.message}`, 'error');
+                                        }
+                                    }}
+                                />
+                            )
+                        }
+
+                        {/* Debug Data Card */}
+                        {(actor.debugLevel ?? 0) >= 4 && (
+                            <div className="mt-20 border-t border-neutral-200 pt-4">
+                                <details className="text-xs font-mono text-neutral-400">
+                                    <summary className="cursor-pointer mb-2">Debug Data</summary>
+                                    <pre className="bg-neutral-100 p-4 overflow-auto rounded">{JSON.stringify(actor, null, 2)}</pre>
+                                </details>
+                            </div>
+                        )}
                     </div>
-                )}
-            </div >
+                </>
+            )}
 
             <RollDialog
                 isOpen={rollDialog.open}

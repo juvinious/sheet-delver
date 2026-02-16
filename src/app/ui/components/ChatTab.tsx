@@ -27,7 +27,10 @@ const defaultStyles = {
     button: "inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white/90 transition-all cursor-pointer my-1 shadow-sm active:scale-95",
     buttonText: "text-white/40 uppercase tracking-widest",
     buttonValue: "text-amber-500 font-bold",
-    scrollButton: "bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-3 py-1.5 text-xs font-bold text-white/90 transition-all active:scale-95"
+    scrollButton: "bg-white/10 hover:bg-white/20 border border-white/20 hover:border-amber-500/50 rounded-lg px-3 py-1.5 text-xs font-bold text-white/90 transition-all active:scale-95",
+    inputContainer: "col-span-2 flex gap-2 p-1 bg-neutral-900/50 backdrop-blur-sm rounded-lg border border-white/5 mb-2",
+    inputField: "flex-1 bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500/50 text-white placeholder:text-white/20",
+    sendBtn: "bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:hover:bg-amber-600 text-black px-4 py-1.5 rounded-md text-xs font-black transition-colors"
 };
 
 export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter, speaker }: ChatTabProps) {
@@ -212,25 +215,6 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
 
                 {/* Scroll Buttons */}
                 <div className="grid grid-cols-2 gap-2 px-4 pt-2">
-                    {/* Chat Input at bottom for easy access */}
-                    <div className="col-span-2 flex gap-2 p-1 bg-neutral-900/50 backdrop-blur-sm rounded-lg border border-white/5 mb-2">
-                        <input
-                            type="text"
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleInputSend()}
-                            placeholder="Type a message..."
-                            className="flex-1 bg-white/5 border border-white/10 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-amber-500/50 text-white placeholder:text-white/20"
-                        />
-                        <button
-                            onClick={handleInputSend}
-                            disabled={!chatInput.trim()}
-                            className="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:hover:bg-amber-600 text-black px-4 py-1.5 rounded-md text-xs font-black transition-colors"
-                        >
-                            SEND
-                        </button>
-                    </div>
-
                     <button
                         onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
                         className={s.scrollButton || defaultStyles.scrollButton}
@@ -243,6 +227,25 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                     >
                         ↓ Older
                     </button>
+
+                    {/* Chat Input at bottom for easy access */}
+                    <div className={s.inputContainer || defaultStyles.inputContainer}>
+                        <input
+                            type="text"
+                            value={chatInput}
+                            onChange={(e) => setChatInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleInputSend()}
+                            placeholder="Type a message..."
+                            className={s.inputField || defaultStyles.inputField}
+                        />
+                        <button
+                            onClick={handleInputSend}
+                            disabled={!chatInput.trim()}
+                            className={s.sendBtn || defaultStyles.sendBtn}
+                        >
+                            SEND
+                        </button>
+                    </div>
                 </div>
             </div>
 

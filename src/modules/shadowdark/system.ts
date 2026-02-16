@@ -1,5 +1,5 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
-import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots, isSpellcaster, isClassSpellcaster, shouldShowSpellsTab, canUseMagicItems } from './rules';
+import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots, isSpellcaster, isClassSpellcaster, shouldShowSpellsTab, canUseMagicItems, calculateAC } from './rules';
 import { logger } from '../../core/logger';
 import { dataManager } from './data/DataManager';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
@@ -87,7 +87,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     };
 
                     // Calculate slot usage for physical items
-                    if (i.system?.isPhysical && i.type !== "Gem") {
+                    // We check for 'slots' property existence as 'isPhysical' might be a getter stripped by toObject()
+                    if (i.system?.slots && i.type !== "Gem") {
                         let freeCarry = i.system.slots?.free_carry || 0;
 
                         if (freeCarrySeen[i.name]) {
@@ -109,7 +110,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         itemData.showQuantity = i.system.isAmmunition || (perSlot > 1) || (qty > 1);
 
                         // Light source progress indicators
-                        if (i.type === "Basic" && i.system.light?.isSource) {
+                        if (i.system?.light?.isSource) {
                             itemData.isLightSource = true;
                             itemData.lightSourceActive = i.system.light.active;
                             itemData.lightSourceUsed = i.system.light.hasBeenUsed;
@@ -285,113 +286,104 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     levelUp: xpVal >= threshold
                 };
 
-                if (actor.type === "Player") {
-                    try {
-                        computed.ac = (typeof actor.getArmorClass === 'function') ? await actor.getArmorClass() : 10;
-                    } catch (err) { logger.error('Error calculating AC:', err); computed.ac = 10; }
+                try {
+                    // --- BROWSER CONTEXT ---
+                    // The following code runs inside the browser!
+                    // We have access to the real ActorSD instance here.
 
-                    try {
-                        computed.gearSlots = (typeof actor.numGearSlots === 'function') ? actor.numGearSlots() : 10;
-                    } catch (err) { logger.error('Error calculating Gear Slots:', err); computed.gearSlots = 10; }
+                    const abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
+                    const keys = Object.keys(abilities);
+                    const safeAbilities: any = {};
 
-
-                    // --- UNIFIED SPELLCASTER CHECK ---
-                    computed.isSpellCaster = isSpellcaster(actor);
-                    computed.canUseMagicItems = canUseMagicItems(actor);
-                    computed.showSpellsTab = shouldShowSpellsTab(actor);
-
-                    try {
-                        // --- BROWSER CONTEXT ---
-                        // The following code runs inside the browser!
-                        // We have access to the real ActorSD instance here.
-
-                        const abilities = (typeof actor.getCalculatedAbilities === 'function') ? actor.getCalculatedAbilities() : (actor.system.abilities || {});
-                        const keys = Object.keys(abilities);
-                        const safeAbilities: any = {};
-
-                        // 1. Sanitize Data (Polyfill missing bonus)
-                        // We modify the actor's system data in memory to ensure the API call doesn't crash/fail
-                        if (actor.type === 'Player' && actor.system?.abilities) {
-                            for (const key of keys) {
-                                if (actor.system.abilities[key] && actor.system.abilities[key].bonus === undefined) {
-                                    actor.system.abilities[key].bonus = 0;
-                                }
-                            }
-                        }
-
-                        // 2. Strict API Usage
+                    // 1. Sanitize Data (Polyfill missing bonus)
+                    // We modify the actor's system data in memory to ensure the API call doesn't crash/fail
+                    if (actor.type === 'Player' && actor.system?.abilities) {
                         for (const key of keys) {
-                            const stat = abilities[key];
-                            let finalMod = stat.mod ?? 0;
+                            if (actor.system.abilities[key] && actor.system.abilities[key].bonus === undefined) {
+                                actor.system.abilities[key].bonus = 0;
+                            }
+                        }
+                    }
 
-                            if (typeof actor.abilityModifier === 'function') {
-                                try {
-                                    const apiMod = actor.abilityModifier(key);
-                                    if (apiMod !== undefined && apiMod !== null) {
-                                        finalMod = apiMod;
-                                    }
-                                } catch (e) {
-                                    console.error(`[Browser] Error calculating modifier for ${key}:`, e);
+                    // 2. Strict API Usage
+                    for (const key of keys) {
+                        const stat = abilities[key];
+                        let finalMod = stat.mod ?? 0;
+
+                        if (typeof actor.abilityModifier === 'function') {
+                            try {
+                                const apiMod = actor.abilityModifier(key);
+                                if (apiMod !== undefined && apiMod !== null) {
+                                    finalMod = apiMod;
                                 }
+                            } catch (e) {
+                                console.error(`[Browser] Error calculating modifier for ${key}:`, e);
                             }
-
-                            // Fallback: If API failed to return a number, try local calculation?
-                            // User requested STRICT API usage. If API returns 0, we trust it (or fixed the input so it's correct).
-                            // Note: If we really want to be safe, we could check if API mod is 0 but base is e.g. 18.
-                            // But let's trust the API with sanitized data.
-
-                            safeAbilities[key] = { ...stat, mod: finalMod };
                         }
-                        computed.abilities = safeAbilities;
+                        safeAbilities[key] = { ...stat, mod: finalMod };
+                    }
+                    computed.abilities = safeAbilities;
 
-                    } catch (err) { console.error('Error calculating Abilities in Browser:', err); computed.abilities = actor.system.abilities || {}; }
+                } catch (err) { console.error('Error calculating Abilities in Browser:', err); computed.abilities = actor.system.abilities || {}; }
 
-                    // Get spellcasting ability
-                    let spellcastingAbility = "";
-                    try {
-                        const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
-                        if (characterClass) {
-                            spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
-                        }
-                    } catch (err) { console.error('Error resolving spellcasting:', err); }
-                    computed.spellcastingAbility = spellcastingAbility;
 
-                    // Resolve UUIDs for Class/Ancestry/Background names if strict items missing
-                    // This ensures the dashboard displays names like "Wizard" instead of "Compendium..."
-                    try {
-                        const resolveName = async (field: any) => {
-                            if (typeof field === 'string' && (field.startsWith('Compendium') || field.startsWith('Actor') || field.startsWith('Item'))) {
-                                try {
-                                    // @ts-ignore
-                                    const item = await fromUuid(field);
-                                    return item?.name;
-                                } catch { }
-                            }
-                            return undefined;
-                        };
+                // --- SLOT CALCULATION (Foundry Context) ---
+                // We do a basic count here, but the server-side normalization will be the source of truth
+                let totalSlotsUsed = 0;
+                items.forEach((i: any) => {
+                    if (!i.system?.stashed && i.type !== 'Gem') {
+                        totalSlotsUsed += (i.slotsUsed || 0);
+                    }
+                });
+                totalSlotsUsed += calculateCoinSlots(actor.system.coins);
+                const gems = items.filter((i: any) => i.type === 'Gem' && !i.system?.stashed);
+                totalSlotsUsed += calculateGemSlots(gems);
+                computed.slotsUsed = Math.max(0, totalSlotsUsed);
 
-                        computed.resolvedNames = {
-                            class: await resolveName(actor.system.class),
-                            ancestry: await resolveName(actor.system.ancestry),
-                            background: await resolveName(actor.system.background)
-                        };
+                // Get spellcasting ability
+                let spellcastingAbility = "";
+                try {
+                    const characterClass = actor.items.find((i: any) => i.type === "Class" || i.type === "class");
+                    if (characterClass) {
+                        spellcastingAbility = characterClass.system.spellcasting?.ability?.toUpperCase() || "";
+                    }
+                } catch (err) { console.error('Error resolving spellcasting:', err); }
+                computed.spellcastingAbility = spellcastingAbility;
 
-                        // Fallback: If we resolved a class UUID, maybe we can get spellcasting from it too if we missed it earlier
-                        if (!computed.spellcastingAbility && computed.resolvedNames.class && typeof actor.system.class === 'string') {
+                // Resolve UUIDs for Class/Ancestry/Background names
+                try {
+                    const resolveName = async (field: any) => {
+                        if (typeof field === 'string' && (field.startsWith('Compendium') || field.startsWith('Actor') || field.startsWith('Item'))) {
                             try {
                                 // @ts-ignore
-                                const classItem = await fromUuid(actor.system.class);
-                                if (classItem) {
-                                    computed.spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
-                                }
+                                const item = await fromUuid(field);
+                                return item?.name;
                             } catch { }
                         }
+                        return undefined;
+                    };
 
-                    } catch (e) {
-                        console.error('Error resolving UUID names:', e);
-                        computed.resolvedNames = {};
+                    computed.resolvedNames = {
+                        class: await resolveName(actor.system.class),
+                        ancestry: await resolveName(actor.system.ancestry),
+                        background: await resolveName(actor.system.background)
+                    };
+
+                    if (!computed.spellcastingAbility && computed.resolvedNames.class && typeof actor.system.class === 'string') {
+                        try {
+                            // @ts-ignore
+                            const classItem = await fromUuid(actor.system.class);
+                            if (classItem) {
+                                computed.spellcastingAbility = classItem.system.spellcasting?.ability?.toUpperCase() || "";
+                            }
+                        } catch { }
                     }
+
+                } catch (e) {
+                    console.error('Error resolving UUID names:', e);
+                    computed.resolvedNames = {};
                 }
+
 
                 return {
                     id: actor.id || actor._id,
@@ -500,6 +492,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             patrons: [] as any[],
             spells: [] as any[],
             talents: [] as any[],
+            properties: [] as any[],
             titles: {},
             PREDEFINED_EFFECTS: {
                 ...SYSTEM_PREDEFINED_EFFECTS,
@@ -557,6 +550,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     results.patrons.push(baseInfo);
                 } else if (type === 'talent') {
                     results.talents.push(baseInfo);
+                } else if (type === 'property' || type === 'itemproperty') {
+                    results.properties.push(baseInfo);
                 } else if (type === 'spell') {
                     results.spells.push({
                         ...baseInfo,
@@ -607,6 +602,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     results.patrons.push(baseInfo);
                 } else if (type === 'talent') {
                     results.talents.push(baseInfo);
+                } else if (type === 'property' || type === 'itemproperty') {
+                    results.properties.push(baseInfo);
                 } else if (type === 'spell') {
                     this._processSpellDiscovery(client, item, uuid, baseInfo, results, discoveryTasks);
                 }
@@ -1101,9 +1098,22 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const backgroundName = findItemName('Background', s.background || s.details?.background) || resolved.background || s.background || s.details?.background || '';
         const patronName = findItemName('Patron', s.patron || s.details?.patron) || resolved.patron || s.patron || s.details?.patron || '';
 
-        // Unified Spellcaster Logic (v2: Broad Keyword Match + Collection Robustness)
-        const isCaster = isSpellcaster({ ...actor, items: actorItems, system: s });
-        const showSpellsTab = shouldShowSpellsTab({ ...actor, items: actorItems, system: s });
+        // Unified Spellcaster & Stat Logic (Server-Side)
+        const actorProxy = { ...actor, items: actorItems, system: s };
+        const isCaster = isSpellcaster(actorProxy);
+        const showSpellsTab = shouldShowSpellsTab(actorProxy);
+        const maxSlots = calculateMaxSlots(actorProxy);
+        const currentAC = calculateAC(actorProxy, actorItems);
+
+        // Calculate used slots robustly here for the 'computed' object
+        let usedSlots = 0;
+        actorItems.forEach((i: any) => {
+            if (!i.system?.stashed && i.type !== 'Gem') {
+                usedSlots += calculateItemSlots(i);
+            }
+        });
+        usedSlots += calculateGemSlots(actorItems.filter((i: any) => i.type === 'Gem' && !i.system?.stashed));
+        usedSlots += calculateCoinSlots(s.coins);
 
         // Map items for the view
         const levelVal = s.level?.value || 0;
@@ -1114,15 +1124,17 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const computed = {
             ...(actor.computed || {}),
             isSpellCaster: isCaster,
-            canUseMagicItems: canUseMagicItems({ ...actor, items: actorItems, system: s }),
+            canUseMagicItems: canUseMagicItems(actorProxy),
             showSpellsTab: showSpellsTab,
             classDetails: classItem,
             patronDetails: patronItem,
             xpNextLevel: nextXP,
             levelUp: levelUp,
-            // Ensure gearSlots is always set, using browser-computed value if available,
-            // otherwise calculate it using the effect-modified system data
-            gearSlots: actor.computed?.gearSlots ?? calculateMaxSlots({ ...actor, items: actorItems, system: s })
+            ac: currentAC,
+            maxSlots: maxSlots,
+            slotsUsed: Math.max(0, usedSlots),
+            // gearSlots for compatibility with existing inventory tab
+            gearSlots: maxSlots
         };
 
         // --- ROBUST EFFECT MERGING ---
@@ -1232,11 +1244,47 @@ export class ShadowdarkAdapter implements SystemAdapter {
             try {
                 applyItemDataOverrides(item);
                 item.spells = getItemSpells(item);
+
+                // Light source progress indicators
+                if (item.system?.light?.isSource || (item.type === "Basic" && item.name?.toLowerCase().includes("torch"))) {
+                    item.isLightSource = true;
+                    item.lightSourceActive = item.system?.light?.active;
+                    item.lightSourceUsed = item.system?.light?.hasBeenUsed;
+
+                    const light = item.system?.light || {};
+                    const remainingSecs = light.remainingSecs ?? 3600;
+                    const longevityMins = light.longevityMins ?? 60;
+
+                    const maxSeconds = longevityMins * 60;
+                    let progress = "◆";
+                    if (maxSeconds > 0) {
+                        for (let x = 1; x < 4; x++) {
+                            if (remainingSecs > (maxSeconds * x / 4)) {
+                                progress += " ◆";
+                            } else {
+                                progress += " ◇";
+                            }
+                        }
+                    }
+                    item.lightSourceProgress = progress;
+
+                    const timeRemaining = Math.ceil(remainingSecs / 60);
+                    if (remainingSecs < 60 && remainingSecs > 0) {
+                        item.lightSourceTimeRemaining = "< 1 min";
+                    } else if (remainingSecs <= 0) {
+                        item.lightSourceTimeRemaining = "Expended";
+                    } else {
+                        item.lightSourceTimeRemaining = `${timeRemaining} min`;
+                    }
+                }
             } catch (e: any) {
                 logger.error(`Error processing item overrides for ${item.name}`, e);
             }
             return item;
         });
+
+        // Ensure derived inventory uses normalized items
+        const actorToCategorize = { ...actor, items: normalizedItems, computed };
 
         const sheetData: ActorSheetData = {
             id: actor.id || actor._id,
@@ -1276,8 +1324,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 backgrounds: [] // Placeholder
             },
             derived: {
-                ...this.calculateAttacks(actor, abilities),
-                ...this.categorizeInventory({ ...actor, computed })
+                ...this.calculateAttacks(actorToCategorize, abilities),
+                ...this.categorizeInventory(actorToCategorize)
             }
         };
 
@@ -1512,8 +1560,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
             if (item.type !== 'Weapon' || !item.system?.equipped) return;
 
             // Attack Bonus Calculation
-            const isFinesse = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('finesse'));
-            const isThrown = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('thrown'));
+            const properties = item.system?.properties || [];
+            const isFinesse = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('finesse') || p.includes('9P7X1Gq5Qo2Nq2Xj')));
+            const isThrown = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('thrown') || p.includes('m17A6nb0epkHZ3lR')));
+            const isVersatile = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('versatile') || p.includes('qEIYaQ9j2EUmSrx6')));
+            const isTwoHanded = properties.some((p: any) => typeof p === 'string' && (p.toLowerCase().includes('two-handed') || p.includes('b6Gm2ULKj2qyy2xJ')));
             const isRangedType = item.system?.type === 'ranged';
             const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
 
@@ -1528,52 +1579,85 @@ export class ShadowdarkAdapter implements SystemAdapter {
             // Item Bonus
             const itemBonus = Number(item.system?.bonuses?.attackBonus || 0);
 
-            // Damage String
-            let damage = item.system?.damage?.value || `${item.system?.damage?.numDice || 1}${item.system?.damage?.oneHanded || 'd4'}`;
-
             // Melee Logic
             if (item.system?.type === 'melee') {
                 const totalMeleeBonus = (isFinesse ? Math.max(strMod, dexMod) : strMod) + itemBonus + globalAttackBonus + meleeAttackBonus;
+                const totalMeleeDamageBonus = globalDamageBonus + meleeDamageBonus;
 
-                // Add damage bonus to string if > 0
-                const totalDamageBonus = globalDamageBonus + meleeDamageBonus;
-                if (totalDamageBonus > 0) {
-                    damage += `+${totalDamageBonus}`;
-                } else if (totalDamageBonus < 0) {
-                    damage += `${totalDamageBonus}`;
+                const pushMeleeAtk = (handed: '1H' | '2H', damageFormula: string) => {
+                    let damage = damageFormula;
+                    if (totalMeleeDamageBonus > 0) damage += `+${totalMeleeDamageBonus}`;
+                    else if (totalMeleeDamageBonus < 0) damage += `${totalMeleeDamageBonus}`;
+
+                    // Build properties array for UI display
+                    const props: string[] = [];
+                    if (handed === '1H') props.push('1-Handed');
+                    if (handed === '2H') props.push('2-Handed');
+                    if (isVersatile) props.push('Versatile');
+                    if (isFinesse) props.push('Finesse');
+
+                    melee.push({
+                        ...item,
+                        name: item.name, // Remove suffix
+                        id: `${item.id || item._id}-${handed}`,
+                        _realId: item.id || item._id,
+                        derived: {
+                            toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
+                            damage: damage,
+                            isFinesse,
+                            handedness: handed,
+                            properties: props
+                        }
+                    });
+                };
+
+                if (isVersatile) {
+                    pushMeleeAtk('1H', item.system?.damage?.oneHanded || 'd4');
+                    pushMeleeAtk('2H', item.system?.damage?.twoHanded || 'd6');
+                } else if (isTwoHanded) {
+                    pushMeleeAtk('2H', item.system?.damage?.twoHanded || item.system?.damage?.oneHanded || 'd4');
+                } else {
+                    pushMeleeAtk('1H', item.system?.damage?.oneHanded || 'd4');
                 }
-
-                melee.push({
-                    ...item,
-                    derived: {
-                        toHit: totalMeleeBonus >= 0 ? `+${totalMeleeBonus}` : `${totalMeleeBonus}`,
-                        damage: damage,
-                        isFinesse
-                    }
-                });
             }
 
             // Ranged Logic (includes Thrown melees)
             if (isRangedType || hasRange || (item.system?.type === 'melee' && isThrown)) {
                 const totalRangedBonus = dexMod + itemBonus + globalAttackBonus + rangedAttackBonus;
+                const totalRangedDamageBonus = globalDamageBonus + rangedDamageBonus;
 
-                // Add damage bonus to string if > 0
-                const totalDamageBonus = globalDamageBonus + rangedDamageBonus;
-                let rangedDamage = damage;
-                if (totalDamageBonus > 0) {
-                    rangedDamage += `+${totalDamageBonus}`;
-                } else if (totalDamageBonus < 0) {
-                    rangedDamage += `${totalDamageBonus}`;
+                const pushRangedAtk = (handed: '1H' | '2H', damageFormula: string) => {
+                    let damage = damageFormula;
+                    if (totalRangedDamageBonus > 0) damage += `+${totalRangedDamageBonus}`;
+                    else if (totalRangedDamageBonus < 0) damage += `${totalRangedDamageBonus}`;
+
+                    // Build properties array for UI display
+                    const props: string[] = [];
+                    if (handed === '1H') props.push('1-Handed');
+                    if (handed === '2H') props.push('2-Handed');
+                    if (isThrown && item.system?.type === 'melee') props.push('Thrown');
+                    if (isFinesse) props.push('Finesse');
+
+                    ranged.push({
+                        ...item,
+                        name: item.name, // Remove suffix
+                        id: `${item.id || item._id}-Ranged-${handed}`,
+                        _realId: item.id || item._id,
+                        derived: {
+                            toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
+                            damage: damage,
+                            range: item.system?.range,
+                            handedness: handed,
+                            properties: props
+                        }
+                    });
+                };
+
+                if (isTwoHanded) {
+                    pushRangedAtk('2H', item.system?.damage?.twoHanded || item.system?.damage?.oneHanded || 'd4');
+                } else {
+                    pushRangedAtk('1H', item.system?.damage?.oneHanded || 'd4');
                 }
-
-                ranged.push({
-                    ...item,
-                    derived: {
-                        toHit: totalRangedBonus >= 0 ? `+${totalRangedBonus}` : `${totalRangedBonus}`,
-                        damage: rangedDamage,
-                        range: item.system?.range
-                    }
-                });
             }
         });
 
@@ -1585,7 +1669,38 @@ export class ShadowdarkAdapter implements SystemAdapter {
         };
     }
 
-    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string } | null {
+    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string; flags?: any } | null {
+        // If manual value is provided, sum it with bonuses if they exist
+        if (options.manualValue !== undefined && options.manualValue !== null) {
+            let label = 'Manual Roll';
+            if (type === 'ability') label = `${key.toUpperCase().replace('ABILITY', '')} (Manual)`;
+            if (type === 'item') {
+                const item = (actor.items || []).find((i: any) => i._id === key || i.id === key);
+                label = item ? `${item.name} (Manual)` : 'Item (Manual)';
+            }
+
+            // Sum bonuses if they are provided in options
+            let total = Number(options.manualValue);
+            const bonuses = [];
+            if (options.abilityBonus !== undefined && options.abilityBonus !== null) bonuses.push(Number(options.abilityBonus));
+            if (options.itemBonus !== undefined && options.itemBonus !== null) bonuses.push(Number(options.itemBonus));
+            if (options.talentBonus !== undefined && options.talentBonus !== null) bonuses.push(Number(options.talentBonus));
+
+            const totalBonus = bonuses.reduce((acc, b) => acc + b, 0);
+            const formula = totalBonus !== 0
+                ? `${total} + ${totalBonus}`
+                : String(total);
+
+            return {
+                formula,
+                type: 'manual',
+                label: label,
+                flags: {
+                    shadowdark: { isManual: true }
+                }
+            };
+        }
+
         // Options: abilityBonus, itemBonus, talentBonus, rollingMode, advantageMode
         const advMode = options.advantageMode || 'normal';
         let dice = '1d20';

@@ -121,6 +121,9 @@ export interface SystemAdapter {
             buttonText?: string;
             buttonValue?: string;
             scrollButton?: string;
+            inputContainer?: string;
+            inputField?: string;
+            sendBtn?: string;
         };
         diceTray?: {
             container?: string;
