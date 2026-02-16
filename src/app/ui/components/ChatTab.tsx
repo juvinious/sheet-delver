@@ -49,6 +49,18 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
         return () => clearInterval(interval);
     }, []);
 
+    // Fix video elements to prevent fullscreen on mobile (iOS)
+    useEffect(() => {
+        if (!scrollRef.current) return;
+
+        const videos = scrollRef.current.querySelectorAll('video');
+        videos.forEach(video => {
+            // Add playsinline to prevent iOS from forcing fullscreen
+            video.setAttribute('playsinline', '');
+            video.setAttribute('webkit-playsinline', ''); // For older iOS versions
+        });
+    }, [messages]); // Re-run when messages change
+
     const handleScroll = () => {
         if (!scrollRef.current) return;
         const { scrollTop } = scrollRef.current;
