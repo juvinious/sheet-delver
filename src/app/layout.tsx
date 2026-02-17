@@ -13,6 +13,7 @@ import FloatingHUD from "@/app/ui/components/FloatingHUD";
 import { JournalProvider } from "@/app/ui/context/JournalProvider";
 import JournalBrowser from "@/app/ui/components/JournalBrowser";
 import JournalModal from "@/app/ui/components/JournalModal";
+import VideoPlaysinlineFix from "@/app/ui/components/VideoPlaysinlineFix";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,6 +51,7 @@ export default function RootLayout({
             <FoundryProvider>
               <JournalProvider>
                 <UIProvider>
+                  <VideoPlaysinlineFix />
                   <div className="relative min-h-screen">
                     <ShutdownWatcher />
                     {children}
