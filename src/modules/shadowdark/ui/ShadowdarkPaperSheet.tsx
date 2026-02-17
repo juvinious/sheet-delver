@@ -9,7 +9,7 @@ import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import NotesModal from './components/NotesModal';
 import { logger } from '@/core/logger';
-/* eslint-disable @next/next/no-img-element */
+ 
 
 interface ShadowdarkPaperSheetProps {
     actor: any;

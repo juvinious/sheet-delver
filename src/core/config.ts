@@ -56,6 +56,9 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const isStandardAppPort = (appProtocol === 'http' && appPort === 80) || (appProtocol === 'https' && appPort === 443);
             const appUrl = `${appProtocol}://${appHost}${isStandardAppPort ? '' : `:${appPort}`}`;
 
+            const security = doc.security || {};
+            const rateLimit = security['rate-limit'] || {};
+
             _cachedConfig = {
                 app: {
                     host: appHost,
@@ -80,6 +83,13 @@ export async function loadConfig(): Promise<AppConfig | null> {
                 debug: {
                     enabled: debug.enabled ?? false,
                     level: debug.level ?? 1
+                },
+                security: {
+                    rateLimit: {
+                        enabled: rateLimit.enabled ?? true,
+                        windowMinutes: rateLimit['window-minutes'] ?? 15,
+                        maxAttempts: rateLimit['max-attempts'] ?? 5,
+                    }
                 }
             };
             return _cachedConfig;

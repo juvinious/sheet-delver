@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 
 import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
@@ -36,13 +37,27 @@ async function startServer() {
     // Start Service Account Client for World Verification
     const systemClient = sessionManager.getSystemClient();
 
+    // Track world ID to detect world changes
+    let lastKnownWorldId: string | null = null;
+
     // Service Initialization Hook
     systemClient.on('connect', () => {
+        const currentWorldId = systemClient.getGameData()?.world?.id || null;
+
         if (systemClient.worldState === 'setup') {
             logger.warn('Core Service | World in Setup Mode. Clearing all sessions.');
             sessionManager.clearAllSessions();
+            lastKnownWorldId = null;
             return;
         }
+
+        // Detect world change
+        if (lastKnownWorldId && currentWorldId && lastKnownWorldId !== currentWorldId) {
+            logger.warn(`Core Service | World changed from "${lastKnownWorldId}" to "${currentWorldId}". Clearing all sessions.`);
+            sessionManager.clearAllSessions();
+        }
+
+        lastKnownWorldId = currentWorldId;
 
         if (systemClient.worldState !== 'active') return;
 
@@ -61,6 +76,7 @@ async function startServer() {
 
     systemClient.on('disconnect', () => {
         logger.info('Core Service | System Client Disconnected. Clearing Backend Services...');
+        lastKnownWorldId = null; // Reset world tracking on disconnect
         (async () => {
             const { CompendiumCache } = await import('../core/foundry/compendium-cache');
             CompendiumCache.getInstance().reset();
@@ -112,6 +128,18 @@ async function startServer() {
         }).catch(() => next());
     };
 
+    // --- Rate Limiting (Configurable) ---
+    const loginLimiter = rateLimit({
+        windowMs: config.security.rateLimit.windowMinutes * 60 * 1000,
+        max: config.security.rateLimit.maxAttempts,
+        message: {
+            error: `Too many login attempts. Please try again after ${config.security.rateLimit.windowMinutes} minutes.`
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: (req) => !config.security.rateLimit.enabled,
+    });
+
     // --- App API (Public/Proxy-bound) ---
     // This API serves the frontend via the Next.js proxy
     const appRouter = express.Router();
@@ -161,7 +189,14 @@ async function startServer() {
                         worldTitle: gameData.world?.title || 'Foundry VTT',
                         worldDescription: gameData.world?.description,
                         worldBackground: systemClient.resolveUrl(gameData.world?.background),
-                        background: systemClient.resolveUrl(gameData.system?.background || gameData.system?.worldBackground),
+                        background: systemClient.resolveUrl(
+                            gameData.system?.background ||
+                            gameData.system?.worldBackground ||
+                            (() => {
+                                const sceneData = (systemClient as any).sceneDataCache;
+                                return sceneData?.NUEDEFAULTSCENE0?.background?.src;
+                            })()
+                        ),
                         nextSession: gameData.world?.nextSession,
                         status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
                         actorSyncToken: (systemClient as any).lastActorChange,
@@ -231,6 +266,7 @@ async function startServer() {
                 connected,
                 isAuthenticated,
                 currentUserId: userSession?.userId || null,
+                worldId: systemClient.getGameData()?.world?.id || null,
                 initialized: sessionManager.isCacheReady(),
                 users: sanitizedUsers,
                 system: system,
@@ -259,54 +295,11 @@ async function startServer() {
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
 
-    // --- System API ---
-    appRouter.get('/system', async (req, res) => {
-        // Authenticate (using a common helper or inline)
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.split(' ')[1];
-        const session = await sessionManager.getOrRestoreSession(token);
-        if (!session || !session.client.userId) return res.status(401).json({ error: 'Unauthorized' });
+    // --- System API (moved after middleware to avoid duplicate auth) ---
 
-        try {
-            // Core Socket is the source of truth for System Info
-            const gameData = sessionManager.getSystemClient().getGameData();
-            res.json(gameData?.system || {});
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
 
-    appRouter.get('/system/data', authenticateSession, ensureInitialized, async (req: any, res: any) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Unauthorized' });
-        }
-        const token = authHeader.split(' ')[1];
-        const session = await sessionManager.getOrRestoreSession(token);
-        if (!session || !session.client.userId) return res.status(401).json({ error: 'Unauthorized' });
 
-        try {
-            // System Data comes from the Core System Client + Scraper logic
-            const systemClient = sessionManager.getSystemClient();
-            const gameData = systemClient.getGameData();
-            const adapter = systemClient.getSystemAdapter();
-
-            if (adapter && typeof (adapter as any).getSystemData === 'function') {
-                const data = await (adapter as any).getSystemData(systemClient); // Adapter might expect Client interface, careful
-                res.json(data);
-            } else {
-                // Fallback: Return raw scraper data if adapter doesn't provide more
-                res.json(gameData?.data || {});
-            }
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.post('/login', async (req, res) => {
+    appRouter.post('/login', loginLimiter, async (req, res) => {
         const { username, password } = req.body;
         try {
             // Create a NEW session for this user
@@ -328,6 +321,53 @@ async function startServer() {
 
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
+
+    // --- System API (now protected by middleware) ---
+    appRouter.get('/system', async (req, res) => {
+        try {
+            // Auth handled by middleware
+            const gameData = sessionManager.getSystemClient().getGameData();
+            res.json(gameData?.system || {});
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/system/data', ensureInitialized, async (req: any, res: any) => {
+        try {
+            // Auth handled by middleware
+            const systemClient = sessionManager.getSystemClient();
+            const gameData = systemClient.getGameData();
+            const adapter = systemClient.getSystemAdapter();
+
+            if (adapter && typeof (adapter as any).getSystemData === 'function') {
+                const data = await (adapter as any).getSystemData(systemClient);
+                res.json(data);
+            } else {
+                // Fallback: Return raw scraper data if adapter doesn't provide more
+                res.json(gameData?.data || {});
+            }
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/system/scenes', async (req, res) => {
+        try {
+            // Auth handled by middleware
+            const systemClient = sessionManager.getSystemClient();
+            const sceneData = systemClient.getSceneData();
+
+            if (!sceneData) {
+                return res.status(404).json({ error: 'Scene data not available' });
+            }
+
+            res.json(sceneData);
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
 
     appRouter.get('/actors', async (req, res) => {
         try {
@@ -1056,92 +1096,7 @@ async function startServer() {
         }
     });
 
-    // Setup: Check status
-    appRouter.get('/api/setup/status', async (req, res) => {
-        const { SetupManager } = await import('../core/foundry/SetupManager');
-        const cache = await SetupManager.loadCache();
-        res.json({
-            configured: !!cache.currentWorldId,
-            worldId: cache.currentWorldId,
-            worldTitle: cache.currentWorldId ? cache.worlds[cache.currentWorldId]?.worldTitle : null
-        });
-    });
-
-    // Setup: Probe World
-    appRouter.post('/api/setup/probe', async (req, res) => {
-        const { url, username, password } = req.body;
-        const client = getConfig().foundry;
-
-        // We use the provided URL or fallback to config
-        const targetUrl = url || client.url;
-
-        if (!targetUrl) {
-            res.status(400).json({ error: 'Foundry URL is required' });
-            return;
-        }
-
-        try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
-            // Probe logic...
-            // For now, we reuse the scraping logic if we have credentials
-            // But the UI might just want to check connectivity.
-
-            // Actually, let's use the scrapeWorldData logic with a probe flag if needed
-            // or we can try to authenticate and see what world we land in.
-
-            // For this implementation, we'll try to get the current world ID
-            // cookie is needed for scrapeWorldData. 
-            // We don't have a direct "probe" method that takes credentials and returns world info without a cookie 
-            // EXCEPT scrapeActiveWorld if we implement it.
-
-            // Let's use the session cookie if we have one, or try to login.
-            // Since this is a setup step, we likely don't have a cookie yet.
-            // We need to authenticate first.
-
-            // TODO: Implement proper auth flow in SetupManager.
-            // For now, we'll assume the user provided valid credentials or a cookie.
-
-            // CHANGED: We now have probeActiveWorld in SetupManager!
-            const result = await SetupManager.probeActiveWorld(targetUrl, username, password);
-
-            if (result) {
-                res.json(result);
-            } else {
-                res.status(404).json({ error: 'No active world found or authentication failed' });
-            }
-        } catch (error: any) {
-            logger.error('Setup probe failed', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // Setup: Configure (Save)
-    appRouter.post('/api/setup/configure', async (req, res) => {
-        const { worldId, sessionCookie } = req.body;
-        if (!worldId) {
-            res.status(400).json({ error: 'World ID is required' });
-            return;
-        }
-
-        const client = getConfig().foundry;
-
-        try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
-
-            // Verify the world data one last time and get full details
-            const result = await SetupManager.scrapeWorldData(client.url || '', sessionCookie);
-
-            if (result.worldId !== worldId) {
-                logger.warn(`Setup configure mismatch: Expected ${worldId}, got ${result.worldId}`);
-            }
-
-            await SetupManager.saveCache(result);
-            res.json({ success: true, world: result });
-        } catch (error: any) {
-            logger.error('Setup configuration failed', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
+    // Setup endpoints removed - functionality migrated to CLI admin tool
 
 
     adminRouter.get('/cache', async (req, res) => {

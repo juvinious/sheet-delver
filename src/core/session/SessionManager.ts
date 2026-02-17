@@ -155,14 +155,37 @@ export class SessionManager {
     }
 
     public async getOrRestoreSession(sessionId: string): Promise<Session | undefined> {
-        let session = this.sessions.get(sessionId);
-        if (session) {
-            session.lastActive = Date.now();
-            return session;
+        // Always check world state first - reject all sessions if in setup
+        if (this.systemClient.worldState === 'setup') {
+            const session = this.sessions.get(sessionId);
+            if (session) {
+                logger.warn(`SessionManager | World in setup mode. Destroying session ${sessionId}.`);
+                await this.destroySession(sessionId);
+            }
+            return undefined;
         }
 
-        if (this.systemClient.worldState === 'setup') {
-            return undefined;
+        // Check for active session in memory
+        const session = this.sessions.get(sessionId);
+        if (session) {
+            // Validate world ID for active sessions
+            const currentWorldId = this.systemClient.getGameData()?.world?.id;
+
+            if (!currentWorldId) {
+                // No world data available - world might be starting up
+                logger.warn(`SessionManager | No world ID available. Session ${sessionId} validation deferred.`);
+                session.lastActive = Date.now();
+                return session;
+            }
+
+            if (session.worldId && session.worldId !== currentWorldId) {
+                logger.warn(`SessionManager | World mismatch for session ${sessionId}. Expected: ${session.worldId}, Current: ${currentWorldId}. Destroying session.`);
+                await this.destroySession(sessionId);
+                return undefined;
+            }
+
+            session.lastActive = Date.now();
+            return session;
         }
 
         // Try to restore from disk with minor retries (for transient startup/world discovery issues)

@@ -116,7 +116,7 @@ async function runtrace() {
 
     // 3. POST /join (Login)
     console.log('\n[2] POST /join (Login) ...');
-    let finalCsrf = csrfToken || cookieMap.get('csrf-token') || cookieMap.get('xsrf-token') || null;
+    const finalCsrf = csrfToken || cookieMap.get('csrf-token') || cookieMap.get('xsrf-token') || null;
 
     const loginRes = await fetch(`${baseUrl}/join`, {
         method: 'POST',

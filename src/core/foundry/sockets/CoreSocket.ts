@@ -32,6 +32,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public cachedWorlds: Record<string, WorldData> = {};
     private adapter: SystemAdapter | null = null;
     public gameDataCache: any = null;
+    public sceneDataCache: any = null;
     public userId: string | null = null;
     public lastActorChange: number = Date.now();
 
@@ -188,6 +189,31 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         });
     }
 
+    /**
+     * Request Scene data from server and return it.
+     * Extracts scenes from the world data already fetched
+     */
+    private async fetchSceneData(): Promise<any> {
+        if (!this.socket || !this.socket.connected) return null;
+        try {
+            // Scenes are already included in the world data
+            const worldData = await this.getWorldData();
+            if (worldData && worldData.scenes) {
+                // Convert scenes array to map by ID for easier lookup
+                const sceneMap: any = {};
+                worldData.scenes.forEach((scene: any) => {
+                    sceneMap[scene._id || scene.id] = scene;
+                });
+                return sceneMap;
+            }
+            return null;
+        } catch (error: any) {
+            logger.warn(`CoreSocket | Failed to fetch scene data: ${error.message}`);
+            return null;
+        }
+    }
+
+
     private isConnecting = false;
 
     private heartbeatInterval: NodeJS.Timeout | null = null;
@@ -336,6 +362,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         logger.warn('CoreSocket | Socket connected but world is NOT active.');
                         this.worldState = 'setup';
                         this.gameDataCache = null; // Clear potential stale cache
+                        this.sceneDataCache = null; // Clear scene cache
                         this.userMap.clear();
                         clearTimeout(timeout);
                         this.emit('connect');
@@ -351,8 +378,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
                     // 6. Fetch Game Data via Socket (The canonical bootstrap way)
                     const gameData = await this.getWorldData();
+                    const sceneData = await this.fetchSceneData();
                     if (gameData) {
                         this.gameDataCache = gameData;
+                        if (sceneData) {
+                            this.sceneDataCache = sceneData;
+                            logger.info('CoreSocket | Scene Data cached');
+                        } else {
+                            logger.warn('CoreSocket | Scene data unavailable');
+                        }
                         if (gameData.users) {
                             const activeIds = gameData.activeUsers || [];
                             gameData.users.forEach((u: any) => {
@@ -395,6 +429,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         this.worldState = 'offline';
                     }
                     this.gameDataCache = null; // Clear cache to prevent stale data
+                    this.sceneDataCache = null; // Clear scene cache
                     this.userMap.clear();
                     this.emit('disconnect', reason);
                 });
@@ -715,6 +750,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     // --- Public API methods (called by Endpoints) ---
 
     public getGameData() { return this.gameDataCache; }
+    public getSceneData() { return this.sceneDataCache; }
     public getSystemAdapter() { return this.adapter; }
 
     public async getSystemConfig(): Promise<any> {

@@ -27,7 +27,7 @@ export class Roll {
         // Update: Added support for kh (keep highest) and kl (keep lowest)
 
         this._terms = [];
-        let total = 0;
+        const total = 0;
 
         // Regex to match: (Dice: 1d6[kh|kl]?) OR (Operator: + - * /) OR (Number: 5)
         // Group 1: Dice (e.g. 1d6, 2d20, 2d20kh1, 2d20kl1)
@@ -40,7 +40,7 @@ export class Roll {
         const cleanFormula = this._formula.replace(/\s/g, '');
 
         let match;
-        let lastIndex = 0;
+        const lastIndex = 0;
 
         // Simple arithmetic evaluator tokens
         const evalTokens: (number | string)[] = [];
@@ -151,7 +151,7 @@ export class Roll {
         try {
             // Basic safety check: only allow numbers and operators
             if (/^[\d\s+\-*\/().]+$/.test(evalString)) {
-                // eslint-disable-next-line no-new-func
+                 
                 this._total = new Function(`return ${evalString}`)();
             } else {
                 this._total = 0; // unsafe

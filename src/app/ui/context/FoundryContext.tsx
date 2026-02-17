@@ -66,6 +66,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [lastWorldId, setLastWorldId] = useState<string | null>(null);
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
@@ -228,6 +229,17 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 }
 
                 if (data.connected && data.system) {
+                    // Check for world change BEFORE updating any state
+                    const currentWorldId = data.worldId || null;
+                    if (lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
+                        logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Clearing token.`);
+                        setToken(null);
+                        setLastWorldId(currentWorldId);
+                    } else if (currentWorldId && !lastWorldId) {
+                        // First time seeing a world ID
+                        setLastWorldId(currentWorldId);
+                    }
+
                     if (!isEqual(system, data.system)) setSystem(data.system);
                     if (!isEqual(users, data.users)) setUsers(data.users || []);
                     if (currentUserId !== data.currentUserId) setCurrentUserId(data.currentUserId);
@@ -246,6 +258,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         if (targetStep === 'setup' && step !== 'setup') {
                             logger.warn('FoundryProvider | World Shutdown detected. Clearing session.');
                             setToken(null);
+                            setLastWorldId(null); // Reset world tracking
                         }
 
                         setStep(targetStep as any, 'polling', `Status change: ${targetStep}`);
@@ -256,6 +269,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         setStep('setup' as any, 'polling', 'Disconnected');
                         // Also clear token on disconnect to ensure fresh login
                         if (token) setToken(null);
+                        setLastWorldId(null); // Reset world tracking on disconnect
                     }
                     if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
                 }

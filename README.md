@@ -72,6 +72,12 @@ foundry:
 debug:
     enabled: true        # Enable debug logging
     level: 3             # Log level (0=None, 1=Error, 2=Warn, 3=Info, 4=Debug)
+
+security:
+    rate-limit:
+        enabled: true           # Enable/disable login rate limiting
+        window-minutes: 15      # Time window in minutes
+        max-attempts: 5         # Maximum login attempts per window
 ```
 
 ### Running Locally

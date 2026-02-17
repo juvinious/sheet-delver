@@ -296,7 +296,7 @@ export class SetupManager {
      * Save world data to cache
      */
     static async saveCache(worldData: WorldData, setActive: boolean = true): Promise<void> {
-        let cache = await this.loadCache();
+        const cache = await this.loadCache();
 
         cache.worlds[worldData.worldId] = worldData;
         if (setActive) {
@@ -310,7 +310,7 @@ export class SetupManager {
      * Save multiple worlds to cache without changing active world
      */
     static async saveBatchCache(worldsData: WorldData[]): Promise<void> {
-        let cache = await this.loadCache();
+        const cache = await this.loadCache();
 
         for (const w of worldsData) {
             cache.worlds[w.worldId] = w;

@@ -95,7 +95,7 @@ export const calculateSpellBonus = (actor: any, spell?: any): { bonus: number, a
 
     let bonus = 0;
     let advantage = false;
-    let disadvantage = false;
+    const disadvantage = false;
 
     // 1. General Spellcasting Check Bonus
     bonus += Number(actor.system.bonuses?.spellcastingCheckBonus) || 0;

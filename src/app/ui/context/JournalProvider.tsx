@@ -45,7 +45,7 @@ interface JournalContextType {
 const JournalContext = createContext<JournalContextType | undefined>(undefined);
 
 export function JournalProvider({ children }: { children: React.ReactNode }) {
-    const { token } = useFoundry();
+    const { token, step } = useFoundry();
     const [journals, setJournals] = useState<JournalEntry[]>([]);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [loading, setLoading] = useState(false);
@@ -58,7 +58,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
             const res = await fetch('/api/journals', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (!res.ok) throw new Error('Failed to fetch journals');
+            if (!res.ok) throw new Error('Failed to fetch journals | ' + res.statusText);
             // Completed Tasks:
             // - [x] Journal Permissions & Creation Fix <!-- id: 102 -->
             // - [x] Restrict Journal visibility to Observer+ (Backend)
@@ -77,8 +77,12 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     }, [token]);
 
     useEffect(() => {
-        if (token) fetchJournals();
-    }, [token, fetchJournals]);
+        // Only fetch journals when we're in the dashboard state
+        // Prevents fetches during setup, login, startup, authenticating, etc.
+        if (token && step === 'dashboard') {
+            fetchJournals();
+        }
+    }, [token, step, fetchJournals]);
 
     const getJournal = useCallback(async (id: string) => {
         if (!token) return null;

@@ -74,6 +74,13 @@ export interface AppConfig {
         enabled: boolean;
         level: number;
     };
+    security: {
+        rateLimit: {
+            enabled: boolean;
+            windowMinutes: number;
+            maxAttempts: number;
+        };
+    };
 }
 
 export type RollMode = 'publicroll' | 'gmroll' | 'blindroll' | 'selfroll';

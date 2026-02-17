@@ -1680,7 +1680,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             // Sum bonuses if they are provided in options
-            let total = Number(options.manualValue);
+            const total = Number(options.manualValue);
             const bonuses = [];
             if (options.abilityBonus !== undefined && options.abilityBonus !== null) bonuses.push(Number(options.abilityBonus));
             if (options.itemBonus !== undefined && options.itemBonus !== null) bonuses.push(Number(options.itemBonus));
