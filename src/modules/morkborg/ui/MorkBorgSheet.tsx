@@ -55,9 +55,77 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
 
 export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
+    const [actorData, setActorData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // Fetch actor data from API
+    useEffect(() => {
+        async function fetchActorData() {
+            if (!actor?._id && !actor?.id) {
+                setError('No actor ID provided');
+                setLoading(false);
+                return;
+            }
+
+            try {
+                setLoading(true);
+                const actorId = actor._id || actor.id;
+                const token = localStorage.getItem('sessionToken');
+
+                const response = await fetch(`/api/modules/morkborg/actors/${actorId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch actor data: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                setActorData(data.actor);
+                setError(null);
+            } catch (err: any) {
+                console.error('Error fetching actor data:', err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        fetchActorData();
+    }, [actor?._id, actor?.id]);
 
     // Safety check
     if (!actor) return null;
+
+    // Loading state
+    if (loading) {
+        return (
+            <div className={`min-h-screen flex items-center justify-center text-[#111] ${inter.className}`} style={{ backgroundColor: '#ffe900' }}>
+                <div className="text-center">
+                    <div className={`${fell.className} text-6xl font-bold mb-4 animate-pulse`}>LOADING...</div>
+                    <div className="text-sm">Summoning character from the void</div>
+                </div>
+            </div>
+        );
+    }
+
+    // Error state
+    if (error) {
+        return (
+            <div className={`min-h-screen flex items-center justify-center text-[#111] ${inter.className}`} style={{ backgroundColor: '#ffe900' }}>
+                <div className="text-center bg-black text-white p-8 border-4 border-red-500">
+                    <div className={`${fell.className} text-4xl font-bold mb-4`}>ERROR</div>
+                    <div className="text-sm">{error}</div>
+                </div>
+            </div>
+        );
+    }
+
+    // No data state
+    if (!actorData) return null;
 
     return (
         <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
@@ -111,7 +179,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                                 <AbilityBlock label="Strength" value={actor.computed?.abilities?.strength?.value ?? 0} onRoll={onRoll} />
                                 <AbilityBlock label="Agility" value={actor.computed?.abilities?.agility?.value ?? 0} onRoll={onRoll} />
                                 <AbilityBlock label="Presence" value={actor.computed?.abilities?.presence?.value ?? 0} onRoll={onRoll} />
-                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness?.value ?? 0} onRoll={onRoll} />
+                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness ?? 0} onRoll={onRoll} />
                             </div>
                         </div>
                     </header>
