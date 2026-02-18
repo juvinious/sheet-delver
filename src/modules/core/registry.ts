@@ -78,3 +78,11 @@ export const getModuleConfig = (systemId: string) => {
     const manifest = moduleMap.get(systemId);
     return manifest?.info;
 };
+
+/**
+ * Get the full module manifest for a given systemId.
+ * Used by the core actor page router to find module-specific actorPage components.
+ */
+export const getModule = (systemId: string): ModuleManifest | undefined => {
+    return moduleMap.get(systemId);
+};

@@ -6,17 +6,20 @@ interface SheetRouterProps {
     systemId: string;
     actor: any;
     isOwner: boolean;
-    onToggleEffect: (effectId: string, enabled: boolean) => void;
-    onDeleteEffect: (effectId: string) => void;
+    // Core handlers (required for all modules)
+    onRoll: (type: string, key: string, options?: any) => Promise<void>;
+    onUpdate: (path: string, value: any) => Promise<void>;
     onDeleteItem: (itemId: string) => void;
     onCreateItem: (itemData: any) => Promise<void>;
+    // Optional handlers
+    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
     onToggleDiceTray?: () => void;
     isDiceTrayOpen?: boolean;
     foundryUrl?: string;
     token?: string | null;
-    onRoll: (type: string, key: string, options?: any) => Promise<void>;
-    onUpdate: (path: string, value: any) => Promise<void>;
-    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+    // Module-specific: Shadowdark effect handlers (optional)
+    onToggleEffect?: (effectId: string, enabled: boolean) => void;
+    onDeleteEffect?: (effectId: string) => void;
     onAddPredefinedEffect?: (effectId: string) => Promise<void>;
 }
 

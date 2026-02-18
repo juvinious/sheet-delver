@@ -58,6 +58,8 @@ Each RPG system is implemented as a **Vertical Slice** within `src/modules/<syst
 *   **The SystemAdapter Contract**: Each module must implement the `SystemAdapter` interface defined in `src/modules/core/interfaces.ts`. This interface handles:
     *   **Data Fetching**: `getActor(client, id)` (running in browser context via Playwright).
     *   **Normalization**: `normalizeActorData(actor)` (converting raw Foundry data to a UI-friendly shape).
+    *   **Computed Data**: `computeActorData(actor)` (optional, for derived stats like AC, HP, slots).
+    *   **Item Categorization**: `categorizeItems(actor)` (optional, for grouping items like Weapons/Spells).
     *   **Rolling**: `getRollData(...)` (handling system-specific dice logic).
     *   **Data Resolution Fallback**: `resolveDocument(client, uuid)` (providing a local fallback for documents that fail to fetch via socket).
     *   **Theming**: `theme` (colors/fonts) and `componentStyles` (granular overrides for `ChatTab`, `DiceTray`, etc.).
@@ -81,7 +83,8 @@ Each RPG system is implemented as a **Vertical Slice** within `src/modules/<syst
 3.  **Implement Adapter**: Create `system.ts` and implement `SystemAdapter`.
 4.  **Implement Rules (Optional)**: Create `rules.ts` for calculations.
 5.  **Create Sheet**: Create `ui/MySystemSheet.tsx`.
-6.  **Export Manifest**: Create `index.ts`:
+6.  **Create Actor Page**: Create `ui/pages/ActorPage.tsx`. This component handles the data fetching and layout for your system's character sheet page. If omitted, the system will use the Generic fallback.
+7.  **Export Manifest**: Create `index.ts`:
     ```typescript
     import React from 'react';
     import { ModuleManifest } from '../core/interfaces';
@@ -91,12 +94,13 @@ Each RPG system is implemented as a **Vertical Slice** within `src/modules/<syst
     const manifest: ModuleManifest = {
         info,
         adapter: MySystemAdapter,
-        sheet: React.lazy(() => import('./ui/MySystemSheet'))
+        sheet: React.lazy(() => import('./ui/MySystemSheet')),
+        actorPage: React.lazy(() => import('./ui/pages/ActorPage'))
     };
     export default manifest;
     ```
-7.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
-8.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
+8.  **Register Module**: Open `src/modules/core/registry.ts`, import your manifest, and add it to the `modules` array.
+9.  **Dashboard Tools (Optional)**: If your system has custom dashboard widgets (like a Character Generator), create the component in `ui/MySystemTools.tsx` and register it in `src/modules/core/component-registry.tsx`.
 
 ## Module API & Server-Side Logic
 

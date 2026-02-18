@@ -6,7 +6,8 @@ import info from './info.json';
 const manifest: ModuleManifest = {
     info,
     adapter: MorkBorgAdapter,
-    sheet: React.lazy(() => import('./ui/MorkBorgSheet'))
+    sheet: React.lazy(() => import('./ui/MorkBorgSheet')),
+    actorPage: React.lazy(() => import('./ui/pages/ActorPage'))
 };
 
 export default manifest;

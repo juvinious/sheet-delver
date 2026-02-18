@@ -58,7 +58,10 @@ graph TD
 ### 2.2 The Delivery Layers
 - **Server (`src/server`)**:
     - **Status Handler**: Aggregates data from both the System Client and the specific User Client to provide a complete view of the world state.
-    - **Module Routing**: RegEx-based routing that allows system-specific packages (like Shadowdark) to mount their own API logic dynamically.
+    - **Status Handler**: Aggregates data from both the System Client and the specific User Client to provide a complete view of the world state.
+    - **Module Routing**:
+        - **API**: RegEx-based routing allows system-specific packages to mount their own API logic dynamically.
+        - **UI**: The core actor page delegates rendering to the module's registered `ActorPage`, ensuring full UI autonomy.
     - **Shared Content**: Tracks shared media (images/journals) targeted at the current user.
 
 ---
@@ -84,8 +87,11 @@ graph TD
 2.  Backend creates a new `ClientSocket`, performs the Foundry login handshake, and returns a token.
 3.  `FoundryContext` transitions to `'authenticating'` until the next status poll confirms the specific socket session is ready.
 
-### 4.3 Data Normalization
-All data returned by the API passes through a **System Adapter**. For example, the `ShadowdarkAdapter` resolves item names from the `CompendiumCache`, calculates encoded inventory slots, and formats roll formulas before the UI ever sees the data.
+### 4.3 Data Normalization & Computation
+All data returned by the API passes through a **System Adapter**.
+1.  **Normalization**: Converts raw Foundry data to a UI-friendly shape.
+2.  **Computation**: The adapter's `computeActorData` method calculates derived stats (e.g., Shadowdark inventory slots, HP totals) before the UI receives the data.
+3.  **Categorization**: Items are grouped (e.g., "Spells", "Weapons") via `categorizeItems`.
 
 ---
 
