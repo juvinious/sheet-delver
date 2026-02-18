@@ -70,7 +70,7 @@ Returns actors visible to the current user, separated into `ownedActors` and `re
 
 ### `GET /api/actors/:id`
 **Auth**: Protected
-Returns fully normalized actor data. Automatically resolves UUIDs and handles name resolution via the Compendium Cache.
+Returns fully normalized actor data. Automatically resolves UUIDs, handles name resolution via the Compendium Cache, and includes system-specific computed data (e.g. slots, AC).
 
 ### `PATCH /api/actors/:id`
 **Auth**: Protected

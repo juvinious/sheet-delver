@@ -10,7 +10,8 @@ const manifest: ModuleManifest = {
     sheet: React.lazy(() => import('./ui/ShadowdarkSheet')),
     tools: {
         'generator': React.lazy(() => import('./ui/tools/Generator'))
-    }
+    },
+    actorPage: React.lazy(() => import('./ui/pages/ActorPage'))
 };
 
 export default manifest;

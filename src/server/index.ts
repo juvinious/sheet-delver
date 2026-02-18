@@ -489,6 +489,19 @@ async function startServer() {
             const adapter = getMatchingAdapter(resolvedActor);
             const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
 
+            // Call adapter.computeActorData if available (module-specific derived stats)
+            if (adapter.computeActorData) {
+                normalizedActor.computed = {
+                    ...(normalizedActor.computed || {}),
+                    ...adapter.computeActorData(normalizedActor)
+                };
+            }
+
+            // Call adapter.categorizeItems if available (module-specific item grouping)
+            if (adapter.categorizeItems) {
+                normalizedActor.categorizedItems = adapter.categorizeItems(normalizedActor);
+            }
+
             if (normalizedActor.img) {
                 normalizedActor.img = client.resolveUrl(normalizedActor.img);
             }

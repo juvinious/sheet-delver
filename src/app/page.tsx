@@ -1,5 +1,5 @@
 import { loadConfig } from '@/core/config';
-import ClientPage from '@/app/ui/components/ClientPage';
+import MainPage from '@/app/ui/main/MainPage';
 import { SetupManager } from '@/core/foundry/SetupManager';
 // import { SetupToken } from '@/core/security/SetupToken';
 // import { redirect } from 'next/navigation';
@@ -51,5 +51,5 @@ export default async function Page() {
         );
     }
 
-    return <ClientPage initialUrl={initialUrl} />;
+    return <MainPage initialUrl={initialUrl} />;
 }

@@ -41,7 +41,7 @@ export default function ShutdownWatcher() {
             shutdownTriggeredRef.current = false;
             setShutdownDetected(false);
 
-            // Force reload/redirect to root to ensure ClientPage picks up the 'setup' state from fresh fetch
+            // Force reload/redirect to root to ensure MainPage picks up the 'setup' state from fresh fetch
             window.location.href = '/';
         }
         return () => clearTimeout(timer);
