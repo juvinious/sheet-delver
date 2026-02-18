@@ -102,6 +102,18 @@ export interface SystemAdapter {
     loadSupplementaryData?(cache: any): Promise<void>;
     expandTableResults?(client: any, table: any): Promise<any[] | null>;
     validateUpdate?(path: string, value: any): boolean;
+    /**
+     * Optional: Calculate derived/computed stats from normalized actor data.
+     * Called by the core /api/actors/:id endpoint after normalizeActorData.
+     * Use this for values derived from system data (HP totals, AC, encumbrance, etc.)
+     */
+    computeActorData?(actor: any): any;
+    /**
+     * Optional: Categorize items by type for easier UI rendering.
+     * Called by the core /api/actors/:id endpoint after normalizeActorData.
+     * Return an object with named arrays (e.g. { weapons: [], armor: [], spells: [] })
+     */
+    categorizeItems?(actor: any): any;
     theme?: {
         bg?: string;
         panelBg?: string;
@@ -203,4 +215,10 @@ export interface ModuleManifest {
     adapter: new () => SystemAdapter;
     sheet: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
     tools?: Record<string, LazyExoticComponent<ComponentType<any>> | ComponentType<any>>;
+    /**
+     * Optional: Module-specific actor page component.
+     * When registered, the core /actors/[id] route will delegate rendering to this component.
+     * Props: { actorId: string; token?: string | null }
+     */
+    actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
 }
