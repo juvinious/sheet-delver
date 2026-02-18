@@ -47,7 +47,8 @@ export class GenericSystemAdapter implements SystemAdapter {
             name: actor.name,
             type: actor.type,
             img: actor.img,
-            attributes: actor.system
+            system: actor.system,
+            items: actor.items // Pass items through for adapters that need them
         };
     }
 }

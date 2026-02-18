@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { IM_Fell_Double_Pica, Inter } from 'next/font/google';
+import grunge from './assets/grunge.png';
 import BackgroundTab from './BackgroundTab';
 import EquipmentTab from './EquipmentTab';
 import ViolenceTab from './ViolenceTab';
@@ -15,17 +16,32 @@ interface MorkBorgSheetProps {
     onRoll: (type: string, key: string, options?: any) => void;
     onUpdate: (path: string, value: any) => void;
     onDeleteItem: (itemId: string) => void;
+    onCreateItem?: (itemData: any) => void;
+    onUpdateItem?: (itemData: any) => void;
+    onToggleDiceTray?: () => void;
+    isDiceTrayOpen?: boolean;
 }
 
 const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value: any, path: string, max?: any, onUpdate: any }) => (
-    <div className="flex flex-col items-center bg-black/80 p-2 border border-neutral-700 min-w-[80px]">
-        <span className={`${fell.className} text-amber-500 text-sm uppercase tracking-widest mb-1`}>{label}</span>
+    <div className="flex flex-col items-center justify-center w-full bg-black/80 p-2 border border-neutral-700 relative">
+        <style dangerouslySetInnerHTML={{
+            __html: `
+            input[type=number]::-webkit-inner-spin-button, 
+            input[type=number]::-webkit-outer-spin-button { 
+                -webkit-appearance: none; 
+                margin: 0; 
+            }
+            input[type=number] {
+                -moz-appearance: textfield;
+            }
+        `}} />
+        <span className={`${fell.className} text-pink-500 text-sm uppercase tracking-widest mb-1`}>{label}</span>
         <div className="flex items-center gap-1 font-mono text-2xl text-white">
             <input
                 type="number"
                 value={value}
                 onChange={(e) => onUpdate(path, Number(e.target.value))}
-                className="bg-transparent w-12 text-center focus:outline-none focus:text-amber-400"
+                className="bg-transparent w-20 text-center focus:outline-none focus:text-pink-500"
             />
             {max !== undefined && (
                 <>
@@ -34,7 +50,7 @@ const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value
                         type="number"
                         value={max}
                         readOnly
-                        className="bg-transparent w-12 text-center text-neutral-500 focus:outline-none"
+                        className="bg-transparent w-20 text-center text-neutral-500 focus:outline-none"
                     />
                 </>
             )}
@@ -44,10 +60,10 @@ const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value
 
 const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, onRoll: any }) => (
     <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onRoll('ability', label.toLowerCase())}>
-        <div className={`${fell.className} text-3xl w-12 text-right group-hover:text-amber-500 transition-colors`}>
+        <div className={`${fell.className} text-3xl w-12 text-right group-hover:text-pink-500 transition-colors`}>
             {label.substring(0, 3)}
         </div>
-        <div className={`${fell.className} text-4xl font-bold bg-black text-white w-14 h-14 flex items-center justify-center border-2 border-transparent group-hover:border-amber-500 transition-all shadow-md transform group-hover:scale-110`}>
+        <div className={`${fell.className} text-4xl font-bold bg-black text-white w-14 h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
             {value > 0 ? `+${value}` : value}
         </div>
     </div>
@@ -55,77 +71,32 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
 
 export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
-    const [actorData, setActorData] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
-    // Fetch actor data from API
-    useEffect(() => {
-        async function fetchActorData() {
-            if (!actor?._id && !actor?.id) {
-                setError('No actor ID provided');
-                setLoading(false);
-                return;
-            }
-
-            try {
-                setLoading(true);
-                const actorId = actor._id || actor.id;
-                const token = localStorage.getItem('sessionToken');
-
-                const response = await fetch(`/api/modules/morkborg/actors/${actorId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Failed to fetch actor data: ${response.statusText}`);
-                }
-
-                const data = await response.json();
-                setActorData(data.actor);
-                setError(null);
-            } catch (err: any) {
-                console.error('Error fetching actor data:', err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        fetchActorData();
-    }, [actor?._id, actor?.id]);
 
     // Safety check
     if (!actor) return null;
 
-    // Loading state
-    if (loading) {
-        return (
-            <div className={`min-h-screen flex items-center justify-center text-[#111] ${inter.className}`} style={{ backgroundColor: '#ffe900' }}>
-                <div className="text-center">
-                    <div className={`${fell.className} text-6xl font-bold mb-4 animate-pulse`}>LOADING...</div>
-                    <div className="text-sm">Summoning character from the void</div>
-                </div>
-            </div>
-        );
-    }
-
-    // Error state
-    if (error) {
-        return (
-            <div className={`min-h-screen flex items-center justify-center text-[#111] ${inter.className}`} style={{ backgroundColor: '#ffe900' }}>
-                <div className="text-center bg-black text-white p-8 border-4 border-red-500">
-                    <div className={`${fell.className} text-4xl font-bold mb-4`}>ERROR</div>
-                    <div className="text-sm">{error}</div>
-                </div>
-            </div>
-        );
-    }
-
-    // No data state
-    if (!actorData) return null;
+    // Map categorized items to expected structure for tabs
+    const sheetActor = {
+        ...actor,
+        items: actor.categorizedItems || {
+            weapons: [],
+            armor: [],
+            equipment: [],
+            scrolls: [],
+            abilities: []
+        },
+        derived: actor.derived || {
+            currentHp: 0,
+            maxHp: 1,
+            omens: { value: 0, max: 0 },
+            powers: { value: 0, max: 0 },
+            abilities: {},
+            slotsUsed: 0,
+            maxSlots: 10,
+            encumbered: false,
+            silver: 0
+        }
+    };
 
     return (
         <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
@@ -133,7 +104,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
             <div className="fixed inset-0 -z-50" style={{ backgroundColor: '#ffe900' }}></div>
 
             {/* Texture Overlay - Global */}
-            <div className="fixed inset-0 pointer-events-none opacity-5 mix-blend-overlay bg-[url('/textures/grunge.png')] z-40"></div>
+            <div className="fixed inset-0 pointer-events-none opacity-5 mix-blend-overlay z-40" style={{ backgroundImage: `url(${grunge.src})` }}></div>
 
             {/* Dark Wrapper around the sheet (The 'Deep Darkness') */}
             <div className="max-w-7xl mx-auto my-8 p-4 md:p-8 relative z-10 shadow-2xl skew-y-1" style={{ backgroundColor: '#1a1a1a' }}>
@@ -147,39 +118,50 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                             DEATH IS CERTAIN
                         </div>
 
-                        <div className="flex flex-col md:flex-row gap-8 items-start justify-between">
-
-                            {/* Profile & Name */}
-                            <div className="flex gap-6 items-center flex-1">
-                                <div className="relative">
-                                    <img src={actor.img} className="w-32 h-32 object-cover border-4 border-black shadow-lg grayscale hover:grayscale-0 transition-all duration-500" alt="Character Portrait" />
-                                    <div className="absolute -bottom-3 -right-3 bg-black text-white px-2 py-1 font-mono text-xs transform -rotate-3 font-bold">
-                                        {actor.type}
+                        <div className="flex flex-col gap-6">
+                            <div className="flex flex-col md:flex-row gap-8 items-start justify-between">
+                                {/* Profile & Name */}
+                                <div className="flex gap-6 items-center flex-1">
+                                    <div className="relative">
+                                        <img
+                                            src={encodeURI(sheetActor.img)}
+                                            className="block object-cover border-4 border-black shadow-lg grayscale hover:grayscale-0 transition-all duration-500"
+                                            style={{ width: '128px', height: '128px', minWidth: '128px' }}
+                                            alt="Character Portrait"
+                                            onError={(e) => {
+                                                console.error('Image failed to load:', sheetActor.img);
+                                                e.currentTarget.style.display = 'none';
+                                            }}
+                                        />
+                                        <div className="absolute -bottom-3 -right-3 bg-black text-white px-2 py-1 font-mono text-xs transform -rotate-3 font-bold">
+                                            {sheetActor.derived?.class?.name}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h1 className={`${fell.className} text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-none mb-2 drop-shadow-md`}>
+                                            {sheetActor.name}
+                                        </h1>
+                                        <div className="font-mono text-sm bg-black text-white inline-block px-2 py-1 transform rotate-1 font-bold">
+                                            {sheetActor.derived?.class?.description || (sheetActor.system?.biography ? 'Scum' : 'Unknown')}
+                                        </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <h1 className={`${fell.className} text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-none mb-2 drop-shadow-md`}>
-                                        {actor.name}
-                                    </h1>
-                                    <div className="font-mono text-sm bg-black text-white inline-block px-2 py-1 transform rotate-1 font-bold">
-                                        {actor.system?.class?.name || (actor.system?.biography ? 'Scum' : 'Unknown')}
-                                    </div>
+
+                                {/* Abilities Vertical Stack - Now Top Right */}
+                                <div className="flex flex-col gap-2 border-l-4 border-black pl-6 py-2">
+                                    <AbilityBlock label="Strength" value={sheetActor.derived.abilities?.strength?.value ?? 0} onRoll={onRoll} />
+                                    <AbilityBlock label="Agility" value={sheetActor.derived.abilities?.agility?.value ?? 0} onRoll={onRoll} />
+                                    <AbilityBlock label="Presence" value={sheetActor.derived.abilities?.presence?.value ?? 0} onRoll={onRoll} />
+                                    <AbilityBlock label="Toughness" value={sheetActor.derived.abilities?.toughness?.value ?? 0} onRoll={onRoll} />
                                 </div>
                             </div>
 
-                            {/* Core Vitality Stats */}
-                            <div className="flex gap-4 self-center md:self-auto bg-white/50 p-3 border border-black shadow-inner">
-                                <StatBlock label="HP" value={actor.computed?.currentHp ?? 0} max={actor.computed?.maxHp ?? 1} path="system.hp.value" onUpdate={onUpdate} />
-                                <StatBlock label="Omens" value={actor.computed?.omens?.value ?? 0} max={actor.computed?.omens?.max ?? 0} path="system.omens.value" onUpdate={onUpdate} />
-                                <StatBlock label="Powers" value={actor.computed?.powers?.value ?? 0} max={actor.computed?.powers?.max ?? 0} path="system.powerUses.value" onUpdate={onUpdate} />
-                            </div>
-
-                            {/* Abilities Vertical Stack */}
-                            <div className="flex flex-col gap-2 border-l-4 border-black pl-6 py-2">
-                                <AbilityBlock label="Strength" value={actor.computed?.abilities?.strength?.value ?? 0} onRoll={onRoll} />
-                                <AbilityBlock label="Agility" value={actor.computed?.abilities?.agility?.value ?? 0} onRoll={onRoll} />
-                                <AbilityBlock label="Presence" value={actor.computed?.abilities?.presence?.value ?? 0} onRoll={onRoll} />
-                                <AbilityBlock label="Toughness" value={actor.computed?.abilities?.toughness ?? 0} onRoll={onRoll} />
+                            {/* Core Vitality Stats - Now in separate row below */}
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white/50 p-3 border border-black shadow-inner w-full">
+                                <StatBlock label="HP" value={sheetActor.derived.currentHp} max={sheetActor.derived.maxHp} path="system.hp.value" onUpdate={onUpdate} />
+                                <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} path="system.omens.value" onUpdate={onUpdate} />
+                                <StatBlock label="Powers" value={sheetActor.derived.powers.value} max={sheetActor.derived.powers.max} path="system.powerUses.value" onUpdate={onUpdate} />
+                                <StatBlock label="Silver" value={sheetActor.derived.silver} path="system.silver" onUpdate={onUpdate} />
                             </div>
                         </div>
                     </header>
@@ -190,10 +172,10 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                         <div className="absolute inset-0 bg-neutral-900/5 pointer-events-none mix-blend-multiply"></div>
 
                         <div className="relative z-10">
-                            {activeTab === 'background' && <BackgroundTab actor={actor} onUpdate={onUpdate} />}
-                            {activeTab === 'equipment' && <EquipmentTab actor={actor} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
-                            {activeTab === 'violence' && <ViolenceTab actor={actor} onRoll={onRoll} onUpdate={onUpdate} />}
-                            {activeTab === 'special' && <SpecialTab actor={actor} onRoll={onRoll} />}
+                            {activeTab === 'background' && <BackgroundTab actor={sheetActor} onUpdate={onUpdate} />}
+                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
+                            {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} />}
+                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={onRoll} />}
                         </div>
                     </main>
 

@@ -5,7 +5,7 @@
         "subtext": [
             "details.class",
             "details.ancestry",
-            "level.value"
+            "system.level.value"
         ]
     }
 }

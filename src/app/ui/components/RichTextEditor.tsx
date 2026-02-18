@@ -8,22 +8,59 @@ import Image from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
 import { useEffect, useState, useMemo } from 'react';
 
+export interface RichTextTheme {
+    container: string;
+    toolbar: {
+        container: string;
+        button: string;
+        buttonActive: string;
+        separator: string;
+        actionButton: string;
+        saveButton: string;
+    };
+    editor: string;
+    editButton: string;
+}
+
+// SHADOWDARK_THEME moved to @/modules/shadowdark/ui/themes/shadowdark.ts
+
+export const DASHBOARD_THEME: RichTextTheme = {
+    container: 'relative group h-full flex flex-col bg-neutral-950/50 border border-neutral-800 rounded-lg overflow-hidden',
+    toolbar: {
+        container: 'bg-neutral-900 border-b border-neutral-800 p-2 flex flex-wrap gap-1 items-center sticky top-0 z-10',
+        button: 'p-2 rounded-md hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white',
+        buttonActive: 'p-2 rounded-md bg-neutral-800 text-white',
+        separator: 'w-px h-6 bg-neutral-800 mx-1',
+        actionButton: 'px-3 py-1 text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md mr-2',
+        saveButton: 'px-3 py-1 text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 rounded-md flex items-center gap-1 shadow-sm'
+    },
+    editor: 'prose prose-invert prose-sm max-w-none focus:outline-none min-h-[300px] p-4 font-sans',
+    editButton: 'bg-neutral-800 text-neutral-200 px-4 py-2 text-sm font-medium rounded-md hover:bg-neutral-700 hover:text-white transition-colors flex items-center gap-2 shadow-sm border border-neutral-700/50 backdrop-blur-sm'
+};
+
 interface RichTextEditorProps {
     content: string;
     onSave: (html: string) => void;
+    editButtonText?: string;
+    theme?: RichTextTheme;
 }
 
-const ToolbarButton = ({ onClick, isActive, children, title }: any) => (
+const ToolbarButton = ({ onClick, isActive, children, title, theme }: any) => (
     <button
         onClick={onClick}
         title={title}
-        className={`p-2 rounded hover:bg-neutral-800 transition-colors ${isActive ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-white'}`}
+        className={isActive ? theme.toolbar.buttonActive : theme.toolbar.button}
     >
         {children}
     </button>
 );
 
-export default function RichTextEditor({ content, onSave }: RichTextEditorProps) {
+export default function RichTextEditor({
+    content,
+    onSave,
+    editButtonText = 'Edit Note',
+    theme = DASHBOARD_THEME
+}: RichTextEditorProps) {
     const [isEditing, setIsEditing] = useState(false);
 
     const extensions = useMemo(() => [
@@ -44,11 +81,11 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
         editable: isEditing,
         editorProps: {
             attributes: {
-                class: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[300px] p-4',
+                class: theme.editor,
             },
         },
         immediatelyRender: false,
-    }, [extensions]);
+    }, [extensions, theme]); // Re-create editor if theme changes to update classes
 
     // Update content if prop changes externally
     useEffect(() => {
@@ -79,14 +116,15 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
     };
 
     return (
-        <div className="relative group h-full flex flex-col">
+        <div className={theme.container}>
             {/* Toolbar - Only visible when editing */}
             {isEditing && (
-                <div className="bg-black border-b-2 border-neutral-800 p-2 flex flex-wrap gap-1 items-center sticky top-0 z-10 shadow-sm">
+                <div className={theme.toolbar.container}>
                     <ToolbarButton
                         onClick={() => editor.chain().focus().toggleBold().run()}
                         isActive={editor.isActive('bold')}
                         title="Bold"
+                        theme={theme}
                     >
                         <strong className="font-serif">B</strong>
                     </ToolbarButton>
@@ -94,6 +132,7 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                         onClick={() => editor.chain().focus().toggleItalic().run()}
                         isActive={editor.isActive('italic')}
                         title="Italic"
+                        theme={theme}
                     >
                         <em className="font-serif">I</em>
                     </ToolbarButton>
@@ -101,16 +140,18 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                         onClick={() => editor.chain().focus().toggleUnderline().run()}
                         isActive={editor.isActive('underline')}
                         title="Underline"
+                        theme={theme}
                     >
                         <span className="underline font-serif">U</span>
                     </ToolbarButton>
 
-                    <div className="w-px h-6 bg-neutral-700 mx-1"></div>
+                    <div className={theme.toolbar.separator}></div>
 
                     <ToolbarButton
                         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
                         isActive={editor.isActive('heading', { level: 1 })}
                         title="H1"
+                        theme={theme}
                     >
                         H1
                     </ToolbarButton>
@@ -118,16 +159,18 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
                         isActive={editor.isActive('heading', { level: 2 })}
                         title="H2"
+                        theme={theme}
                     >
                         H2
                     </ToolbarButton>
 
-                    <div className="w-px h-6 bg-neutral-700 mx-1"></div>
+                    <div className={theme.toolbar.separator}></div>
 
                     <ToolbarButton
                         onClick={() => editor.chain().focus().toggleBulletList().run()}
                         isActive={editor.isActive('bulletList')}
                         title="Bullet List"
+                        theme={theme}
                     >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 6h13v2H8V6zm0 5h13v2H8v-2zm0 5h13v2H8v-2zM4 6h2v2H4V6zm0 5h2v2H4v-2zm0 5h2v2H4v-2z" /></svg>
                     </ToolbarButton>
@@ -135,15 +178,17 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                         onClick={() => editor.chain().focus().toggleOrderedList().run()}
                         isActive={editor.isActive('orderedList')}
                         title="Ordered List"
+                        theme={theme}
                     >
                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M7 6h14v2H7V6zm0 5h14v2H7v-2zm0 5h14v2H7v-2zM3 6h2v2H3V6zm0 5h2v2H3v-2zm0 5h2v2H3v-2z" /></svg>
                     </ToolbarButton>
 
-                    <div className="w-px h-6 bg-neutral-700 mx-1"></div>
+                    <div className={theme.toolbar.separator}></div>
 
                     <ToolbarButton
                         onClick={() => editor.chain().focus().setHorizontalRule().run()}
                         title="Horizontal Rule"
+                        theme={theme}
                     >
                         —
                     </ToolbarButton>
@@ -153,13 +198,13 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                     {/* Action Buttons */}
                     <button
                         onClick={handleCancel}
-                        className="px-3 py-1 text-xs font-bold uppercase tracking-widest text-neutral-400 hover:text-white hover:bg-neutral-800 rounded mr-2"
+                        className={theme.toolbar.actionButton}
                     >
                         Close
                     </button>
                     <button
                         onClick={handleSave}
-                        className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-neutral-200 rounded flex items-center gap-1"
+                        className={theme.toolbar.saveButton}
                     >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
                         Save
@@ -168,7 +213,7 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
             )}
 
             {/* Editor Content */}
-            <div className={`flex-1 overflow-y-auto ${!isEditing ? 'cursor-default' : 'bg-white'}`}>
+            <div className={`flex-1 overflow-y-auto ${!isEditing ? 'cursor-default' : 'bg-white/5'}`}>
                 <EditorContent editor={editor} className="h-full" />
             </div>
 
@@ -177,9 +222,9 @@ export default function RichTextEditor({ content, onSave }: RichTextEditorProps)
                 <div className="absolute bottom-4 right-4 z-10">
                     <button
                         onClick={() => setIsEditing(true)}
-                        className="bg-black text-white px-6 py-2 font-serif font-bold uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2"
+                        className={theme.editButton}
                     >
-                        Edit Notes
+                        {editButtonText}
                     </button>
                 </div>
             )}

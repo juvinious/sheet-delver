@@ -16,7 +16,7 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
     return (
         <div className="p-1 flex flex-col gap-6">
             {/* Initiative Header */}
-            <div className="bg-black text-white p-4 flex justify-between items-center border-l-4 border-amber-500 shadow-md">
+            <div className="bg-black text-white p-4 flex justify-between items-center border-l-4 border-pink-500 shadow-md transform -rotate-1">
                 <h3 className="font-morkborg text-2xl uppercase tracking-wider">Initiative</h3>
                 <div className="flex gap-2">
                     <button
@@ -27,7 +27,7 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
                     </button>
                     <button
                         onClick={() => handleInitiative(true)}
-                        className="bg-amber-600 hover:bg-amber-500 text-black px-4 py-1 font-bold border border-amber-800 transition-colors"
+                        className="bg-pink-600 hover:bg-pink-500 text-black px-4 py-1 font-bold border border-pink-800 transition-colors"
                     >
                         INDIVIDUAL
                     </button>
@@ -36,10 +36,10 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
 
             {/* Weapons */}
             <div>
-                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-black inline-block pr-6">Weapons</h3>
+                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform -rotate-1">Weapons</h3>
                 <div className="grid grid-cols-1 gap-3">
                     {actor.items.weapons.map((w: any) => (
-                        <div key={w.id} className="bg-neutral-900/80 p-3 border-l-8 border-red-900 flex items-center justify-between group">
+                        <div key={w._id} className="bg-neutral-900/80 p-3 border-l-8 border-red-900 flex items-center justify-between group">
                             <div className="flex items-center gap-4">
                                 <img src={w.img} alt={w.name} className="w-10 h-10 border border-neutral-600" />
                                 <div>
@@ -65,10 +65,10 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
 
             {/* Armor */}
             <div>
-                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-black inline-block pr-6">Armor</h3>
+                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform rotate-1">Armor</h3>
                 <div className="grid grid-cols-1 gap-3">
                     {actor.items.armor.map((a: any) => (
-                        <div key={a.id} className="bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex items-center justify-between">
+                        <div key={a._id || a.id} className="bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <img src={a.img} alt={a.name} className="w-10 h-10 border border-neutral-600 grayscale" />
                                 <div>

@@ -17,7 +17,7 @@ export default function SpecialTab({ actor, onRoll }: SpecialTabProps) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {actor.items.scrolls.map((s: any) => (
-                        <div key={s.id} className="bg-purple-900/10 border border-purple-900/50 p-4 relative overflow-hidden group hover:bg-purple-900/20 transition-colors">
+                        <div key={s._id || s.id} className="bg-purple-900/10 border border-purple-900/50 p-4 relative overflow-hidden group hover:bg-purple-900/20 transition-colors">
                             <div className="absolute top-0 right-0 p-1 bg-purple-900 text-[10px] items-center justify-center flex text-purple-200 font-bold uppercase tracking-wider">
                                 {s.isUnclean ? 'Unclean' : s.isSacred ? 'Sacred' : 'Scroll'}
                             </div>
@@ -56,7 +56,7 @@ export default function SpecialTab({ actor, onRoll }: SpecialTabProps) {
                 </h3>
                 <div className="space-y-3">
                     {actor.items.abilities.map((f: any) => (
-                        <div key={f.id} className="bg-stone-900/50 p-4 border-l-4 border-stone-600 flex justify-between items-center group">
+                        <div key={f._id || f.id} className="bg-stone-900/50 p-4 border-l-4 border-stone-600 flex justify-between items-center group">
                             <div>
                                 <h4 className="font-bold text-stone-200 text-lg mb-1">{f.name}</h4>
                                 <p className="text-stone-500 text-sm max-w-md">Class feature or trait.</p>

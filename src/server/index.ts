@@ -398,7 +398,14 @@ async function startServer() {
                     actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
                 }
 
-                return adapter.normalizeActorData(actor, client);
+                const normalized = adapter.normalizeActorData(actor, client);
+
+                // Compute derived data if adapter supports it (for Dashboard stats)
+                if (adapter.computeActorData) {
+                    normalized.derived = adapter.computeActorData(normalized);
+                }
+
+                return normalized;
             }));
 
             // We treat all returned actors as "visible"
@@ -491,8 +498,8 @@ async function startServer() {
 
             // Call adapter.computeActorData if available (module-specific derived stats)
             if (adapter.computeActorData) {
-                normalizedActor.computed = {
-                    ...(normalizedActor.computed || {}),
+                normalizedActor.derived = {
+                    ...(normalizedActor.derived || {}),
                     ...adapter.computeActorData(normalizedActor)
                 };
             }

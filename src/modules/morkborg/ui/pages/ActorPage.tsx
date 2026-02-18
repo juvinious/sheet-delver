@@ -257,7 +257,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                         <p className="text-neutral-400 mb-8">This character has been deleted from the world.</p>
                         <button
                             onClick={() => router.push('/')}
-                            className="bg-red-900 hover:bg-red-800 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
+                            className="bg-red-900 hover:bg-neutral-800 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
                         >
                             Return to Dashboard
                         </button>

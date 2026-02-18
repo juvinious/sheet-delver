@@ -1,11 +1,43 @@
 import { GenericSystemAdapter } from '../generic/adapter';
 
+interface ClassItem {
+    name: string;
+    description: string;
+}
+
 export class MorkBorgAdapter extends GenericSystemAdapter {
     systemId = 'morkborg';
 
-    match(actor: any): boolean {
-        return actor.systemId === 'morkborg' || !!actor.system?.omens || !!actor.system?.miseries || (actor.id === 'kwBs8lhMY58BLYFt' || actor.id === 'IbsumID');
+    getClass(actor: any): ClassItem {
+        //return actor.items?.find((i: any) => i.type === 'class')?.name || 'Unknown';
+        const classItem = actor.items?.find((i: any) => i.type === 'class');
+        return {
+            name: classItem?.name || 'Unknown',
+            description: classItem?.system?.description || ''
+        };
     }
+
+    match(actor: any): boolean {
+        const hasMorkborgType = ['player', 'character', 'npc'].includes(actor.type?.toLowerCase());
+        return actor.systemId === 'morkborg' || hasMorkborgType;
+    }
+
+    normalizeActorData(actor: any, client?: any): any {
+        const data = super.normalizeActorData(actor);
+
+        if (client && data.items) {
+            data.items = data.items.map((item: any) => {
+                if (item.img) {
+                    item.img = client.resolveUrl(item.img);
+                }
+                return item;
+            });
+        }
+
+        return data;
+    }
+
+
 
     /**
      * Compute derived actor data (HP, omens, powers, abilities, encumbrance)
@@ -13,8 +45,15 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     computeActorData(actor: any): any {
         const system = actor.system || {};
         const abilities = system.abilities || {};
+        //console.log(`found class name: ` + actor.items.filter((i: any) => i.type === 'class')[0].name);
+        const classData = this.getClass(actor);
 
         return {
+            hp: {
+                value: system.hp?.value ?? 0,
+                max: system.hp?.max ?? 1
+            },
+            class: classData,
             currentHp: system.hp?.value ?? 0,
             maxHp: system.hp?.max ?? 1,
             omens: {
@@ -83,5 +122,19 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
      */
     private isEncumbered(actor: any): boolean {
         return this.calculateSlotsUsed(actor) > this.calculateMaxSlots(actor);
+    }
+
+    /**
+     * Get adapter configuration (server-side, no browser access needed)
+     * This includes UI configuration like actorCard.subtext
+     */
+    getConfig() {
+        return {
+            actorCard: {
+                // Subtext paths to display on actor cards
+                // Format: ["path.to.field", "another.path"]
+                subtext: ['derived.class.name']
+            }
+        };
     }
 }

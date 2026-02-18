@@ -3,6 +3,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import RichTextEditor from '@/app/ui/components/RichTextEditor';
+import { shadowdarkTheme } from '@/modules/shadowdark/ui/themes/shadowdark';
 
 interface NotesModalProps {
     isOpen: boolean;
@@ -65,6 +66,7 @@ export default function NotesModal({
                     <RichTextEditor
                         content={notesContent}
                         onSave={handleSave}
+                        theme={shadowdarkTheme.richText}
                     />
                 </div>
 

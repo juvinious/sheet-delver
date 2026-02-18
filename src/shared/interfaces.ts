@@ -34,6 +34,7 @@ export interface ActorSheetData {
     system?: any;
     items?: any[];
     effects?: any[];
+    derived?: any;
     [key: string]: any;
 }
 

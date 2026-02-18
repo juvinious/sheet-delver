@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import paperTexture from './assets/paper-texture.png';
 
 interface EquipmentTabProps {
     actor: any;
@@ -21,12 +22,12 @@ export default function EquipmentTab({ actor, onDeleteItem }: EquipmentTabProps)
         if (!items || items.length === 0) return null;
         return (
             <div className="mb-6">
-                <h3 className="font-morkborg text-2xl uppercase border-b-2 border-stone-800 mb-3 text-neutral-400">
+                <h3 className="font-morkborg text-2xl uppercase border-b-2 border-pink-800 mb-3 text-pink-500">
                     {title}
                 </h3>
                 <div className="space-y-2">
                     {items.map((item: any) => (
-                        <div key={item.id} className="flex items-center justify-between bg-neutral-900/50 p-2 border border-stone-800/50 hover:border-amber-500/30 transition-colors group">
+                        <div key={item._id || item.id} className="flex items-center justify-between bg-neutral-900/50 p-2 border border-stone-800/50 hover:border-pink-600/30 transition-colors group">
                             <div className="flex items-center gap-3">
                                 <img src={item.img} alt={item.name} className="w-8 h-8 bg-black object-cover border border-stone-700" />
                                 <div>
@@ -55,16 +56,19 @@ export default function EquipmentTab({ actor, onDeleteItem }: EquipmentTabProps)
 
     return (
         <div className="p-1">
-            <div className="bg-black text-neutral-300 p-4 mb-6 border-2 border-stone-800 flex justify-between items-center bg-[url('/textures/paper-texture.png')] bg-opacity-10">
+            <div
+                className="bg-black text-neutral-300 p-4 mb-8 border-2 border-pink-900/30 flex justify-between items-center transform -rotate-1 shadow-lg"
+                style={{ backgroundImage: `url(${paperTexture.src})`, backgroundSize: 'cover', backgroundBlendMode: 'overlay' }}
+            >
                 <div>
-                    <span className="font-morkborg text-2xl uppercase text-amber-600 mr-2">Encumbrance</span>
-                    <span className={`text-xl font-bold ${actor.computed.encumbered ? 'text-red-500 animate-pulse' : 'text-neutral-400'}`}>
-                        {actor.computed.slotsUsed} / {actor.computed.maxSlots}
+                    <span className="font-morkborg text-2xl uppercase text-pink-500 mr-2">Encumbrance</span>
+                    <span className={`text-xl font-bold ${actor.derived?.encumbered ? 'text-red-500 animate-pulse' : 'text-neutral-400'}`}>
+                        {actor.derived?.slotsUsed} / {actor.derived?.maxSlots}
                     </span>
                 </div>
                 <div className="text-right">
-                    <div className="font-morkborg text-xl uppercase text-amber-600">Silver</div>
-                    <div className="font-bold text-2xl text-neutral-200">{actor.computed.silver} s</div>
+                    <div className="font-morkborg text-xl uppercase text-pink-500">Silver</div>
+                    <div className="font-bold text-2xl text-neutral-200">{actor.derived?.silver} s</div>
                 </div>
             </div>
 
