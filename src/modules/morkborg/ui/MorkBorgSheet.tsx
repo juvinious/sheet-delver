@@ -22,7 +22,7 @@ interface MorkBorgSheetProps {
     isDiceTrayOpen?: boolean;
 }
 
-const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value: any, path: string, max?: any, onUpdate: any }) => (
+const StatBlock = ({ label, value, path, max, min = 0, showMax = true, onUpdate }: { label: string, value: any, path: string, max?: any, min?: number, showMax?: boolean, onUpdate: any }) => (
     <div className="flex flex-col items-center justify-center w-full bg-black/80 p-2 border border-neutral-700 relative">
         <style dangerouslySetInnerHTML={{
             __html: `
@@ -40,10 +40,15 @@ const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value
             <input
                 type="number"
                 value={value}
-                onChange={(e) => onUpdate(path, Number(e.target.value))}
+                onChange={(e) => {
+                    let val = Number(e.target.value);
+                    if (min !== undefined) val = Math.max(min, val);
+                    if (max !== undefined) val = Math.min(max, val);
+                    onUpdate(path, val);
+                }}
                 className="bg-transparent w-20 text-center focus:outline-none focus:text-pink-500"
             />
-            {max !== undefined && (
+            {max !== undefined && showMax && (
                 <>
                     <span className="text-neutral-500">/</span>
                     <input
@@ -60,8 +65,8 @@ const StatBlock = ({ label, value, path, max, onUpdate }: { label: string, value
 
 const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, onRoll: any }) => (
     <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onRoll('ability', label.toLowerCase())}>
-        <div className={`${fell.className} text-3xl w-12 text-right group-hover:text-pink-500 transition-colors`}>
-            {label.substring(0, 3)}
+        <div className={`${fell.className} text-3xl w-16 text-right group-hover:text-pink-500 transition-colors`}>
+            {label.substring(0, 3).toUpperCase()}
         </div>
         <div className={`${fell.className} text-4xl font-bold bg-black text-white w-14 h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
             {value > 0 ? `+${value}` : value}
@@ -159,8 +164,8 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                             {/* Core Vitality Stats - Now in separate row below */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white/50 p-3 border border-black shadow-inner w-full">
                                 <StatBlock label="HP" value={sheetActor.derived.currentHp} max={sheetActor.derived.maxHp} path="system.hp.value" onUpdate={onUpdate} />
-                                <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} path="system.omens.value" onUpdate={onUpdate} />
-                                <StatBlock label="Powers" value={sheetActor.derived.powers.value} max={sheetActor.derived.powers.max} path="system.powerUses.value" onUpdate={onUpdate} />
+                                <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} showMax={false} path="system.omens.value" onUpdate={onUpdate} />
+                                <StatBlock label="Powers" value={sheetActor.derived.powers.value} max={sheetActor.derived.powers.max} showMax={false} path="system.powerUses.value" onUpdate={onUpdate} />
                                 <StatBlock label="Silver" value={sheetActor.derived.silver} path="system.silver" onUpdate={onUpdate} />
                             </div>
                         </div>

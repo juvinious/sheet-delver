@@ -104,7 +104,7 @@ export const morkborgTheme = {
             actionButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-neutral-200 rounded mr-2 font-morkborg',
             saveButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-pink-600 text-white hover:bg-pink-500 rounded flex items-center gap-1 font-morkborg transform -rotate-1 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
         },
-        editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[100px] p-4 text-neutral-300 selection:bg-pink-600/30 selection:text-white',
+        editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[100px] p-4 pb-20 text-neutral-300 selection:bg-pink-600/30 selection:text-white',
         editButton: 'bg-pink-600 text-white px-6 py-2 font-morkborg text-xl uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2 transform -rotate-1 hover:rotate-0'
     }
 };

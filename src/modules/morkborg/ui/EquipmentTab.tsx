@@ -61,10 +61,17 @@ export default function EquipmentTab({ actor, onDeleteItem }: EquipmentTabProps)
                 style={{ backgroundImage: `url(${paperTexture.src})`, backgroundSize: 'cover', backgroundBlendMode: 'overlay' }}
             >
                 <div>
-                    <span className="font-morkborg text-2xl uppercase text-pink-500 mr-2">Encumbrance</span>
-                    <span className={`text-xl font-bold ${actor.derived?.encumbered ? 'text-red-500 animate-pulse' : 'text-neutral-400'}`}>
-                        {actor.derived?.slotsUsed} / {actor.derived?.maxSlots}
-                    </span>
+                    <div className="flex items-baseline gap-2">
+                        <span className="font-morkborg text-2xl uppercase text-pink-500">Carrying</span>
+                        <span className={`text-xl font-bold ${actor.derived?.encumbered ? 'text-red-500 animate-pulse' : 'text-neutral-200'}`}>
+                            {actor.derived?.slotsUsed} / {actor.derived?.maxSlots}
+                        </span>
+                    </div>
+                    {actor.derived?.encumbranceHelpText && (
+                        <div className="text-[14px] text-yellow-500 font-mono mt-0.5 leading-none">
+                            {actor.derived.encumbranceHelpText}
+                        </div>
+                    )}
                 </div>
                 <div className="text-right">
                     <div className="font-morkborg text-xl uppercase text-pink-500">Silver</div>

@@ -17,7 +17,15 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
         <div className="p-1 flex flex-col gap-6">
             {/* Initiative Header */}
             <div className="bg-black text-white p-4 flex justify-between items-center border-l-4 border-pink-500 shadow-md transform -rotate-1">
-                <h3 className="font-morkborg text-2xl uppercase tracking-wider">Initiative</h3>
+                <div>
+                    <h3 className="font-morkborg text-2xl uppercase tracking-wider">Initiative</h3>
+
+                    {actor.derived?.criticalHelpText && (
+                        <div className="text-[14px] text-yellow-500 font-mono mt-0.5 leading-none">
+                            {actor.derived.criticalHelpText}
+                        </div>
+                    )}
+                </div>
                 <div className="flex gap-2">
                     <button
                         onClick={() => handleInitiative(false)}

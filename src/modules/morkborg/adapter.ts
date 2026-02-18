@@ -45,8 +45,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     computeActorData(actor: any): any {
         const system = actor.system || {};
         const abilities = system.abilities || {};
-        //console.log(`found class name: ` + actor.items.filter((i: any) => i.type === 'class')[0].name);
         const classData = this.getClass(actor);
+        const slotsUsed = this.calculateSlotsUsed(actor);
+        const maxSlots = this.calculateMaxSlots(actor);
 
         return {
             hp: {
@@ -70,9 +71,11 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 presence: { value: abilities.presence?.value ?? 0 },
                 toughness: { value: abilities.toughness?.value ?? 0 }
             },
-            slotsUsed: this.calculateSlotsUsed(actor),
-            maxSlots: this.calculateMaxSlots(actor),
-            encumbered: this.isEncumbered(actor),
+            slotsUsed: slotsUsed,
+            maxSlots: maxSlots,
+            encumbered: slotsUsed > maxSlots,
+            encumbranceHelpText: 'STR+8 carried items or DR+2 on AGI/STR tests.',
+            criticalHelpText: 'Crit: Gain free attack. Fumble: Take x2 damage, armor reduced one tier.',
             silver: system.silver ?? 0
         };
     }
@@ -85,9 +88,10 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         return {
             weapons: items.filter((i: any) => i.type === 'weapon'),
             armor: items.filter((i: any) => i.type === 'armor'),
-            equipment: items.filter((i: any) => i.type === 'misc'),
-            scrolls: items.filter((i: any) => i.type === 'scroll'),
-            abilities: items.filter((i: any) => i.type === 'feat')
+            equipment: items.filter((i: any) => ['misc', 'container', 'ammo'].includes(i.type?.toLowerCase())),
+            scrolls: items.filter((i: any) => ['scroll', 'tablet'].includes(i.type?.toLowerCase())),
+            feats: items.filter((i: any) => i.type === 'feat'),
+            abilities: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type?.toLowerCase()))
         };
     }
 
@@ -95,33 +99,99 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
      * Calculate slots used based on item weights
      */
     private calculateSlotsUsed(actor: any): number {
-        const items = actor.items || [];
-        let totalSlots = 0;
+        if (!actor.items) return 0;
 
-        for (const item of items) {
-            if (item.system?.carried === false) continue;
+        // Mork Borg equipment types that count towards weight
+        const equipmentTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon'];
 
-            const weight = item.system?.carryWeight ?? item.system?.containerSpace ?? 0;
+        return actor.items.reduce((acc: number, item: any) => {
+            // Only count "equipment" types (traits/feats don't count)
+            if (!equipmentTypes.includes(item.type?.toLowerCase())) return acc;
+
+            const weight = item.system?.weight ?? item.system?.carryWeight ?? 0;
             const quantity = item.system?.quantity ?? 1;
-            totalSlots += weight * quantity;
-        }
 
-        return Math.ceil(totalSlots);
+            return acc + Math.ceil(weight * quantity);
+        }, 0);
     }
 
     /**
-     * Calculate maximum slots (base 10 + strength modifier)
+     * Calculate maximum slots (base 8 + strength modifier)
      */
     private calculateMaxSlots(actor: any): number {
         const strengthMod = actor.system?.abilities?.strength?.value ?? 0;
-        return 10 + strengthMod;
+        return 8 + strengthMod;
     }
 
     /**
-     * Check if actor is encumbered
+     * Get roll data for Mörk Borg actions
      */
-    private isEncumbered(actor: any): boolean {
-        return this.calculateSlotsUsed(actor) > this.calculateMaxSlots(actor);
+    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string; flags?: any } | null {
+        const system = actor.system || {};
+        const abilities = system.abilities || {};
+
+        if (type === 'dice') {
+            return {
+                formula: key,
+                type: 'dice',
+                label: options.flavor || 'Roll'
+            };
+        }
+
+        if (type === 'ability') {
+            const stat = abilities[key]?.value ?? 0;
+            const sign = stat >= 0 ? '+' : '';
+            return {
+                formula: `1d20${sign}${stat}`,
+                type: 'ability',
+                label: `${key.toUpperCase()} Test`
+            };
+        }
+
+        if (type === 'item') {
+            const item = (actor.items || []).find((i: any) => i.uuid === key || i._id === key || i.id === key);
+            if (options.rollType === 'attack') {
+                // Presence for ranged, Strength for melee
+                // Broad heuristic: check if weapon says 'ranged' or 'presence'
+                const isRanged = item?.system?.type?.toLowerCase() === 'ranged' ||
+                    item?.system?.usage?.toLowerCase() === 'presence';
+                const mod = isRanged ? (abilities.presence?.value ?? 0) : (abilities.strength?.value ?? 0);
+                const sign = mod >= 0 ? '+' : '';
+                return {
+                    formula: `1d20${sign}${mod}`,
+                    type: 'attack',
+                    label: `Attack: ${item?.name || 'Weapon'}`
+                };
+            }
+
+            if (options.rollType === 'defend') {
+                // Agility for defense
+                const mod = abilities.agility?.value ?? 0;
+                const sign = mod >= 0 ? '+' : '';
+                return {
+                    formula: `1d20${sign}${mod}`,
+                    type: 'defend',
+                    label: `Defense: ${item?.name || 'Armor'}`
+                };
+            }
+
+            if (item?.type === 'scroll' || item?.type === 'power' || item?.type === 'feat') {
+                // Presence for powers
+                const mod = abilities.presence?.value ?? 0;
+                const sign = mod >= 0 ? '+' : '';
+                return {
+                    formula: `1d20${sign}${mod}`,
+                    type: 'power',
+                    label: `Power: ${item?.name}`
+                };
+            }
+        }
+
+        return {
+            formula: '1d20',
+            type: 'default',
+            label: 'Roll'
+        };
     }
 
     /**

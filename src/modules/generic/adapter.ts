@@ -36,7 +36,8 @@ export class GenericSystemAdapter implements SystemAdapter {
         return {};
     }
 
-    getRollData(): any {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getRollData(actor: any, type: string, key: string, options?: any): any {
         return null;
     }
 
