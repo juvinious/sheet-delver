@@ -84,14 +84,14 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
      * Categorize items by type
      */
     categorizeItems(actor: any): any {
-        const items = actor.items || [];
+        const items = (actor.items || []).map((i: any) => this.normalizeItem(i));
         return {
             weapons: items.filter((i: any) => i.type === 'weapon'),
             armor: items.filter((i: any) => i.type === 'armor'),
-            equipment: items.filter((i: any) => ['misc', 'container', 'ammo'].includes(i.type?.toLowerCase())),
-            scrolls: items.filter((i: any) => ['scroll', 'tablet'].includes(i.type?.toLowerCase())),
+            equipment: items.filter((i: any) => ['misc', 'container', 'ammo'].includes(i.type)),
+            scrolls: items.filter((i: any) => ['scroll', 'tablet'].includes(i.type)),
             feats: items.filter((i: any) => i.type === 'feat'),
-            abilities: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type?.toLowerCase()))
+            abilities: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type))
         };
     }
 
@@ -99,20 +99,33 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
      * Calculate slots used based on item weights
      */
     private calculateSlotsUsed(actor: any): number {
-        if (!actor.items) return 0;
+        const items = actor.items || [];
 
-        // Mork Borg equipment types that count towards weight
-        const equipmentTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon'];
+        // Identify carried containers
+        const carriedContainers = items
+            .filter((i: any) => i.type === 'container' && (i.system?.equipped || i.system?.carried))
+            .map((i: any) => i._id || i.id);
 
-        return actor.items.reduce((acc: number, item: any) => {
-            // Only count "equipment" types (traits/feats don't count)
-            if (!equipmentTypes.includes(item.type?.toLowerCase())) return acc;
+        let totalWeight = 0;
 
-            const weight = item.system?.weight ?? item.system?.carryWeight ?? 0;
-            const quantity = item.system?.quantity ?? 1;
+        for (const item of items) {
+            const system = item.system || {};
+            const type = item.type?.toLowerCase();
 
-            return acc + Math.ceil(weight * quantity);
-        }, 0);
+            // Only certain items count towards weight
+            const weightCountingTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon', 'tablet'];
+            if (!weightCountingTypes.includes(type)) continue;
+
+            // Skip if item is inside a carried container
+            if (system.containerId && carriedContainers.includes(system.containerId)) continue;
+
+            // Weight logic: summing Math.ceil(weight * quantity)
+            const weight = Number(system.weight) || Number(system.carryWeight) || 0;
+            const quantity = Number(system.quantity) || 1;
+            totalWeight += Math.ceil(weight * quantity);
+        }
+
+        return totalWeight;
     }
 
     /**
@@ -124,9 +137,37 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 
     /**
-     * Get roll data for Mörk Borg actions
+     * Normalize item data for UI display
      */
-    getRollData(actor: any, type: string, key: string, options: any = {}): { formula: string; type: string; label: string; flags?: any } | null {
+    normalizeItem(item: any): any {
+        const system = item.system || {};
+        const type = item.type?.toLowerCase();
+
+        return {
+            id: item._id || item.id,
+            name: item.name,
+            type: type,
+            img: item.img,
+            system: system, // Keep system for sub-components
+            description: system.description || '',
+            weight: system.weight || 0,
+            quantity: system.quantity || 1,
+            // Roll specific data
+            damageDie: system.damageDie || '',
+            damageReductionDie: system.damageReductionDie || '',
+            fumbleOn: system.fumbleOn || 1,
+            critOn: system.critOn || 20,
+            weaponType: system.weaponType || 'melee',
+            equipped: system.equipped || false,
+            tier: system.tier || { value: 0, max: 0 },
+            rollLabel: system.rollLabel || ''
+        };
+    }
+
+    /**
+     * Get roll data or pre-evaluated card content
+     */
+    getRollData(actor: any, type: string, key: string, options: any = {}): any {
         const system = actor.system || {};
         const abilities = system.abilities || {};
 
@@ -150,41 +191,38 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
         if (type === 'item') {
             const item = (actor.items || []).find((i: any) => i.uuid === key || i._id === key || i.id === key);
-            if (options.rollType === 'attack') {
-                // Presence for ranged, Strength for melee
-                // Broad heuristic: check if weapon says 'ranged' or 'presence'
-                const isRanged = item?.system?.type?.toLowerCase() === 'ranged' ||
-                    item?.system?.usage?.toLowerCase() === 'presence';
-                const mod = isRanged ? (abilities.presence?.value ?? 0) : (abilities.strength?.value ?? 0);
-                const sign = mod >= 0 ? '+' : '';
+            const itemData = this.normalizeItem(item || {});
+
+            if (options.rollType === 'attack' || options.rollType === 'defend') {
+                // Return metadata so the server knows it needs to perform an automated sequence
                 return {
-                    formula: `1d20${sign}${mod}`,
-                    type: 'attack',
-                    label: `Attack: ${item?.name || 'Weapon'}`
+                    type: options.rollType,
+                    itemId: itemData.id,
+                    isAutomated: true,
+                    options: options,
+                    label: options.rollType === 'attack' ? `Attack: ${itemData.name}` : `Defense: ${itemData.name}`
                 };
             }
 
-            if (options.rollType === 'defend') {
-                // Agility for defense
-                const mod = abilities.agility?.value ?? 0;
-                const sign = mod >= 0 ? '+' : '';
-                return {
-                    formula: `1d20${sign}${mod}`,
-                    type: 'defend',
-                    label: `Defense: ${item?.name || 'Armor'}`
-                };
-            }
-
-            if (item?.type === 'scroll' || item?.type === 'power' || item?.type === 'feat') {
-                // Presence for powers
+            if (itemData.type === 'scroll' || itemData.type === 'power' || itemData.type === 'feat') {
                 const mod = abilities.presence?.value ?? 0;
                 const sign = mod >= 0 ? '+' : '';
                 return {
                     formula: `1d20${sign}${mod}`,
                     type: 'power',
-                    label: `Power: ${item?.name}`
+                    label: `Power: ${itemData.name}`
                 };
             }
+        }
+
+        if (type === 'initiative') {
+            return {
+                type: 'initiative',
+                subType: key, // 'individual' or 'party'
+                isAutomated: true,
+                options: options,
+                label: key === 'party' ? 'Party Initiative' : 'Initiative'
+            };
         }
 
         return {
@@ -195,8 +233,186 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 
     /**
+     * Generate stylized HTML for an automated roll card
+     */
+    generateRollCard(actorData: any, results: any): string {
+        const { type, item, rolls, outcomes } = results;
+        const icon = item?.img ? `<img src="${item.img}" title="${item.name}" width="24" height="24" class="chat-card-image" />` : '';
+
+        // Mork Borg aesthetic classes matching the module's template structure
+        let html = `<form class="roll-card ${type}-roll-card">`;
+
+        // Header
+        let title = type === 'attack' ? 'Melee Attack' : (type === 'defend' ? 'Defense' : 'Test');
+        if (type === 'initiative') {
+            title = results.subType === 'party' ? 'Party Initiative' : 'Initiative';
+        }
+        html += `<div class="card-title">${title}</div>`;
+
+        // Item Row
+        if (item) {
+            html += `
+  <div class="item-row">
+    ${icon}
+    <span class="item-name">${item.name}</span>
+  </div>`;
+        }
+
+        // Rolls
+        for (const r of rolls) {
+            html += `
+                <div class="roll-result">
+                    <div class="roll-title">
+                        <span>${r.label}: ${r.formula}</span>
+                    </div>
+                    <div class="roll-row">
+                        <span>${r.total}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Outcomes (Big yellow blocks)
+        for (const o of outcomes) {
+            if (!o) continue;
+            html += `
+                <div class="outcome-row">
+                    <span>${o}</span>
+                </div>
+            `;
+        }
+
+        html += `</form>`;
+        return html;
+    }
+
+    /**
+     * Perform an automated roll sequence (Attack, Defense, Initiative)
+     */
+    async performAutomatedSequence(client: any, actor: any, rollData: any, options: any): Promise<any> {
+        const results: any = {
+            type: rollData.type,
+            item: actor.items?.find((i: any) => i._id === rollData.itemId || i.id === rollData.itemId),
+            rolls: [],
+            outcomes: []
+        };
+
+        const parseSyntheticRoll = (rollResult: any) => {
+            if (!rollResult) return { total: 0, formula: '', dice: [] };
+            if (typeof rollResult.total === 'number') return rollResult;
+            try {
+                const rollData = rollResult.rolls ? JSON.parse(rollResult.rolls[0]) : null;
+                return {
+                    total: rollData?.total ?? 0,
+                    formula: rollData?.formula ?? '',
+                    dice: rollData?.terms ? [{
+                        results: rollData.terms
+                            .filter((t: any) => t.faces === 20 && t.results)
+                            .flatMap((t: any) => t.results)
+                    }] : []
+                };
+            } catch (e) {
+                return { total: 0, formula: '', dice: [] };
+            }
+        };
+
+        const speaker = options?.speaker || {
+            actor: actor._id || actor.id,
+            alias: actor.name
+        };
+
+        if (rollData.type === 'attack') {
+            const isRanged = results.item?.system?.weaponType === 'ranged';
+            const mod = isRanged ? (actor.system?.abilities?.presence?.value ?? 0) : (actor.system?.abilities?.strength?.value ?? 0);
+            const modifiedDR = options.modifiedDR || 12;
+            const hitResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, `Attack Vs DR ${modifiedDR}`, { displayChat: false });
+            const hitRoll = parseSyntheticRoll(hitResult);
+            results.rolls.push({ label: 'Attack', formula: `${hitRoll.formula} Vs DR ${modifiedDR}`, total: hitRoll.total });
+
+            const d20 = hitRoll.dice?.[0]?.results?.[0]?.result;
+            const fumbleTarget = results.item?.system?.fumbleOn ?? 1;
+            const critTarget = results.item?.system?.critOn ?? 20;
+            const isFumble = d20 <= fumbleTarget;
+            const isCrit = d20 >= critTarget;
+            const isHit = hitRoll.total !== 1 && (hitRoll.total === 20 || hitRoll.total >= modifiedDR);
+
+            if (isHit) {
+                results.outcomes.push(isCrit ? 'CRITICAL SUCCESS!' : 'HIT!');
+                const damageFormula = isCrit ? `(${results.item?.system?.damageDie || '1d4'}) * 2` : (results.item?.system?.damageDie || '1d4');
+                const damageResult = await client.roll(damageFormula, 'Damage', { displayChat: false });
+                const damageRoll = parseSyntheticRoll(damageResult);
+                results.rolls.push({ label: 'Damage', formula: damageRoll.formula, total: damageRoll.total });
+
+                let totalDamage = damageRoll.total;
+                const armorFormula = options.targetArmor?.trim();
+                if (armorFormula && armorFormula !== '0') {
+                    const armorResult = await client.roll(armorFormula, 'Target Armor', { displayChat: false });
+                    const armorRoll = parseSyntheticRoll(armorResult);
+                    results.rolls.push({ label: 'Target Armor', formula: armorRoll.formula, total: armorRoll.total });
+                    totalDamage = Math.max(totalDamage - armorRoll.total, 0);
+                }
+                results.outcomes.push(`INFLICT ${totalDamage} DAMAGE`);
+            } else {
+                results.outcomes.push(isFumble ? 'FUMBLE!' : 'MISS!');
+            }
+        } else if (rollData.type === 'defend') {
+            const mod = actor.system?.abilities?.agility?.value ?? 0;
+            const modifiedDR = options.modifiedDR || 12;
+            const defendResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, `Defense Vs DR ${modifiedDR}`, { displayChat: false });
+            const defendRoll = parseSyntheticRoll(defendResult);
+            results.rolls.push({ label: 'Defense', formula: `${defendRoll.formula} Vs DR ${modifiedDR}`, total: defendRoll.total });
+
+            const isPassed = defendRoll.total !== 1 && (defendRoll.total === 20 || defendRoll.total >= modifiedDR);
+
+            if (isPassed) {
+                results.outcomes.push('SUCCESS!');
+            } else {
+                results.outcomes.push('FAILED!');
+                if (options.incomingAttack) {
+                    const attackResult = await client.roll(options.incomingAttack, 'Incoming Attack', { displayChat: false });
+                    const attackRoll = parseSyntheticRoll(attackResult);
+                    results.rolls.push({ label: 'Incoming Attack', formula: attackRoll.formula, total: attackRoll.total });
+
+                    const armorDR = results.item?.system?.damageReductionDie || 'd2';
+                    const armorResult = await client.roll(armorDR, 'Armor DR', { displayChat: false });
+                    const armorRoll = parseSyntheticRoll(armorResult);
+                    results.rolls.push({ label: 'Armor DR', formula: armorRoll.formula, total: armorRoll.total });
+
+                    const damageTaken = Math.max(attackRoll.total - armorRoll.total, 0);
+                    results.outcomes.push(`SUFFER ${damageTaken} DAMAGE`);
+                }
+            }
+        } else if (rollData.type === 'initiative') {
+            if (rollData.subType === 'party') {
+                const partyResult = await client.roll('1d6', 'Party Initiative', { displayChat: false });
+                const partyRoll = parseSyntheticRoll(partyResult);
+                results.rolls.push({ label: 'Roll', formula: partyRoll.formula, total: partyRoll.total });
+                results.subType = 'party';
+                if (partyRoll.total <= 3) {
+                    results.outcomes.push('NPCS GO FIRST');
+                } else {
+                    results.outcomes.push('PCS GO FIRST');
+                }
+            } else {
+                const mod = actor.system?.abilities?.agility?.value ?? 0;
+                const initResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, 'Initiative', { displayChat: false });
+                const initRoll = parseSyntheticRoll(initResult);
+                results.rolls.push({ label: 'Roll', formula: initRoll.formula, total: initRoll.total });
+                results.subType = 'individual';
+                if (initRoll.total >= 12) {
+                    results.outcomes.push('INITIATIVE PASSED');
+                } else {
+                    results.outcomes.push('INITIATIVE FAILED');
+                }
+            }
+        }
+
+        const html = this.generateRollCard(actor, results);
+        return await client.sendMessage(html, { rollMode: options?.rollMode, speaker });
+    }
+
+    /**
      * Get adapter configuration (server-side, no browser access needed)
-     * This includes UI configuration like actorCard.subtext
      */
     getConfig() {
         return {

@@ -619,6 +619,13 @@ async function startServer() {
 
             if (!rollData) throw new Error('Cannot determine roll formula');
 
+            // Handle Automated Roll Sequences (e.g. Mork Borg Attack/Defend)
+            if (rollData.isAutomated && typeof adapter.performAutomatedSequence === 'function') {
+                const result = await adapter.performAutomatedSequence(client, actor, rollData, options);
+                return res.json({ success: true, result, label: rollData.label });
+            }
+
+            // Fallback: Standard Single Roll
             // Determine speaker: use actor for character sheet rolls if not overridden
             const speaker = options?.speaker || {
                 actor: actor._id || actor.id,

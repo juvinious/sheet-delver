@@ -130,7 +130,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                                     <div className="relative">
                                         <img
                                             src={encodeURI(sheetActor.img)}
-                                            className="block object-cover border-4 border-black shadow-lg grayscale hover:grayscale-0 transition-all duration-500"
+                                            className="block object-cover border-4 border-black shadow-lg"
                                             style={{ width: '128px', height: '128px', minWidth: '128px' }}
                                             alt="Character Portrait"
                                             onError={(e) => {
@@ -178,7 +178,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
                         <div className="relative z-10">
                             {activeTab === 'background' && <BackgroundTab actor={sheetActor} onUpdate={onUpdate} />}
-                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
+                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
                             {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} />}
                             {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={onRoll} />}
                         </div>
