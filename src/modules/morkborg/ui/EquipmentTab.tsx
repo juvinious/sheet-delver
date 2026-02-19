@@ -98,7 +98,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
         return (
             <div
                 key={(item._id || item.id) + index}
-                className={`flex items-center justify-between bg-black border-b border-white/20 group hover:bg-neutral-900 transition-colors my-2 py-4 ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'} ${isNested ? 'ml-8 bg-neutral-900/40' : 'p-3'}`}
+                className={`flex flex-col lg:flex-row lg:items-center justify-between bg-black border-b border-white/20 group hover:bg-neutral-900 transition-colors my-2 py-4 ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'} ${isNested ? 'ml-8 bg-neutral-900/40' : 'p-3'}`}
             >
                 <div className="flex items-center gap-4 flex-1">
                     <img
@@ -121,19 +121,19 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     </div>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2 mt-4 lg:mt-0 lg:ml-auto flex-wrap justify-end">
                     {/* Quantity Controls */}
                     {(item.type === 'misc' || item.type === 'ammo') && (
-                        <div className="flex items-center mr-4">
+                        <div className="flex items-center mr-2">
                             <button
                                 onClick={() => handleQuantityChange(item, -1)}
-                                className="w-14 h-14 flex items-center justify-center text-4xl text-white hover:text-pink-500 transition-colors font-bold"
+                                className="w-12 h-12 lg:w-14 lg:h-14 flex items-center justify-center text-4xl text-white hover:text-pink-500 transition-colors font-bold"
                             >
                                 −
                             </button>
                             <button
                                 onClick={() => handleQuantityChange(item, 1)}
-                                className="w-14 h-14 flex items-center justify-center text-4xl text-white hover:text-pink-500 transition-colors font-bold"
+                                className="w-12 h-12 lg:w-14 lg:h-14 flex items-center justify-center text-4xl text-white hover:text-pink-500 transition-colors font-bold"
                             >
                                 +
                             </button>
@@ -160,7 +160,6 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                         >
                             {item.type === 'weapon' ? (
                                 <Swords className="w-8 h-8" />
-                                //) : item.type === 'armor' ? (
                             ) : (
                                 <Shield className="w-8 h-8" />
                             )}
@@ -191,10 +190,10 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
         <div className="p-1 min-h-[500px]">
             {/* Header / Carrying Capacity */}
             <div
-                className="bg-black text-neutral-300 p-4 mb-8 border-2 border-pink-900/30 flex justify-between items-center transform -rotate-1 shadow-lg"
+                className="bg-black text-neutral-300 p-4 mb-8 border-2 border-pink-900/30 flex flex-col sm:flex-row justify-between items-center transform -rotate-1 shadow-lg gap-4"
                 style={{ backgroundImage: `url(${paperTexture.src})`, backgroundSize: 'cover', backgroundBlendMode: 'overlay' }}
             >
-                <div>
+                <div className="w-full sm:w-auto flex justify-center sm:justify-start">
                     <div className="flex items-baseline gap-2">
                         <span className="font-morkborg text-2xl uppercase text-pink-500 leading-none mb-1">Carrying</span>
                         <div className={`text-2xl font-bold font-mono tracking-tighter ${actor.derived?.encumbered ? 'text-red-500 animate-pulse' : 'text-neutral-200'}`}>
@@ -202,7 +201,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                         </div>
                     </div>
                 </div>
-                <div className="text-right">
+                <div className="w-full sm:w-auto flex flex-col items-center sm:items-end">
                     <div className="font-morkborg text-xl uppercase text-pink-500 mb-0.5 leading-none">Silver</div>
                     <div className="font-bold text-2xl text-neutral-200 font-mono tracking-tight">{actor.derived?.silver}<span className="text-sm ml-1 text-white/40 uppercase font-bold tracking-widest">s</span></div>
                 </div>
@@ -214,10 +213,11 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     Equipment
                 </h3>
                 <button
-                    className="font-morkborg text-2xl text-neutral-900 bg-pink-500 px-4 py-1 hover:bg-white transition-all transform rotate-2 hover:rotate-0"
+                    className="font-morkborg text-3xl text-neutral-900 bg-pink-500 w-10 h-10 flex items-center justify-center hover:bg-white transition-all transform rotate-2 hover:rotate-0"
                     onClick={() => {/* Hook up later */ }}
+                    title="Add Item"
                 >
-                    Add +
+                    +
                 </button>
             </div>
 
@@ -265,7 +265,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     isOpen={itemModalConfig.isOpen}
                     onClose={() => setItemModalConfig({ ...itemModalConfig, isOpen: false })}
                     onUpdate={handleUpdateItem}
-                    item={itemModalConfig.item}
+                    item={allItems.find(i => (i._id || i.id) === (itemModalConfig.item?._id || itemModalConfig.item?.id))}
                     actor={actor}
                 />
             )}

@@ -43,7 +43,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                     <input
                         type="number"
                         value={system.price ?? 0}
-                        onChange={(e) => handleChange('system.price', parseInt(e.target.value))}
+                        onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                            handleChange('system.price', isNaN(val) ? 0 : val);
+                        }}
                         className="bg-transparent text-right outline-none w-20 font-mono text-white"
                     />
                 </div>
@@ -53,7 +56,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                         type="number"
                         step="0.1"
                         value={system.carryWeight ?? 0}
-                        onChange={(e) => handleChange('system.carryWeight', parseFloat(e.target.value))}
+                        onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                            handleChange('system.carryWeight', isNaN(val) ? 0 : val);
+                        }}
                         className="bg-transparent text-right outline-none w-20 font-mono text-white"
                     />
                 </div>
@@ -87,7 +93,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             <input
                                 type="number"
                                 value={system.critOn ?? 20}
-                                onChange={(e) => handleChange('system.critOn', parseInt(e.target.value))}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 20 : parseInt(e.target.value);
+                                    handleChange('system.critOn', isNaN(val) ? 20 : val);
+                                }}
                                 className="bg-transparent text-right outline-none w-20 font-mono text-white"
                             />
                         </div>
@@ -96,7 +105,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             <input
                                 type="number"
                                 value={system.fumbleOn ?? 1}
-                                onChange={(e) => handleChange('system.fumbleOn', parseInt(e.target.value))}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 1 : parseInt(e.target.value);
+                                    handleChange('system.fumbleOn', isNaN(val) ? 1 : val);
+                                }}
                                 className="bg-transparent text-right outline-none w-20 font-mono text-white"
                             />
                         </div>
@@ -110,7 +122,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             <input
                                 type="number"
                                 value={system.tier?.value ?? 1}
-                                onChange={(e) => handleChange('system.tier.value', parseInt(e.target.value))}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 1 : parseInt(e.target.value);
+                                    handleChange('system.tier.value', isNaN(val) ? 1 : val);
+                                }}
                                 className="bg-transparent text-right outline-none w-20 font-mono text-white"
                             />
                         </div>
@@ -119,7 +134,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             <input
                                 type="number"
                                 value={system.tier?.max ?? 1}
-                                onChange={(e) => handleChange('system.tier.max', parseInt(e.target.value))}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 1 : parseInt(e.target.value);
+                                    handleChange('system.tier.max', isNaN(val) ? 1 : val);
+                                }}
                                 className="bg-transparent text-right outline-none w-20 font-mono text-white"
                             />
                         </div>
@@ -132,7 +150,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                         <input
                             type="number"
                             value={system.capacity ?? 7}
-                            onChange={(e) => handleChange('system.capacity', parseInt(e.target.value))}
+                            onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                handleChange('system.capacity', isNaN(val) ? 0 : val);
+                            }}
                             className="bg-transparent text-right outline-none w-20 font-mono text-white"
                         />
                     </div>
@@ -144,7 +165,10 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                         <input
                             type="number"
                             value={system.quantity ?? 1}
-                            onChange={(e) => handleChange('system.quantity', parseInt(e.target.value))}
+                            onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                handleChange('system.quantity', isNaN(val) ? 0 : val);
+                            }}
                             className="bg-transparent text-right outline-none w-20 font-mono text-white"
                         />
                     </div>
@@ -165,33 +189,36 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                 </button>
 
                 {/* Header */}
-                <div className="p-6 flex gap-6 items-center">
-                    <div className="w-24 h-24 flex-shrink-0">
+                <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0">
                         <img src={item.img} alt={item.name} className="w-full h-full object-contain" />
                     </div>
-                    <div className="flex-1">
-                        <h2 className="font-morkborg text-4xl text-white tracking-widest leading-none mb-1">
-                            {item.name}
-                        </h2>
+                    <div className="flex-1 w-full text-center sm:text-left">
+                        <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => handleChange('name', e.target.value)}
+                            className="bg-transparent font-morkborg text-2xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left"
+                        />
                         <div className="h-1 bg-yellow-500 w-full mb-2 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                        <div className="font-morkborg text-2xl text-white/80 tracking-tighter uppercase opacity-70">
+                        <div className="font-morkborg text-xl sm:text-2xl text-white/80 tracking-tighter uppercase opacity-70">
                             {item.type}
                         </div>
                     </div>
                 </div>
 
                 {/* Tabs */}
-                <div className="flex font-morkborg text-2xl px-6 border-b border-white/10">
+                <div className="flex font-morkborg text-xl sm:text-2xl px-4 sm:px-6 border-b border-white/10 overflow-x-auto scrollbar-hide">
                     <button
                         onClick={() => setActiveTab('description')}
-                        className={`px-8 py-2 relative transition-all ${activeTab === 'description' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'description' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
                     >
                         Description
                         {activeTab === 'description' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
                     </button>
                     <button
                         onClick={() => setActiveTab('details')}
-                        className={`px-8 py-2 relative transition-all ${activeTab === 'details' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'details' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
                     >
                         Details
                         {activeTab === 'details' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
@@ -199,9 +226,9 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto p-8 bg-neutral-800/30">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-neutral-800/30 scrollbar-hide">
                     {activeTab === 'description' ? (
-                        <div className="font-serif text-lg leading-relaxed text-neutral-300">
+                        <div className="font-serif text-base sm:text-lg leading-relaxed text-neutral-300">
                             <RichTextEditor
                                 content={item.system?.description || ''}
                                 onSave={(html) => handleChange('system.description', html)}

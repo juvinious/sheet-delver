@@ -213,16 +213,16 @@ export default function RichTextEditor({
             )}
 
             {/* Editor Content */}
-            <div className={`flex-1 overflow-y-auto ${!isEditing ? 'cursor-default' : 'bg-white/5'}`}>
+            <div className={`flex-1 overflow-y-auto scrollbar-hide ${!isEditing ? 'cursor-default' : 'bg-white/5'}`}>
                 <EditorContent editor={editor} className="h-full" />
             </div>
 
             {/* Edit Button - Visible when not editing */}
             {!isEditing && (
-                <div className="absolute bottom-4 right-4 z-10">
+                <div className="p-4 z-10 w-full flex justify-center lg:justify-end">
                     <button
                         onClick={() => setIsEditing(true)}
-                        className={theme.editButton}
+                        className={`w-full lg:w-auto justify-center ${theme.editButton}`}
                     >
                         {editButtonText}
                     </button>

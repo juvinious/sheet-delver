@@ -64,7 +64,7 @@ export default function SpecialTab({ actor, onRoll }: SpecialTabProps) {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {actor.items.scrolls.map((s: any, index: number) => (
-                        <ItemBox key={s._id || s.id} item={s} buttonName="Wield" typeName={s.scrollType || 'Scroll'} onRoll={onRoll} index={index} />))}
+                        <ItemBox key={s._id || s.id} item={s} buttonName="Wield" typeName={s.scrollType || 'Scroll'} onRoll={onRoll} index={index + actor.items.feats.length} />))}
                     {!actor.items.scrolls.length && (
                         <div className="col-span-full text-center py-10 border border-dashed border-purple-900/30 text-purple-900/50 font-morkborg text-xl">
                             No obscure powers known.

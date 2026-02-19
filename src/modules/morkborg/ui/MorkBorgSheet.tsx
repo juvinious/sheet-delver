@@ -64,11 +64,11 @@ const StatBlock = ({ label, value, path, max, min = 0, showMax = true, onUpdate 
 );
 
 const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, onRoll: any }) => (
-    <div className="flex items-center gap-4 group cursor-pointer" onClick={() => onRoll('ability', label.toLowerCase())}>
-        <div className={`${fell.className} text-3xl w-16 text-right group-hover:text-pink-500 transition-colors`}>
+    <div className="flex items-center gap-2 sm:gap-4 group cursor-pointer justify-center md:justify-end" onClick={() => onRoll('ability', label.toLowerCase())}>
+        <div className={`${fell.className} text-2xl sm:text-3xl w-12 sm:w-16 text-right group-hover:text-pink-500 transition-colors`}>
             {label.substring(0, 3).toUpperCase()}
         </div>
-        <div className={`${fell.className} text-4xl font-bold bg-black text-white w-14 h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
+        <div className={`${fell.className} text-3xl sm:text-4xl font-bold bg-black text-white w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
             {value > 0 ? `+${value}` : value}
         </div>
     </div>
@@ -76,6 +76,13 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
 
 export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
+
+    const navItems = [
+        { id: 'background', label: 'BACKGROUND', rotate: '-rotate-2', color: 'bg-neutral-900' },
+        { id: 'equipment', label: 'EQUIPMENT', rotate: 'rotate-1', color: 'bg-black' },
+        { id: 'violence', label: 'VIOLENCE', rotate: '-rotate-1', color: 'bg-neutral-800' },
+        { id: 'special', label: 'SPECIAL', rotate: 'rotate-2', color: 'bg-black' }
+    ];
 
     // Safety check
     if (!actor) return null;
@@ -125,39 +132,47 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
                         <div className="flex flex-col gap-6">
                             <div className="flex flex-col md:flex-row gap-8 items-start justify-between">
-                                {/* Profile & Name */}
-                                <div className="flex gap-6 items-center flex-1">
-                                    <div className="relative">
-                                        <img
-                                            src={encodeURI(sheetActor.img)}
-                                            className="block object-cover border-4 border-black shadow-lg"
-                                            style={{ width: '128px', height: '128px', minWidth: '128px' }}
-                                            alt="Character Portrait"
-                                            onError={(e) => {
-                                                console.error('Image failed to load:', sheetActor.img);
-                                                e.currentTarget.style.display = 'none';
-                                            }}
-                                        />
-                                        <div className="absolute -bottom-3 -right-3 bg-black text-white px-2 py-1 font-mono text-xs transform -rotate-3 font-bold">
-                                            {sheetActor.derived?.class?.name}
+                                {/* Profile & Name Section */}
+                                <div className="flex flex-col gap-6 flex-1 w-full order-first">
+                                    <div className="flex gap-4 sm:gap-6 items-center">
+                                        <div className="relative flex-shrink-0">
+                                            <img
+                                                src={encodeURI(sheetActor.img)}
+                                                className="block object-cover border-4 border-black shadow-lg w-24 h-24 sm:w-32 sm:h-32 min-w-[96px] sm:min-w-[128px]"
+                                                alt="Character Portrait"
+                                                onError={(e) => {
+                                                    console.error('Image failed to load:', sheetActor.img);
+                                                    e.currentTarget.style.display = 'none';
+                                                }}
+                                            />
+                                            <div className="absolute -bottom-3 -right-3 bg-black text-white px-2 py-1 font-mono text-[10px] sm:text-xs transform -rotate-3 font-bold z-10">
+                                                {sheetActor.derived?.class?.name}
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 overflow-hidden">
+                                            <h1 className={`${fell.className} text-4xl sm:text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-[0.85] sm:leading-none mb-1 drop-shadow-md break-words`}>
+                                                {sheetActor.name}
+                                            </h1>
                                         </div>
                                     </div>
-                                    <div>
-                                        <h1 className={`${fell.className} text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-none mb-2 drop-shadow-md`}>
-                                            {sheetActor.name}
-                                        </h1>
-                                        <div className="font-mono text-sm bg-black text-white inline-block px-2 py-1 transform rotate-1 font-bold">
-                                            {sheetActor.derived?.class?.description || (sheetActor.system?.biography ? 'Scum' : 'Unknown')}
+
+                                    {/* Description/Bio with restored tilt */}
+                                    <div className="font-mono text-sm bg-black text-white p-4 transform rotate-1 font-bold shadow-lg border-l-4 border-pink-500 md:max-w-2xl">
+                                        <div className="mb-1 text-pink-500 uppercase text-[10px] tracking-widest">{sheetActor.derived?.class?.name || 'SCUM'}</div>
+                                        <div className="leading-tight">
+                                            {sheetActor.derived?.class?.description || (sheetActor.system?.biography ? 'A lowly wretch surviving in a dying world.' : 'Unknown wretch.')}
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Abilities Vertical Stack - Now Top Right */}
-                                <div className="flex flex-col gap-2 border-l-4 border-black pl-6 py-2">
-                                    <AbilityBlock label="Strength" value={sheetActor.derived.abilities?.strength?.value ?? 0} onRoll={onRoll} />
-                                    <AbilityBlock label="Agility" value={sheetActor.derived.abilities?.agility?.value ?? 0} onRoll={onRoll} />
-                                    <AbilityBlock label="Presence" value={sheetActor.derived.abilities?.presence?.value ?? 0} onRoll={onRoll} />
-                                    <AbilityBlock label="Toughness" value={sheetActor.derived.abilities?.toughness?.value ?? 0} onRoll={onRoll} />
+                                {/* Abilities - Now below name and description on mobile */}
+                                <div className="w-full md:w-auto">
+                                    <div className="grid grid-cols-2 md:flex md:flex-col gap-x-4 gap-y-2 border-t-4 md:border-t-0 md:border-l-4 border-black pt-6 md:pt-0 md:pl-6 py-2">
+                                        <AbilityBlock label="Strength" value={sheetActor.derived.abilities?.strength?.value ?? 0} onRoll={onRoll} />
+                                        <AbilityBlock label="Agility" value={sheetActor.derived.abilities?.agility?.value ?? 0} onRoll={onRoll} />
+                                        <AbilityBlock label="Presence" value={sheetActor.derived.abilities?.presence?.value ?? 0} onRoll={onRoll} />
+                                        <AbilityBlock label="Toughness" value={sheetActor.derived.abilities?.toughness?.value ?? 0} onRoll={onRoll} />
+                                    </div>
                                 </div>
                             </div>
 
@@ -185,28 +200,76 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                     </main>
 
                     {/* Footer Fluff */}
-                    <div className="mt-8 text-center opacity-30 invert pointer-events-none select-none pb-20">
+                    <div className="mt-8 text-center opacity-30 invert pointer-events-none select-none">
                         {/* <img src="/morkborg_logo_footer.png" className="h-16 mx-auto opacity-50" alt="Mork Borg Logo" /> */}
                     </div>
-                </div>
 
-                {/* UNIFIED BOTTOM NAVIGATION */}
-                <nav className="fixed bottom-0 left-0 right-0 bg-black border-t-4 border-[#ffe900] flex justify-center gap-2 md:gap-8 px-2 pt-3 pb-6 z-50 shadow-[0_-10px_20px_rgba(0,0,0,0.5)]">
-                    {['background', 'equipment', 'violence', 'special'].map((tab: any) => (
-                        <button
-                            key={tab}
-                            onClick={() => setActiveTab(tab)}
-                            className={`
-                                flex flex-col items-center justify-center w-20 md:w-32 py-1 transition-transform active:scale-95
-                                ${activeTab === tab ? 'text-[#ffe900] -translate-y-1' : 'text-neutral-500 hover:text-neutral-300'}
-                            `}
-                        >
-                            <div className={`${fell.className} uppercase font-bold tracking-widest text-xs md:text-sm mb-1`}>{tab}</div>
-                            <div className={`h-1 w-8 ${activeTab === tab ? 'bg-[#ffe900] shadow-[0_0_8px_#ffe900]' : 'bg-transparent'}`}></div>
-                        </button>
-                    ))}
-                </nav>
+                    {/* DESKTOP ONLY NAVIGATION - Inside the Sheet */}
+                    <div className="hidden sm:flex justify-center gap-4 mt-8 pb-12">
+                        {navItems.map((tab) => {
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`
+                                        flex flex-col items-center justify-center 
+                                        px-8 py-3 transition-all duration-200 active:scale-95
+                                        border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+                                        ${tab.rotate}
+                                        ${isActive
+                                            ? 'bg-pink-600 text-white border-black z-20 scale-110 sm:rotate-0'
+                                            : `${tab.color} text-neutral-400 border-neutral-700 hover:border-pink-500 hover:text-pink-500 z-10`
+                                        }
+                                    `}
+                                >
+                                    <div className={`${fell.className} uppercase font-bold tracking-[0.2em] text-xl whitespace-nowrap`}>
+                                        {tab.label}
+                                    </div>
+                                    {isActive && (
+                                        <div className="h-1 w-full bg-white mt-1 shadow-[0_0_8px_#fff]"></div>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
+
+            {/* MOBILE ONLY NAVIGATION - Sticky Viewport */}
+            <nav className="fixed sm:hidden bottom-0 left-0 right-0 z-50 pointer-events-none">
+                <div className="max-w-7xl mx-auto px-4">
+                    <div className="flex flex-wrap justify-center gap-2 p-4 pb-24 pointer-events-none">
+                        {navItems.map((tab) => {
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`
+                                        pointer-events-auto
+                                        flex flex-col items-center justify-center 
+                                        px-4 py-2 transition-all duration-200 active:scale-95
+                                        border-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]
+                                        ${tab.rotate}
+                                        ${isActive
+                                            ? 'bg-pink-600 text-white border-black z-20 scale-110'
+                                            : `${tab.color} text-neutral-400 border-neutral-700 hover:border-pink-500 hover:text-pink-500 z-10`
+                                        }
+                                    `}
+                                >
+                                    <div className={`${fell.className} uppercase font-bold tracking-[0.2em] text-xs whitespace-nowrap`}>
+                                        {tab.label}
+                                    </div>
+                                    {isActive && (
+                                        <div className="h-1 w-full bg-white mt-1 shadow-[0_0_8px_#fff]"></div>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </nav>
         </div>
     );
 }
