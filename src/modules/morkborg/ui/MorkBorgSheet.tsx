@@ -7,6 +7,7 @@ import BackgroundTab from './BackgroundTab';
 import EquipmentTab from './EquipmentTab';
 import ViolenceTab from './ViolenceTab';
 import SpecialTab from './SpecialTab';
+import RestModal from './components/RestModal';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 const inter = Inter({ subsets: ['latin'] });
@@ -76,6 +77,7 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
 
 export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
+    const [isRestModalOpen, setIsRestModalOpen] = useState(false);
 
     const navItems = [
         { id: 'background', label: 'BACKGROUND', rotate: '-rotate-2', color: 'bg-neutral-900' },
@@ -179,9 +181,34 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                             {/* Core Vitality Stats - Now in separate row below */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white/50 p-3 border border-black shadow-inner w-full">
                                 <StatBlock label="HP" value={sheetActor.derived.currentHp} max={sheetActor.derived.maxHp} path="system.hp.value" onUpdate={onUpdate} />
-                                <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} showMax={false} path="system.omens.value" onUpdate={onUpdate} />
+                                <div className="group cursor-pointer" onClick={() => onRoll('spendOmen', 'spend')}>
+                                    <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} showMax={false} path="system.omens.value" onUpdate={onUpdate} />
+                                    <div className="absolute top-1 right-2 text-[8px] font-mono text-pink-600 opacity-0 group-hover:opacity-100 transition-opacity">SPEND</div>
+                                </div>
                                 <StatBlock label="Powers" value={sheetActor.derived.powers.value} max={sheetActor.derived.powers.max} showMax={false} path="system.powerUses.value" onUpdate={onUpdate} />
                                 <StatBlock label="Silver" value={sheetActor.derived.silver} path="system.silver" onUpdate={onUpdate} />
+                            </div>
+
+                            {/* Automated Actions - Funky Tabs Style */}
+                            <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
+                                <button
+                                    onClick={() => setIsRestModalOpen(true)}
+                                    className={`${fell.className} bg-neutral-900 text-white px-4 py-1 text-sm border-2 border-black -rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
+                                >
+                                    REST
+                                </button>
+                                <button
+                                    onClick={() => onRoll('getBetter', 'getBetter')}
+                                    className={`${fell.className} bg-black text-white px-4 py-1 text-sm border-2 border-black rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
+                                >
+                                    GET BETTER
+                                </button>
+                                <button
+                                    onClick={() => onRoll('broken', 'broken')}
+                                    className={`${fell.className} bg-neutral-800 text-white px-4 py-1 text-sm border-2 border-black -rotate-2 shadow-[4px_4px_0_0_#000] hover:bg-red-600 hover:text-white transition-all active:scale-95`}
+                                >
+                                    BROKEN
+                                </button>
                             </div>
                         </div>
                     </header>
@@ -270,6 +297,13 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                     </div>
                 </div>
             </nav>
+
+            <RestModal
+                isOpen={isRestModalOpen}
+                onClose={() => setIsRestModalOpen(false)}
+                onRoll={onRoll}
+                actor={sheetActor}
+            />
         </div>
     );
 }

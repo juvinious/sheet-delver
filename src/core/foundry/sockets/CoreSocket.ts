@@ -1036,9 +1036,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         const auth = userId || this.userId;
         if (!auth) throw new Error("Cannot send message: Author ID missing");
 
+        const isRoll = typeof content !== 'string' && (content.rolls || content.type === 5);
+
         const data: any = typeof content === 'string'
             ? { content, type: 1, author: auth }
-            : { type: 1, author: auth, ...content };
+            : { type: isRoll ? 5 : 1, author: auth, ...content };
 
         // Handle Speaker
         if (options?.speaker) {
