@@ -1,5 +1,6 @@
 import { GenericSystemAdapter } from '../generic/adapter';
 import { ChatCards } from './ui/components/chat/ChatCards';
+import { mbDataManager } from './data/DataManager';
 
 interface ClassItem {
     name: string;
@@ -161,7 +162,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             weaponType: system.weaponType || 'melee',
             equipped: system.equipped || false,
             tier: system.tier || { value: 0, max: 0 },
-            rollLabel: system.rollLabel || ''
+            rollLabel: system.rollLabel || '',
+            rollFormula: system.rollFormula || '',
+            rollMacro: system.rollMacro || ''
         };
     }
 
@@ -191,7 +194,16 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         }
 
         if (type === 'item') {
-            const item = (actor.items || []).find((i: any) => i.uuid === key || i._id === key || i.id === key);
+            let item;
+            if (Array.isArray(actor.items)) {
+                item = actor.items.find((i: any) => i.uuid === key || i._id === key || i.id === key);
+            } else if (actor.items && typeof actor.items === 'object') {
+                // Search across all categories in the categorized object
+                item = Object.values(actor.items)
+                    .flat()
+                    .find((i: any) => (i as any).uuid === key || (i as any)._id === key || (i as any).id === key);
+            }
+
             const itemData = this.normalizeItem(item || {});
 
             if (options.rollType === 'attack' || options.rollType === 'defend') {
@@ -205,7 +217,17 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 };
             }
 
-            if (itemData.type === 'scroll' || itemData.type === 'power' || itemData.type === 'feat') {
+            if (itemData.type === 'feat') {
+                return {
+                    type: 'feat',
+                    itemId: itemData.id,
+                    isAutomated: true,
+                    label: itemData.rollLabel || `Feat: ${itemData.name}`,
+                    formula: itemData.rollFormula
+                };
+            }
+
+            if (itemData.type === 'scroll' || itemData.type === 'power') {
                 return {
                     type: 'power',
                     itemId: itemData.id,
@@ -559,13 +581,17 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         } else if (rollData.type === 'broken') {
             const tableResult = await client.roll('1d4', 'Broken', { displayChat: false });
             const tableRoll = parseSyntheticRoll(tableResult, 'Roll');
-            const table = [
-                'Unconscious for 1d6+4 rounds. Wake with 1d4 HP.',
-                'Roll d6: 1-5 Broken limb, 6 Severed.',
-                'Hemorrhage. Death in d2 rounds.',
-                'DEAD.'
+            // MB broken table is sequential, 1d4 matches index 0-3
+            const entry = mbDataManager.drawFromTable('broken');
+            // Actually, mbDataManager.drawFromTable picks random. 
+            // For Broken, it should be the specific index.
+            const allBroken = [
+                "Fall unconscious for d4 rounds, awaken with d4 HP.",
+                "Roll d6: 1-5 Broken Limb, 6 Eye Lost. Active after d4 rounds with d4 HP.",
+                "Hemorrhage. Death in d2 hours unless treated. Tests are DR16/18.",
+                "DEAD."
             ];
-            results.outcomes.push(table[tableRoll.total - 1] || 'Unknown Outcome');
+            results.outcomes.push(allBroken[tableRoll.total - 1] || 'Unknown Outcome');
         } else if (rollData.type === 'getBetter') {
             // 1. HP Check
             const hpCheckResult = await client.roll('6d10', 'Get Better: HP Check', { displayChat: false });
@@ -581,31 +607,55 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 hpOutcome = `Roll ${hpCheckRoll.total} vs Max HP ${currentMax}: Success! Max HP increased by ${increaseRoll.total} to ${newMax}.`;
             }
 
-            // 2. Ability Checks
+            // 2. Ability Checks (d6 according to original code)
             const abilities = ['strength', 'agility', 'presence', 'toughness'];
             const abilityOutcomes: any = {};
             const abilityUpdates: any = {};
 
             for (const ab of abilities) {
-                const abRes = await client.roll('1d10', `Get Better: ${ab}`, { displayChat: false });
+                const abRes = await client.roll('1d6', `Get Better: ${ab}`, { displayChat: false });
                 const abRoll = parseSyntheticRoll(abRes, ab);
                 const currentVal = actor.system?.abilities?.[ab]?.value ?? 0;
 
-                if (abRoll.total > currentVal && currentVal < 6) {
-                    abilityUpdates[`system.abilities.${ab}.value`] = currentVal + 1;
-                    abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: Increased to ${currentVal + 1}`;
-                } else if (abRoll.total <= currentVal && currentVal > -3) {
-                    abilityUpdates[`system.abilities.${ab}.value`] = currentVal - 1;
-                    abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: Decreased to ${currentVal - 1}`;
+                if (abRoll.total === 1 || abRoll.total < currentVal) {
+                    if (currentVal > -3) {
+                        abilityUpdates[`system.abilities.${ab}.value`] = currentVal - 1;
+                        abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: Decreased to ${currentVal - 1}`;
+                    } else {
+                        abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: No change (-3 min)`;
+                    }
+                } else if (abRoll.total > currentVal) {
+                    if (currentVal < 6) {
+                        abilityUpdates[`system.abilities.${ab}.value`] = currentVal + 1;
+                        abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: Increased to ${currentVal + 1}`;
+                    } else {
+                        abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: No change (+6 max)`;
+                    }
                 } else {
                     abilityOutcomes[ab] = `${ab.charAt(0).toUpperCase() + ab.slice(1)}: No change (${currentVal})`;
                 }
             }
 
             // 3. Debris (Standard MB flavor)
-            const debrisResult = await client.roll('d100', 'Debris Search', { displayChat: false });
+            const debrisResult = await client.roll('1d6', 'Debris Search', { displayChat: false });
             const debrisRoll = parseSyntheticRoll(debrisResult, 'Debris');
-            const debrisOutcome = `Found something useful (Roll ${debrisRoll.total}).`;
+            let debrisOutcome = "";
+            let newSilver = actor.system?.silver ?? 0;
+
+            if (debrisRoll.total < 4) {
+                debrisOutcome = "Nothing.";
+            } else if (debrisRoll.total === 4) {
+                const silverRes = await client.roll('3d10', 'Found Silver', { displayChat: false });
+                const silverRoll = parseSyntheticRoll(silverRes, 'Silver');
+                debrisOutcome = `Found ${silverRoll.total} silver.`;
+                newSilver += silverRoll.total;
+            } else if (debrisRoll.total === 5) {
+                const scroll = mbDataManager.drawFromTable('uncleanScrolls');
+                debrisOutcome = `Found an Unclean Scroll: ${scroll.name}. ${scroll.description}`;
+            } else {
+                const scroll = mbDataManager.drawFromTable('sacredScrolls');
+                debrisOutcome = `Found a Sacred Scroll: ${scroll.name}. ${scroll.description}`;
+            }
 
             results.getBetterData = {
                 hpOutcome,
@@ -620,6 +670,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             const updates = {
                 _id: actor._id || actor.id,
                 'system.hp.max': newMax,
+                'system.silver': newSilver,
                 ...abilityUpdates
             };
             await client.dispatchDocumentSocket('Actor', 'update', {
@@ -635,6 +686,16 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 '• Neutralize a Crit or Fumble.',
                 '• Lower damage taken by d6.'
             ];
+        } else if (rollData.type === 'feat') {
+            const formula = rollData.formula;
+            if (formula) {
+                const resolvedFormula = this.resolveVariables(formula, actor);
+                const featResult = await client.roll(resolvedFormula, rollData.label, { displayChat: false });
+                parseSyntheticRoll(featResult, rollData.label || 'Feat Roll');
+                results.outcomes.push('Feat effect triggered.');
+            } else {
+                results.outcomes.push('No formula defined. Macro may be required.');
+            }
         } else if (rollData.type === 'power') {
             const currentUses = actor.system?.powerUses?.value ?? 0;
             if (currentUses < 1) {
@@ -645,31 +706,40 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 const powerRes = await client.roll(`1d20${preMod >= 0 ? '+' : ''}${preMod}`, 'Power: Presence DR 12', { displayChat: false });
                 const powerRoll = parseSyntheticRoll(powerRes, 'Presence');
 
-                const newUses = currentUses - 1;
+                const d20 = powerRoll.json?.terms?.[0]?.results?.[0]?.result;
+                const isFumble = d20 === 1;
+                const isCrit = d20 === 20;
+                const isSuccess = powerRoll.total >= 12;
+
                 const updates: any = {
-                    _id: actor._id || actor.id,
-                    'system.powerUses.value': newUses
+                    _id: actor._id || actor.id
                 };
 
-                if (powerRoll.total === 1) {
+                if (isFumble) {
                     results.outcomes.push('FUMBLE! Arcane Catastrophe!');
+                    const catastrophe = mbDataManager.drawFromTable('arcaneCatastrophes');
+                    results.outcomes.push(catastrophe.name);
+
                     const damageRes = await client.roll('1d2', 'Catastrophe Damage', { displayChat: false });
                     const damageRoll = parseSyntheticRoll(damageRes, 'Damage');
                     results.outcomes.push(`SUFFER ${damageRoll.total} DAMAGE and power blocked for 1 hour.`);
-                    // Update HP
                     const currentHp = actor.system?.hp?.value ?? 0;
                     updates['system.hp.value'] = Math.max(0, currentHp - damageRoll.total);
-                } else if (powerRoll.total >= 12) {
-                    results.outcomes.push('SUCCESS!');
+                } else if (isCrit || isSuccess) {
+                    results.outcomes.push(isCrit ? 'CRITICAL SUCCESS!' : 'SUCCESS!');
                 } else {
                     results.outcomes.push('FAILED!');
                     const damageRes = await client.roll('1d2', 'Failure Damage', { displayChat: false });
                     const damageRoll = parseSyntheticRoll(damageRes, 'Damage');
                     results.outcomes.push(`SUFFER ${damageRoll.total} DAMAGE and power blocked for 1 hour.`);
-                    // Update HP
                     const currentHp = actor.system?.hp?.value ?? 0;
                     updates['system.hp.value'] = Math.max(0, currentHp - damageRoll.total);
                 }
+
+                // Consuming power use (Standard MB rule: always consume unless crit effects say otherwise, 
+                // but simpler to just always consume here as per module implementation)
+                const newUses = Math.max(0, currentUses - 1);
+                updates['system.powerUses.value'] = newUses;
 
                 await client.dispatchDocumentSocket('Actor', 'update', {
                     ids: [actor._id || actor.id],
@@ -684,6 +754,32 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             rolls: collectedRolls,
             type: 5 // Explicitly set as ROLL type
         }, { rollMode: options?.rollMode, speaker });
+    }
+
+    /**
+     * Resolve @ variables in formula using actor system data
+     */
+    private resolveVariables(formula: string, actor: any): string {
+        if (!formula || !formula.includes('@')) return formula;
+
+        const system = actor.system || {};
+        // Replace @abilities.key.value
+        let resolved = formula.replace(/@abilities\.(\w+)\.value/g, (match, key) => {
+            return String(system.abilities?.[key]?.value ?? 0);
+        });
+
+        // Replace generic @system.path
+        resolved = resolved.replace(/@system\.([\w.]+)/g, (match, path) => {
+            const parts = path.split('.');
+            let current = system;
+            for (const part of parts) {
+                if (current[part] === undefined) return '0';
+                current = current[part];
+            }
+            return String(current);
+        });
+
+        return resolved;
     }
 
     /**

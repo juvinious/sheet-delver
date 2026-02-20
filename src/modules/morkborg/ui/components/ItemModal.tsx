@@ -37,48 +37,83 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                     }
                 `}} />
 
-                {/* Base Fields */}
-                <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
-                    <span className="text-yellow-500">Price:</span>
-                    <input
-                        type="number"
-                        value={system.price ?? 0}
-                        onChange={(e) => {
-                            const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                            handleChange('system.price', isNaN(val) ? 0 : val);
-                        }}
-                        className="bg-transparent text-right outline-none w-20 font-mono text-white"
-                    />
-                </div>
-                <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
-                    <span className="text-yellow-500">Carry Weight:</span>
-                    <input
-                        type="number"
-                        step="0.1"
-                        value={system.carryWeight ?? 0}
-                        onChange={(e) => {
-                            const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                            handleChange('system.carryWeight', isNaN(val) ? 0 : val);
-                        }}
-                        className="bg-transparent text-right outline-none w-20 font-mono text-white"
-                    />
-                </div>
-                {type !== 'container' && (
-                    <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
-                        <span className="text-yellow-500">Container Space:</span>
-                        <input
-                            type="number"
-                            step="0.1"
-                            value={system.containerSpace ?? 1}
-                            onChange={(e) => handleChange('system.containerSpace', parseFloat(e.target.value))}
-                            className="bg-transparent text-right outline-none w-20 font-mono text-white"
-                        />
-                    </div>
+                {/* Base Fields - Only for non-special items */}
+                {type !== 'feat' && type !== 'scroll' && (
+                    <>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Price:</span>
+                            <input
+                                type="number"
+                                value={system.price ?? 0}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                    handleChange('system.price', isNaN(val) ? 0 : val);
+                                }}
+                                className="bg-transparent text-right outline-none w-20 font-mono text-white"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Carry Weight:</span>
+                            <input
+                                type="number"
+                                step="0.1"
+                                value={system.carryWeight ?? 0}
+                                onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    handleChange('system.carryWeight', isNaN(val) ? 0 : val);
+                                }}
+                                className="bg-transparent text-right outline-none w-20 font-mono text-white"
+                            />
+                        </div>
+                        {type !== 'container' && (
+                            <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                                <span className="text-yellow-500">Container Space:</span>
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    value={system.containerSpace ?? 1}
+                                    onChange={(e) => handleChange('system.containerSpace', parseFloat(e.target.value))}
+                                    className="bg-transparent text-right outline-none w-20 font-mono text-white"
+                                />
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {/* Specific Fields */}
                 {type === 'weapon' && (
                     <>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Weapon Type:</span>
+                            <select
+                                value={system.weaponType || 'melee'}
+                                onChange={(e) => handleChange('system.weaponType', e.target.value)}
+                                className="bg-neutral-800 text-right outline-none w-32 font-mono text-white border-none"
+                            >
+                                <option value="melee">Melee</option>
+                                <option value="ranged">Ranged</option>
+                            </select>
+                        </div>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Handed:</span>
+                            <select
+                                value={system.handed || '1h'}
+                                onChange={(e) => handleChange('system.handed', e.target.value)}
+                                className="bg-neutral-800 text-right outline-none w-32 font-mono text-white border-none"
+                            >
+                                <option value="1h">1-Handed</option>
+                                <option value="2h">2-Handed</option>
+                            </select>
+                        </div>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Uses Ammo:</span>
+                            <input
+                                type="checkbox"
+                                checked={system.usesAmmo ?? false}
+                                onChange={(e) => handleChange('system.usesAmmo', e.target.checked)}
+                                className="w-5 h-5 accent-yellow-500"
+                            />
+                        </div>
                         <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
                             <span className="text-yellow-500">Damage Die:</span>
                             <input
@@ -119,27 +154,28 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                     <>
                         <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
                             <span className="text-yellow-500">Current Tier:</span>
-                            <input
-                                type="number"
+                            <select
                                 value={system.tier?.value ?? 1}
-                                onChange={(e) => {
-                                    const val = e.target.value === '' ? 1 : parseInt(e.target.value);
-                                    handleChange('system.tier.value', isNaN(val) ? 1 : val);
-                                }}
-                                className="bg-transparent text-right outline-none w-20 font-mono text-white"
-                            />
+                                onChange={(e) => handleChange('system.tier.value', parseInt(e.target.value))}
+                                className="bg-neutral-800 text-right outline-none w-32 font-mono text-white border-none"
+                            >
+                                <option value="0">0 (None)</option>
+                                <option value="1">1 (Light)</option>
+                                <option value="2">2 (Medium)</option>
+                                <option value="3">3 (Heavy)</option>
+                            </select>
                         </div>
                         <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
                             <span className="text-yellow-500">Max Tier:</span>
-                            <input
-                                type="number"
+                            <select
                                 value={system.tier?.max ?? 1}
-                                onChange={(e) => {
-                                    const val = e.target.value === '' ? 1 : parseInt(e.target.value);
-                                    handleChange('system.tier.max', isNaN(val) ? 1 : val);
-                                }}
-                                className="bg-transparent text-right outline-none w-20 font-mono text-white"
-                            />
+                                onChange={(e) => handleChange('system.tier.max', parseInt(e.target.value))}
+                                className="bg-neutral-800 text-right outline-none w-32 font-mono text-white border-none"
+                            >
+                                <option value="1">1 (Light)</option>
+                                <option value="2">2 (Medium)</option>
+                                <option value="3">3 (Heavy)</option>
+                            </select>
                         </div>
                     </>
                 )}
@@ -171,6 +207,52 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             }}
                             className="bg-transparent text-right outline-none w-20 font-mono text-white"
                         />
+                    </div>
+                )}
+
+                {type === 'feat' && (
+                    <>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Roll Label:</span>
+                            <input
+                                type="text"
+                                value={system.rollLabel || ''}
+                                onChange={(e) => handleChange('system.rollLabel', e.target.value)}
+                                className="bg-transparent text-right outline-none w-48 font-mono text-white"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Roll Formula:</span>
+                            <input
+                                type="text"
+                                value={system.rollFormula || ''}
+                                onChange={(e) => handleChange('system.rollFormula', e.target.value)}
+                                className="bg-transparent text-right outline-none w-48 font-mono text-white"
+                            />
+                        </div>
+                        <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                            <span className="text-yellow-500">Roll Macro:</span>
+                            <input
+                                type="text"
+                                value={system.rollMacro || ''}
+                                onChange={(e) => handleChange('system.rollMacro', e.target.value)}
+                                className="bg-transparent text-right outline-none w-48 font-mono text-white"
+                            />
+                        </div>
+                    </>
+                )}
+
+                {type === 'scroll' && (
+                    <div className="flex items-center justify-between border-b border-yellow-500/30 pb-1">
+                        <span className="text-yellow-500">Scroll Type:</span>
+                        <select
+                            value={system.scrollType || 'unclean'}
+                            onChange={(e) => handleChange('system.scrollType', e.target.value)}
+                            className="bg-neutral-800 text-right outline-none w-32 font-mono text-white border-none"
+                        >
+                            <option value="sacred">Sacred</option>
+                            <option value="unclean">Unclean</option>
+                        </select>
                     </div>
                 )}
             </div>

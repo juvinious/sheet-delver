@@ -222,7 +222,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                             {activeTab === 'background' && <BackgroundTab actor={sheetActor} onUpdate={onUpdate} />}
                             {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
                             {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} />}
-                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={onRoll} />}
+                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={onRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
                         </div>
                     </main>
 
