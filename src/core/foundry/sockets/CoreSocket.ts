@@ -1115,8 +1115,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
-
-
+    /*
+    public async rollTable(options: string | any) {
+        return this.roll("", "", options);
+    }
+    */
 
     /**
      * Resolve the whisper and blind flags based on the roll mode.

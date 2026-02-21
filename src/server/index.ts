@@ -417,7 +417,7 @@ async function startServer() {
             const actorFolders = new Set(rawActors.map((a: any) => a.folder).filter(Boolean));
             logger.info(`Core Service | Actor types found: ${Array.from(actorTypes).join(', ')}`);
             logger.info(`Core Service | Actor folders found: ${Array.from(actorFolders).join(', ')}`);
-            logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
+            // logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
 
             // Owned actors (ownership level 3 = OWNER)
             const owned = rawActors.filter((a: any) =>

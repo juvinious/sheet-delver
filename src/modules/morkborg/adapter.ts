@@ -1,6 +1,7 @@
 import { GenericSystemAdapter } from '../generic/adapter';
 import { ChatCards } from './ui/components/chat/ChatCards';
 import { mbDataManager } from './data/DataManager';
+import { logger } from '../../core/logger';
 
 interface ClassItem {
     name: string;
@@ -20,7 +21,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 
     match(actor: any): boolean {
-        const hasMorkborgType = ['player', 'character', 'npc'].includes(actor.type?.toLowerCase());
+        const hasMorkborgType = ['character', 'container', 'creature', 'follower', 'misery-tracker'].includes(actor.type?.toLowerCase());
         return actor.systemId === 'morkborg' || hasMorkborgType;
     }
 
@@ -84,16 +85,30 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
     /**
      * Categorize items by type
+     * 
+      "ammo",
+      "armor",
+      "class",
+      "container",
+      "feat",
+      "misc",
+      "scroll",
+      "shield",
+      "weapon"
      */
     categorizeItems(actor: any): any {
         const items = (actor.items || []).map((i: any) => this.normalizeItem(i));
+        logger.debug('Items:', items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type)));
         return {
             weapons: items.filter((i: any) => i.type === 'weapon'),
+            shields: items.filter((i: any) => i.type === 'shield'),
+            ammo: items.filter((i: any) => i.type === 'ammo'),
+            container: items.filter((i: any) => i.type === 'container'),
             armor: items.filter((i: any) => i.type === 'armor'),
             equipment: items.filter((i: any) => ['misc', 'container', 'ammo'].includes(i.type)),
             scrolls: items.filter((i: any) => ['scroll', 'tablet'].includes(i.type)),
             feats: items.filter((i: any) => i.type === 'feat'),
-            abilities: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type))
+            uncategorized: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type))
         };
     }
 

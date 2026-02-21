@@ -74,7 +74,8 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
         ...(actor.items.armor || []),
         ...(actor.items.equipment || []),
         ...(actor.items.misc || []),
-        ...(actor.items.ammo || [])
+        ...(actor.items.ammo || []),
+        ...(actor.items.uncategorized || [])
     ];
 
     const allEquipment = allItems.sort((a, b) => a.name.localeCompare(b.name));
@@ -222,7 +223,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
             </div>
 
             {/* Combined List */}
-            <div className="flex flex-col mb-20">
+            <div className="flex flex-col mb-10">
                 {(() => {
                     const flatList: { item: any; isNested: boolean }[] = [];
                     topLevelItems.forEach(item => {
@@ -246,6 +247,20 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     return flatList.map((entry, index) => renderItemRow(entry.item, entry.isNested, index));
                 })()}
             </div>
+
+            {/* Uncategorized Items */}
+            {actor.items.uncategorized && actor.items.uncategorized.length > 0 && (
+                <div className="mt-8 mb-20">
+                    <div className="flex items-center justify-between mb-4 border-b-2 border-dashed border-pink-900/50 pb-2 opacity-70">
+                        <h3 className="font-morkborg text-2xl uppercase text-black tracking-widest transform rotate-1">
+                            Uncategorized (Legacy/Module)
+                        </h3>
+                    </div>
+                    <div className="flex flex-col opacity-80">
+                        {actor.items.uncategorized.map((item: any, index: number) => renderItemRow(item, false, index))}
+                    </div>
+                </div>
+            )}
 
             {/* Modals */}
             {rollModalConfig.isOpen && (

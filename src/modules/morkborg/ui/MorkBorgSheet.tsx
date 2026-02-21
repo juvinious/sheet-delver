@@ -97,7 +97,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
             armor: [],
             equipment: [],
             scrolls: [],
-            abilities: []
+            uncategorized: []
         },
         derived: actor.derived || {
             currentHp: 0,
