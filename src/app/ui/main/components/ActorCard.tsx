@@ -82,19 +82,23 @@ export const ActorCard = ({
                     )}
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                        {actor.hp && (
+                        {(actor.hp || actor.derived?.hp) && (
                             <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
                                 <span className="opacity-50 text-[10px] uppercase tracking-tighter block">HP</span>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="font-mono font-bold text-green-400">{actor.hp.value}</span>
-                                    <span className="opacity-30 text-xs">/ {actor.hp.max}</span>
+                                    <span className="font-mono font-bold text-green-400">
+                                        {actor.hp?.value ?? actor.derived?.hp?.value ?? '?'}
+                                    </span>
+                                    <span className="opacity-30 text-xs">/ {actor.hp?.max ?? actor.derived?.hp?.max ?? '?'}</span>
                                 </div>
                             </div>
                         )}
-                        {(actor.ac !== undefined) && (
+                        {(actor.ac !== undefined || actor.derived?.ac !== undefined) && (
                             <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
                                 <span className="opacity-50 text-[10px] uppercase tracking-tighter block">AC</span>
-                                <span className="font-mono font-bold text-blue-400">{actor.ac}</span>
+                                <span className="font-mono font-bold text-blue-400">
+                                    {actor.ac ?? actor.derived?.ac ?? '?'}
+                                </span>
                             </div>
                         )}
                     </div>

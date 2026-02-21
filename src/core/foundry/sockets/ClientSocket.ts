@@ -231,11 +231,13 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.sendMessage(content, this.userId, options);
     }
 
-    public async roll(formula: string, flavor?: string, options?: { rollMode?: string, speaker?: any }): Promise<any> {
+    public async roll(formula: string, flavor?: string, options?: { userId?: string, rollMode?: string, speaker?: any, displayChat?: boolean, flags?: any }): Promise<any> {
         return this.coreSocket.roll(formula, flavor, {
-            userId: this.userId || undefined,
+            userId: this.userId || options?.userId,
             rollMode: options?.rollMode,
-            speaker: options?.speaker
+            speaker: options?.speaker,
+            displayChat: options?.displayChat,
+            flags: options?.flags
         });
     }
 

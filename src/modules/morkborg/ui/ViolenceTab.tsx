@@ -1,4 +1,7 @@
 
+import React, { useState } from 'react';
+import RollModal from './components/RollModal';
+
 interface ViolenceTabProps {
     actor: any;
     onRoll: (type: string, key: string, options?: any) => void;
@@ -6,28 +9,49 @@ interface ViolenceTabProps {
 }
 
 export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
+    const [modalConfig, setModalConfig] = useState<{ isOpen: boolean; title: string; item: any; type: 'attack' | 'defend' }>({
+        isOpen: false,
+        title: '',
+        item: null,
+        type: 'attack'
+    });
+
     const handleInitiative = (individual: boolean) => {
-        // Mork Borg uses d6 for individual init
-        // But system likely has a specific roll type
-        // For now, simple d6 roll
-        onRoll('dice', 'd6', { flavor: individual ? 'Individual Initiative' : 'Party Initiative' });
+        onRoll('initiative', individual ? 'individual' : 'party');
+    };
+
+    const openRollModal = (item: any, type: 'attack' | 'defend') => {
+        setModalConfig({
+            isOpen: true,
+            title: type === 'attack' ? 'Attack' : 'Defend',
+            item,
+            type
+        });
     };
 
     return (
         <div className="p-1 flex flex-col gap-6">
             {/* Initiative Header */}
-            <div className="bg-black text-white p-4 flex justify-between items-center border-l-4 border-amber-500 shadow-md">
-                <h3 className="font-morkborg text-2xl uppercase tracking-wider">Initiative</h3>
-                <div className="flex gap-2">
+            <div className="bg-black text-white p-4 flex flex-col sm:flex-row justify-between sm:items-center border-l-4 border-pink-500 shadow-md gap-4 sm:gap-0 transform -rotate-1">
+                <div>
+                    <h3 className="font-morkborg text-2xl uppercase tracking-wider">Initiative</h3>
+
+                    {actor.derived?.criticalHelpText && (
+                        <div className="text-[14px] text-yellow-500 font-mono mt-0.5 leading-none">
+                            {actor.derived.criticalHelpText}
+                        </div>
+                    )}
+                </div>
+                <div className="flex gap-2 w-full sm:w-auto">
                     <button
                         onClick={() => handleInitiative(false)}
-                        className="bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-4 py-1 font-bold border border-neutral-600 transition-colors"
+                        className="flex-1 sm:flex-none bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-4 py-2 sm:py-1 font-bold border border-neutral-600 transition-colors uppercase tracking-widest text-xs"
                     >
                         PARTY
                     </button>
                     <button
                         onClick={() => handleInitiative(true)}
-                        className="bg-amber-600 hover:bg-amber-500 text-black px-4 py-1 font-bold border border-amber-800 transition-colors"
+                        className="flex-1 sm:flex-none bg-pink-600 hover:bg-pink-500 text-black px-4 py-2 sm:py-1 font-bold border border-pink-800 transition-colors uppercase tracking-widest text-xs"
                     >
                         INDIVIDUAL
                     </button>
@@ -36,22 +60,22 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
 
             {/* Weapons */}
             <div>
-                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-black inline-block pr-6">Weapons</h3>
-                <div className="grid grid-cols-1 gap-3">
-                    {actor.items.weapons.map((w: any) => (
-                        <div key={w.id} className="bg-neutral-900/80 p-3 border-l-8 border-red-900 flex items-center justify-between group">
-                            <div className="flex items-center gap-4">
-                                <img src={w.img} alt={w.name} className="w-10 h-10 border border-neutral-600" />
-                                <div>
-                                    <div className="font-bold text-xl text-neutral-200">{w.name}</div>
-                                    <div className="text-sm text-red-400 font-mono tracking-tighter">
-                                        Dmg: {w.system.damageDie || '1d4'} {w.system.damageType}
+                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform -rotate-1">Weapons</h3>
+                <div className="grid grid-cols-1 gap-4 my-2">
+                    {actor.items.weapons.map((w: any, index: number) => (
+                        <div key={w._id + (index ? index : w.name)} className={`bg-neutral-900/80 p-3 border-l-8 border-red-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'}`}>
+                            <div className="flex items-center gap-4 flex-1">
+                                <img src={w.img} alt={w.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 flex-shrink-0" />
+                                <div className="min-w-0">
+                                    <div className="font-bold text-lg sm:text-xl text-neutral-200 truncate">{w.name}</div>
+                                    <div className="text-xs sm:text-sm text-red-500 font-mono tracking-tighter whitespace-nowrap overflow-hidden">
+                                        Dmg: {w.damageDie || '1d4'} | Crit: {w.critOn}+ | Fum: {w.fumbleOn}-
                                     </div>
                                 </div>
                             </div>
                             <button
-                                onClick={() => onRoll('item', w.uuid || w.id, { rollType: 'attack' })}
-                                className="bg-red-900/50 hover:bg-red-600 text-red-100 px-6 py-2 font-morkborg text-xl uppercase tracking-widest transition-all border border-red-800 hover:border-red-400 shadow-[0_0_10px_rgba(255,0,0,0.1)] hover:shadow-[0_0_15px_rgba(255,0,0,0.4)]"
+                                onClick={() => openRollModal(w, 'attack')}
+                                className="w-full sm:w-auto bg-red-900/50 hover:bg-red-600 text-red-100 px-6 py-2 font-morkborg text-xl uppercase tracking-widest transition-all border border-red-800 hover:border-red-400 shadow-[0_0_10px_rgba(255,0,0,0.1)] hover:shadow-[0_0_15px_rgba(255,0,0,0.4)]"
                             >
                                 Attack
                             </button>
@@ -65,22 +89,22 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
 
             {/* Armor */}
             <div>
-                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-black inline-block pr-6">Armor</h3>
-                <div className="grid grid-cols-1 gap-3">
-                    {actor.items.armor.map((a: any) => (
-                        <div key={a.id} className="bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <img src={a.img} alt={a.name} className="w-10 h-10 border border-neutral-600 grayscale" />
-                                <div>
-                                    <div className="font-bold text-xl text-neutral-200">{a.name}</div>
-                                    <div className="text-sm text-slate-400 font-mono">
-                                        Tier: {a.system.tier?.value || 1} (-{a.system.damageReductionDie || 'd2'})
+                <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform rotate-1">Armor</h3>
+                <div className="grid grid-cols-1 gap-4 my-2">
+                    {actor.items.armor.map((a: any, index: number) => (
+                        <div key={(a._id || a.id) + index} className={`bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${((index + actor.items.weapons.length) % 2 === 0) ? '-rotate-1' : 'rotate-1'}`}>
+                            <div className="flex items-center gap-4 flex-1">
+                                <img src={a.img} alt={a.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 grayscale flex-shrink-0" />
+                                <div className="min-w-0">
+                                    <div className="font-bold text-lg sm:text-xl text-neutral-200 truncate">{a.name}</div>
+                                    <div className="text-xs sm:text-sm text-slate-400 font-mono whitespace-nowrap overflow-hidden">
+                                        Tier: {a.tier?.value || 1} | DR: -{a.damageReductionDie || 'd2'}
                                     </div>
                                 </div>
                             </div>
                             <button
-                                onClick={() => onRoll('item', a.uuid || a.id, { rollType: 'defend' })}
-                                className="bg-slate-800 hover:bg-slate-600 text-slate-200 px-6 py-2 font-morkborg text-xl uppercase tracking-widest transition-all border border-slate-600"
+                                onClick={() => openRollModal(a, 'defend')}
+                                className="w-full sm:w-auto bg-slate-800 hover:bg-slate-600 text-slate-200 px-6 py-2 font-morkborg text-xl uppercase tracking-widest transition-all border border-slate-600"
                             >
                                 Defend
                             </button>
@@ -95,6 +119,18 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
             <div className="text-center mt-8 text-neutral-600 text-sm font-serif italic">
                 &quot;Violence is not the answer. It is the question. The answer is yes.&quot;
             </div>
+
+            {modalConfig.isOpen && (
+                <RollModal
+                    isOpen={modalConfig.isOpen}
+                    onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
+                    onRoll={onRoll}
+                    title={modalConfig.title}
+                    item={modalConfig.item}
+                    actor={actor}
+                    type={modalConfig.type}
+                />
+            )}
         </div>
     );
 }

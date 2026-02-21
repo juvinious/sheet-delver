@@ -51,7 +51,7 @@ export class DnD5eAdapter implements SystemAdapter {
             img: actor.img,
             hp: { value: hp.value, max: hp.max },
             ac: ac,
-            attributes: abilities
+            system: s
         };
     }
 

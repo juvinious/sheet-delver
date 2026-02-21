@@ -1,15 +1,28 @@
-export const shadowdarkTheme = {
+export const morkborgTheme = {
     chat: {
-        container: "bg-white border-2 border-black",
+        container: "bg-[#ffe900] border-2 border-black shadow-[4px_4px_0_0_#000] rounded-none",
         header: "text-black text-sm font-bold uppercase mb-4 border-b-2 border-black pb-2 font-serif tracking-widest",
-        msgContainer: (isRoll: boolean) => `p-2 border-2 border-black mb-1 shadow-sm ${isRoll ? 'bg-neutral-100' : 'bg-white'}`,
-        user: "font-serif font-bold text-black text-xs uppercase tracking-wider",
-        time: "text-[9px] uppercase font-bold text-neutral-400 tracking-widest",
-        flavor: "text-xs italic text-neutral-600 mb-0.5 font-serif leading-tight",
-        content: "text-sm text-black font-serif leading-relaxed messages-content [&_*]:!m-0 [&_*]:!p-0 [&_p]:mb-0.5 [&_br]:hidden [&_img]:max-w-[48px] [&_img]:max-h-[48px] [&_img]:inline-block [&_img]:border-2 [&_img]:border-black [&_img]:grayscale [&_img]:contrast-125 [&_.chat-card]:!block [&_.chat-card]:bg-white [&_.chat-card]:border-2 [&_.chat-card]:border-black [&_.chat-card]:my-1 [&_.chat-card]:shadow-[1px_1px_0_0_rgba(0,0,0,1)] [&_.chat-card-header]:!block [&_.chat-card-header]:bg-black [&_.chat-card-header]:text-white [&_.chat-card-header]:px-2 [&_.chat-card-header]:py-0.5 [&_.chat-card-header]:font-bold [&_.chat-card-header]:uppercase [&_.chat-card-header]:text-[9px] [&_.chat-card-header]:tracking-widest [&_.chat-card-content]:!block [&_.chat-card-content]:p-0.5 [&_.chat-card-row]:!flex [&_.chat-card-row]:!flex-row [&_.chat-card-row]:!items-center [&_.chat-card-row]:!justify-start [&_.chat-card-row]:gap-2 [&_.chat-card-row]:p-0.5 [&_.chat-card-row]:border-b [&_.chat-card-row]:border-black/5 [&_.chat-card-row:last-child]:border-none [&_.chat-card-text]:!inline [&_.chat-card-text]:font-bold [&_.chat-card-text]:text-[11px] [&_.chat-card-text]:leading-tight [&_.chat-card-image]:!inline-block [&_.chat-card-image]:border-none [&_.chat-card-image]:grayscale-0 [&_.chat-card-image]:contrast-100 [&_.chat-card-image]:w-5 [&_.chat-card-image]:h-5 [&_.chat-card-image]:!shrink-0",
-        rollResult: "mt-1 bg-white text-black p-1.5 text-center border-2 border-black",
-        rollFormula: "text-[9px] uppercase tracking-widest text-neutral-500",
-        rollTotal: "text-xl font-bold font-serif",
+        msgContainer: (isRoll: boolean) => `p-0 border-2 border-black mb-1 shadow-sm ${isRoll ? 'bg-black text-white' : 'bg-white text-black'}`,
+        user: "font-serif font-bold text-xs uppercase tracking-wider px-2 pt-1 block",
+        time: "text-[9px] uppercase font-bold text-neutral-400 tracking-widest px-2 block",
+        flavor: "text-xs italic text-neutral-600 mb-0.5 font-serif leading-tight px-2 block",
+        content: `
+            text-sm font-serif leading-relaxed messages-content 
+            [&_.roll-card]:border-0 [&_.roll-card]:bg-black [&_.roll-card]:text-white
+            [&_.card-title]:bg-[#ffe900] [&_.card-title]:text-black [&_.card-title]:font-bold [&_.card-title]:uppercase [&_.card-title]:text-center [&_.card-title]:py-1 [&_.card-title]:mb-2 [&_.card-title]:font-serif [&_.card-title]:tracking-widest
+            [&_.item-row]:flex [&_.item-row]:items-center [&_.item-row]:justify-center [&_.item-row]:gap-2 [&_.item-row]:px-2 [&_.item-row]:mb-2
+            [&_.chat-card-image]:border [&_.chat-card-image]:border-white/20 [&_.chat-card-image]:flex-shrink-0
+            [&_.item-name]:font-bold [&_.item-name]:text-lg [&_.item-name]:font-serif [&_.item-name]:brightness-125
+            [&_.roll-result]:mb-3 [&_.roll-result]:px-2
+            [&_.roll-title]:text-[10px] [&_.roll-title]:uppercase [&_.roll-title]:text-white/60 [&_.roll-title]:font-mono [&_.roll-title]:font-bold
+            [&_.roll-row]:border [&_.roll-row]:border-white/20 [&_.roll-row]:py-1 [&_.roll-row]:text-center [&_.roll-row]:bg-white/5
+            [&_.roll-row_span]:text-xl [&_.roll-row_span]:font-bold [&_.roll-row_span]:font-serif
+            [&_.outcome-row]:bg-[#ffe900] [&_.outcome-row]:text-black [&_.outcome-row]:font-bold [&_.outcome-row]:text-center [&_.outcome-row]:py-2 [&_.outcome-row]:my-1 [&_.outcome-row]:font-serif [&_.outcome-row]:text-lg [&_.outcome-row]:uppercase [&_.outcome-row]:tracking-tight
+            [&_.outcome-row_span]:px-2
+        `,
+        rollResult: "hidden", // We use the custom card structure instead
+        rollFormula: "hidden",
+        rollTotal: "hidden",
         button: "inline-flex items-center gap-1 bg-white hover:bg-black group border-2 border-black px-2 py-0.5 text-xs font-bold text-black hover:text-white transition-colors cursor-pointer my-1 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none active:translate-y-[2px] rounded-lg",
         buttonText: "uppercase font-sans tracking-widest",
         buttonValue: "font-serif font-bold group-hover:text-white",
@@ -49,7 +62,7 @@ export const shadowdarkTheme = {
         footer: "bg-white p-4 flex justify-end gap-3",
         confirmBtn: (isDanger?: boolean) => `px-6 py-2 font-bold font-serif uppercase tracking-widest text-xs text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all rounded-none ${isDanger ? 'bg-red-600 hover:bg-red-700' : 'bg-black hover:bg-neutral-800'}`,
         cancelBtn: "px-4 py-2 font-bold font-serif uppercase tracking-widest text-xs border-2 border-neutral-300 hover:border-black transition-colors rounded-none text-neutral-600 hover:text-black hover:bg-neutral-50",
-        closeBtn: "text-white hover:text-amber-500 transition-colors"
+        closeBtn: "text-white hover:text-pink-500 transition-colors"
     },
     rollDialog: {
         overlay: "absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity",
@@ -67,7 +80,7 @@ export const shadowdarkTheme = {
             if (mode === 'adv') return base + "bg-white text-green-700 hover:bg-green-50";
             return base + "bg-white text-red-700 hover:bg-red-50";
         },
-        closeBtn: "text-white hover:text-amber-500 transition-colors",
+        closeBtn: "text-white hover:text-pink-500 transition-colors",
         select: "w-full p-2 border-2 border-black font-serif text-lg outline-none appearance-none bg-white cursor-pointer hover:bg-neutral-50 transition-colors text-black",
         selectArrow: "absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-black"
     },
@@ -88,21 +101,21 @@ export const shadowdarkTheme = {
             if (isDice) {
                 return base + (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-neutral-900 text-white hover:bg-black');
             }
-            return base + (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-amber-500 text-black hover:bg-amber-400');
+            return base + (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-pink-600 text-black hover:bg-pink-500');
         },
-        closeBtn: "text-white hover:text-amber-500 transition-colors"
+        closeBtn: "text-white hover:text-pink-500 transition-colors"
     },
     richText: {
-        container: 'relative group h-full flex flex-col',
+        container: 'relative group flex flex-col bg-black',
         toolbar: {
-            container: 'bg-black border-b-2 border-neutral-800 p-2 flex flex-wrap gap-1 items-center sticky top-0 z-10 shadow-sm',
-            button: 'p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white',
-            buttonActive: 'p-2 rounded hover:bg-neutral-800 transition-colors bg-neutral-700 text-white',
-            separator: 'w-px h-6 bg-neutral-700 mx-1',
-            actionButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest text-neutral-400 hover:text-white hover:bg-neutral-800 rounded mr-2',
-            saveButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-neutral-200 rounded flex items-center gap-1'
+            container: 'bg-black border-b-2 border-stone-800 p-2 flex flex-wrap gap-1 items-center sticky top-0 z-10 shadow-sm',
+            button: 'p-2 rounded hover:bg-neutral-900 transition-colors text-pink-600 hover:text-pink-500',
+            buttonActive: 'p-2 rounded bg-neutral-900 transition-colors text-pink-600',
+            separator: 'w-px h-6 bg-stone-800 mx-1',
+            actionButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-neutral-200 rounded mr-2 font-morkborg',
+            saveButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-pink-600 text-white hover:bg-pink-500 rounded flex items-center gap-1 font-morkborg transform -rotate-1 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
         },
-        editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[300px] p-4 text-neutral-300',
-        editButton: 'bg-black text-white px-6 py-2 font-serif font-bold uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2'
+        editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[100px] p-4 pb-4 text-neutral-300 selection:bg-pink-600/30 selection:text-white',
+        editButton: 'bg-pink-600 text-white px-6 py-2 font-morkborg text-xl uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2 transform -rotate-1 hover:rotate-0'
     }
 };

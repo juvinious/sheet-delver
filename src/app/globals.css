@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@utility scrollbar-hide {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -36,7 +44,8 @@ body {
 .messages-content .roll-result {
   color: white !important;
   background-color: transparent !important;
-  border-color: #525252 !important; /* Zinc-600 */
+  border-color: #525252 !important;
+  /* Zinc-600 */
 }
 
 .messages-content .roll-card .card-title {

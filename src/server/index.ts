@@ -398,7 +398,14 @@ async function startServer() {
                     actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
                 }
 
-                return adapter.normalizeActorData(actor, client);
+                const normalized = adapter.normalizeActorData(actor, client);
+
+                // Compute derived data if adapter supports it (for Dashboard stats)
+                if (adapter.computeActorData) {
+                    normalized.derived = adapter.computeActorData(normalized);
+                }
+
+                return normalized;
             }));
 
             // We treat all returned actors as "visible"
@@ -410,7 +417,7 @@ async function startServer() {
             const actorFolders = new Set(rawActors.map((a: any) => a.folder).filter(Boolean));
             logger.info(`Core Service | Actor types found: ${Array.from(actorTypes).join(', ')}`);
             logger.info(`Core Service | Actor folders found: ${Array.from(actorFolders).join(', ')}`);
-            logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
+            // logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
 
             // Owned actors (ownership level 3 = OWNER)
             const owned = rawActors.filter((a: any) =>
@@ -491,8 +498,8 @@ async function startServer() {
 
             // Call adapter.computeActorData if available (module-specific derived stats)
             if (adapter.computeActorData) {
-                normalizedActor.computed = {
-                    ...(normalizedActor.computed || {}),
+                normalizedActor.derived = {
+                    ...(normalizedActor.derived || {}),
                     ...adapter.computeActorData(normalizedActor)
                 };
             }
@@ -612,6 +619,13 @@ async function startServer() {
 
             if (!rollData) throw new Error('Cannot determine roll formula');
 
+            // Handle Automated Roll Sequences (e.g. Mork Borg Attack/Defend)
+            if (rollData.isAutomated && typeof adapter.performAutomatedSequence === 'function') {
+                const result = await adapter.performAutomatedSequence(client, actor, rollData, options);
+                return res.json({ success: true, result, label: rollData.label });
+            }
+
+            // Fallback: Standard Single Roll
             // Determine speaker: use actor for character sheet rolls if not overridden
             const speaker = options?.speaker || {
                 actor: actor._id || actor.id,

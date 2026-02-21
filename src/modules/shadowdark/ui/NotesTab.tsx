@@ -1,6 +1,7 @@
 'use client';
 
 import RichTextEditor from '@/app/ui/components/RichTextEditor';
+import { shadowdarkTheme } from '@/modules/shadowdark/ui/themes/shadowdark';
 
 interface NotesTabProps {
     actor: any;
@@ -48,6 +49,8 @@ export default function NotesTab({ actor, onUpdate, token }: NotesTabProps) {
                 <RichTextEditor
                     content={notesContent}
                     onSave={handleSave}
+                    theme={shadowdarkTheme.richText}
+                    editButtonText="Edit Notes"
                 />
             </div>
         </div>

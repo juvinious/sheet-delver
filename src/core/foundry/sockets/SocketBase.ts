@@ -76,8 +76,8 @@ export abstract class SocketBase extends EventEmitter {
             html.includes('There is currently no active game session') ||
             pageTitle.includes('Foundry Virtual Tabletop');
 
-        logger.debug(`[${this.constructor.name}] Handshake Analysis: URL=${joinResponse.url}, Title=${pageTitle}, isSetup=${isSetup}`);
-        logger.debug(`[${this.constructor.name}] HTML Snippet: ${html.substring(0, 150)}`);
+        //logger.debug(`[${this.constructor.name}] Handshake Analysis: URL=${joinResponse.url}, Title=${pageTitle}, isSetup=${isSetup}`);
+        //logger.debug(`[${this.constructor.name}] HTML Snippet: ${html.substring(0, 150)}`);
 
         // Parse CSRF
         let csrfToken: string | null = null;
