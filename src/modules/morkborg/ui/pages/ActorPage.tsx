@@ -210,6 +210,27 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
         }
     };
 
+    const handleBrewDecoctions = async () => {
+        if (!actor) return;
+        const rollMode = localStorage.getItem('sheetdelver_roll_mode') || 'blindroll';
+        try {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/brew-decoctions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rollMode })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification('Decoctions brewed and added to inventory!', 'success');
+            } else {
+                addNotification('Brew failed: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
     if (loading) return <LoadingModal message="Loading..." />;
     if (!actor && !showDeleteModal) return null;
 
@@ -241,6 +262,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                         onDeleteItem={handleDeleteItem}
                         onCreateItem={handleCreateItem}
                         onUpdateItem={handleUpdateItem}
+                        onBrewDecoctions={handleBrewDecoctions}
                         onToggleDiceTray={toggleDiceTray}
                         isDiceTrayOpen={isDiceTrayOpen}
                     />

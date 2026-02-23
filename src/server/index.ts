@@ -606,7 +606,20 @@ async function startServer() {
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             if (type === 'use-item') {
-                const result = await client.useItem(req.params.id, key);
+                // key may be an item ID or an item name (from generic feat routing fallback)
+                let itemId = key;
+                const isId = actor.items?.some((i: any) => (i._id || i.id) === key);
+                if (!isId) {
+                    // Try to resolve by name across all item arrays
+                    const allItems = [
+                        ...(actor.items || []),
+                        ...(actor.categorizedItems?.feats || []),
+                        ...(actor.categorizedItems?.uncategorized || [])
+                    ];
+                    const found = allItems.find((i: any) => i.name === key);
+                    if (found) itemId = found._id || found.id;
+                }
+                const result = await client.useItem(req.params.id, itemId);
                 return res.json({ success: true, result });
             }
 
@@ -619,14 +632,19 @@ async function startServer() {
 
             if (!rollData) throw new Error('Cannot determine roll formula');
 
-            // Handle Automated Roll Sequences (e.g. Mork Borg Attack/Defend)
+            // Handle Automated Roll Sequences — adapter signals this via isAutomated: true.
+            // All system-specific dispatch logic (feats, decoctions, etc.) lives in performAutomatedSequence.
             if (rollData.isAutomated && typeof adapter.performAutomatedSequence === 'function') {
                 const result = await adapter.performAutomatedSequence(client, actor, rollData, options);
                 return res.json({ success: true, result, label: rollData.label });
             }
 
-            // Fallback: Standard Single Roll
-            // Determine speaker: use actor for character sheet rolls if not overridden
+            // Fallback: Standard formula roll — require a formula or abort
+            if (!rollData.formula) {
+                throw new Error(`No roll formula for type "${type}" key "${key}"`);
+            }
+
+            // Determine speaker
             const speaker = options?.speaker || {
                 actor: actor._id || actor.id,
                 alias: actor.name

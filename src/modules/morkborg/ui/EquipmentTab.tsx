@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import paperTexture from './assets/paper-texture.png';
 import RollModal from './components/RollModal';
 import ItemModal from './components/ItemModal';
-import { Swords, Shield, Pencil, Trash2, User } from 'lucide-react';
+import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import { Swords, Shield, Pencil, Trash2, User, PackageCheck } from 'lucide-react';
 
 interface EquipmentTabProps {
     actor: any;
@@ -24,6 +25,8 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
         isOpen: false,
         item: null
     });
+
+    const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
 
     const openRollModal = (item: any, type: 'attack' | 'defend') => {
         setRollModalConfig({
@@ -66,6 +69,73 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
     const handleToggleEquipped = (item: any) => {
         const newStatus = !(item.system?.equipped || item.equipped);
         onUpdate(`items.${item._id || item.id}.system.equipped`, newStatus);
+    };
+
+    // Find duplicates and prompt to combine them
+    const handleOrganizeClick = () => {
+        const allItems = [
+            ...(actor.items.weapons || []),
+            ...(actor.items.armor || []),
+            ...(actor.items.equipment || []),
+            ...(actor.items.misc || []),
+            ...(actor.items.ammo || []),
+            ...(actor.items.uncategorized || [])
+        ];
+
+        // Group by lowercase name
+        const groups: Record<string, any[]> = {};
+        for (const item of allItems) {
+            const key = item.name.toLowerCase().trim();
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(item);
+        }
+
+        const duplicateGroups = Object.values(groups).filter(g => g.length > 1);
+        const totalDupes = duplicateGroups.reduce((acc, g) => acc + g.length - 1, 0);
+
+        if (duplicateGroups.length === 0) {
+            setConfirmModal({
+                config: {
+                    title: 'Already Organized',
+                    body: 'No duplicate items found. Your inventory is already tidy.',
+                    confirmLabel: 'OK',
+                },
+                onConfirm: () => setConfirmModal(null),
+            });
+            return;
+        }
+
+        const preview = duplicateGroups.slice(0, 3).map(g => `• ${g[0].name} (×${g.length})`).join('\n');
+        const more = duplicateGroups.length > 3 ? `\n…and ${duplicateGroups.length - 3} more.` : '';
+
+        setConfirmModal({
+            config: {
+                title: 'Organize Inventory',
+                body: [
+                    `Found ${totalDupes} duplicate entr${totalDupes === 1 ? 'y' : 'ies'} across ${duplicateGroups.length} item${duplicateGroups.length === 1 ? '' : 's'}:`,
+                    preview + more,
+                    'Quantities will be combined and duplicates removed.',
+                ],
+                confirmLabel: 'Combine Duplicates',
+            },
+            onConfirm: () => {
+                for (const group of duplicateGroups) {
+                    // Sort so we keep the one with the highest existing quantity as the base
+                    group.sort((a, b) => (b.system?.quantity || b.quantity || 1) - (a.system?.quantity || a.quantity || 1));
+                    const keeper = group[0];
+                    const totalQty = group.reduce((sum, i) => sum + (Number(i.system?.quantity || i.quantity) || 1), 0);
+
+                    // Update keeper quantity
+                    onUpdate(`items.${keeper._id || keeper.id}.system.quantity`, totalQty);
+
+                    // Delete the rest
+                    for (let i = 1; i < group.length; i++) {
+                        onDeleteItem(group[i]._id || group[i].id);
+                    }
+                }
+                setConfirmModal(null);
+            },
+        });
     };
 
     // Consolidate and sort items
@@ -250,7 +320,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
 
             {/* Uncategorized Items */}
             {actor.items.uncategorized && actor.items.uncategorized.length > 0 && (
-                <div className="mt-8 mb-20">
+                <div className="mt-8 mb-4">
                     <div className="flex items-center justify-between mb-4 border-b-2 border-dashed border-pink-900/50 pb-2 opacity-70">
                         <h3 className="font-morkborg text-2xl uppercase text-black tracking-widest transform rotate-1">
                             Uncategorized (Legacy/Module)
@@ -261,6 +331,17 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     </div>
                 </div>
             )}
+
+            {/* Organize Inventory Button */}
+            <div className="flex justify-center mt-6 mb-20">
+                <button
+                    onClick={handleOrganizeClick}
+                    className="flex items-center gap-3 font-morkborg text-lg uppercase tracking-widest font-bold text-white bg-pink-700 border-2 border-pink-500 px-6 py-3 hover:bg-black hover:border-neutral-700 transition-all -rotate-1 shadow-[4px_4px_0_0_#000] cursor-pointer"
+                >
+                    <PackageCheck className="w-5 h-5" />
+                    Organize Inventory
+                </button>
+            </div>
 
             {/* Modals */}
             {rollModalConfig.isOpen && (
@@ -282,6 +363,14 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     onUpdate={handleUpdateItem}
                     item={allItems.find(i => (i._id || i.id) === (itemModalConfig.item?._id || itemModalConfig.item?.id))}
                     actor={actor}
+                />
+            )}
+
+            {confirmModal && (
+                <MorkBorgConfirmModal
+                    config={confirmModal.config}
+                    onConfirm={confirmModal.onConfirm}
+                    onClose={() => setConfirmModal(null)}
                 />
             )}
         </div>

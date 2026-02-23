@@ -62,7 +62,7 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
             <div>
                 <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform -rotate-1">Weapons</h3>
                 <div className="grid grid-cols-1 gap-4 my-2">
-                    {actor.items.weapons.map((w: any, index: number) => (
+                    {actor.items.weapons.filter((w: any) => w.equipped || w.system?.equipped).map((w: any, index: number) => (
                         <div key={w._id + (index ? index : w.name)} className={`bg-neutral-900/80 p-3 border-l-8 border-red-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'}`}>
                             <div className="flex items-center gap-4 flex-1">
                                 <img src={w.img} alt={w.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 flex-shrink-0" />
@@ -81,8 +81,8 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
                             </button>
                         </div>
                     ))}
-                    {!actor.items.weapons.length && (
-                        <div className="text-neutral-500 italic p-4 border border-dashed border-neutral-700">No weapons equipped. Fists it is.</div>
+                    {!actor.items.weapons.filter((w: any) => w.equipped || w.system?.equipped).length && (
+                        <div className="text-neutral-500 italic p-4 border border-dashed border-neutral-700">No weapons equipped. Equip one in the Equipment tab.</div>
                     )}
                 </div>
             </div>
@@ -91,7 +91,7 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
             <div>
                 <h3 className="font-morkborg text-3xl mb-4 border-b-4 border-pink-500 text-pink-500 inline-block pr-6 transform rotate-1">Armor</h3>
                 <div className="grid grid-cols-1 gap-4 my-2">
-                    {actor.items.armor.map((a: any, index: number) => (
+                    {actor.items.armor.filter((a: any) => a.equipped || a.system?.equipped).map((a: any, index: number) => (
                         <div key={(a._id || a.id) + index} className={`bg-neutral-900/80 p-3 border-l-8 border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${((index + actor.items.weapons.length) % 2 === 0) ? '-rotate-1' : 'rotate-1'}`}>
                             <div className="flex items-center gap-4 flex-1">
                                 <img src={a.img} alt={a.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 grayscale flex-shrink-0" />
@@ -110,8 +110,8 @@ export default function ViolenceTab({ actor, onRoll }: ViolenceTabProps) {
                             </button>
                         </div>
                     ))}
-                    {!actor.items.armor.length && (
-                        <div className="text-neutral-500 italic p-4 border border-dashed border-neutral-700">No armor. You will die quickly.</div>
+                    {!actor.items.armor.filter((a: any) => a.equipped || a.system?.equipped).length && (
+                        <div className="text-neutral-500 italic p-4 border border-dashed border-neutral-700">No armor equipped. Equip some in the Equipment tab.</div>
                     )}
                 </div>
             </div>

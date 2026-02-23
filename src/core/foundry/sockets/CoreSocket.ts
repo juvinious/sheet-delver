@@ -683,7 +683,52 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
-    public async getAllCompendiumIndices(): Promise<any[]> {
+    public async getPackDocuments(packId: string, type: string): Promise<any[]> {
+        try {
+            logger.debug(`CoreSocket | Fetching full documents for pack ${packId} (type: ${type})...`);
+
+            const typesToTry = [type];
+            if (type === 'RollTable') typesToTry.push('Tables', 'RollTables');
+            else if (type === 'Item') typesToTry.push('Items');
+            else if (type === 'JournalEntry') typesToTry.push('JournalEntries', 'Journal');
+            else if (type === 'Actor') typesToTry.push('Actors');
+
+            for (const t of typesToTry) {
+                try {
+                    const response: any = await this.emitSocketEvent('getDocuments', {
+                        type: t,
+                        operation: { pack: packId }
+                    }, 5000);
+                    if (response?.result && Array.isArray(response.result)) {
+                        return response.result;
+                    }
+                } catch (e) {
+                    // Try next type
+                }
+            }
+
+            // Fallback: modifyDocument (Legacy)
+            try {
+                const response: any = await this.dispatchDocumentSocket(type, 'get', {
+                    pack: packId,
+                    broadcast: false
+                }, undefined, false);
+                const results = response?.result || [];
+                if (results.length > 0) {
+                    return results;
+                }
+            } catch (e: any) {
+                // Ignore errors
+            }
+
+            return [];
+        } catch (e) {
+            logger.warn(`CoreSocket | getPackDocuments failed for ${packId}: ${e}`);
+            return [];
+        }
+    }
+
+    public async getAllCompendiumIndices(onlyGamePacks: boolean = false): Promise<any[]> {
         if (!this.isConnected) return [];
         if (this.gameDataCache?.indices) return this.gameDataCache.indices; // Return cached if already available
 
@@ -716,17 +761,18 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             }
 
             // 1. Fallback Discovery (Aggregate from metadata if top-level packs missing)
-            const fallbackPacks = [
-                ...(game.world?.packs || []).map((p: any) => ({ ...p, source: 'world' })),
-                ...(game.system?.packs || []).map((p: any) => ({ ...p, source: 'system' })),
-                ...(game.modules || []).flatMap((m: any) => (m.packs || []).map((p: any) => ({ ...p, source: 'module', moduleId: m.id })))
-            ];
+            if (!onlyGamePacks) {
+                const fallbackPacks = [
+                    ...(game.world?.packs || []).map((p: any) => ({ ...p, source: 'world' })),
+                    ...(game.system?.packs || []).map((p: any) => ({ ...p, source: 'system' })),
+                    ...(game.modules || []).flatMap((m: any) => (m.packs || []).map((p: any) => ({ ...p, source: 'module', moduleId: m.id })))
+                ];
 
-            fallbackPacks.forEach((p: any) => {
-                const id = p.id || p._id || (p.moduleId ? `${p.moduleId}.${p.name}` : `${game.system.id}.${p.name}`);
-                if (!packs.has(id)) packs.set(id, p);
-            });
-
+                fallbackPacks.forEach((p: any) => {
+                    const id = p.id || p._id || (p.moduleId ? `${p.moduleId}.${p.name}` : `${game.system.id}.${p.name}`);
+                    if (!packs.has(id)) packs.set(id, p);
+                });
+            }
             logger.info(`CoreSocket | Discovering indices for ${packs.size} packs in parallel...`);
             const results = await Promise.all(Array.from(packs.entries()).map(async ([packId, metadata]) => {
                 const docType = metadata.type || metadata.entity || metadata.documentName || 'Item';
@@ -1038,6 +1084,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
         const isRoll = typeof content !== 'string' && (content.rolls || content.type === 5);
 
+        // NOTE: Foundry V13 ChatMessage.author must be a valid 16-character alphanumeric user ID.
+        // Author is set BEFORE the content spread so it cannot be clobbered by any `author` field in content.
         const data: any = typeof content === 'string'
             ? { content, type: 1, author: auth }
             : { type: isRoll ? 5 : 1, author: auth, ...content };
@@ -1168,6 +1216,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
     public async getUsers(failHard: boolean = false): Promise<any[]> {
+        // Prefer cached users from the initial game data handshake; avoids a round-trip socket call
+        if (this.gameDataCache?.users?.length) {
+            return this.gameDataCache.users;
+        }
         const response: any = await this.dispatchDocumentSocket('User', 'get', { broadcast: false }, undefined, failHard);
         return response?.result || [];
     }

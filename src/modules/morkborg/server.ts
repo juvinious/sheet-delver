@@ -7,6 +7,7 @@ import { handleIndex } from './api/index';
 import { handleGetActorData } from './api/actor-data';
 import { handleGetItems, handleDeleteItem } from './api/items';
 import { handleUpdateActor } from './api/update';
+import { handleBrewDecoctions } from './api/brew-decoctions';
 import { logger } from '../../core/logger';
 import { getConfig } from '../../core/config';
 
@@ -52,6 +53,13 @@ export const apiRoutes = {
         }
 
         return Response.json({ error: 'Method not allowed' }, { status: 405 });
+    },
+
+    'actors/[id]/brew-decoctions': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const actorId = route[1];
+        const client = (request as any).foundryClient;
+        return handleBrewDecoctions(actorId, request, client);
     }
 };
 

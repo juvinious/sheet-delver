@@ -199,12 +199,20 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         }
 
         if (type === 'ability') {
+            const statLabel = key.charAt(0).toUpperCase() + key.slice(1);
+            const value = abilities[key]?.value ?? 0;
+            const sign = value >= 0 ? '+' : '-';
             return {
                 type: 'ability',
                 statKey: key,
                 isAutomated: true,
                 options: options,
-                label: `Test ${key.charAt(0).toUpperCase() + key.slice(1)}`
+                label: `Test ${statLabel}`,
+                // For the roll modal display
+                rawFormula: `1d20@abilities.${key}.value`,
+                resolvedFormula: `1d20${sign}${Math.abs(value)}`,
+                humanFormula: `1d20 ${sign} ${Math.abs(value)} (${statLabel})`,
+                rollLabel: `${statLabel} Test`,
             };
         }
 
@@ -233,12 +241,20 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             }
 
             if (itemData.type === 'feat') {
+                // Passive feat (no rollLabel): no action
+                if (!itemData.rollLabel) return null;
+                // Macro feat (rollLabel but no formula): handled by featActionMap
+                // Formula feat: return formula for server-side roll
                 return {
-                    type: 'feat',
+                    type: 'feat-roll',
                     itemId: itemData.id,
-                    isAutomated: true,
-                    label: itemData.rollLabel || `Feat: ${itemData.name}`,
-                    formula: itemData.rollFormula
+                    itemName: itemData.name,
+                    isAutomated: false,
+                    label: itemData.rollLabel || itemData.name,
+                    rollLabel: itemData.rollLabel,
+                    rawFormula: itemData.rollFormula,
+                    // formula is the raw string; server resolves @-vars against actor
+                    formula: itemData.rollFormula,
                 };
             }
 
@@ -275,6 +291,70 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 type: 'broken',
                 isAutomated: true,
                 label: 'Broken'
+            };
+        }
+
+        // Feat action routing — all feat logic stays in the adapter.
+        // Macro feats: isAutomated, handled by performAutomatedSequence.
+        // Formula feats: isAutomated: false, formula rolled server-side via client.roll().
+        // Passive feats: no button rendered in UI (null returned).
+        if (type === 'feat') {
+            // Look up the feat item on the actor
+            const allItems: any[] = Array.isArray(actor.items)
+                ? actor.items
+                : Object.values(actor.items || {}).flat();
+            const featItem = allItems.find((i: any) => i.name === key);
+            const rollLabel = featItem?.system?.rollLabel || '';
+            const rawFormula = featItem?.system?.rollFormula || '';
+
+            // Passive feat — no rollLabel means no action
+            if (!rollLabel) return null;
+
+            // Macro feats: known automated sequences (no rollFormula)
+            const macroFeats: Record<string, any> = {
+                'Create Decoctions': {
+                    type: 'decoctions',
+                    isAutomated: true,
+                    label: 'Create Decoctions',
+                    rolls: []
+                }
+                // Add future macro feats here
+            };
+            if (macroFeats[key]) return macroFeats[key];
+
+            // Formula feat: resolve @-vars server-side, roll via client.roll()
+            const abilities = actor.system?.abilities || {};
+            const resolvedFormula = rawFormula.replace(/@abilities\.([\w]+)\.value/g, (_: string, stat: string) => {
+                return String(abilities[stat]?.value ?? 0);
+            });
+            const humanFormula = rawFormula.replace(/([+-]?)@abilities\.([\w]+)\.value/g, (_: string, op: string, stat: string) => {
+                const val = abilities[stat]?.value ?? 0;
+                const label = stat.charAt(0).toUpperCase() + stat.slice(1);
+                // op is the sign already in the formula ('+' or '-' or '')
+                // if op is '-', flip val sign
+                const effective = op === '-' ? -val : val;
+                const displaySign = effective >= 0 ? '+' : '-';
+                return ` ${displaySign} ${Math.abs(effective)} (${label})`;
+            });
+
+            return {
+                type: 'feat-roll',
+                isAutomated: true,
+                label: rollLabel,
+                rollLabel,
+                itemName: key,
+                rawFormula,
+                formula: resolvedFormula,
+                humanFormula,
+            };
+        }
+
+        if (type === 'decoctions') {
+            return {
+                type: 'decoctions',
+                isAutomated: true,
+                label: 'Create Decoctions',
+                rolls: []
             };
         }
 
@@ -349,6 +429,28 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             });
         }
 
+        if (type === 'feat-roll') {
+            const roll = rolls[0];
+            return ChatCards.result({
+                cardTitle: results.featName || results.featLabel || 'Feat',
+                rollResults: [{
+                    rollTitle: results.featLabel || roll?.formula || '',
+                    roll: roll?.json,
+                    outcomeLines: outcomes
+                }]
+            });
+        }
+
+        if (type === 'decoctions') {
+            return ChatCards.result({
+                cardTitle: 'Brew Decoctions',
+                rollResults: [{
+                    rollTitle: 'Doses Brewed:',
+                    outcomeLines: outcomes
+                }]
+            });
+        }
+
         if (type === 'getBetter') {
             return ChatCards.getBetter(results.getBetterData);
         }
@@ -391,40 +493,25 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         const collectedRolls: string[] = [];
 
         const parseSyntheticRoll = (rollResult: any, label: string, tags: any = {}) => {
-            if (!rollResult) return { total: 0, formula: '', dice: [] };
-
-            const rollJsonStr = rollResult.rolls ? rollResult.rolls[0] : null;
-            if (rollJsonStr) {
-                collectedRolls.push(rollJsonStr);
-            }
-
-            if (typeof rollResult.total === 'number' && !rollResult._synthetic) return rollResult;
-
-            try {
-                const rollData = rollJsonStr ? JSON.parse(rollJsonStr) : null;
-                const parsed = {
-                    label,
-                    total: rollData?.total ?? 0,
-                    formula: rollData?.formula ?? '',
-                    json: rollData,
-                    ...tags,
-                    dice: rollData?.terms ? [{
-                        results: rollData.terms
-                            .filter((t: any) => (t.faces === 20 || t.faces === 6) && t.results)
-                            .flatMap((t: any) => t.results)
-                    }] : []
-                };
-                results.rolls.push(parsed);
-                return parsed;
-            } catch (e) {
-                return { total: 0, formula: '', dice: [] };
-            }
+            return this.parseSyntheticRoll(rollResult, label, results.rolls, collectedRolls, tags);
         };
 
         const speaker = options?.speaker || {
             actor: actor._id || actor.id,
             alias: actor.name
         };
+
+        if (rollData.type === 'decoctions') {
+            return await this.createDecoctions(actor, client, options);
+        }
+
+        // Unknown feat: show the item's Foundry card
+        if (rollData.type === 'feat-use-item') {
+            const items: any[] = actor.items || [];
+            const found = items.find((i: any) => i.name === rollData.itemName);
+            const itemId = found ? (found._id || found.id) : rollData.itemName;
+            return await client.useItem(actor._id || actor.id, itemId);
+        }
 
         if (rollData.type === 'attack') {
             const isRanged = results.item?.system?.weaponType === 'ranged';
@@ -499,6 +586,15 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             const rollResult = await client.roll(formula, label, { displayChat: false });
             parseSyntheticRoll(rollResult, label, { formula: `1d20 + ${key.toUpperCase().slice(0, 3)}` });
             results.subType = key;
+        } else if (rollData.type === 'feat-roll') {
+            // Formula feat: roll the pre-resolved formula and render a custom result card
+            const formula = rollData.formula || '1d20';
+            const label = rollData.rollLabel || rollData.label || 'Feat';
+            const rollResult = await client.roll(formula, label, { displayChat: false });
+            parseSyntheticRoll(rollResult, label, { formula });
+            results.subType = 'feat-roll';
+            results.featLabel = label;
+            results.featName = rollData.itemName || rollData.label;
         } else if (rollData.type === 'initiative') {
             if (rollData.subType === 'party') {
                 const partyResult = await client.roll('1d6', 'Party Initiative', { displayChat: false });
@@ -666,10 +762,20 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 newSilver += silverRoll.total;
             } else if (debrisRoll.total === 5) {
                 const scroll = mbDataManager.drawFromTable('uncleanScrolls');
-                debrisOutcome = `Found an Unclean Scroll: ${scroll.name}. ${scroll.description}`;
+                if (scroll?.isDocument) {
+                    await client.createActorItem(actor._id || actor.id, scroll);
+                    debrisOutcome = `Found an Unclean Scroll: ${scroll.name} — added to inventory.`;
+                } else {
+                    debrisOutcome = `Found an Unclean Scroll: ${scroll?.name ?? 'Unknown'}.`;
+                }
             } else {
                 const scroll = mbDataManager.drawFromTable('sacredScrolls');
-                debrisOutcome = `Found a Sacred Scroll: ${scroll.name}. ${scroll.description}`;
+                if (scroll?.isDocument) {
+                    await client.createActorItem(actor._id || actor.id, scroll);
+                    debrisOutcome = `Found a Sacred Scroll: ${scroll.name} — added to inventory.`;
+                } else {
+                    debrisOutcome = `Found a Sacred Scroll: ${scroll?.name ?? 'Unknown'}.`;
+                }
             }
 
             results.getBetterData = {
@@ -769,6 +875,132 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             rolls: collectedRolls,
             type: 5 // Explicitly set as ROLL type
         }, { rollMode: options?.rollMode, speaker });
+    }
+
+    /**
+     * Recreates the 'Create Decoctions' compendium macro.
+     * Draws 2 decoctions from the 'Occult Herbmaster Decoctions' table,
+     * rolls a 1d4 for doses, adds the items to the inventory, and prints a chat card.
+     */
+    public async createDecoctions(actor: any, client: any, options?: any) {
+        const speaker = { alias: actor.name || 'Unknown Actor', actor: actor._id || actor.id };
+        const results: any = { type: 'decoctions', outcomes: [] };
+
+        // Output title
+        results.outcomes.push('<b>Occult Herbmaster</b>');
+
+        // 1. Roll 1d4 for doses
+        const dosesResult = await client.roll('1d4', 'Doses Brewed', { displayChat: false });
+        // We aren't adding this roll to a specific 'results.rolls' array for Decoctions, 
+        // but we still want the total. Safe to pass empty arrays.
+        const dosesRoll = this.parseSyntheticRoll(dosesResult, 'Doses', [], [], {});
+        const doses = dosesRoll.total;
+        results.outcomes.push(`Brewed <b>${doses}</b> dose(s) each of:`);
+
+        // 2. Draw 2 unique decoctions
+        const tableAlias = 'Occult Herbmaster Decoctions';
+        let firstDraw = mbDataManager.drawFromTable(tableAlias);
+        let secondDraw = mbDataManager.drawFromTable(tableAlias);
+
+        // Prevent duplicate draws if possible
+        let attempts = 0;
+        while (secondDraw.name === firstDraw.name && attempts < 5) {
+            secondDraw = mbDataManager.drawFromTable(tableAlias);
+            attempts++;
+        }
+
+        const drawnItems = [firstDraw, secondDraw];
+        const itemsToCreate: any[] = [];
+
+        // 3. Process the drawn items
+        for (const draw of drawnItems) {
+            results.outcomes.push(`• <b>${draw.name}</b>`);
+            if (draw.description) {
+                // Strip paragraph tags for cleaner chat output
+                const cleanDesc = draw.description.replace(/<\/?p>/g, '');
+                results.outcomes.push(`  <i>${cleanDesc}</i>`);
+            }
+
+            // Prepare item data for creation 
+            // We use the full item payload if found, otherwise build a generic item.
+            const baseItem = mbDataManager.getItemByName(draw.name);
+            if (baseItem) {
+                const itemData: any = {
+                    name: baseItem.name,
+                    type: baseItem.type,
+                    img: baseItem.img,
+                    effects: [],
+                    system: { ...baseItem.system }
+                };
+                // Set the rolled quantity
+                itemData.system.quantity = doses;
+                itemsToCreate.push(itemData);
+            } else {
+                // Fallback generic item creation if not found in items cache
+                itemsToCreate.push({
+                    name: draw.name,
+                    type: 'misc',
+                    system: {
+                        description: draw.description || '',
+                        quantity: doses
+                    }
+                });
+            }
+        }
+
+        // 4. Create the items on the actor in Foundry
+        if (itemsToCreate.length > 0) {
+            try {
+                await client.createActorItem(actor._id || actor.id, itemsToCreate);
+                results.outcomes.push('<br><i>Items added to inventory.</i>');
+            } catch (e: any) {
+                console.error("Failed to create decoction items:", e.message);
+                results.outcomes.push('<br><i>Failed to add items to inventory.</i>');
+            }
+        }
+
+        // 5. Generate and send chat card
+        const html = this.generateRollCard(actor, results);
+        // NOTE: sendMessage(content, userId?, options?) — pass undefined as userId so options go to the right param
+        return await client.sendMessage(
+            { content: html, type: 5 },
+            undefined,
+            { rollMode: options?.rollMode || 'blindroll', speaker }
+        );
+    }
+
+    /**
+     * Parse a synthetic roll response into an object the MorkBorg chat cards expect
+     */
+    private parseSyntheticRoll(rollResult: any, label: string, resultsRollsArray: any[], collectedRollsArray: string[], tags: any = {}) {
+        if (!rollResult) return { total: 0, formula: '', dice: [] };
+
+        const rollJsonStr = rollResult.rolls ? rollResult.rolls[0] : null;
+        if (rollJsonStr) {
+            collectedRollsArray.push(rollJsonStr);
+        }
+
+        if (typeof rollResult.total === 'number' && !rollResult._synthetic) return rollResult;
+
+        try {
+            const rollData = rollJsonStr ? JSON.parse(rollJsonStr) : null;
+            const parsed = {
+                label,
+                total: rollData?.total ?? 0,
+                formula: rollData?.formula ?? '',
+                json: rollData,
+                ...tags,
+                dice: rollData?.terms ? [{
+                    results: rollData.terms
+                        .filter((t: any) => (t.faces === 20 || t.faces === 6 || t.faces === 4 || t.faces === 2) && t.results)
+                        .flatMap((t: any) => t.results)
+                }] : []
+            };
+            resultsRollsArray.push(parsed);
+            return parsed;
+        } catch (e) {
+            return { total: 0, formula: '', dice: [] };
+        }
     }
 
     /**
