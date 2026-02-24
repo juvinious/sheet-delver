@@ -12,8 +12,8 @@ interface BackgroundTabProps {
 export default function BackgroundTab({ actor, onUpdate }: BackgroundTabProps) {
     return (
         <div className="h-full flex flex-col gap-6 p-1">
-            <div className="bg-black text-pink-500 p-4 transform -rotate-1 shadow-lg border-2 border-pink-500/20">
-                <h3 className="font-morkborg text-3xl uppercase tracking-widest text-center mb-4 border-b-2 border-stone-800 pb-2">
+            <div className="text-pink-500 p-4 transform -rotate-1 shadow-lg">
+                <h3 className="font-morkborg text-3xl uppercase tracking-widest text-left mb-4 pb-2 border-b-4 border-stone-800">
                     Background
                 </h3>
             </div>

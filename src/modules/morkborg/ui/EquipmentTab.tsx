@@ -3,6 +3,7 @@ import paperTexture from './assets/paper-texture.png';
 import RollModal from './components/RollModal';
 import ItemModal from './components/ItemModal';
 import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 import { Swords, Shield, Pencil, Trash2, User, PackageCheck } from 'lucide-react';
 
 interface EquipmentTabProps {
@@ -11,9 +12,10 @@ interface EquipmentTabProps {
     onUpdate: (path: string, value: any) => void;
     onDeleteItem: (itemId: string) => void;
     onUpdateItem?: (itemData: any) => void;
+    onCreateItem?: (itemData: any) => void;
 }
 
-export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: EquipmentTabProps) {
+export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, onCreateItem }: EquipmentTabProps) {
     const [rollModalConfig, setRollModalConfig] = useState<{ isOpen: boolean; title: string; item: any; type: 'attack' | 'defend' }>({
         isOpen: false,
         title: '',
@@ -27,6 +29,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
     });
 
     const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
+    const [addModal, setAddModal] = useState(false);
 
     const openRollModal = (item: any, type: 'attack' | 'defend') => {
         setRollModalConfig({
@@ -76,6 +79,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
         const allItems = [
             ...(actor.items.weapons || []),
             ...(actor.items.armor || []),
+            ...(actor.items.shields || []),
             ...(actor.items.equipment || []),
             ...(actor.items.misc || []),
             ...(actor.items.ammo || []),
@@ -142,6 +146,7 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
     const allItems = [
         ...(actor.items.weapons || []),
         ...(actor.items.armor || []),
+        ...(actor.items.shields || []),
         ...(actor.items.equipment || []),
         ...(actor.items.misc || []),
         ...(actor.items.ammo || []),
@@ -279,16 +284,16 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
             </div>
 
             {/* Equipment Header */}
-            <div className="flex items-center justify-between mb-4 border-b-4 border-pink-500 pb-2">
-                <h3 className="font-morkborg text-4xl uppercase text-black tracking-widest transform -rotate-2">
+            <div className="flex items-center justify-between mb-4 pb-2 rotate-1">
+                <h3 className="font-morkborg text-4xl uppercase text-black border-b-4 border-pink-500 tracking-widest transform rotate-1">
                     Equipment
                 </h3>
                 <button
-                    className="font-morkborg text-3xl text-neutral-900 bg-pink-500 w-10 h-10 flex items-center justify-center hover:bg-white transition-all transform rotate-2 hover:rotate-0"
-                    onClick={() => {/* Hook up later */ }}
+                    className="font-morkborg text-3xl text-neutral-900 bg-pink-500 px-4 h-10 flex items-center justify-center hover:bg-white transition-all transform rotate-2 hover:rotate-0"
+                    onClick={() => setAddModal(true)}
                     title="Add Item"
                 >
-                    +
+                    Add
                 </button>
             </div>
 
@@ -371,6 +376,16 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem }: 
                     config={confirmModal.config}
                     onConfirm={confirmModal.onConfirm}
                     onClose={() => setConfirmModal(null)}
+                />
+            )}
+            {addModal && (
+                <MorkBorgAddItemModal
+                    allowedTypes={['armor', 'container', 'misc', 'scroll', 'shield', 'weapon']}
+                    onConfirm={(item) => {
+                        onCreateItem?.(item);
+                        setAddModal(false);
+                    }}
+                    onClose={() => setAddModal(false)}
                 />
             )}
         </div>

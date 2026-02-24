@@ -10,6 +10,7 @@ import SpecialTab from './SpecialTab';
 import RestModal from './components/RestModal';
 import MorkBorgRollModal, { type MorkBorgRollConfig } from './components/MorkBorgRollModal';
 import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import MorkBorgChatStyles from './components/chat/MorkBorgChatStyles';
 import { MorkBorgAdapter } from '../adapter';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
@@ -78,10 +79,10 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
     </div>
 );
 
-export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }: MorkBorgSheetProps) {
+export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, onCreateItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
     const [isRestModalOpen, setIsRestModalOpen] = useState(false);
-    const [rollModal, setRollModal] = useState<MorkBorgRollConfig | null>(null);
+    const [rollModal, setRollModal] = useState<(MorkBorgRollConfig & { rollData?: any }) | null>(null);
     const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
     const [rollMode, setRollMode] = useState<string>(
         typeof window !== 'undefined' ? (localStorage.getItem('sheetdelver_roll_mode') || 'publicroll') : 'publicroll'
@@ -99,40 +100,94 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
         if (!rollData) return; // passive feat or no-op
 
-        // Types that go through the modal
+        // Helper to open the modal
+        const openModal = (overrides: Partial<MorkBorgRollConfig & { rollData?: any }> = {}) => {
+            setRollModal({
+                title: overrides.title || rollData.rollLabel || rollData.label || key,
+                rollLabel: rollData.rollLabel || rollData.label || '',
+                formula: rollData.resolvedFormula || rollData.formula || '1d20',
+                humanFormula: rollData.humanFormula || rollData.resolvedFormula || rollData.formula || '',
+                dr: rollData.dr,
+                type,
+                key,
+                options,
+                rollData,
+                rollType: overrides.rollType,
+                damageDie: rollData.damageDie,
+                encumbered: rollData.encumbered,
+                incomingAttackDefault: rollData.incomingAttackDefault,
+                ...overrides,
+            });
+        };
+
         if (type === 'ability') {
-            setRollModal({
-                title: key.charAt(0).toUpperCase() + key.slice(1),
-                rollLabel: rollData.rollLabel || `${key} Test`,
-                formula: rollData.resolvedFormula || '',
-                humanFormula: rollData.humanFormula || rollData.resolvedFormula || '',
-                type,
-                key,
-                options,
-            });
+            openModal({ title: key.charAt(0).toUpperCase() + key.slice(1) });
             return;
         }
 
-        if (type === 'feat' && rollData.type === 'feat-roll') {
-            setRollModal({
-                title: key,
-                rollLabel: rollData.rollLabel || key,
-                formula: rollData.formula || '',
-                humanFormula: rollData.humanFormula || rollData.formula || '',
-                type,
-                key,
-                options,
-            });
+        if ((type === 'feat' || type === 'item') && rollData.type === 'feat-roll') {
+            openModal({ title: rollData.itemName || key });
             return;
         }
 
-        // All other types (attack, defend, macros, etc.): dispatch immediately
+        if ((type === 'item' || type === 'feat') && rollData.type === 'attack') {
+            openModal({ title: rollData.rollLabel || 'Attack', rollType: 'attack' });
+            return;
+        }
+
+        if ((type === 'item' || type === 'feat') && rollData.type === 'defend') {
+            openModal({ title: rollData.rollLabel || 'Defend', rollType: 'defend' });
+            return;
+        }
+
+        if (type === 'item' && rollData.type === 'power') {
+            openModal({ title: rollData.rollLabel || key });
+            return;
+        }
+
+        if (type === 'initiative') {
+            openModal({ title: key === 'party' ? 'Party Initiative' : 'Initiative' });
+            return;
+        }
+
+        if (type === 'broken') {
+            openModal({ title: 'Broken', formula: '1d4', humanFormula: '1d4' });
+            return;
+        }
+
+        // All other automated types (decoctions, getBetter, spendOmen, rest): dispatch immediately
         onRoll(type, key, { ...options, rollMode });
     }, [actor, onRoll, rollMode]);
 
     const confirmRoll = useCallback(() => {
         if (!rollModal) return;
         onRoll(rollModal.type, rollModal.key, { ...rollModal.options, rollMode });
+        setRollModal(null);
+    }, [rollModal, onRoll, rollMode]);
+
+    // For attack/defend auto: passes DR + armor options back
+    const confirmRollWithOptions = useCallback((opts: any) => {
+        if (!rollModal) return;
+        onRoll(rollModal.type, rollModal.key, { ...rollModal.options, ...opts, rollMode });
+        setRollModal(null);
+    }, [rollModal, onRoll, rollMode]);
+
+    // Manual roll: inject manual terms into standard `onRoll` options
+    const manualRoll = useCallback((result: any) => {
+        if (!rollModal) return;
+        const manualData = rollModal.rollData || { resolvedFormula: rollModal.formula, rollLabel: rollModal.rollLabel };
+        const dieResult = typeof result === 'number' ? result : (result.attackDie ?? result.defendDie ?? 0);
+
+        onRoll(rollModal.type, rollModal.key, {
+            ...rollModal.options,
+            rollMode,
+            manualData: { ...manualData, type: rollModal.rollData?.type || rollModal.type, dieResult },
+            manualHitDie: result.attackDie,
+            manualDefendDie: result.defendDie,
+            manualDamageDie: result.damageDie,
+            // Attack/defend extra fields
+            ...(typeof result === 'object' ? result : {}),
+        });
         setRollModal(null);
     }, [rollModal, onRoll, rollMode]);
 
@@ -176,7 +231,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
             {/* Texture Overlay - Global */}
             <div className="fixed inset-0 pointer-events-none opacity-5 mix-blend-overlay z-40" style={{ backgroundImage: `url(${grunge.src})` }}></div>
-
+            <MorkBorgChatStyles />
             {/* Dark Wrapper around the sheet (The 'Deep Darkness') */}
             <div className="max-w-7xl mx-auto my-8 p-4 md:p-8 relative z-10 shadow-2xl skew-y-1" style={{ backgroundColor: '#1a1a1a' }}>
                 {/* Reset skew for content */}
@@ -290,9 +345,9 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
 
                         <div className="relative z-10">
                             {activeTab === 'background' && <BackgroundTab actor={sheetActor} onUpdate={onUpdate} />}
-                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
+                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
                             {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} />}
-                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} />}
+                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
                         </div>
                     </main>
 
@@ -381,6 +436,8 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem }:
                     rollMode={rollMode}
                     onRollModeChange={handleRollModeChange}
                     onConfirm={confirmRoll}
+                    onConfirmWithOptions={confirmRollWithOptions}
+                    onManualConfirm={manualRoll}
                     onClose={() => setRollModal(null)}
                 />
             )}

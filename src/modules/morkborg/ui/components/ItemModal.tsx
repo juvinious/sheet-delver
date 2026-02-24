@@ -13,6 +13,14 @@ interface ItemModalProps {
 export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModalProps) {
     const [activeTab, setActiveTab] = useState<'description' | 'details'>('description');
 
+    React.useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
     if (!isOpen || !item) return null;
 
     const handleChange = (path: string, value: any) => {
@@ -260,77 +268,88 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-            <div className="relative w-full max-w-2xl bg-neutral-900 border-2 border-white/20 shadow-2xl flex flex-col max-h-[90vh]">
-                {/* Close Button */}
-                <button
-                    onClick={onClose}
-                    className="absolute top-2 right-4 text-3xl text-white/50 hover:text-white transition-colors z-10 font-bold"
+        <div
+            className="fixed inset-0 z-[100] overflow-y-auto"
+            onClick={onClose}
+        >
+            <div className="flex min-h-full items-center justify-center p-4">
+                <div
+                    className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+                    aria-hidden="true"
+                />
+                <div
+                    className="relative w-full max-w-2xl bg-neutral-900 border-2 border-white/20 shadow-2xl flex flex-col max-h-[90vh] my-8"
+                    onClick={e => e.stopPropagation()}
                 >
-                    ×
-                </button>
-
-                {/* Header */}
-                <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center">
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0">
-                        <img src={item.img} alt={item.name} className="w-full h-full object-contain" />
-                    </div>
-                    <div className="flex-1 w-full text-center sm:text-left">
-                        <input
-                            type="text"
-                            value={item.name}
-                            onChange={(e) => handleChange('name', e.target.value)}
-                            className="bg-transparent font-morkborg text-2xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left"
-                        />
-                        <div className="h-1 bg-yellow-500 w-full mb-2 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                        <div className="font-morkborg text-xl sm:text-2xl text-white/80 tracking-tighter uppercase opacity-70">
-                            {item.type}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Tabs */}
-                <div className="flex font-morkborg text-xl sm:text-2xl px-4 sm:px-6 border-b border-white/10 overflow-x-auto scrollbar-hide">
-                    <button
-                        onClick={() => setActiveTab('description')}
-                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'description' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
-                    >
-                        Description
-                        {activeTab === 'description' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('details')}
-                        className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'details' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
-                    >
-                        Details
-                        {activeTab === 'details' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-neutral-800/30 scrollbar-hide">
-                    {activeTab === 'description' ? (
-                        <div className="font-serif text-base sm:text-lg leading-relaxed text-neutral-300">
-                            <RichTextEditor
-                                content={item.system?.description || ''}
-                                onSave={(html) => handleChange('system.description', html)}
-                                editButtonText="Edit Item Description"
-                                theme={morkborgTheme.richText}
-                            />
-                        </div>
-                    ) : (
-                        renderDetails()
-                    )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-white/10 flex justify-end">
                     <button
                         onClick={onClose}
-                        className="font-morkborg text-2xl text-yellow-500 hover:text-white px-8 py-1 border border-yellow-500/50 hover:bg-yellow-500/20 transition-all uppercase"
+                        className="absolute top-2 right-4 text-3xl text-white/50 hover:text-white transition-colors z-10 font-bold"
                     >
-                        Confirm
+                        ×
                     </button>
+
+                    {/* Header */}
+                    <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center">
+                        <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0">
+                            <img src={item.img} alt={item.name} className="w-full h-full object-contain" />
+                        </div>
+                        <div className="flex-1 w-full text-center sm:text-left">
+                            <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => handleChange('name', e.target.value)}
+                                className="bg-transparent font-morkborg text-2xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left"
+                            />
+                            <div className="h-1 bg-yellow-500 w-full mb-2 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
+                            <div className="font-morkborg text-xl sm:text-2xl text-white/80 tracking-tighter uppercase opacity-70">
+                                {item.type}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Tabs */}
+                    <div className="flex font-morkborg text-xl sm:text-2xl px-4 sm:px-6 border-b border-white/10 overflow-x-auto scrollbar-hide">
+                        <button
+                            onClick={() => setActiveTab('description')}
+                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'description' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                        >
+                            Description
+                            {activeTab === 'description' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('details')}
+                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'details' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                        >
+                            Details
+                            {activeTab === 'details' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
+                        </button>
+                    </div>
+
+                    {/* Content */}
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-neutral-800/30 scrollbar-hide">
+                        {activeTab === 'description' ? (
+                            <div className="font-serif text-base sm:text-lg leading-relaxed text-neutral-300">
+                                <RichTextEditor
+                                    content={item.system?.description || ''}
+                                    onSave={(html) => handleChange('system.description', html)}
+                                    editButtonText="Edit Item Description"
+                                    theme={morkborgTheme.richText}
+                                />
+                            </div>
+                        ) : (
+                            renderDetails()
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-4 border-t border-white/10 flex justify-end">
+                        <button
+                            onClick={onClose}
+                            className="font-morkborg text-2xl text-yellow-500 hover:text-white px-8 py-1 border border-yellow-500/50 hover:bg-yellow-500/20 transition-all uppercase"
+                        >
+                            Confirm
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

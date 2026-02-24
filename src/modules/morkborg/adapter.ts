@@ -78,7 +78,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             maxSlots: maxSlots,
             encumbered: slotsUsed > maxSlots,
             encumbranceHelpText: 'STR+8 carried items or DR+2 on AGI/STR tests.',
-            criticalHelpText: 'Crit: Gain free attack. Fumble: Take x2 damage, armor reduced one tier.',
+            weaponCriticalHelpText: 'Critical: X2 damage, target armor reduced one tier. Fumble: Weapon breaks or is lost.',
+            armorCriticalHelpText: 'Critical: Gain free attack. Fumble: Take X2 damage, armor reduced one tier.',
+            shieldHelpText: '-1 damage, or break to ignore one attack.',
             silver: system.silver ?? 0
         };
     }
@@ -98,7 +100,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
      */
     categorizeItems(actor: any): any {
         const items = (actor.items || []).map((i: any) => this.normalizeItem(i));
-        logger.debug('Items:', items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type)));
+        // logger.debug('Items:', items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type)));
         return {
             weapons: items.filter((i: any) => i.type === 'weapon'),
             shields: items.filter((i: any) => i.type === 'shield'),
@@ -230,14 +232,44 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             const itemData = this.normalizeItem(item || {});
 
             if (options.rollType === 'attack' || options.rollType === 'defend') {
-                // Return metadata so the server knows it needs to perform an automated sequence
-                return {
-                    type: options.rollType,
-                    itemId: itemData.id,
-                    isAutomated: true,
-                    options: options,
-                    label: options.rollType === 'attack' ? `Attack: ${itemData.name}` : `Defense: ${itemData.name}`
-                };
+                const isRanged = itemData.type === 'weapon' && itemData.weaponType === 'ranged';
+                const attackStat = isRanged ? 'presence' : 'strength';
+                const attackLabel = isRanged ? 'Presence' : 'Strength';
+                const abilityVal = actor.system?.abilities?.[attackStat]?.value ?? 0;
+                const sign = abilityVal >= 0 ? '+' : '-';
+                const absMod = Math.abs(abilityVal);
+                const agiVal = actor.system?.abilities?.agility?.value ?? 0;
+                const agiSign = agiVal >= 0 ? '+' : '-';
+                const encumbered = actor.derived?.encumbered || false;
+
+                if (options.rollType === 'attack') {
+                    return {
+                        type: 'attack',
+                        itemId: itemData.id,
+                        isAutomated: true,
+                        options,
+                        label: `Attack: ${itemData.name}`,
+                        rollLabel: `Attack — ${itemData.name}`,
+                        resolvedFormula: `1d20${sign}${absMod}`,
+                        humanFormula: `1d20 ${sign} ${absMod} (${attackLabel})`,
+                        damageDie: itemData.damageDie || '1d4',
+                        encumbered,
+                        dr: 12,
+                    };
+                } else {
+                    return {
+                        type: 'defend',
+                        itemId: itemData.id,
+                        isAutomated: true,
+                        options,
+                        label: `Defense: ${itemData.name}`,
+                        rollLabel: `Defend — ${itemData.name}`,
+                        resolvedFormula: `1d20${agiSign}${Math.abs(agiVal)}`,
+                        humanFormula: `1d20 ${agiSign} ${Math.abs(agiVal)} (Agility)`,
+                        encumbered,
+                        dr: 12,
+                    };
+                }
             }
 
             if (itemData.type === 'feat') {
@@ -245,6 +277,13 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 if (!itemData.rollLabel) return null;
                 // Macro feat (rollLabel but no formula): handled by featActionMap
                 // Formula feat: return formula for server-side roll
+                const abilities = actor.system?.abilities || {};
+                const rawFeatFormula = itemData.rollFormula || '';
+                const resolvedFeatFormula = rawFeatFormula.replace(/@abilities\.(\w+)\.value/g, (_: string, s: string) => String(abilities[s]?.value ?? 0));
+                const humanFeatFormula = rawFeatFormula.replace(/([+-]?)@abilities\.(\w+)\.value/g, (_: string, op: string, s: string) => {
+                    const v = abilities[s]?.value ?? 0; const lbl = s.charAt(0).toUpperCase() + s.slice(1);
+                    const eff = op === '-' ? -v : v; return ` ${eff >= 0 ? '+' : '-'} ${Math.abs(eff)} (${lbl})`;
+                });
                 return {
                     type: 'feat-roll',
                     itemId: itemData.id,
@@ -253,28 +292,39 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                     label: itemData.rollLabel || itemData.name,
                     rollLabel: itemData.rollLabel,
                     rawFormula: itemData.rollFormula,
-                    // formula is the raw string; server resolves @-vars against actor
+                    resolvedFormula: resolvedFeatFormula || itemData.rollFormula,
+                    humanFormula: humanFeatFormula || itemData.rollFormula,
                     formula: itemData.rollFormula,
                 };
             }
 
             if (itemData.type === 'scroll' || itemData.type === 'power') {
+                const scrollFormula = itemData.rollFormula || '1d20';
                 return {
                     type: 'power',
                     itemId: itemData.id,
                     isAutomated: true,
-                    label: `Power: ${itemData.name}`
+                    label: `Power: ${itemData.name}`,
+                    rollLabel: `Wield — ${itemData.name}`,
+                    resolvedFormula: scrollFormula,
+                    humanFormula: scrollFormula,
+                    dr: itemData.system?.castingThreshold || undefined,
                 };
             }
         }
 
         if (type === 'initiative') {
+            const agiVal = actor.system?.abilities?.agility?.value ?? 0;
+            const sign = agiVal >= 0 ? '+' : '-';
             return {
                 type: 'initiative',
-                subType: key, // 'individual' or 'party'
+                subType: key,
                 isAutomated: true,
-                options: options,
-                label: key === 'party' ? 'Party Initiative' : 'Initiative'
+                options,
+                label: key === 'party' ? 'Party Initiative' : 'Initiative',
+                rollLabel: key === 'party' ? 'Party Initiative' : 'Initiative',
+                resolvedFormula: `1d6${sign}${Math.abs(agiVal)}`,
+                humanFormula: `1d6 ${sign} ${Math.abs(agiVal)} (Agility)`,
             };
         }
 
@@ -290,7 +340,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             return {
                 type: 'broken',
                 isAutomated: true,
-                label: 'Broken'
+                label: 'Broken',
+                rollLabel: 'Broken',
+                itemName: 'Broken'
             };
         }
 
@@ -465,8 +517,22 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             });
         }
 
+        if (type === 'broken') {
+            return ChatCards.result({
+                cardTitle: 'Broken',
+                rollResults: [{
+                    rollTitle: 'Roll',
+                    roll: rolls[0]?.json,
+                    outcomeLines: outcomes
+                }]
+            });
+        }
+
         // Default / Initiative / Results
-        const cardTitle = type === 'initiative' ? (subType === 'party' ? 'Party Initiative' : 'Initiative') : 'Test';
+        let cardTitle = 'Test';
+        if (type === 'initiative') cardTitle = subType === 'party' ? 'Party Initiative' : 'Initiative';
+        else if (type === 'power') cardTitle = 'Wield a Power';
+
         return ChatCards.result({
             cardTitle,
             items: item ? [item] : [],
@@ -517,7 +583,8 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             const isRanged = results.item?.system?.weaponType === 'ranged';
             const mod = isRanged ? (actor.system?.abilities?.presence?.value ?? 0) : (actor.system?.abilities?.strength?.value ?? 0);
             const modifiedDR = options.modifiedDR || 12;
-            const hitResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, `Attack Vs DR ${modifiedDR}`, { displayChat: false });
+            const hitFormula = options.manualHitDie !== undefined ? `${options.manualHitDie}${mod >= 0 ? '+' : ''}${mod}` : `1d20${mod >= 0 ? '+' : ''}${mod}`;
+            const hitResult = await client.roll(hitFormula, `Attack Vs DR ${modifiedDR}`, { displayChat: false });
             const hitRoll = parseSyntheticRoll(hitResult, 'Attack', { isAttack: true });
 
             const d20 = hitRoll.json?.terms?.find((t: any) => t.class === 'Die' && t.faces === 20)?.results?.[0]?.result;
@@ -529,7 +596,8 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
             if (isHit) {
                 results.outcomes.push(isCrit ? 'CRITICAL SUCCESS!' : 'HIT!');
-                const damageFormula = isCrit ? `(${results.item?.system?.damageDie || '1d4'}) * 2` : (results.item?.system?.damageDie || '1d4');
+                const baseDamageFormula = isCrit ? `(${results.item?.system?.damageDie || '1d4'}) * 2` : (results.item?.system?.damageDie || '1d4');
+                const damageFormula = options.manualDamageDie !== undefined ? String(options.manualDamageDie) : baseDamageFormula;
                 const damageResult = await client.roll(damageFormula, 'Damage', { displayChat: false });
                 const damageRoll = parseSyntheticRoll(damageResult, 'Damage', { isDamage: true });
 
@@ -547,7 +615,8 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         } else if (rollData.type === 'defend') {
             const mod = actor.system?.abilities?.agility?.value ?? 0;
             const modifiedDR = options.modifiedDR || 12;
-            const defendResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, `Defense Vs DR ${modifiedDR}`, { displayChat: false });
+            const defendFormula = options.manualDefendDie !== undefined ? `${options.manualDefendDie}${mod >= 0 ? '+' : ''}${mod}` : `1d20${mod >= 0 ? '+' : ''}${mod}`;
+            const defendResult = await client.roll(defendFormula, `Defense Vs DR ${modifiedDR}`, { displayChat: false });
             const defendRoll = parseSyntheticRoll(defendResult, 'Defense', { isDefend: true });
 
             const isPassed = defendRoll.total !== 1 && (defendRoll.total === 20 || defendRoll.total >= modifiedDR);
@@ -560,7 +629,29 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                     const attackResult = await client.roll(options.incomingAttack, 'Incoming Attack', { displayChat: false });
                     const attackRoll = parseSyntheticRoll(attackResult, 'Incoming Attack', { isAttack: true });
 
-                    const armorDR = results.item?.system?.damageReductionDie || 'd2';
+                    const items = actor.items || [];
+                    const equippedArmor = items.filter((i: any) => i.type === 'armor' && (i.equipped || i.system?.equipped));
+                    const equippedShield = items.find((i: any) => i.type === 'shield' && (i.equipped || i.system?.equipped));
+
+                    let armorTier = 0;
+                    equippedArmor.forEach((a: any) => {
+                        const t = a.system?.tier?.value ?? a.tier?.value ?? 0;
+                        if (t > armorTier) armorTier = t;
+                    });
+
+                    const hasShield = !!equippedShield;
+
+                    let activeDR = '0';
+                    if (armorTier === 1) activeDR = '1d2';
+                    else if (armorTier === 2) activeDR = '1d4';
+                    else if (armorTier === 3) activeDR = '1d6';
+
+                    if (hasShield) {
+                        if (armorTier > 0) activeDR += '+1';
+                        else activeDR = '1';
+                    }
+
+                    const armorDR = activeDR || 'd2';
                     const armorResult = await client.roll(armorDR, 'Armor DR', { displayChat: false });
                     const armorRoll = parseSyntheticRoll(armorResult, 'Armor DR', { isArmor: true });
 
@@ -581,17 +672,21 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 results.drModifiers = ['Encumbered: DR +2'];
             }
 
-            const formula = `1d20${statMod >= 0 ? '+' : ''}${statMod}`;
+            const manualBase = options?.manualData?.dieResult;
+            const formula = manualBase !== undefined ? `${manualBase}${statMod >= 0 ? '+' : ''}${statMod}` : `1d20${statMod >= 0 ? '+' : ''}${statMod}`;
             const label = `1d20 + ${key.toUpperCase().slice(0, 3)}`;
             const rollResult = await client.roll(formula, label, { displayChat: false });
             parseSyntheticRoll(rollResult, label, { formula: `1d20 + ${key.toUpperCase().slice(0, 3)}` });
             results.subType = key;
         } else if (rollData.type === 'feat-roll') {
             // Formula feat: roll the pre-resolved formula and render a custom result card
-            const formula = rollData.formula || '1d20';
+            const baseFormula = rollData.formula || '1d20';
+            const manualBase = options?.manualData?.dieResult;
+            const formula = manualBase !== undefined ? baseFormula.replace(/\d*d\d+/, manualBase.toString()) : baseFormula;
+
             const label = rollData.rollLabel || rollData.label || 'Feat';
             const rollResult = await client.roll(formula, label, { displayChat: false });
-            parseSyntheticRoll(rollResult, label, { formula });
+            parseSyntheticRoll(rollResult, label, { formula: baseFormula });
             results.subType = 'feat-roll';
             results.featLabel = label;
             results.featName = rollData.itemName || rollData.label;
@@ -607,7 +702,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 }
             } else {
                 const mod = actor.system?.abilities?.agility?.value ?? 0;
-                const initResult = await client.roll(`1d20${mod >= 0 ? '+' : ''}${mod}`, 'Initiative', { displayChat: false });
+                const manualBase = options?.manualData?.dieResult;
+                const formula = manualBase !== undefined ? `${manualBase}${mod >= 0 ? '+' : ''}${mod}` : `1d6${mod >= 0 ? '+' : ''}${mod}`;
+                const initResult = await client.roll(formula, 'Initiative', { displayChat: false });
                 const initRoll = parseSyntheticRoll(initResult, 'Roll');
                 results.subType = 'individual';
             }
@@ -690,7 +787,9 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 updates: [updates]
             });
         } else if (rollData.type === 'broken') {
-            const tableResult = await client.roll('1d4', 'Broken', { displayChat: false });
+            const manualBase = options?.manualData?.dieResult;
+            const formula = manualBase !== undefined ? String(manualBase) : '1d4';
+            const tableResult = await client.roll(formula, 'Broken', { displayChat: false });
             const tableRoll = parseSyntheticRoll(tableResult, 'Roll');
             // MB broken table is sequential, 1d4 matches index 0-3
             const entry = mbDataManager.drawFromTable('broken');
@@ -808,9 +907,13 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 '• Lower damage taken by d6.'
             ];
         } else if (rollData.type === 'feat') {
-            const formula = rollData.formula;
-            if (formula) {
-                const resolvedFormula = this.resolveVariables(formula, actor);
+            const baseFormula = rollData.formula;
+            if (baseFormula) {
+                let resolvedFormula = this.resolveVariables(baseFormula, actor);
+                const manualBase = options?.manualData?.dieResult;
+                if (manualBase !== undefined) {
+                    resolvedFormula = resolvedFormula.replace(/\d*d\d+/, manualBase.toString());
+                }
                 const featResult = await client.roll(resolvedFormula, rollData.label, { displayChat: false });
                 parseSyntheticRoll(featResult, rollData.label || 'Feat Roll');
                 results.outcomes.push('Feat effect triggered.');
@@ -819,12 +922,30 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             }
         } else if (rollData.type === 'power') {
             const currentUses = actor.system?.powerUses?.value ?? 0;
+            const items = actor.items || [];
+            const equippedArmor = items.filter((i: any) => i.type === 'armor' && (i.equipped || i.system?.equipped));
+            let armorTier = 0;
+            equippedArmor.forEach((a: any) => {
+                const t = a.system?.tier?.value ?? a.tier?.value ?? 0;
+                if (t > armorTier) armorTier = t;
+            });
+            const hasTwoHanded = items.some((i: any) => i.type === 'weapon' && (i.equipped || i.system?.equipped) && (i.system?.twoHanded || i.twoHanded));
+
             if (currentUses < 1) {
                 results.outcomes.push('NO POWER USES REMAINING!');
                 results.outcomes.push('Failed to wield power.');
+            } else if (armorTier >= 2 || hasTwoHanded) {
+                results.outcomes.push('CHOKED ON THE WORDS!');
+                if (armorTier >= 2) results.outcomes.push('Scrolls never work when wearing medium or heavy armor.');
+                if (hasTwoHanded) results.outcomes.push('Scrolls cannot be read while wielding martial weapons.');
+                // Note: The scroll use is still consumed even if it failed mechanically due to equipping heavy items.
+                const updates: any = { _id: actor._id || actor.id, 'system.powerUses.value': Math.max(0, currentUses - 1) };
+                await client.dispatchDocumentSocket('Actor', 'update', { ids: [actor._id || actor.id], updates: [updates] });
             } else {
                 const preMod = actor.system?.abilities?.presence?.value ?? 0;
-                const powerRes = await client.roll(`1d20${preMod >= 0 ? '+' : ''}${preMod}`, 'Power: Presence DR 12', { displayChat: false });
+                const manualBase = options?.manualData?.dieResult;
+                const formula = manualBase !== undefined ? `${manualBase}${preMod >= 0 ? '+' : ''}${preMod}` : `1d20${preMod >= 0 ? '+' : ''}${preMod}`;
+                const powerRes = await client.roll(formula, 'Power: Presence DR 12', { displayChat: false });
                 const powerRoll = parseSyntheticRoll(powerRes, 'Presence');
 
                 const d20 = powerRoll.json?.terms?.[0]?.results?.[0]?.result;

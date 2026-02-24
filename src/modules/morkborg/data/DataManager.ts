@@ -38,6 +38,11 @@ export class MorkBorgDataManager {
         return this.itemsCache.find(i => i._id === id);
     }
 
+    public getItemsByType(types: string[]): any[] {
+        if (!this.itemsCache) return [];
+        return this.itemsCache.filter(i => types.includes(i.type));
+    }
+
     private resolveTableName(alias: string): string {
         const mappings: Record<string, string> = {
             'uncleanScrolls': 'Unclean Scrolls',

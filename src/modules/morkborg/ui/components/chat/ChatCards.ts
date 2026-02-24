@@ -2,7 +2,13 @@
  * Utility to generate Mörk Borg stylized chat card HTML.
  * Strictly ported from the original .hbs templates in the Mörk Borg system.
  */
+
 export class ChatCards {
+    /** Strip blank lines so the chat renderer doesn't insert paragraph gaps */
+    private static compact(html: string): string {
+        return html.replace(/\n(\s*\n)+/g, '\n').trim();
+    }
+
     /**
      * Replicates the Handlebars 'xtotal' helper.
      * Formats a Roll as either the total or x + y + z = total if the roll has multiple terms.
@@ -73,7 +79,7 @@ export class ChatCards {
             </div>
         ` : '';
 
-        return `
+        return this.compact(`
 <form class="roll-card attack-roll-card">
   <div class="card-title">${data.weaponTypeLabel} Attack</div>
   ${itemRows}
@@ -91,7 +97,7 @@ export class ChatCards {
   ${damageSection}
   ${armorSection}
   ${takeDamageSection}
-</form>`;
+</form>`);
     }
 
     /**
@@ -143,7 +149,7 @@ export class ChatCards {
             </div>
         ` : '';
 
-        return `
+        return this.compact(`
 <form class="roll-card defend-roll-card">
   <div class="card-title">Defense</div>
   ${itemRows}
@@ -161,7 +167,7 @@ export class ChatCards {
   ${attackSection}
   ${armorSection}
   ${takeDamageSection}
-</form>`;
+</form>`);
     }
 
     /**
@@ -201,13 +207,13 @@ export class ChatCards {
             </div>
         `).join('');
 
-        return `
+        return this.compact(`
 <form class="roll-card">
   <div class="card-title">${data.cardTitle}</div>
   ${itemRows}
   ${drModifiers}
   ${results}
-</form>`;
+</form>`);
     }
 
     /**
@@ -221,7 +227,7 @@ export class ChatCards {
         attackRoll: any;
         actor: any;
     }): string {
-        return `
+        return this.compact(`
 <form class="roll-card attack-roll-card">
   <div class="card-title">${data.cardTitle}</div>
   <div class="item-row">
@@ -239,7 +245,7 @@ export class ChatCards {
   <div class="roll-button-row">
     <button type="button" class="roll-card-button damage-button" data-actor-id="${data.actor.id}" data-item-id="${data.item.id}">Roll Damage</button>
   </div>
-</form>`;
+</form>`);
     }
 
     /**
@@ -254,7 +260,7 @@ export class ChatCards {
         touOutcome: string;
         debrisOutcome: string;
     }): string {
-        return `
+        return this.compact(`
 <form class="roll-card">
   <div class="card-title">Get Better</div>
   <div class="roll-result">
@@ -268,6 +274,6 @@ export class ChatCards {
     </div>
     <div class="outcome-row"><span>${data.debrisOutcome}</span></div>
   </div>
-</form>`;
+</form>`);
     }
 }

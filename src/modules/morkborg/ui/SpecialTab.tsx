@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import ItemModal from './components/ItemModal';
+import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 
 interface SpecialTabProps {
     actor: any;
     onRoll: (type: string, key: string, options?: any) => void;
     onUpdate: (path: string, value: any) => void;
     onDeleteItem: (itemId: string) => void;
+    onCreateItem?: (itemData: any) => void;
 }
 
-export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem }: SpecialTabProps) {
+export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem, onCreateItem }: SpecialTabProps) {
     // Occult Herbmaster is a 'class' type item in Mörk Borg (not a 'feat')
     const allItems = [
         ...(actor.items?.feats || []),
@@ -22,6 +24,7 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem }: Sp
         isOpen: false,
         item: null
     });
+    const [addModal, setAddModal] = useState(false);
 
     const openItemModal = (item: any) => {
         setItemModalConfig({
@@ -91,9 +94,19 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem }: Sp
             {/* Feats */}
             <div className="relative">
                 <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-900 to-transparent"></div>
-                <h3 className="font-morkborg text-3xl mb-4 text-purple-400 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] border-b-4 border-purple-900/50 inline-block pr-6 transform -rotate-1">
-                    Feats
-                </h3>
+                <div className="flex items-center justify-between mb-4 pr-6 transform -rotate-1">
+                    <h3 className="font-morkborg text-3xl mb-4 text-purple-400 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] border-b-4 border-purple-900/50 inline-block pr-6 transform -rotate-1">
+                        Feats
+                    </h3>
+
+                    <button
+                        className="font-morkborg text-3xl text-neutral-900 bg-pink-500 px-4 h-10 flex items-center justify-center hover:bg-white transition-all transform -rotate-2 hover:rotate-0"
+                        onClick={() => setAddModal(true)}
+                        title="Add Item"
+                    >
+                        Add
+                    </button>
+                </div>
 
                 <div className="flex flex-col">
                     {actor.items.feats.map((s: any, index: number) => renderItemRow(s, index, s.system?.rollLabel || s.rollLabel || 'Use', 'feat'))}
@@ -108,8 +121,8 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem }: Sp
             {/* Powers (Scrolls & Tablets) */}
             <div className="relative">
                 <div className="absolute -left-4 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-900 to-transparent"></div>
-                <div className="flex items-center justify-between mb-4 border-b-4 border-purple-900/50 pr-6 transform rotate-1">
-                    <h3 className="font-morkborg text-3xl text-purple-400 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">
+                <div className="flex items-center justify-between mb-4 pr-6 transform -rotate-1">
+                    <h3 className="font-morkborg text-3xl text-purple-400 drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] border-b-4 border-purple-900/50 inline-block pr-6 transform -rotate-1">
                         Powers
                     </h3>
                     {hasOccultHerbmaster && (
@@ -143,6 +156,17 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem }: Sp
                         return allItems.find(i => (i._id || i.id) === (itemModalConfig.item?._id || itemModalConfig.item?.id));
                     })()}
                     actor={actor}
+                />
+            )}
+            {addModal && (
+                <MorkBorgAddItemModal
+                    allowedTypes={['feat']}
+                    groupBy="letter"
+                    onConfirm={(item) => {
+                        onCreateItem?.(item);
+                        setAddModal(false);
+                    }}
+                    onClose={() => setAddModal(false)}
                 />
             )}
         </div>
