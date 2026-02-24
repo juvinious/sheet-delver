@@ -103,7 +103,7 @@ export default function RestModal({
                                     />
                                     <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">
                                         <strong className="text-white block uppercase tracking-wide">Long</strong>
-                                        Full night's sleep. Restore d6 HP, regain Omens if depleted, regain PRE+d4 Power uses for the day.
+                                        Full night&apos;s sleep. Restore d6 HP, regain Omens if depleted, regain PRE+d4 Power uses for the day.
                                     </span>
                                 </label>
                             </div>
@@ -137,7 +137,7 @@ export default function RestModal({
                                         className="mt-1 accent-white w-4 h-4"
                                     />
                                     <span className="text-sm text-neutral-300 group-hover:text-white transition-colors">
-                                        <strong className="text-white block uppercase tracking-wide">Don't eat or drink</strong>
+                                        <strong className="text-white block uppercase tracking-wide">Don&apos;t eat or drink</strong>
                                         Restore no stats.
                                     </span>
                                 </label>

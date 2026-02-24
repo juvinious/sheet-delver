@@ -1020,7 +1020,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
         // 2. Draw 2 unique decoctions
         const tableAlias = 'Occult Herbmaster Decoctions';
-        let firstDraw = mbDataManager.drawFromTable(tableAlias);
+        const firstDraw = mbDataManager.drawFromTable(tableAlias);
         let secondDraw = mbDataManager.drawFromTable(tableAlias);
 
         // Prevent duplicate draws if possible
