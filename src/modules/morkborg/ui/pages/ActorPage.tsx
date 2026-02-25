@@ -234,6 +234,10 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
     if (loading) return <LoadingModal message="Loading..." />;
     if (!actor && !showDeleteModal) return null;
 
+    const getClassName = () => {
+        return actor?.items.filter((item: any) => item.type === 'class')[0]?.name;
+    };
+
     return (
         <main className="min-h-screen font-sans pb-20">
             <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 px-4 py-3 shadow-md flex items-center justify-between backdrop-blur-sm bg-opacity-95">
@@ -245,7 +249,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                     Back to Dashboard
                 </button>
                 <div className="text-xs text-neutral-600 font-mono hidden md:block">
-                    {actor?.name ?? 'Loading...'}
+                    {actor?.name ? `${actor?.name} (${getClassName()})` : 'Loading...'}
                 </div>
             </nav>
 

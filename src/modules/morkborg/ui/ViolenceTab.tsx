@@ -1,5 +1,5 @@
-
-import React from 'react';
+import React, { useState } from 'react';
+import ItemInfoModal from './components/ItemInfoModal';
 
 interface ViolenceTabProps {
     actor: any;
@@ -55,6 +55,17 @@ function createArmorTierDiv(item: any, onUpdate: (path: string, value: any) => v
 }
 
 export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProps) {
+    const [infoModalConfig, setInfoModalConfig] = useState<{ isOpen: boolean; item: any }>({
+        isOpen: false,
+        item: null
+    });
+
+    const openInfoModal = (item: any) => {
+        setInfoModalConfig({
+            isOpen: true,
+            item
+        });
+    };
 
     return (
         <div className="p-1 flex flex-col gap-6">
@@ -88,7 +99,12 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
                             <div className="flex items-center gap-4 flex-1">
                                 <img src={w.img} alt={w.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 flex-shrink-0" />
                                 <div className="min-w-0">
-                                    <div className="font-bold text-lg sm:text-xl text-neutral-200 truncate">{w.name}</div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openInfoModal(w); }}
+                                        className="font-bold text-lg sm:text-xl text-neutral-200 truncate hover:text-pink-500 transition-colors cursor-pointer text-left focus:outline-none uppercase tracking-widest font-morkborg"
+                                    >
+                                        {w.name}
+                                    </button>
                                     <div className="text-xs sm:text-sm text-slate-400 font-mono tracking-tighter whitespace-nowrap overflow-hidden">
                                         Damage: {w.damageDie || '1d4'} | Fumble: {w.fumbleOn} | Critical: {w.critOn}
                                     </div>
@@ -125,7 +141,12 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
                             <div className="flex items-center gap-4 flex-1">
                                 <img src={a.img} alt={a.name} className="w-10 h-10 sm:w-12 sm:h-12 border border-neutral-600 grayscale flex-shrink-0" />
                                 <div className="min-w-0">
-                                    <div className="font-bold text-lg sm:text-xl text-neutral-200 truncate">{a.name}</div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); openInfoModal(a); }}
+                                        className="font-bold text-lg sm:text-xl text-neutral-200 truncate hover:text-pink-500 transition-colors cursor-pointer text-left focus:outline-none uppercase tracking-widest font-morkborg"
+                                    >
+                                        {a.name}
+                                    </button>
                                     {(a.type === 'armor') && (
                                         <div className="text-xs sm:text-sm text-slate-400 font-mono whitespace-nowrap overflow-hidden">
                                             Tier: {getArmorTier(a)} DR: {getArmorDR(a)}
@@ -178,6 +199,14 @@ export default function ViolenceTab({ actor, onRoll, onUpdate }: ViolenceTabProp
             <div className="text-center mt-8 text-neutral-600 text-sm font-serif italic">
                 &quot;Violence is not the answer. It is the question. The answer is yes.&quot;
             </div>
+
+            {infoModalConfig.isOpen && (
+                <ItemInfoModal
+                    isOpen={infoModalConfig.isOpen}
+                    onClose={() => setInfoModalConfig({ ...infoModalConfig, isOpen: false })}
+                    item={infoModalConfig.item}
+                />
+            )}
         </div>
     );
 }

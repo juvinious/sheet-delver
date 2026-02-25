@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { IM_Fell_Double_Pica } from 'next/font/google';
 import grunge from '../assets/grunge.png';
+import { randomRotation } from './utils';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 
@@ -31,6 +32,8 @@ export default function RestModal({
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
 
+    const memoizedRotation = React.useMemo(() => randomRotation(), []);
+
     if (!isOpen) return null;
 
     const handleRest = () => {
@@ -51,7 +54,7 @@ export default function RestModal({
             <div className="flex min-h-full items-center justify-center p-4">
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md" aria-hidden="true" />
                 <div
-                    className="relative w-full max-w-[450px] bg-black border-[4px] border-black shadow-[20px_20px_0_0_rgba(255,20,147,0.1)] overflow-hidden transform -rotate-1 my-8"
+                    className={`relative w-full max-w-[450px] bg-black border-[4px] border-black shadow-[20px_20px_0_0_rgba(255,20,147,0.1)] overflow-hidden transform ${memoizedRotation} my-8`}
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Grunge Texture Overlay */}

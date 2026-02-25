@@ -5,6 +5,8 @@ import { IM_Fell_Double_Pica, Inter } from 'next/font/google';
 import grunge from './assets/grunge.png';
 import { mbDataManager } from '../../data/DataManager';
 import { logger } from '@/core/logger';
+import { randomRotation } from '../components/utils';
+import { AlignCenterHorizontal, AlignCenterVertical, Skull, Bone } from 'lucide-react';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 const inter = Inter({ subsets: ['latin'] });
@@ -95,11 +97,6 @@ function randomTheme(currentTheme: any) {
     return availableThemes[Math.floor(Math.random() * availableThemes.length)];
 }
 
-function randomRotation() {
-    const flip = Math.floor(Math.random() * 2) === 0 ? '' : '-';
-    return `${flip}rotate-${Math.floor(Math.random() * 2) + 1}`;
-}
-
 function randomName() {
     return mbDataManager.drawFromTable('characterNames').name;
 }
@@ -111,20 +108,62 @@ function randomCharacter(includeZeroLevel: boolean, previousClassId?: string) {
 
 async function createCharacter(character: any) {
     try {
+        /*
+        name: s.name,
+        system: {
+            abilities: {
+                strength: { value: s.strength },
+                agility: { value: s.agility },
+                presence: { value: s.presence },
+                toughness: { value: s.toughness },
+            },
+            description: s.description,
+            hp: {
+                max: s.hitPoints,
+                value: s.hitPoints,
+            },
+            omens: {
+                max: s.omens,
+                value: s.omens,
+            },
+            powerUses: {
+                max: s.powerUses,
+                value: s.powerUses,
+            },
+            silver: s.silver,
+        },
+        img: s.actorImg,
+        items: s.items,
+        flags: {},
+        prototypeToken: {
+            name: s.name,
+            texture: {
+                src: s.actorImg,
+            },
+        },
+        type: "character",
+        */
         const actorData = {
             name: character.name,
             type: 'character',
             img: character.class.img,
             system: {
                 abilities: character.abilities,
-                description: character.class.system.description,
+                description: character.class.system.description + '\n\n' + character.classNotes,
                 hp: character.hp,
-                miseries: { min: 0, max: 4, value: 0 },
                 omens: character.omens,
                 powerUses: character.powers,
-                notes: character.classNotes
+                notes: character.classNotes,
+                silver: character.silver
             },
-            items: character.items
+            items: character.items,
+            flags: {},
+            prototypeToken: {
+                name: character.name,
+                texture: {
+                    src: character.class.img,
+                },
+            },
         };
 
         // 3. Send to API
@@ -314,7 +353,9 @@ export default function MorkBorgCharacterGenerator() {
                                 createCharacter(character);
                             }}
                         >
-                            SAVE THIS ONE
+                            <div className="flex items-center justify-center gap-2 cursor-pointer">
+                                💀 SAVE THIS ONE 💀
+                            </div>
                         </button>
                     </div>
                 </div>

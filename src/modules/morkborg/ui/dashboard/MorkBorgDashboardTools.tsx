@@ -26,8 +26,7 @@ export default function MorkBorgDashboardTools({ setLoading, setLoginMessage, th
                     }}
                     className={`px-4 py-4 rounded-lg font-bold ${theme.button} text-white shadow-xl hover:-translate-y-0.5 hover:shadow-2xl flex items-center justify-center gap-2 transition-all duration-300 w-full border border-white/10`}
                 >
-                    <Skull className="w-5 h-5" />
-                    Scvm Generator
+                    💀 SCVM FACTORY 💀
                 </button>
                 {/*
                 <button

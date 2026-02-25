@@ -10,6 +10,7 @@ import SpecialTab from './SpecialTab';
 import RestModal from './components/RestModal';
 import MorkBorgRollModal, { type MorkBorgRollConfig } from './components/MorkBorgRollModal';
 import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import MorkBorgEditScvmModal from './components/MorkBorgEditScvmModal';
 import MorkBorgChatStyles from './components/chat/MorkBorgChatStyles';
 import { MorkBorgAdapter } from '../adapter';
 
@@ -82,6 +83,7 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
 export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, onCreateItem }: MorkBorgSheetProps) {
     const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
     const [isRestModalOpen, setIsRestModalOpen] = useState(false);
+    const [isEditScvmModalOpen, setIsEditScvmModalOpen] = useState(false);
     const [rollModal, setRollModal] = useState<(MorkBorgRollConfig & { rollData?: any }) | null>(null);
     const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
     const [rollMode, setRollMode] = useState<string>(
@@ -239,7 +241,12 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
 
                     {/* HEAD: Persistent Stats */}
                     <header className="mb-10 bg-[#ffe900] p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] border-2 border-black relative text-black">
-                        {/* Corner decoration */}
+                        {/* Corner decorations */}
+                        <button className="absolute bottom-0 right-0 p-2 font-mono text-[10px] bg-white text-black font-bold cursor-pointer"
+                            onClick={() => setIsEditScvmModalOpen(true)}
+                        >
+                            EDIT SCVM
+                        </button>
                         <div className="absolute top-0 right-0 p-2 font-mono text-[10px] bg-black text-white font-bold">
                             DEATH IS CERTAIN
                         </div>
@@ -275,6 +282,10 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                         <div className="mb-1 text-pink-500 uppercase text-[10px] tracking-widest">{sheetActor.derived?.class?.name || 'SCUM'}</div>
                                         <div className="leading-tight">
                                             {sheetActor.derived?.class?.description || (sheetActor.system?.biography ? 'A lowly wretch surviving in a dying world.' : 'Unknown wretch.')}
+                                        </div>
+                                        <div className="mt-2 text-pink-500 uppercase text-[10px] tracking-widest">Class Notes</div>
+                                        <div className="leading-tight">
+                                            {sheetActor.system?.notes}
                                         </div>
                                     </div>
                                 </div>
@@ -427,6 +438,13 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                 isOpen={isRestModalOpen}
                 onClose={() => setIsRestModalOpen(false)}
                 onRoll={handleRoll}
+                actor={sheetActor}
+            />
+
+            <MorkBorgEditScvmModal
+                isOpen={isEditScvmModalOpen}
+                onClose={() => setIsEditScvmModalOpen(false)}
+                onUpdate={onUpdate}
                 actor={sheetActor}
             />
 

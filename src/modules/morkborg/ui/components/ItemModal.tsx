@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import RichTextEditor from '@/app/ui/components/RichTextEditor';
 import { morkborgTheme } from '../../themes/morkborg';
+import { IM_Fell_Double_Pica } from 'next/font/google';
+import grunge from '../assets/grunge.png';
+import { randomRotation } from './utils';
+
+const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 
 interface ItemModalProps {
     isOpen: boolean;
@@ -20,6 +25,8 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [onClose]);
+
+    const memoizedRotation = React.useMemo(() => randomRotation(), []);
 
     if (!isOpen || !item) return null;
 
@@ -269,27 +276,33 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
 
     return (
         <div
-            className="fixed inset-0 z-[100] overflow-y-auto"
+            className="fixed inset-0 z-[100] overflow-y-auto animate-in fade-in duration-300"
             onClick={onClose}
         >
             <div className="flex min-h-full items-center justify-center p-4">
                 <div
-                    className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+                    className="fixed inset-0 bg-black/90 backdrop-blur-sm"
                     aria-hidden="true"
                 />
                 <div
-                    className="relative w-full max-w-2xl bg-neutral-900 border-2 border-white/20 shadow-2xl flex flex-col max-h-[90vh] my-8"
+                    className={`relative w-full max-w-2xl bg-black border-[4px] border-black shadow-[15px_15px_0_0_rgba(255,20,147,0.2)] overflow-hidden transform ${memoizedRotation} flex flex-col max-h-[90vh] my-8`}
                     onClick={e => e.stopPropagation()}
                 >
+                    {/* Grunge Texture Overlay */}
+                    <div
+                        className="absolute inset-0 opacity-40 pointer-events-none mix-blend-overlay"
+                        style={{ backgroundImage: `url(${grunge.src})`, backgroundSize: 'cover' }}
+                    />
+
                     <button
                         onClick={onClose}
-                        className="absolute top-2 right-4 text-3xl text-white/50 hover:text-white transition-colors z-10 font-bold"
+                        className="absolute top-2 right-4 text-3xl text-neutral-500 hover:text-white transition-colors z-20 font-bold"
                     >
                         ×
                     </button>
 
                     {/* Header */}
-                    <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center">
+                    <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center border-b-2 border-pink-500/50 bg-neutral-900 relative z-10">
                         <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0">
                             <img src={item.img} alt={item.name} className="w-full h-full object-contain" />
                         </div>
@@ -298,35 +311,33 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                                 type="text"
                                 value={item.name}
                                 onChange={(e) => handleChange('name', e.target.value)}
-                                className="bg-transparent font-morkborg text-2xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left"
+                                className={`bg-transparent ${fell.className} uppercase text-3xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left`}
                             />
-                            <div className="h-1 bg-yellow-500 w-full mb-2 shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
-                            <div className="font-morkborg text-xl sm:text-2xl text-white/80 tracking-tighter uppercase opacity-70">
+                            <div className="h-0.5 bg-gradient-to-r from-transparent via-pink-500/50 to-transparent sm:from-pink-500/50 sm:to-transparent w-full mb-2 shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
+                            <div className="font-morkborg text-xl sm:text-2xl text-pink-500 tracking-tighter uppercase opacity-90">
                                 {item.type}
                             </div>
                         </div>
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex font-morkborg text-xl sm:text-2xl px-4 sm:px-6 border-b border-white/10 overflow-x-auto scrollbar-hide">
+                    <div className="flex font-morkborg text-xl sm:text-2xl px-4 sm:px-6 relative z-10 bg-black/40 border-b border-pink-500/20 overflow-x-auto scrollbar-hide">
                         <button
                             onClick={() => setActiveTab('description')}
-                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'description' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap uppercase tracking-widest ${activeTab === 'description' ? 'text-pink-400 bg-black/60 shadow-[inset_0_-2px_0_0_#f472b6]' : 'text-neutral-500 hover:text-white'}`}
                         >
                             Description
-                            {activeTab === 'description' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
                         </button>
                         <button
                             onClick={() => setActiveTab('details')}
-                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap ${activeTab === 'details' ? 'text-white border-x border-t border-white/20 bg-neutral-800' : 'text-white/40 hover:text-white/60'}`}
+                            className={`flex-1 sm:flex-none px-4 sm:px-8 py-2 relative transition-all whitespace-nowrap uppercase tracking-widest ${activeTab === 'details' ? 'text-pink-400 bg-black/60 shadow-[inset_0_-2px_0_0_#f472b6]' : 'text-neutral-500 hover:text-white'}`}
                         >
                             Details
-                            {activeTab === 'details' && <div className="absolute -bottom-px left-0 right-0 h-px bg-neutral-800"></div>}
                         </button>
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-neutral-800/30 scrollbar-hide">
+                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-black/60 relative z-10 scrollbar-thin scrollbar-thumb-pink-900 scrollbar-track-transparent">
                         {activeTab === 'description' ? (
                             <div className="font-serif text-base sm:text-lg leading-relaxed text-neutral-300">
                                 <RichTextEditor
@@ -342,12 +353,12 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                     </div>
 
                     {/* Footer */}
-                    <div className="p-4 border-t border-white/10 flex justify-end">
+                    <div className="p-4 bg-white relative z-10 w-full">
                         <button
                             onClick={onClose}
-                            className="font-morkborg text-2xl text-yellow-500 hover:text-white px-8 py-1 border border-yellow-500/50 hover:bg-yellow-500/20 transition-all uppercase"
+                            className="w-full bg-white hover:bg-neutral-100 text-black py-4 border-2 border-black flex items-center justify-center gap-3 shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all group"
                         >
-                            Confirm
+                            <span className={`${fell.className} text-4xl font-bold tracking-tighter uppercase`}>Confirm</span>
                         </button>
                     </div>
                 </div>

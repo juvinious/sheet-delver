@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import ItemModal from './components/ItemModal';
+import ItemInfoModal from './components/ItemInfoModal';
 import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 
 interface SpecialTabProps {
@@ -24,10 +25,21 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem, onCr
         isOpen: false,
         item: null
     });
+    const [infoModalConfig, setInfoModalConfig] = useState<{ isOpen: boolean; item: any }>({
+        isOpen: false,
+        item: null
+    });
     const [addModal, setAddModal] = useState(false);
 
     const openItemModal = (item: any) => {
         setItemModalConfig({
+            isOpen: true,
+            item
+        });
+    };
+
+    const openInfoModal = (item: any) => {
+        setInfoModalConfig({
             isOpen: true,
             item
         });
@@ -55,9 +67,13 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem, onCr
                         className="w-10 h-10 object-contain shadow-lg border border-purple-500/30"
                     />
                     <div className="flex-1">
-                        <span className="font-morkborg text-xl tracking-tight text-neutral-200 uppercase">
+                        <button
+                            onClick={() => openInfoModal(item)}
+                            className="font-morkborg text-xl tracking-tight text-neutral-200 uppercase hover:text-yellow-500 transition-colors cursor-pointer text-left focus:outline-none"
+                            title="View Details"
+                        >
                             {item.name}
-                        </span>
+                        </button>
                     </div>
                 </div>
 
@@ -145,7 +161,7 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem, onCr
                 </div>
             </div>
 
-            {/* Item Modal */}
+            {/* Item Edit Modal */}
             {itemModalConfig.isOpen && (
                 <ItemModal
                     isOpen={itemModalConfig.isOpen}
@@ -156,6 +172,18 @@ export default function SpecialTab({ actor, onRoll, onUpdate, onDeleteItem, onCr
                         return allItems.find(i => (i._id || i.id) === (itemModalConfig.item?._id || itemModalConfig.item?.id));
                     })()}
                     actor={actor}
+                />
+            )}
+
+            {/* Item Info Modal (Read-Only) */}
+            {infoModalConfig.isOpen && (
+                <ItemInfoModal
+                    isOpen={infoModalConfig.isOpen}
+                    onClose={() => setInfoModalConfig({ ...infoModalConfig, isOpen: false })}
+                    item={(() => {
+                        const allItems = [...actor.items.feats, ...actor.items.scrolls];
+                        return allItems.find(i => (i._id || i.id) === (infoModalConfig.item?._id || infoModalConfig.item?.id));
+                    })()}
                 />
             )}
             {addModal && (

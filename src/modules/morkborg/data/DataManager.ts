@@ -315,6 +315,7 @@ export class MorkBorgDataManager {
         if (armor.isDocument) equipment.push(armor);
 
         let classNotes = '';
+        const rollResults: Record<string, string[]> = {};
 
         if (selectedClass?.system?.startingItems) {
             const lines = selectedClass.system.startingItems.split("\n");
@@ -334,17 +335,79 @@ export class MorkBorgDataManager {
                 const rolls = parts[2] ? parseInt(parts[2].trim()) : 1;
 
                 if (tableName) {
+                    if (!rollResults[tableName]) rollResults[tableName] = [];
                     for (let i = 0; i < rolls; i++) {
                         const result = this.drawFromTable(tableName);
                         if (result.isDocument) {
                             equipment.push(result);
                         } else {
-                            classNotes += `${tableName}: ${result.description || result.name}\n`;
+                            rollResults[tableName].push(result.description || result.name);
                         }
                     }
                 }
             }
         }
+
+        const className = selectedClass?.name;
+        const getRoll = (table: string) => rollResults[table]?.join(', ');
+
+        if (className === "Wretched Royalty") {
+            const reason = getRoll("Things were going so well until");
+            if (reason) classNotes += `Things were going so well until: ${reason}\n`;
+        } else if (className === "Fanged Deserter") {
+            const memory = getRoll("Earliest Memories");
+            if (memory) classNotes += `Earliest Memories: ${memory}\n`;
+        } else if (className === "Occult Herbmaster") {
+            const origin = getRoll("Probably raised in");
+            if (origin) classNotes += `Probably raised in: ${origin}\n`;
+        } else if (className === "Heretical Priest") {
+            const origin = getRoll("Unholy origins");
+            if (origin) classNotes += `Unholy origin: ${origin}\n`;
+        } else if (className === "Dead God's Prophet") {
+            const god1 = getRoll("Name your god... (1)");
+            const god2 = getRoll("Name your god... (2)");
+            const god3 = getRoll("Name your god... (3)");
+            if (god1 || god2 || god3) classNotes += `God's name: ${god1 || ''} ${god2 || ''} ${god3 || ''}\n`;
+        } else if (className === "Forlorn Philosopher") {
+            const root1 = getRoll("The Roots of your Dejection");
+            const root2 = getRoll("The dejection of your Roots");
+            if (root1 || root2) classNotes += `The roots of your dejection: ${root1 || ''}, ${root2 || ''}\n`;
+            const tablet = getRoll("The Tablets of Ochre Obscurity");
+            if (tablet) classNotes += `The tablets of Ochre Obscurity: ${tablet}\n`;
+        } else if (className === "Cursed Chordsman") {
+            const deal = getRoll("A deal was struck");
+            if (deal) classNotes += `Deal was struck: ${deal}\n`;
+            const instrument = getRoll("Accursed Instruments");
+            if (instrument) classNotes += `Accursed instrument: ${instrument}\n`;
+        } else if (className === "Skinwalker") {
+            const origin = getRoll("First Died");
+            if (origin) classNotes += `First died: ${origin}\n`;
+            const shapes = getRoll("Creature Shapes");
+            if (shapes) classNotes += `Creature shapes: ${shapes}\n`;
+        } else if (className === "Night-Terrior") {
+            const origin = getRoll("Bad Birth");
+            if (origin) classNotes += `Bad birth: ${origin}\n`;
+            const specialities = getRoll("Specialities");
+            if (specialities) classNotes += `Speciality: ${specialities}\n`;
+        } else if (className === "Esoteric Hermit") {
+            const origin = getRoll("Eldritch Origins");
+            if (origin) classNotes += `Eldritch origin: ${origin}\n`;
+        } else if (className === "Pale One") {
+            const name1 = getRoll("You call yourself... (1)");
+            const name2 = getRoll("You call yourself... (2)");
+            const name3 = getRoll("You call yourself... (3)");
+            if (name1 || name2 || name3) classNotes += `You call yourself: ${name1 || ''} ${name2 || ''} ${name3 || ''}\n`;
+            const origin = getRoll("Unspoken origins");
+            if (origin) classNotes += `Unspoken origin: ${origin}\n`;
+            const blessing = getRoll("Pale One blessings");
+            if (blessing) classNotes += `Pale One's blessing: ${blessing}\n`;
+        } else {
+            // Fallback for custom classes
+            for (const [tableName, results] of Object.entries(rollResults)) {
+                classNotes += `${tableName}: ${results.join(', ')}\n`;
+            }
+        }
+
 
         let traits = '';
         const trait1 = this.drawFromTable('terriblerTraits');

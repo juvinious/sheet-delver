@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import paperTexture from './assets/paper-texture.png';
 import RollModal from './components/RollModal';
 import ItemModal from './components/ItemModal';
+import ItemInfoModal from './components/ItemInfoModal';
 import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
 import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 import { Swords, Shield, Pencil, Trash2, User, PackageCheck } from 'lucide-react';
@@ -28,6 +29,11 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
         item: null
     });
 
+    const [infoModalConfig, setInfoModalConfig] = useState<{ isOpen: boolean; item: any }>({
+        isOpen: false,
+        item: null
+    });
+
     const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
     const [addModal, setAddModal] = useState(false);
 
@@ -42,6 +48,13 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
 
     const openItemModal = (item: any) => {
         setItemModalConfig({
+            isOpen: true,
+            item
+        });
+    };
+
+    const openInfoModal = (item: any) => {
+        setInfoModalConfig({
             isOpen: true,
             item
         });
@@ -155,10 +168,60 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
 
     const allEquipment = allItems.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Identify nested items (those with a container ID)
-    // In many MB systems, it's system.location or system.container
+    // Identify nested items (those whose IDs exist in ANY container's system.items array)
     const containers = allEquipment.filter(i => i.type === 'container');
-    const topLevelItems = allEquipment.filter(i => !i.system?.containerId && i.type !== 'feat' && i.type !== 'scroll');
+    const nestedItemIds = new Set<string>();
+
+    for (const c of containers) {
+        if (c.system?.items && Array.isArray(c.system.items)) {
+            c.system.items.forEach((id: string) => nestedItemIds.add(id));
+        }
+    }
+
+    const topLevelItems = allEquipment.filter(i => !nestedItemIds.has(i._id || i.id) && i.type !== 'feat' && i.type !== 'scroll');
+
+    const handleDragStart = (e: React.DragEvent, itemId: string) => {
+        e.dataTransfer.setData('text/plain', itemId);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        e.currentTarget.classList.add('bg-pink-900/40', 'outline', 'outline-2', 'outline-pink-500');
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.currentTarget.classList.remove('bg-pink-900/40', 'outline', 'outline-2', 'outline-pink-500');
+    };
+
+    const handleDrop = (e: React.DragEvent, targetContainerId: string | null) => {
+        e.preventDefault();
+        e.currentTarget.classList.remove('bg-pink-900/40', 'outline', 'outline-2', 'outline-pink-500');
+
+        const draggedItemId = e.dataTransfer.getData('text/plain');
+        if (!draggedItemId || draggedItemId === targetContainerId) return;
+
+        // 1. Find where the item currently lives and remove it
+        for (const c of containers) {
+            const itemsArray = c.system?.items || [];
+            if (itemsArray.includes(draggedItemId)) {
+                onUpdate(`items.${c._id || c.id}.system.items`, itemsArray.filter((id: string) => id !== draggedItemId));
+            }
+        }
+
+        // 2. If dropping into a new container, add it
+        if (targetContainerId) {
+            const targetContainer = containers.find(c => (c._id || c.id) === targetContainerId);
+            if (targetContainer) {
+                // Prevent infinite nesting by not allowing containers inside containers for now, or just allow it if sys allows
+                const currentItems = targetContainer.system?.items || [];
+                if (!currentItems.includes(draggedItemId)) {
+                    onUpdate(`items.${targetContainerId}.system.items`, [...currentItems, draggedItemId]);
+                }
+            }
+        }
+    };
 
     const renderItemRow = (item: any, isNested: boolean = false, index: number) => {
         const isContainer = item.type === 'container';
@@ -171,10 +234,27 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
             ? (isCarried ? 'Uncarry' : 'Carry')
             : (isEquipped ? 'Unequip' : 'Equip');
 
+        // Calculate slots used vs capacity if this is a container
+        let calculatedSlotsUsed = 0;
+        if (isContainer && item.system?.items) {
+            calculatedSlotsUsed = item.system.items.reduce((acc: number, id: string) => {
+                const child = allEquipment.find(i => (i._id || i.id) === id);
+                if (child) {
+                    return acc + (child.system?.carryWeight || child.weight || 1) * (child.system?.quantity || 1);
+                }
+                return acc;
+            }, 0);
+        }
+
         return (
             <div
                 key={(item._id || item.id) + index}
-                className={`flex flex-col lg:flex-row lg:items-center justify-between bg-black border-b border-white/20 group hover:bg-neutral-900 transition-colors my-2 py-4 ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'} ${isNested ? 'ml-8 bg-neutral-900/40' : 'p-3'}`}
+                draggable
+                onDragStart={(e) => handleDragStart(e, item._id || item.id)}
+                onDragOver={isContainer ? handleDragOver : undefined}
+                onDragLeave={isContainer ? handleDragLeave : undefined}
+                onDrop={isContainer ? (e) => handleDrop(e, item._id || item.id) : undefined}
+                className={`flex flex-col lg:flex-row lg:items-center justify-between bg-black border-b border-white/20 group hover:bg-neutral-900 transition-colors my-2 py-4 cursor-grab active:cursor-grabbing ${index % 2 === 0 ? 'rotate-1' : '-rotate-1'} ${isNested ? 'ml-8 lg:ml-12 bg-neutral-900/40 border-l-4 border-l-pink-900/50 pl-4' : 'p-3'}`}
             >
                 <div className="flex items-center gap-4 flex-1">
                     <img
@@ -184,15 +264,18 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
                     />
                     <div className="flex-1">
                         <div className="flex items-baseline gap-2">
-                            <span className="font-morkborg text-xl tracking-tight text-neutral-200 uppercase">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); openInfoModal(item); }}
+                                className="font-morkborg text-xl tracking-tight text-neutral-200 uppercase text-left hover:text-pink-500 transition-colors focus:outline-none"
+                            >
                                 {item.name}
                                 {quantity > 1 && <span className="text-white ml-2 opacity-100">({quantity})</span>}
                                 {isContainer && (
                                     <span className="text-yellow-500 ml-2">
-                                        ({item.system?.slotsUsed || 0} / {item.system?.capacity || 7})
+                                        ({calculatedSlotsUsed} / {item.system?.capacity || 7})
                                     </span>
                                 )}
-                            </span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -297,15 +380,20 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
                 </button>
             </div>
 
-            {/* Combined List */}
-            <div className="flex flex-col mb-10">
+            {/* Combined List with Top Level Drop Zone */}
+            <div
+                className="flex flex-col mb-10 min-h-[100px]"
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, null)}
+            >
                 {(() => {
                     const flatList: { item: any; isNested: boolean }[] = [];
                     topLevelItems.forEach(item => {
                         flatList.push({ item, isNested: false });
-                        if (item.type === 'container') {
+                        if (item.type === 'container' && item.system?.items) {
                             const nested = allEquipment
-                                .filter(i => i.system?.containerId === (item._id || item.id))
+                                .filter(i => item.system.items.includes(i._id || i.id))
                                 .sort((a, b) => a.name.localeCompare(b.name));
                             nested.forEach(n => flatList.push({ item: n, isNested: true }));
                         }
@@ -334,6 +422,13 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
                     <div className="flex flex-col opacity-80">
                         {actor.items.uncategorized.map((item: any, index: number) => renderItemRow(item, false, index))}
                     </div>
+                </div>
+            )}
+
+            {/* Info text */}
+            {actor.derived?.equipmentHelpText && (
+                <div className="bg-black p-2 text-lg text-pink-500 font-mono mt-0.5 leading-none rotate-1">
+                    {actor.derived.equipmentHelpText}
                 </div>
             )}
 
@@ -368,6 +463,14 @@ export default function EquipmentTab({ actor, onRoll, onUpdate, onDeleteItem, on
                     onUpdate={handleUpdateItem}
                     item={allItems.find(i => (i._id || i.id) === (itemModalConfig.item?._id || itemModalConfig.item?.id))}
                     actor={actor}
+                />
+            )}
+
+            {infoModalConfig.isOpen && (
+                <ItemInfoModal
+                    isOpen={infoModalConfig.isOpen}
+                    onClose={() => setInfoModalConfig({ ...infoModalConfig, isOpen: false })}
+                    item={allItems.find(i => (i._id || i.id) === (infoModalConfig.item?._id || infoModalConfig.item?.id))}
                 />
             )}
 

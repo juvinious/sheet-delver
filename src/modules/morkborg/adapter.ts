@@ -81,6 +81,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             weaponCriticalHelpText: 'Critical: X2 damage, target armor reduced one tier. Fumble: Weapon breaks or is lost.',
             armorCriticalHelpText: 'Critical: Gain free attack. Fumble: Take X2 damage, armor reduced one tier.',
             shieldHelpText: '-1 damage, or break to ignore one attack.',
+            equipmentHelpText: 'Items can be dragged and dropped to move them in/out of containers.',
             silver: system.silver ?? 0
         };
     }
@@ -120,28 +121,65 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     private calculateSlotsUsed(actor: any): number {
         const items = actor.items || [];
 
-        // Identify carried containers
-        const carriedContainers = items
-            .filter((i: any) => i.type === 'container' && (i.system?.equipped || i.system?.carried))
-            .map((i: any) => i._id || i.id);
+        // Map items for quick lookup
+        const itemMap = new Map<string, any>();
+        for (const i of items) {
+            itemMap.set(i._id || i.id, i);
+        }
+
+        // Identify items that are nested inside ANY container (they have a container)
+        const itemsInContainers = new Set<string>();
+        for (const i of items) {
+            if (i.type === 'container' && Array.isArray(i.system?.items)) {
+                i.system.items.forEach((childId: string) => itemsInContainers.add(childId));
+            }
+        }
 
         let totalWeight = 0;
+        const weightCountingTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon', 'tablet'];
 
         for (const item of items) {
             const system = item.system || {};
             const type = item.type?.toLowerCase();
 
-            // Only certain items count towards weight
-            const weightCountingTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon', 'tablet'];
+            // Must be equipment
             if (!weightCountingTypes.includes(type)) continue;
 
-            // Skip if item is inside a carried container
-            if (system.containerId && carriedContainers.includes(system.containerId)) continue;
+            // Must NOT have a container (meaning it must be at the root layer to start the weight tree)
+            if (itemsInContainers.has(item._id || item.id)) continue;
 
-            // Weight logic: summing Math.ceil(weight * quantity)
-            const weight = Number(system.weight) || Number(system.carryWeight) || 0;
+            // Must be 'carried'
+            // In original Mork Borg module, an item with carryWeight === 0 is NEVER carried
+            const baseCarryWeight = Number(system.carryWeight ?? system.weight ?? 0);
+            let isCarried = system.carried ?? true; // carried defaults to true if undefined
+            if (baseCarryWeight === 0) {
+                isCarried = false;
+            }
+
+            if (!isCarried) continue;
+
+            // Calculate totalCarryWeight for this item
             const quantity = Number(system.quantity) || 1;
-            totalWeight += Math.ceil(weight * quantity);
+
+            if (type === 'container') {
+                // For a container, total weight = container's own base weight + sum of children weights
+                // Note: quantity doesn't multiply the container's contents, only the children
+                let childrenWeight = 0;
+                if (Array.isArray(system.items)) {
+                    for (const childId of system.items) {
+                        const child = itemMap.get(childId);
+                        if (child) {
+                            const childBaseWeight = Number(child.system?.carryWeight ?? child.system?.weight ?? 0);
+                            const childQuantity = Number(child.system?.quantity ?? 1);
+                            childrenWeight += Math.ceil(childBaseWeight * childQuantity);
+                        }
+                    }
+                }
+                totalWeight += baseCarryWeight + childrenWeight;
+            } else {
+                // Non-container weight = ceil(baseWeight * quantity)
+                totalWeight += Math.ceil(baseCarryWeight * quantity);
+            }
         }
 
         return totalWeight;
