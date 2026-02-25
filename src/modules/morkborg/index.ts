@@ -7,7 +7,10 @@ const manifest: ModuleManifest = {
     info,
     adapter: MorkBorgAdapter,
     sheet: React.lazy(() => import('./ui/MorkBorgSheet')),
-    actorPage: React.lazy(() => import('./ui/pages/ActorPage'))
+    actorPage: React.lazy(() => import('./ui/pages/ActorPage')),
+    tools: {
+        generator: React.lazy(() => import('./ui/dashboard/MorkBorgCharacterGenerator'))
+    }
 };
 
 export default manifest;

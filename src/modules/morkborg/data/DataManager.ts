@@ -45,10 +45,52 @@ export class MorkBorgDataManager {
 
     private resolveTableName(alias: string): string {
         const mappings: Record<string, string> = {
-            'uncleanScrolls': 'Unclean Scrolls',
+            'badBirth': 'Bad Birth',
+            'nameYourGod1': 'Name your god... (1)',
+            'nameYourGod2': 'Name your god... (2)',
+            'nameYourGod3': 'Name your god... (3)',
             'sacredScrolls': 'Sacred Scrolls',
+            'thingsWereGoingSoWellUntil': 'Things were going so well until',
             'arcaneCatastrophes': 'Arcane Catastrophes - To Leave Cube-Violet',
-            'broken': 'Broken'
+            'occultHerbmasterDecoctions': 'Occult Herbmaster Decoctions',
+            'uncleanScrolls': 'Unclean Scrolls',
+            'startingEquipment1': 'Starting Equipment (1)',
+            'startingEquipment2': 'Starting Equipment (2)',
+            'startingEquipment3': 'Starting Equipment (3)',
+            'startingArmor': 'Starting Armor',
+            'wretchedRoyaltyItems': 'Wretched Royalty Items',
+            'creatureShapes': 'Creature Shapes',
+            'forlornPhilosopherItems': 'Forlorn Philosopher Items',
+            'theRootsOfYourDejection': 'The Roots of your Dejection',
+            'accursedInstruments': 'Accursed Instruments',
+            'paleOneBlessings': 'Pale One blessings',
+            'probablyRaisedIn': 'Probably raised in',
+            'startingEquipment1AllItems': 'Starting Equipment (1) All Items',
+            'eldritchOrigins': 'Eldritch Origins',
+            'terriblerTraits': 'Terribler Traits',
+            'badderHabits': 'Badder Habits',
+            'theDejectionOfYourRoots': 'The dejection of your Roots',
+            'brokenerBodies': 'Brokener Bodies',
+            'unholyOrigins': 'Unholy origins',
+            'brokenLimbOrEye': 'Broken - Limb or Eye',
+            'arcaneCatastrophesGeneric': 'Arcane Catastrophes',
+            'esotericHermitItems': 'Esoteric Hermit Items',
+            'aDealWasStruck': 'A deal was struck',
+            'theTabletsOfOchreObscurity': 'The Tablets of Ochre Obscurity',
+            'earliestMemories': 'Earliest Memories',
+            'unspokenOrigins': 'Unspoken origins',
+            'youCallYourself1': 'You call yourself... (1)',
+            'youCallYourself2': 'You call yourself... (2)',
+            'youCallYourself3': 'You call yourself... (3)',
+            'fangedDeserterItems': 'Fanged Deserter Items',
+            'broken': 'Broken',
+            'hereticalPriestItems': 'Heretical Priest Items',
+            'startingWeapon': 'Starting Weapon',
+            'giftsFromYourDeadGod': 'Gifts From Your Dead God',
+            'firstDied': 'First Died',
+            'characterNames': 'Character Names',
+            'allScrolls': 'All Scrolls',
+            'specialities': 'Specialities'
         };
         return mappings[alias] || alias;
     }
@@ -93,6 +135,253 @@ export class MorkBorgDataManager {
             name: drawnEntry.name || drawnEntry.description || "Unknown",
             description: drawnEntry.name ? drawnEntry.description : ""
         };
+    }
+
+    private rollFormula(formula: string): number {
+        if (!formula) return 0;
+
+        // Handle kh/kl or complex formulae simply if possible, but for Mork Borg it's usually basic
+        // e.g., "3d6", "1d4", "2d6 * 10", "4d6kh3"
+
+        let processedFormula = formula.toLowerCase().replace(/\s/g, '');
+
+        // Special case for classless stat generation: 4d6kh3 (keep highest 3)
+        if (processedFormula === '4d6kh3') {
+            const rolls = [
+                Math.floor(Math.random() * 6) + 1,
+                Math.floor(Math.random() * 6) + 1,
+                Math.floor(Math.random() * 6) + 1,
+                Math.floor(Math.random() * 6) + 1
+            ];
+            rolls.sort((a, b) => b - a); // descending
+            return rolls[0] + rolls[1] + rolls[2];
+        }
+
+        // Handle basic multiplication like "2d6*10"
+        let multiplier = 1;
+        if (processedFormula.includes('*')) {
+            const parts = processedFormula.split('*');
+            processedFormula = parts[0];
+            multiplier = parseInt(parts[1], 10) || 1;
+        }
+
+        // Basic XdY+Z
+        const match = processedFormula.match(/^(\d*)d(\d+)([\+\-]\d+)?$/);
+        if (!match) {
+            // Might be a flat number
+            const flat = parseInt(processedFormula, 10);
+            return isNaN(flat) ? 0 : flat * multiplier;
+        }
+
+        const count = parseInt(match[1], 10) || 1;
+        const sides = parseInt(match[2], 10);
+        const mod = match[3] ? parseInt(match[3], 10) : 0;
+
+        let total = 0;
+        for (let i = 0; i < count; i++) {
+            total += Math.floor(Math.random() * sides) + 1;
+        }
+
+        return (total + mod) * multiplier;
+    }
+
+    private getAbilityBonus(rollTotal: number): number {
+        if (rollTotal <= 4) return -3;
+        if (rollTotal <= 6) return -2;
+        if (rollTotal <= 8) return -1;
+        if (rollTotal <= 12) return 0;
+        if (rollTotal <= 14) return 1;
+        if (rollTotal <= 16) return 2;
+        return 3;
+    }
+
+    public generateRandomCharacter(includeZeroLevel: boolean = true, previousClassId?: string) {
+        if (!this.itemsCache) return null;
+
+        // 1. Class Selection
+        let allClasses = this.getItemsByType(['class']);
+
+        // Exclude the previously rolled class to prevent back-to-back duplicates
+        if (previousClassId) {
+            allClasses = allClasses.filter((c: any) => c._id !== previousClassId);
+        }
+
+        const realClasses = allClasses.filter((c: any) => c.name !== 'Adventurer');
+        const adventurerClass = allClasses.find((c: any) => c.name === 'Adventurer');
+
+        let selectedClass: any = adventurerClass || null; // Default to Adventurer
+        if (realClasses.length > 0) {
+            // If includeZeroLevel is false, ALWAYS use a class. Otherwise 80% chance.
+            const useClass = !includeZeroLevel || Math.random() > 0.2;
+            if (useClass) {
+                selectedClass = realClasses[Math.floor(Math.random() * realClasses.length)];
+            }
+        }
+
+        const isClassless = !selectedClass || selectedClass.name === 'Adventurer';
+
+        // 2. Base Stats & Abilities
+        const name = this.drawFromTable('characterNames').name;
+
+        const startingSilverFormula = selectedClass?.system?.startingSilver || '2d6*10';
+        const silver = this.rollFormula(startingSilverFormula);
+
+        const omenDie = selectedClass?.system?.omenDie || '1d2';
+        const omensMax = this.rollFormula(omenDie);
+
+        const hpDie = selectedClass?.system?.startingHitPoints || '1d8';
+        const baseHp = this.rollFormula(hpDie);
+
+        const basePowerUses = this.rollFormula('1d4');
+
+        // Abilities
+        let abilityRollFormulas = ['3d6', '3d6', '3d6', '3d6']; // Default
+
+        if (isClassless) {
+            // Mork borg classless roll 3d6 twice, 4d6kh3 twice, mixed randomly
+            const pool = ['3d6', '3d6', '4d6kh3', '4d6kh3'];
+            abilityRollFormulas = pool.sort(() => 0.5 - Math.random());
+        } else {
+            abilityRollFormulas = [
+                selectedClass.system.startingStrength || '3d6',
+                selectedClass.system.startingAgility || '3d6',
+                selectedClass.system.startingPresence || '3d6',
+                selectedClass.system.startingToughness || '3d6'
+            ];
+        }
+
+        const strengthTotal = this.rollFormula(abilityRollFormulas[0]);
+        const agilityTotal = this.rollFormula(abilityRollFormulas[1]);
+        const presenceTotal = this.rollFormula(abilityRollFormulas[2]);
+        const toughnessTotal = this.rollFormula(abilityRollFormulas[3]);
+
+        const strBonus = this.getAbilityBonus(strengthTotal);
+        const agiBonus = this.getAbilityBonus(agilityTotal);
+        const preBonus = this.getAbilityBonus(presenceTotal);
+        const touBonus = this.getAbilityBonus(toughnessTotal);
+
+        const maxHp = Math.max(1, baseHp + touBonus);
+        const powerUsesMax = Math.max(0, basePowerUses + preBonus);
+
+        const abilities = {
+            strength: { value: strBonus },
+            agility: { value: agiBonus },
+            presence: { value: preBonus },
+            toughness: { value: touBonus }
+        };
+
+        const hp = {
+            value: maxHp,
+            max: maxHp
+        };
+
+        const equipment = [];
+        // Add waterskin and food
+        const food = this.getItemByName('Dried food');
+        if (food) {
+            equipment.push({ ...food, system: { ...food.system, quantity: this.rollFormula('1d4') } });
+        }
+        const water = this.getItemByName('Waterskin');
+        if (water) equipment.push(water);
+
+        // Standard 3 tables
+        const eq1 = this.drawFromTable('startingEquipment1');
+        if (eq1.isDocument) equipment.push(eq1);
+
+        const eq2 = this.drawFromTable('startingEquipment2');
+        if (eq2.isDocument) equipment.push(eq2);
+
+        const eq3 = this.drawFromTable('startingEquipment3');
+        if (eq3.isDocument) equipment.push(eq3);
+
+        const hasScroll = equipment.some(i => i.type === 'scroll' || i.type === 'tablet');
+
+        // Weapon
+        let weaponDie = selectedClass?.system?.weaponTableDie || '1d10';
+        if (hasScroll && ['1d8', '2d4', '1d10'].includes(weaponDie)) {
+            weaponDie = '1d6';
+        }
+        // TODO: Need a way to roll on weapon table *with a specific formula* instead of default
+        // For now just draw one
+        const weapon = this.drawFromTable('startingWeapon');
+        if (weapon.isDocument) equipment.push(weapon);
+
+        // Armor
+        let armorDie = selectedClass?.system?.armorTableDie || '1d4';
+        if (hasScroll && ['1d3', '1d4'].includes(armorDie)) {
+            armorDie = '1d2';
+        }
+        const armor = this.drawFromTable('startingArmor');
+        if (armor.isDocument) equipment.push(armor);
+
+        let classNotes = '';
+
+        if (selectedClass?.system?.startingItems) {
+            const lines = selectedClass.system.startingItems.split("\n");
+            for (const line of lines) {
+                const parts = line.split(",");
+                const itemName = parts[1]?.trim();
+                const item = this.getItemByName(itemName || '');
+                if (item) equipment.push(item);
+            }
+        }
+
+        if (selectedClass?.system?.startingRolls) {
+            const lines = selectedClass.system.startingRolls.split("\n");
+            for (const line of lines) {
+                const parts = line.split(",");
+                const tableName = parts[1]?.trim();
+                const rolls = parts[2] ? parseInt(parts[2].trim()) : 1;
+
+                if (tableName) {
+                    for (let i = 0; i < rolls; i++) {
+                        const result = this.drawFromTable(tableName);
+                        if (result.isDocument) {
+                            equipment.push(result);
+                        } else {
+                            classNotes += `${tableName}: ${result.description || result.name}\n`;
+                        }
+                    }
+                }
+            }
+        }
+
+        let traits = '';
+        const trait1 = this.drawFromTable('terriblerTraits');
+        const trait2 = this.drawFromTable('terriblerTraits');
+        const broken = this.drawFromTable('brokenerBodies');
+        const habit = this.drawFromTable('badderHabits');
+
+        if (trait1.name && trait2.name) {
+            traits += `${trait1.name} and ${trait2.name.charAt(0).toLowerCase() + trait2.name.slice(1)}. `;
+        }
+        if (broken.name) traits += `${broken.name} `;
+        if (habit.name) traits += `${habit.name}`;
+
+
+
+        const character = {
+            name,
+            hp,
+            class: selectedClass,
+            currentHp: hp.value,
+            maxHp: hp.max,
+            silver,
+            omens: {
+                value: omensMax,
+                max: omensMax
+            },
+            powers: {
+                value: powerUsesMax,
+                max: powerUsesMax
+            },
+            abilities,
+            items: [selectedClass, ...equipment],
+            traits: traits.trim(),
+            classNotes: classNotes.trim()
+        };
+
+        return character;
     }
 }
 
