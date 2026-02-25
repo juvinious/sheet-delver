@@ -195,28 +195,32 @@ export class MorkBorgDataManager {
         return 3;
     }
 
-    public generateRandomCharacter(includeZeroLevel: boolean = true, previousClassId?: string) {
+    public generateRandomCharacter(classInclusion: Record<string, boolean>, previousClassId?: string) {
         if (!this.itemsCache) return null;
 
         // 1. Class Selection
-        let allClasses = this.getItemsByType(['class']);
+        const allClasses = this.getItemsByType(['class']);
 
-        // Exclude the previously rolled class to prevent back-to-back duplicates
-        if (previousClassId) {
-            allClasses = allClasses.filter((c: any) => c._id !== previousClassId);
+        // Apply classInclusion filters
+        // Identify all allowed classes from the map where the value is true
+        let allowedClasses = allClasses.filter((c: any) => classInclusion[c._id]);
+
+        // Safety Fallback: If the user unchecked literally everything, draw from ALL available classes anyway
+        if (allowedClasses.length === 0) {
+            allowedClasses = allClasses;
         }
 
-        const realClasses = allClasses.filter((c: any) => c.name !== 'Adventurer');
-        const adventurerClass = allClasses.find((c: any) => c.name === 'Adventurer');
-
-        let selectedClass: any = adventurerClass || null; // Default to Adventurer
-        if (realClasses.length > 0) {
-            // If includeZeroLevel is false, ALWAYS use a class. Otherwise 80% chance.
-            const useClass = !includeZeroLevel || Math.random() > 0.2;
-            if (useClass) {
-                selectedClass = realClasses[Math.floor(Math.random() * realClasses.length)];
+        // Exclude the previously rolled class to prevent back-to-back duplicates,
+        // but ONLY if there are other options available in the allowed pool.
+        if (previousClassId && allowedClasses.length > 1) {
+            const filteredClasses = allowedClasses.filter((c: any) => c._id !== previousClassId);
+            if (filteredClasses.length > 0) {
+                allowedClasses = filteredClasses;
             }
         }
+
+        // Select a random class from the allowed pool
+        let selectedClass: any = allowedClasses[Math.floor(Math.random() * allowedClasses.length)];
 
         const isClassless = !selectedClass || selectedClass.name === 'Adventurer';
 
