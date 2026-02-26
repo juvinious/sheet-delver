@@ -21,6 +21,8 @@ interface SheetRouterProps {
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
     onDeleteEffect?: (effectId: string) => void;
     onAddPredefinedEffect?: (effectId: string) => Promise<void>;
+    // Module-specific: Mork Borg handlers (optional)
+    onBrewDecoctions?: () => void;
 }
 
 export default function SheetRouter(props: SheetRouterProps) {

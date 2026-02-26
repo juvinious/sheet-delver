@@ -36,7 +36,8 @@ export class GenericSystemAdapter implements SystemAdapter {
         return {};
     }
 
-    getRollData(): any {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getRollData(actor: any, type: string, key: string, options?: any): any {
         return null;
     }
 
@@ -47,7 +48,8 @@ export class GenericSystemAdapter implements SystemAdapter {
             name: actor.name,
             type: actor.type,
             img: actor.img,
-            attributes: actor.system
+            system: actor.system,
+            items: actor.items // Pass items through for adapters that need them
         };
     }
 }

@@ -398,7 +398,14 @@ async function startServer() {
                     actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
                 }
 
-                return adapter.normalizeActorData(actor, client);
+                const normalized = adapter.normalizeActorData(actor, client);
+
+                // Compute derived data if adapter supports it (for Dashboard stats)
+                if (adapter.computeActorData) {
+                    normalized.derived = adapter.computeActorData(normalized);
+                }
+
+                return normalized;
             }));
 
             // We treat all returned actors as "visible"
@@ -410,7 +417,7 @@ async function startServer() {
             const actorFolders = new Set(rawActors.map((a: any) => a.folder).filter(Boolean));
             logger.info(`Core Service | Actor types found: ${Array.from(actorTypes).join(', ')}`);
             logger.info(`Core Service | Actor folders found: ${Array.from(actorFolders).join(', ')}`);
-            logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
+            // logger.info(`Core Service | Sample actor: ${JSON.stringify(rawActors[0] || {}).substring(0, 300)}`);
 
             // Owned actors (ownership level 3 = OWNER)
             const owned = rawActors.filter((a: any) =>
@@ -491,8 +498,8 @@ async function startServer() {
 
             // Call adapter.computeActorData if available (module-specific derived stats)
             if (adapter.computeActorData) {
-                normalizedActor.computed = {
-                    ...(normalizedActor.computed || {}),
+                normalizedActor.derived = {
+                    ...(normalizedActor.derived || {}),
                     ...adapter.computeActorData(normalizedActor)
                 };
             }
@@ -599,7 +606,20 @@ async function startServer() {
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             if (type === 'use-item') {
-                const result = await client.useItem(req.params.id, key);
+                // key may be an item ID or an item name (from generic feat routing fallback)
+                let itemId = key;
+                const isId = actor.items?.some((i: any) => (i._id || i.id) === key);
+                if (!isId) {
+                    // Try to resolve by name across all item arrays
+                    const allItems = [
+                        ...(actor.items || []),
+                        ...(actor.categorizedItems?.feats || []),
+                        ...(actor.categorizedItems?.uncategorized || [])
+                    ];
+                    const found = allItems.find((i: any) => i.name === key);
+                    if (found) itemId = found._id || found.id;
+                }
+                const result = await client.useItem(req.params.id, itemId);
                 return res.json({ success: true, result });
             }
 
@@ -612,7 +632,19 @@ async function startServer() {
 
             if (!rollData) throw new Error('Cannot determine roll formula');
 
-            // Determine speaker: use actor for character sheet rolls if not overridden
+            // Handle Automated Roll Sequences — adapter signals this via isAutomated: true.
+            // All system-specific dispatch logic (feats, decoctions, etc.) lives in performAutomatedSequence.
+            if (rollData.isAutomated && typeof adapter.performAutomatedSequence === 'function') {
+                const result = await adapter.performAutomatedSequence(client, actor, rollData, options);
+                return res.json({ success: true, result, label: rollData.label });
+            }
+
+            // Fallback: Standard formula roll — require a formula or abort
+            if (!rollData.formula) {
+                throw new Error(`No roll formula for type "${type}" key "${key}"`);
+            }
+
+            // Determine speaker
             const speaker = options?.speaker || {
                 actor: actor._id || actor.id,
                 alias: actor.name

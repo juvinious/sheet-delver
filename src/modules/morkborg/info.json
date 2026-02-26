@@ -1,4 +1,11 @@
 {
     "id": "morkborg",
-    "title": "Mörk Borg"
+    "title": "Mörk Borg",
+    "actorCard": {
+        "subtext": [
+            "details.class",
+            "details.ancestry",
+            "system.level.value"
+        ]
+    }
 }

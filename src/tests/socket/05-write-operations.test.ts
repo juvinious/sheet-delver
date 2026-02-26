@@ -27,7 +27,7 @@ export async function testWriteOperations() {
         try {
             const actorData = {
                 name: "TEMP_TEST_ACTOR_" + Date.now(),
-                type: "NPC", // Assuming generic system or Shadowdark NPC
+                type: "character", // Mork Borg uses character type
                 img: "icons/svg/mystery-man.svg"
             };
             const createdActor = await client.createActor(actorData);

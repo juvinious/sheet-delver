@@ -210,8 +210,33 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
         }
     };
 
+    const handleBrewDecoctions = async () => {
+        if (!actor) return;
+        const rollMode = localStorage.getItem('sheetdelver_roll_mode') || 'blindroll';
+        try {
+            const res = await fetchWithAuth(`/api/actors/${actor.id}/brew-decoctions`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rollMode })
+            });
+            const data = await res.json();
+            if (data.success) {
+                fetchActor(actor.id, true);
+                addNotification('Decoctions brewed and added to inventory!', 'success');
+            } else {
+                addNotification('Brew failed: ' + data.error, 'error');
+            }
+        } catch (e: any) {
+            addNotification('Error: ' + e.message, 'error');
+        }
+    };
+
     if (loading) return <LoadingModal message="Loading..." />;
     if (!actor && !showDeleteModal) return null;
+
+    const getClassName = () => {
+        return actor?.items.filter((item: any) => item.type === 'class')[0]?.name;
+    };
 
     return (
         <main className="min-h-screen font-sans pb-20">
@@ -224,7 +249,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                     Back to Dashboard
                 </button>
                 <div className="text-xs text-neutral-600 font-mono hidden md:block">
-                    {actor?.name ?? 'Loading...'}
+                    {actor?.name ? `${actor?.name} (${getClassName()})` : 'Loading...'}
                 </div>
             </nav>
 
@@ -241,6 +266,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                         onDeleteItem={handleDeleteItem}
                         onCreateItem={handleCreateItem}
                         onUpdateItem={handleUpdateItem}
+                        onBrewDecoctions={handleBrewDecoctions}
                         onToggleDiceTray={toggleDiceTray}
                         isDiceTrayOpen={isDiceTrayOpen}
                     />
@@ -257,7 +283,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
                         <p className="text-neutral-400 mb-8">This character has been deleted from the world.</p>
                         <button
                             onClick={() => router.push('/')}
-                            className="bg-red-900 hover:bg-red-800 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
+                            className="bg-red-900 hover:bg-neutral-800 text-white font-bold py-3 px-8 rounded shadow-lg uppercase tracking-widest transition-all w-full"
                         >
                             Return to Dashboard
                         </button>

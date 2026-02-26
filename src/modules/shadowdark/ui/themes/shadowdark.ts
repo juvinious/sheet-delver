@@ -91,5 +91,18 @@ export const shadowdarkTheme = {
             return base + (isOpen ? 'bg-white/10 text-white rotate-90' : 'bg-amber-500 text-black hover:bg-amber-400');
         },
         closeBtn: "text-white hover:text-amber-500 transition-colors"
+    },
+    richText: {
+        container: 'relative group h-full flex flex-col',
+        toolbar: {
+            container: 'bg-black border-b-2 border-neutral-800 p-2 flex flex-wrap gap-1 items-center sticky top-0 z-10 shadow-sm',
+            button: 'p-2 rounded hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white',
+            buttonActive: 'p-2 rounded hover:bg-neutral-800 transition-colors bg-neutral-700 text-white',
+            separator: 'w-px h-6 bg-neutral-700 mx-1',
+            actionButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest text-neutral-400 hover:text-white hover:bg-neutral-800 rounded mr-2',
+            saveButton: 'px-3 py-1 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-neutral-200 rounded flex items-center gap-1'
+        },
+        editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[300px] p-4 text-neutral-300',
+        editButton: 'bg-black text-white px-6 py-2 font-serif font-bold uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2'
     }
 };

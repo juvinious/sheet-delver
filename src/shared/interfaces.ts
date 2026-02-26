@@ -34,6 +34,7 @@ export interface ActorSheetData {
     system?: any;
     items?: any[];
     effects?: any[];
+    derived?: any;
     [key: string]: any;
 }
 
@@ -114,6 +115,15 @@ export interface SystemAdapter {
      * Return an object with named arrays (e.g. { weapons: [], armor: [], spells: [] })
      */
     categorizeItems?(actor: any): any;
+    /**
+     * Optional: Generate a stylized HTML roll card for chat evaluation.
+     */
+    generateRollCard?(actor: any, results: any): string;
+    /**
+     * Optional: Perform an automated roll sequence (e.g. Attack/Defend loop).
+     * This moves system-specific logic out of the core server.
+     */
+    performAutomatedSequence?(client: any, actor: any, rollData: any, options: any): Promise<any>;
     theme?: {
         bg?: string;
         panelBg?: string;
