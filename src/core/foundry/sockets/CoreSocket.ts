@@ -829,6 +829,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
+    public async getCombats(): Promise<any[]> {
+        const result: any = await this.dispatchDocumentSocket('Combat', 'get', { broadcast: false });
+        return result?.result || [];
+    }
+
     public async getJournals(userId?: string): Promise<any[]> {
         const result: any = await this.dispatchDocumentSocket('JournalEntry', 'get', { broadcast: false });
         const all = result?.result || [];

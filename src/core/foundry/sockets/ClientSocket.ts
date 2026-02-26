@@ -257,6 +257,10 @@ export class ClientSocket extends SocketBase {
         return this.coreSocket.getUsers();
     }
 
+    public async getCombats(): Promise<any[]> {
+        return this.coreSocket.getCombats();
+    }
+
     public async getFolders(type?: string): Promise<any[]> {
         return this.coreSocket.getFolders(type);
     }

@@ -849,6 +849,16 @@ async function startServer() {
         }
     });
 
+    appRouter.get('/combats', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combats = await client.getCombats();
+            res.json({ success: true, combats });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     appRouter.get('/journals', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
