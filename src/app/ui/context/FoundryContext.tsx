@@ -16,6 +16,68 @@ export interface User {
     color?: string;
     characterName?: string;
 }
+/*
+ "tokenId": "aw61JwSg28QcPWj0",
+            "sceneId": "NUEDEFAULTSCENE0",
+            "actorId": "ZTYNPEZtHAuDXBl8",
+            "hidden": false,
+            "_id": "w49gyvcKg74czBbM",
+            "type": "base",
+            "system": {},
+            "img": null,
+            "initiative": 4,
+            "defeated": false,
+            "group": null,
+            "flags": {},
+            "_stats": {
+*/
+export interface Combatant {
+    tokenId: string;
+    sceneId: string;
+    actorId: string;
+    actor: any;
+    hidden: boolean;
+    _id: string;
+    type: string;
+    system: any;
+    img: string | null;
+    initiative: number;
+    defeated: boolean;
+    group: string | null;
+    flags: any;
+    _stats: any;
+}
+
+/*
+"active": true,
+    "_id": "BAs2dbhRcjLV10Hg",
+    "type": "base",
+    "system": {},
+    "scene": null,
+    "groups": [],
+    "combatants": [],
+    "round": 2,
+    "turn": 0,
+    "sort": 0,
+    "flags": {},
+    "_stats":
+    */
+
+
+export interface Combat {
+    id: string;
+    _id?: string;
+    type: string;
+    system: any;
+    scene: string | null;
+    groups: any[];
+    combatants: Combatant[];
+    round: number;
+    turn: number;
+    sort: number;
+    flags: any;
+    stats: any;
+}
 
 export type ConnectionStep = 'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing';
 
@@ -42,6 +104,10 @@ interface FoundryContextType {
     ownedActors: any[];
     readOnlyActors: any[];
     sharedContent: any | null;
+
+    // Combats
+    combats: Combat[];
+    fetchCombats: () => Promise<any>;
 }
 
 const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
@@ -67,6 +133,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
+    const [combats, setCombats] = useState<Combat[]>([]);
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
@@ -122,6 +189,63 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             return data;
         } catch (error: any) {
             logger.error('FoundryProvider | Fetch actors failed:', error.message);
+        }
+    }, [token]);
+
+    const fetchCombats = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('/api/combats', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 401) return;
+            const data = await res.json();
+            if (data.combats) {
+                // Fetch actors for each combat
+                const resolvedCombats = await Promise.all(data.combats.map(async (combat: any) => {
+                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant: any) => {
+                        let actor = null;
+                        if (combatant.actorId) {
+                            try {
+                                const actorRes = await fetch(`/api/actors/${combatant.actorId}`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                actor = await actorRes.json();
+                            } catch (e) {
+                                logger.error(`Failed fetching actor ${combatant.actorId}`, e);
+                            }
+                        }
+
+                        const serializedCombatant: Combatant = {
+                            tokenId: combatant.tokenId,
+                            sceneId: combatant.sceneId,
+                            actorId: combatant.actorId,
+                            _id: combatant._id,
+                            type: combatant.type,
+                            system: combatant.system,
+                            img: combatant.img,
+                            actor: actor,
+                            hidden: combatant.hidden,
+                            initiative: combatant.initiative,
+                            defeated: combatant.defeated,
+                            group: combatant.group,
+                            flags: combatant.flags,
+                            _stats: combatant.stats
+                        };
+                        return serializedCombatant;
+                    }));
+
+                    return {
+                        ...combat,
+                        combatants
+                    };
+                }));
+
+                setCombats(resolvedCombats);
+            }
+            return data;
+        } catch (error: any) {
+            logger.error('FoundryProvider | Fetch combat failed:', error.message);
         }
     }, [token]);
 
@@ -293,14 +417,21 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         return () => clearInterval(interval);
     }, [step, token, fetchActors, setStep, system, users, currentUserId, sharedContent, appVersion]);
 
-    // Chat Polling
+    // Chat and Combat Polling
     useEffect(() => {
         if (step === 'dashboard' && token) {
             fetchChat();
-            const interval = setInterval(fetchChat, 5000);
-            return () => clearInterval(interval);
+            fetchCombats(); // Initial fetch
+
+            const chatInterval = setInterval(fetchChat, 5000);
+            const combatInterval = setInterval(fetchCombats, 3000); // Poll combats faster than chat 
+
+            return () => {
+                clearInterval(chatInterval);
+                clearInterval(combatInterval);
+            };
         }
-    }, [step, token, fetchChat]);
+    }, [step, token, fetchChat, fetchCombats]);
 
     return (
         <FoundryContext.Provider value={{
@@ -312,7 +443,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             activeAdapter, setActiveAdapter,
             handleLogin, handleChatSend, handleLogout, fetchActors,
             ownedActors, readOnlyActors,
-            sharedContent
+            sharedContent,
+            combats, fetchCombats
         }}>
             {children}
         </FoundryContext.Provider>

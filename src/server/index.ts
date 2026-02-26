@@ -859,6 +859,97 @@ async function startServer() {
         }
     });
 
+    appRouter.post('/combats/:id/next-turn', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+
+            // Fetch the specific combat to get current turn/round
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+
+            if (!combat) {
+                return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            // Mimic Foundry's turn logic: sort by initiative desc, tie-break by ID
+            const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+                const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+                const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+                return (ib - ia) || (a._id > b._id ? 1 : -1);
+            });
+
+            let currentRound = combat.round || 0;
+            let currentTurn = combat.turn ?? -1;
+
+            if (currentRound === 0) {
+                currentRound = 1;
+                currentTurn = 0;
+            } else {
+                currentTurn += 1;
+                if (currentTurn >= sortedCombatants.length) {
+                    currentRound += 1;
+                    currentTurn = 0;
+                }
+            }
+
+            await client.dispatchDocumentSocket('Combat', 'update', {
+                updates: [{ _id: combatId, round: currentRound, turn: currentTurn }]
+            });
+
+            res.json({ success: true, round: currentRound, turn: currentTurn });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.post('/combats/:id/previous-turn', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+
+            if (!combat) {
+                return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+                const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+                const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+                return (ib - ia) || (a._id > b._id ? 1 : -1);
+            });
+
+            let currentRound = combat.round || 0;
+            let currentTurn = combat.turn ?? 0;
+
+            if (currentRound === 0) {
+                // Do nothing if not started
+            } else if (currentTurn === 0) {
+                if (currentRound > 1) {
+                    currentRound -= 1;
+                    currentTurn = Math.max(0, sortedCombatants.length - 1);
+                } else {
+                    currentRound = 0;
+                    currentTurn = 0;
+                }
+            } else {
+                currentTurn -= 1;
+            }
+
+            await client.dispatchDocumentSocket('Combat', 'update', {
+                updates: [{ _id: combatId, round: currentRound, turn: currentTurn }]
+            });
+
+            res.json({ success: true, round: currentRound, turn: currentTurn });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    /* TODO Add next or finish round if actorId matches current combatant.actorId */
+
     appRouter.get('/journals', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
