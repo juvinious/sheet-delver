@@ -948,6 +948,53 @@ async function startServer() {
         }
     });
 
+    appRouter.post('/combats/:id/combatants/:combatantId/roll-initiative', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+            const combatantId = req.params.combatantId;
+            const { formula } = req.body;
+
+            const systemInfo = await client.getSystem();
+            const adapter = getAdapter(systemInfo.id);
+            if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
+
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+            if (!combat) return res.status(404).json({ error: 'Combat not found' });
+
+            const combatant = combat.combatants?.find((c: any) => (c._id || c.id) === combatantId);
+            if (!combatant) return res.status(404).json({ error: 'Combatant not found' });
+
+            const actor = await client.getActor(combatant.actorId);
+            if (!actor) return res.status(404).json({ error: 'Actor not found' });
+
+            let finalFormula = formula;
+            if (!finalFormula) {
+                if (typeof (adapter as any).getInitiativeFormula === 'function') {
+                    finalFormula = (adapter as any).getInitiativeFormula(actor);
+                } else {
+                    finalFormula = '1d20';
+                }
+            }
+
+            const speaker = {
+                actor: actor._id || actor.id,
+                alias: actor.name
+            };
+
+            const rollResult = await client.roll(finalFormula, 'Initiative', { speaker });
+
+            await client.dispatchDocumentSocket('Combatant', 'update', {
+                updates: [{ _id: combatantId, initiative: rollResult.total }]
+            });
+
+            res.json({ success: true, initiative: rollResult.total });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     /* TODO Add next or finish round if actorId matches current combatant.actorId */
 
     appRouter.get('/journals', async (req, res) => {

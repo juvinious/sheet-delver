@@ -18,6 +18,7 @@ export class DnD5eAdapter implements SystemAdapter {
                 name: actor.name,
                 type: actor.type,
                 img: actor.img,
+                ownership: actor.ownership, // Added ownership here
                 system: actor.system,
                 items: actor.items.contents.map((i: any) => ({
                     id: i.id,
@@ -42,6 +43,7 @@ export class DnD5eAdapter implements SystemAdapter {
         const ac = s.attributes?.ac?.value || 10;
 
         // Abilities
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const abilities = s.abilities || {};
 
         return {
@@ -53,6 +55,12 @@ export class DnD5eAdapter implements SystemAdapter {
             ac: ac,
             system: s
         };
+    }
+
+    getInitiativeFormula(actor: any): string {
+        const dexMod = actor.system?.abilities?.dex?.mod ?? 0;
+        const sign = dexMod >= 0 ? '+' : '';
+        return `1d20${sign}${Math.abs(dexMod)}`;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

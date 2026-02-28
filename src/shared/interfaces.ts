@@ -120,6 +120,11 @@ export interface SystemAdapter {
      */
     generateRollCard?(actor: any, results: any): string;
     /**
+     * Optional: Return the initiative formula for a given actor.
+     * If not provided, the core system defaults to '1d20'.
+     */
+    getInitiativeFormula?(actor: any): string;
+    /**
      * Optional: Perform an automated roll sequence (e.g. Attack/Defend loop).
      * This moves system-specific logic out of the core server.
      */

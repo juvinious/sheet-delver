@@ -40,6 +40,12 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         return data;
     }
 
+    getInitiativeFormula(actor: any): string {
+        const agiVal = actor.system?.abilities?.agility?.value ?? 0;
+        const sign = agiVal >= 0 ? '+' : '';
+        return `1d6${sign}${Math.abs(agiVal)}`;
+    }
+
 
 
     /**

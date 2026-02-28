@@ -26,6 +26,22 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     componentStyles = shadowdarkTheme;
 
+    getInitiativeFormula(actor: any): string {
+        let dexMod = 0;
+        if (actor.system?.abilities?.dex?.mod !== undefined) {
+            dexMod = parseInt(actor.system.abilities.dex.mod, 10);
+        } else if (actor.computed?.abilities?.dex?.mod !== undefined) {
+            dexMod = Math.floor((parseInt(actor.computed.abilities.dex.value, 10) - 10) / 2);
+        }
+        if (isNaN(dexMod)) dexMod = 0;
+
+        const sign = dexMod >= 0 ? '+' : '';
+        const hasAdvantage = actor.system?.bonuses?.advantage?.includes('initiative');
+        const baseDie = hasAdvantage ? '2d20kh1' : '1d20';
+
+        return `${baseDie}${sign}${Math.abs(dexMod)}`;
+    }
+
     match(actor: any): boolean {
         // Broaden heuristic to protect against partial system object or missing systemId
         const hasShadowdarkType = ['player', 'character', 'npc'].includes(actor.type?.toLowerCase());
@@ -1291,6 +1307,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             name: actor.name,
             type: actor.type,
             img: actorImg,
+            ownership: actor.ownership, // Added ownership here
             system: s, // Include raw system data for bindings
             hp: { value: hp.value, max: maxHp },
             ac: ac,

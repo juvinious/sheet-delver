@@ -49,8 +49,14 @@ export class GenericSystemAdapter implements SystemAdapter {
             type: actor.type,
             img: actor.img,
             system: actor.system,
+            ownership: actor.ownership,
             items: actor.items // Pass items through for adapters that need them
         };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    getInitiativeFormula(actor: any): string {
+        return '1d20';
     }
 }
 
