@@ -42,8 +42,13 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
     getInitiativeFormula(actor: any): string {
         const agiVal = actor.system?.abilities?.agility?.value ?? 0;
-        const sign = agiVal >= 0 ? '+' : '';
-        return `1d6${sign}${Math.abs(agiVal)}`;
+        let modifierString = '';
+        if (agiVal > 0) {
+            modifierString = `+${agiVal}`;
+        } else if (agiVal < 0) {
+            modifierString = `${agiVal}`;
+        }
+        return `1d6${modifierString}`;
     }
 
 
@@ -89,6 +94,40 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             shieldHelpText: '-1 damage, or break to ignore one attack.',
             equipmentHelpText: 'Items can be dragged and dropped to move them in/out of containers.',
             silver: system.silver ?? 0
+        };
+    }
+
+    getConfig() {
+        return {
+            actorCard: {
+                // Subtext paths to display on actor cards
+                // Format: ["path.to.field", "another.path"]
+                subtext: ['derived.class.name']
+            },
+            componentStyles: {
+                rollDialog: {
+                    overlay: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50",
+                    container: "bg-neutral-950 border-2 border-pink-900 shadow-[8px_8px_0_0_#831843] max-w-sm w-full p-6 relative -rotate-1 text-left inline-block transform transition-all z-[51]",
+                    header: "mb-4 font-['IM_Fell_Double_Pica']",
+                    title: "text-2xl text-yellow-400 uppercase tracking-wide mb-1 leading-tight",
+                    closeBtn: "absolute -top-3 -right-3 text-2xl select-none hover:rotate-12 transition-transform",
+                    section: "bg-black border border-pink-900/40 p-3 mb-4 font-mono rotate-[0.5deg]",
+                    label: "text-neutral-500 text-[10px] uppercase tracking-widest mb-1 block",
+                    input: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500",
+                    select: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500 appearance-none",
+                    buttonGroup: "flex border border-neutral-800",
+                    buttonActive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-pink-900 text-white",
+                    buttonInactive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-black text-neutral-500 hover:text-neutral-300",
+                    confirmBtn: "font-['IM_Fell_Double_Pica'] flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer",
+                    cancelBtn: "font-['IM_Fell_Double_Pica'] bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer",
+                    formulaResult: "text-white text-lg font-mono",
+                    formulaBreakdown: "text-neutral-400 text-xs mt-1 font-mono",
+                    advantageGroup: "flex flex-col gap-2 mt-2",
+                    advantageBtn: "font-mono text-xs uppercase tracking-widest py-2 px-3 border transition-all text-left flex justify-between items-center cursor-pointer",
+                    advantageBtnActive: "bg-pink-900 border-pink-500 text-white",
+                    advantageBtnInactive: "bg-black border-neutral-800 text-neutral-500 hover:border-pink-900 text-neutral-400",
+                }
+            }
         };
     }
 
@@ -1192,19 +1231,6 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         });
 
         return resolved;
-    }
-
-    /**
-     * Get adapter configuration (server-side, no browser access needed)
-     */
-    getConfig() {
-        return {
-            actorCard: {
-                // Subtext paths to display on actor cards
-                // Format: ["path.to.field", "another.path"]
-                subtext: ['derived.class.name']
-            }
-        };
     }
 }
 

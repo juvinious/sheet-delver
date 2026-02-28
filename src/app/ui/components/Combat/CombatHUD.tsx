@@ -2,11 +2,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFoundry, Combat, Combatant } from '@/app/ui/context/FoundryContext';
+import { getModule } from '@/modules/core/registry';
 import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import RollDialog from '../RollDialog';
 
 export default function CombatHUD() {
-    const { combats, step, currentUser } = useFoundry();
+    const { combats, step, currentUser, token, system, activeAdapter } = useFoundry();
     const [selectedCombatIndex, setSelectedCombatIndex] = useState(0);
     const [isMinimized, setIsMinimized] = useState(false);
 
@@ -42,7 +43,6 @@ export default function CombatHUD() {
         if (!rollCommand) return;
 
         try {
-            const token = localStorage.getItem('sheetdelver_session');
             if (!token) throw new Error('No session token');
 
             const headers: Record<string, string> = {
@@ -63,9 +63,11 @@ export default function CombatHUD() {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({
-                    formula: formula ? `${formula}${formulaSuffix}` : undefined
+                    formula: formula ? `${formula}${formulaSuffix}` : undefined,
+                    advantageMode: options.advantageMode
                 })
             });
+            setRollCommand(null);
             // The socket will push the update, which triggers a re-render.
         } catch (error) {
             console.error('Failed to roll initiative:', error);
@@ -255,8 +257,8 @@ export default function CombatHUD() {
                                                     </span>
                                                 </div>
 
-                                                {/* Pre-combat Initiative Overlay */}
-                                                {(!activeCombat?.round || activeCombat.round === 0) && combatant.actor && combatant.initiative == null &&
+                                                {/* Initiative Overlay */}
+                                                {combatant.actor && combatant.initiative == null &&
                                                     (currentUser?.isGM || combatant.actor.ownership?.[currentUser?._id || currentUser?.id || ''] === 3 || combatant.actor.ownership?.default === 3) && (
                                                         <div className="absolute inset-0 bg-black/60 flex items-center justify-center z-30">
                                                             <button
@@ -290,17 +292,35 @@ export default function CombatHUD() {
             </div>
 
             {/* Initiative Roll Dialog */}
-            <RollDialog
-                isOpen={isRollDialogOpen}
-                title={rollCommand?.title || 'Roll Initiative'}
-                type="ability" // Using ability to trigger standard bonus inputs without Weapon/Spell specific fields
-                defaults={{
-                    abilityBonus: rollCommand?.actor?.system?.abilities?.dex?.mod || 0, // Broad fallback guess for dex
-                    showItemBonus: false
-                }}
-                onConfirm={handleConfirmRoll}
-                onClose={() => setIsRollDialogOpen(false)}
-            />
+            {(() => {
+                // Determine system ID: best source is a combatant's stats, then global system object, then active adapter
+                let systemId = 'generic';
+                if (activeCombat?.combatants?.length > 0) {
+                    systemId = activeCombat.combatants[0]?._stats?.systemId || systemId;
+                }
+                if (systemId === 'generic') {
+                    systemId = system?.id || activeAdapter?.systemId || 'generic';
+                }
+
+                const activeModule = getModule(systemId);
+                const DynamicRollModal = activeModule?.rollModal || RollDialog;
+
+                return (
+                    <DynamicRollModal
+                        isOpen={isRollDialogOpen}
+                        title={rollCommand?.title || 'Roll Initiative'}
+                        type="ability" // Using ability to trigger standard bonus inputs without Weapon/Spell specific fields
+                        actor={rollCommand?.actor}
+                        defaults={{
+                            abilityBonus: rollCommand?.actor?.system?.abilities?.dex?.mod || 0, // Broad fallback guess for dex
+                            showItemBonus: false
+                        }}
+                        theme={system?.config?.componentStyles?.rollDialog}
+                        onConfirm={handleConfirmRoll}
+                        onClose={() => setIsRollDialogOpen(false)}
+                    />
+                );
+            })()}
         </>
     );
 }

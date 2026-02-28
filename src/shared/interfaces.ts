@@ -236,4 +236,9 @@ export interface ModuleManifest {
      * Props: { actorId: string; token?: string | null }
      */
     actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
+    /**
+     * Optional: Module-specific roll modal component.
+     * Overrides the generic `RollDialog` in universal interfaces like the Combat Tracker.
+     */
+    rollModal?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
 }

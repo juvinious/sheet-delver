@@ -953,7 +953,7 @@ async function startServer() {
             const client = (req as any).foundryClient;
             const combatId = req.params.id;
             const combatantId = req.params.combatantId;
-            const { formula } = req.body;
+            const { formula, advantageMode } = req.body;
 
             const systemInfo = await client.getSystem();
             const adapter = getAdapter(systemInfo.id);
@@ -978,18 +978,32 @@ async function startServer() {
                 }
             }
 
+            // Apply ui-requested explicit advantage/disadvantage to standard D20 rolls
+            if (advantageMode === 'advantage') {
+                finalFormula = finalFormula.replace(/^(?:1d20|2d20k[hl]1)/i, '2d20kh1');
+            } else if (advantageMode === 'disadvantage') {
+                finalFormula = finalFormula.replace(/^(?:1d20|2d20k[hl]1)/i, '2d20kl1');
+            } else if (advantageMode === 'normal') {
+                finalFormula = finalFormula.replace(/^(?:2d20k[hl]1)/i, '1d20');
+            }
+
             const speaker = {
                 actor: actor._id || actor.id,
                 alias: actor.name
             };
 
-            const rollResult = await client.roll(finalFormula, 'Initiative', { speaker });
+            const chatMessage = await client.roll(finalFormula, 'Initiative', { speaker });
+            const total = parseInt(chatMessage.content);
+
+            if (isNaN(total)) {
+                throw new Error("Failed to parse roll total from chat message");
+            }
 
             await client.dispatchDocumentSocket('Combatant', 'update', {
-                updates: [{ _id: combatantId, initiative: rollResult.total }]
-            });
+                updates: [{ _id: combatantId, initiative: total }]
+            }, { type: 'Combat', id: combatId });
 
-            res.json({ success: true, initiative: rollResult.total });
+            res.json({ success: true, initiative: total });
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }

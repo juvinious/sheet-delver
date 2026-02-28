@@ -32,7 +32,7 @@ const ROLL_MODES = [
 
 /** Parse "1d20+4" → { die: "d20", modifier: 4 } */
 export function parseFormula(formula: string): { die: string; modifier: number } {
-    const match = formula.trim().match(/^(\d*d\d+)\s*([+-]\s*\d+)?$/i);
+    const match = formula.trim().match(/^(\d*d\d+)\s*([+-]\s*[-+]?\d+)?$/i);
     if (!match) return { die: formula, modifier: 0 };
     const die = match[1];
     const modStr = match[2]?.replace(/\s/g, '') ?? '0';
