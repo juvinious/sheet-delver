@@ -221,39 +221,6 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     private isConnecting = false;
 
-    private heartbeatInterval: NodeJS.Timeout | null = null;
-
-    private startHeartbeat() {
-        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-
-        // Check every 15s
-        this.heartbeatInterval = setInterval(async () => {
-            if (!this.isConnected) return;
-            try {
-                const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
-
-                const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
-
-                // Detection: True Setup OR Gray State (No CSRF & No Users on /join AND Generic Title)
-                if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
-                    logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
-                    this.worldState = 'setup';
-                    this.disconnect(); // Close socket
-                    this.connect();    // Restart loop (which will handle setup polling)
-                }
-            } catch (e) {
-                // Network blip? Ignore or count failures?
-                // For now, silent unless it persists. 
-            }
-        }, 5000); // 5s Check for faster detection
-    }
-
-    private stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
 
     async connect(): Promise<void> {
         // Only return if we are fully active. If we are in setup/offline, we should allow re-checks.
@@ -373,8 +340,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
                     logger.info('CoreSocket | World is ACTIVE. Fetching game data via socket...');
                     this.worldState = 'active';
+                    this.emit('connect');
 
-                    // Start Heartbeat to detect return to setup
                     this.startHeartbeat();
 
                     // 6. Fetch Game Data via Socket (The canonical bootstrap way)
@@ -412,8 +379,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         }
                         logger.info(`CoreSocket | Game Data Loaded via Socket (User: ${this.userId})`);
                     } else {
-                        logger.warn('CoreSocket | Failed to fetch game data via socket. Falling back to /game parsing.');
-                        this.fetchGameData().catch(e => logger.warn(`CoreSocket | Fallback gameData fetch failed: ${e}`));
+                        logger.error('CoreSocket | Failed to fetch game data via socket event (session.getData).');
                     }
 
                     clearTimeout(timeout);
@@ -531,70 +497,61 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
-    async fetchGameData(): Promise<any> {
-        if (this.gameDataCache) return this.gameDataCache;
 
-        logger.debug('CoreSocket | Fetching Game Data... Cookie present: ' + !!this.sessionCookie);
-        const baseUrl = this.getBaseUrl();
-        try {
-            const response = await fetch(`${baseUrl}/game`, {
-                headers: {
-                    'Cookie': this.sessionCookie || '',
-                    'User-Agent': 'SheetDelver/1.0'
+    private heartbeatInterval: NodeJS.Timeout | null = null;
+
+    private startHeartbeat() {
+        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+
+        // Required polling: Foundry does NOT emit a 'disconnect' socket event when dropping to setup
+        // The websocket stays alive. We must poll /api/status to know the world shut down.
+        this.heartbeatInterval = setInterval(async () => {
+            if (!this.isConnected) return;
+            try {
+                const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
+                const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
+
+                if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
+                    logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
+                    this.worldState = 'setup';
+                    this.disconnect();
+                    this.connect();
                 }
-            });
-
-            if (!response.ok) throw new Error(`Failed to fetch /game: ${response.status}`);
-            const html = await response.text();
-            // logger.debug(`CoreSocket | Fetched /game (${html.length} bytes). Parsing...`);
-
-            const parseMatch = html.match(/const gameData = JSON\.parse\('(.*?)'\);/);
-            if (parseMatch) {
-                try {
-                    this.gameDataCache = JSON.parse(parseMatch[1].replace(/\\'/g, "'"));
-                    logger.info('CoreSocket | Successfully parsed JSON.parse gameData.');
-                } catch (e) {
-                    logger.warn(`CoreSocket | Parse failed: ${e}`);
-                }
+            } catch (e) {
+                // Ignore transient network errors
             }
-
-            if (!this.gameDataCache) {
-                const literalMatch = html.match(/const gameData = ({[\s\S]*?});\s*$/m);
-                if (literalMatch) {
-                    this.gameDataCache = JSON.parse(literalMatch[1]);
-                    logger.info('CoreSocket | Successfully parsed literal gameData.');
-                }
-            }
-
-            if (!this.gameDataCache) {
-                logger.warn('CoreSocket | Could not extract gameData from HTML.');
-                // Log a snippet of HTML for debugging (Info level explicitly)
-                logger.info(`CoreSocket | HTML Snippet (First 500chars): ${html.substring(0, 500)}`);
-            }
-
-            if (this.gameDataCache) {
-                const systemId = this.gameDataCache.system?.id || this.gameDataCache.system?.name;
-                logger.info(`CoreSocket | Extracted system ID: ${systemId}`);
-
-                if (systemId) {
-                    await this.loadSystemAdapter(systemId);
-                }
-
-                // Populate Users
-                if (this.gameDataCache.users) {
-                    this.gameDataCache.users.forEach((u: any) => this.userMap.set(u._id, u));
-                }
-
-                logger.info(`CoreSocket | Game Data Loaded (System: ${systemId})`);
-                return this.gameDataCache;
-            }
-        } catch (e) {
-            logger.error(`CoreSocket | Failed to fetch gameData via /game: ${e}`);
-        }
-        return null;
+        }, 5000);
     }
 
-    // --- Socket Actions ---
+    private stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
+    public disconnect() {
+        this.stopHeartbeat();
+        this.isConnecting = false;
+        if (this.socket) {
+            this.socket.disconnect();
+            this.socket = null;
+            this.isSocketConnected = false;
+
+            // Only drop to offline if we haven't explicitly transitioned to setup
+            if (this.worldState !== 'setup') {
+                this.worldState = 'offline';
+            }
+
+            this.gameDataCache = null;
+            this.sceneDataCache = null;
+            this.userMap.clear();
+            logger.info('CoreSocket | Explicitly disconnected.');
+        }
+    }
+
+
+
 
     // Rename to avoid conflict with EventEmitter
     public async emitSocketEvent<T>(event: string, payload: any, timeoutMs: number = 5000): Promise<T> {
@@ -767,7 +724,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
 
         try {
-            const game = this.gameDataCache || await this.fetchGameData();
+            const game = this.gameDataCache;
             if (!game) {
                 logger.warn('CoreSocket | No gameData available for discovery.');
                 return [];
@@ -777,8 +734,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
             const packs = new Map<string, any>();
 
-            // 0. Top-level Packs (v13 prefers this)
-            // Use this as the definitive list of IDs
+            // 0. Top-level Packs (v12 style)
             if (Array.isArray(game.packs)) {
                 game.packs.forEach((p: any) => {
                     const id = p.id || p._id;
@@ -786,16 +742,24 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 });
             }
 
-            // 1. Fallback Discovery (Aggregate from metadata if top-level packs missing)
+            // 1. Fallback Discovery (Aggregate from metadata)
             if (!onlyGamePacks) {
+                // In v13 socket payloads ('world'), packs are usually nested here instead of top-level
+                const worldPacks = game.world?.packs || [];
+                const systemPacks = game.system?.packs || [];
+                const modulePacks = Array.isArray(game.modules)
+                    ? game.modules.flatMap((m: any) => (m.packs || []).map((p: any) => ({ ...p, moduleId: m.id })))
+                    : [];
+
                 const fallbackPacks = [
-                    ...(game.world?.packs || []).map((p: any) => ({ ...p, source: 'world' })),
-                    ...(game.system?.packs || []).map((p: any) => ({ ...p, source: 'system' })),
-                    ...(game.modules || []).flatMap((m: any) => (m.packs || []).map((p: any) => ({ ...p, source: 'module', moduleId: m.id })))
+                    ...worldPacks.map((p: any) => ({ ...p, source: 'world' })),
+                    ...systemPacks.map((p: any) => ({ ...p, source: 'system' })),
+                    ...modulePacks.map((p: any) => ({ ...p, source: 'module' }))
                 ];
 
                 fallbackPacks.forEach((p: any) => {
-                    const id = p.id || p._id || (p.moduleId ? `${p.moduleId}.${p.name}` : `${game.system.id}.${p.name}`);
+                    // Try to derive a complete ID if only 'name' exists
+                    const id = p.id || p._id || (p.moduleId ? `${p.moduleId}.${p.name}` : `${game.system?.id || 'system'}.${p.name}`);
                     if (!packs.has(id)) packs.set(id, p);
                 });
             }

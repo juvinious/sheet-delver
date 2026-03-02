@@ -318,126 +318,43 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // --- Main Polling Loop ---
-
+    // --- App Socket & State Initialization ---
     useEffect(() => {
-        const determineStep = (data: any, currentStep: string) => {
-            const status = data.system?.status;
-            const isAuthenticated = data.isAuthenticated || false;
+        let isMounted = true;
 
-            if (status !== 'active') return 'setup';
-            if (data.initialized === false) return 'initializing';
-            if (currentStep === 'authenticating') {
-                return isAuthenticated ? 'dashboard' : 'authenticating';
-            }
-
-            const worldTitle = data.system?.worldTitle;
-            const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
-
-            if (!hasCompleteWorldData) return 'startup';
-            return isAuthenticated ? 'dashboard' : 'login';
-        };
-
-        const interval = setInterval(async () => {
+        const initStatus = async () => {
             try {
                 const headers: any = {};
                 if (token) headers['Authorization'] = `Bearer ${token}`;
 
+                // Fetch initial status to seed specific user data like currentUserId
                 const res = await fetch('/api/status', { headers, cache: 'no-store' });
                 if (!res.ok) return;
 
                 const data = await res.json();
+                if (!isMounted) return;
 
-                // Sync Log Level
-                if (data.debug?.level !== undefined) {
-                    logger.setLevel(data.debug.level);
-                }
+                if (data.currentUserId) setCurrentUserId(data.currentUserId);
 
-                if (data.url && typeof window !== 'undefined') {
-                    // Sync foundryUrl to config if not set
-                    const { setFoundryUrl, foundryUrl } = (window as any)._sd_config_actions || {};
-                    if (setFoundryUrl && foundryUrl !== data.url) setFoundryUrl(data.url);
-                }
-
-                if (data.connected && data.system) {
-                    // Check for world change BEFORE updating any state
-                    const currentWorldId = data.worldId || null;
-                    if (lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
-                        logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Clearing token.`);
-                        setToken(null);
-                        setLastWorldId(currentWorldId);
-                    } else if (currentWorldId && !lastWorldId) {
-                        // First time seeing a world ID
-                        setLastWorldId(currentWorldId);
-                    }
-
-                    if (!isEqual(system, data.system)) setSystem(data.system);
-                    if (!isEqual(users, data.users)) setUsers(data.users || []);
-                    if (currentUserId !== data.currentUserId) setCurrentUserId(data.currentUserId);
-                    if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
-
-                    // Actor Sync
-                    const newToken = data.system?.actorSyncToken;
-                    if (newToken && newToken !== lastActorSyncTokenRef.current) {
-                        lastActorSyncTokenRef.current = newToken;
-                        if (data.isAuthenticated) fetchActors();
-                    }
-
-                    const targetStep = determineStep(data, step);
-                    if (step !== targetStep) {
-                        // Check if we are transitioning TO setup/offline (World Shutdown)
-                        if (targetStep === 'setup' && step !== 'setup') {
-                            logger.warn('FoundryProvider | World Shutdown detected. Clearing session.');
-                            setToken(null);
-                            setLastWorldId(null); // Reset world tracking
-                        }
-
-                        setStep(targetStep as any, 'polling', `Status change: ${targetStep}`);
-                        if (targetStep === 'dashboard') fetchActors();
-                    }
-                } else {
-                    if (step !== 'setup') {
-                        setStep('setup' as any, 'polling', 'Disconnected');
-                        // Also clear token on disconnect to ensure fresh login
-                        if (token) setToken(null);
-                        setLastWorldId(null); // Reset world tracking on disconnect
-                    }
-                    if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
-                }
-
-                // Shared Content Polling (Consolidated)
-                if (data.isAuthenticated && token) {
+                // Fetch initial shared content
+                if (token) {
                     const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
                     if (scRes.ok) {
                         const scData = await scRes.json();
-                        if (!isEqual(sharedContent, scData)) setSharedContent(scData);
+                        setSharedContent(scData);
                     }
                 }
             } catch (e) {
-                // Network error - assume disconnected
-                if (step !== 'setup') {
-                    setStep('setup', 'polling', 'Network Error');
-                }
+                logger.error('FoundryProvider | Initial status fetch failed', e);
             }
-        }, 3000);
+        };
 
-        return () => clearInterval(interval);
-    }, [step, token, fetchActors, setStep, system, users, currentUserId, sharedContent, appVersion]);
+        initStatus();
 
-    // App Socket Connection for Real-time Sync
-    useEffect(() => {
-        if (!token) {
-            if (appSocket) {
-                appSocket.disconnect();
-                setAppSocket(null);
-            }
-            return;
-        }
-
-        if (appSocket) return;
-
+        // Connect socket unconditionally to receive global system statuses (Guest Mode)
+        // If auth token is present, server joins us to the 'authenticated' room
         const socket = io({
-            auth: { token },
+            auth: token ? { token } : {},
             reconnectionAttempts: 5,
             transports: ['polling', 'websocket']
         });
@@ -453,10 +370,97 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         setAppSocket(socket);
 
         return () => {
+            isMounted = false;
             socket.disconnect();
             setAppSocket(null);
         };
-    }, [token]); // Remove appSocket to prevent infinite loop
+    }, [token]);
+
+    // --- Real-time Socket Status Sync ---
+    useEffect(() => {
+        if (!appSocket) return;
+
+        const determineStep = (data: any, currentStep: string) => {
+            const status = data.system?.status || (data.connected ? 'active' : 'offline');
+            const isAuthenticated = !!token;
+
+            if (status === 'setup') return 'setup';
+            if (!data.connected) return 'initializing';
+            if (status === 'offline') return 'initializing'; // Still trying to connect
+            if (status === 'startup') return 'startup';
+            if (status !== 'active') return 'setup';
+
+            if (currentStep === 'authenticating') {
+                return isAuthenticated ? 'dashboard' : 'authenticating';
+            }
+
+            const worldTitle = data.system?.worldTitle;
+            const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
+
+            if (!hasCompleteWorldData) return 'startup';
+            return isAuthenticated ? 'dashboard' : 'login';
+        };
+
+        const handleSystemStatus = (data: any) => {
+            try {
+                if (data.debug?.level !== undefined) {
+                    logger.setLevel(data.debug.level);
+                }
+
+                if (data.url && typeof window !== 'undefined') {
+                    const { setFoundryUrl, foundryUrl } = (window as any)._sd_config_actions || {};
+                    if (setFoundryUrl && foundryUrl !== data.url) setFoundryUrl(data.url);
+                }
+
+                // Treat both active and offline as valid payloads for determining step
+                if (data.system) {
+                    const currentWorldId = data.worldId || null;
+                    if (data.connected && lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
+                        logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Clearing token.`);
+                        if (token) setToken(null);
+                        setLastWorldId(currentWorldId);
+                    } else if (data.connected && currentWorldId && !lastWorldId) {
+                        setLastWorldId(currentWorldId);
+                    }
+
+                    if (data.connected && !isEqual(system, data.system)) setSystem(data.system);
+                    if (data.connected && !isEqual(users, data.users)) setUsers(data.users || []);
+                    if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
+
+                    const newToken = data.system?.actorSyncToken;
+                    if (data.connected && newToken && newToken !== lastActorSyncTokenRef.current) {
+                        lastActorSyncTokenRef.current = newToken;
+                        if (token) fetchActors();
+                    }
+
+                    const targetStep = determineStep(data, step);
+                    if (step !== targetStep) {
+                        if (targetStep === 'setup' && step !== 'setup') {
+                            logger.warn('FoundryProvider | World explicitly in Setup mode. Clearing session.');
+                            if (token) setToken(null);
+                            setLastWorldId(null);
+                        }
+                        setStep(targetStep as any, 'socket', `Status change: ${targetStep}`);
+                        if (targetStep === 'dashboard' && data.connected) fetchActors();
+                    }
+                }
+            } catch (e) {
+                logger.error('FoundryProvider | Error handling system status:', e);
+            }
+        };
+
+        const handleSharedContentUpdate = (scData: any) => {
+            if (!isEqual(sharedContent, scData)) setSharedContent(scData);
+        };
+
+        appSocket.on('systemStatus', handleSystemStatus);
+        appSocket.on('sharedContentUpdate', handleSharedContentUpdate);
+
+        return () => {
+            appSocket.off('systemStatus', handleSystemStatus);
+            appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
+        };
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, lastWorldId]);
 
     // Chat and Combat Real-time Sync
     useEffect(() => {

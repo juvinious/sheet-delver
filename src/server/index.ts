@@ -30,24 +30,29 @@ async function startServer() {
         }
     });
 
-    // Secure Socket.io Middleware
+    // Setup Socket.io Middleware
     io.use(async (socket, next) => {
         const token = socket.handshake.auth.token;
         if (!token) {
-            return next(new Error('Unauthorized: Missing Session Token'));
+            // Unauthenticated connection (Guest) - only receives global system status
+            return next();
         }
 
         try {
             const session = await sessionManager.getOrRestoreSession(token);
             if (!session || !session.client.userId) {
-                return next(new Error('Unauthorized: Invalid or Expired Session'));
+                // Invalid token, but still allow guest connection
+                return next();
             }
             // Attach session/client to socket for later use
             (socket as any).userSession = session;
             (socket as any).foundryClient = session.client;
+
+            // Join authenticated room for sensitive updates (actors, chat, combat, shared content)
+            socket.join('authenticated');
             next();
         } catch (err) {
-            next(new Error('Internal Authentication Error'));
+            next(); // Degrade to guest
         }
     });
 
@@ -55,7 +60,9 @@ async function startServer() {
 
     // Handle App Socket Connections
     io.on('connection', (socket) => {
-        logger.debug(`App Socket | Client connected: ${socket.id}`);
+        logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
+        socket.emit('systemStatus', getSystemStatusPayload());
+
         socket.on('disconnect', () => {
             logger.debug(`App Socket | Client disconnected: ${socket.id}`);
         });
@@ -102,21 +109,27 @@ async function startServer() {
 
         if (systemClient.worldState !== 'active') return;
 
-        // Implementation Plan: Real-time Combat Sync
-        // Listen for combat updates from Foundry and broadcast to all connected app clients
+        // Implementation Plan: Real-time Sync
+        // Broadcast sensitive data only to authenticated clients
         systemClient.on('combatUpdate', (data: any) => {
             logger.debug('Core Service | Syncing combat update to clients...');
-            io.emit('combatUpdate', data);
+            io.to('authenticated').emit('combatUpdate', data);
         });
 
         systemClient.on('chatUpdate', (data: any) => {
             logger.debug('Core Service | Syncing chat update to clients...');
-            io.emit('chatUpdate', data);
+            io.to('authenticated').emit('chatUpdate', data);
         });
 
         systemClient.on('actorUpdate', (data: any) => {
             logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
-            io.emit('actorUpdate', data);
+            io.to('authenticated').emit('actorUpdate', data);
+        });
+
+        systemClient.on('sharedContentUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing shared content update to clients...');
+            // In v13, shared content might need to reach specific users, but for now we broadcast to all authenticated
+            io.to('authenticated').emit('sharedContentUpdate', data);
         });
 
         logger.info('Core Service | Initializing Backend Services...');
@@ -142,7 +155,10 @@ async function startServer() {
         })();
     });
 
-    await sessionManager.initialize();
+    // Initialize in background so Express can bind port immediately and answer /api/status 
+    sessionManager.initialize().catch(err => {
+        logger.error(`Core Service | SessionManager initialization failed: ${err.message}`);
+    });
 
     // --- Middleware: Session Authentication ---
     const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -206,13 +222,95 @@ async function startServer() {
     const appRouter = express.Router();
 
 
+    // --- Global Status Payload Generator ---
+    const getSystemStatusPayload = () => {
+        const systemClient = sessionManager.getSystemClient();
+        let system: any = {
+            id: null,
+            status: systemClient.worldState,
+            worldTitle: 'Reconnecting...'
+        };
+        let users = [];
+        try {
+            const gameData = systemClient.getGameData();
+            if (gameData) {
+                const usersList = gameData.users || [];
+                const activeCount = usersList.filter((u: any) => u.active).length;
+                const totalCount = usersList.length;
+
+                system = {
+                    ...gameData.system,
+                    appVersion: config.app.version,
+                    worldTitle: gameData.world?.title || 'Foundry VTT',
+                    worldDescription: gameData.world?.description,
+                    worldBackground: systemClient.resolveUrl(gameData.world?.background),
+                    background: systemClient.resolveUrl(
+                        gameData.system?.background ||
+                        gameData.system?.worldBackground ||
+                        (() => {
+                            const sceneData = (systemClient as any).sceneDataCache;
+                            return sceneData?.NUEDEFAULTSCENE0?.background?.src;
+                        })()
+                    ),
+                    nextSession: gameData.world?.nextSession,
+                    status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
+                    actorSyncToken: (systemClient as any).lastActorChange,
+                    users: { active: activeCount, total: totalCount }
+                };
+                users = usersList;
+            } else {
+                system.appVersion = config.app.version;
+            }
+
+            if (system.id) {
+                const sid = system.id.toLowerCase();
+                const adapter = getAdapter(sid);
+                if (adapter && typeof (adapter as any).getConfig === 'function') {
+                    const cfg = (adapter as any).getConfig();
+                    if (cfg) system.config = cfg;
+                }
+            }
+        } catch { /* Suppress */ }
+
+        // Centralized User Sanitization Helper
+        const sanitizeUser = (u: any, client: any) => ({
+            _id: u._id || u.id,
+            name: u.name,
+            role: u.role,
+            isGM: u.role >= UserRole.ASSISTANT,
+            active: u.active,
+            color: u.color,
+            characterId: u.character,
+            img: client.resolveUrl(u.avatar || u.img)
+        });
+
+        const sanitizedUsers = users?.length > 0 ? users.map((u: any) => sanitizeUser(u, systemClient)) : [];
+
+        return {
+            connected: systemClient.isConnected,
+            worldId: systemClient.getGameData()?.world?.id || null,
+            initialized: sessionManager.isCacheReady(),
+            users: sanitizedUsers,
+            system: system,
+            url: config.foundry.url,
+            appVersion: config.app.version,
+            debug: config.debug
+        };
+    };
+
+    // --- Backend Status Polling Loop ---
+    setInterval(() => {
+        const payload = getSystemStatusPayload();
+        io.emit('systemStatus', payload);
+    }, 4000);
+
     const statusHandler = async (req: express.Request, res: express.Response) => {
         try {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
 
-            // Check if Request has a valid session
+            // Check Auth for REST endpoint response
             let isAuthenticated = false;
             let userSession = null;
             const authHeader = req.headers.authorization;
@@ -224,116 +322,20 @@ async function startServer() {
                 }
             }
 
-            // Source of Truth: The system client (service account) always tracks world state
-            const systemClient = sessionManager.getSystemClient();
-
-            // Authentication: Only the user session determines if we are logged in
-            isAuthenticated = !!(userSession && userSession.client.userId);
-
-            let system: any = {
-                id: null,
-                status: systemClient.worldState,
-                worldTitle: 'Reconnecting...'
-            };
-            let users = [];
-            try {
-                // Fetch global state from system client
-                const gameData = systemClient.getGameData();
-                if (gameData) {
-                    const usersList = gameData.users || [];
-                    const activeCount = usersList.filter((u: any) => u.active).length;
-                    const totalCount = usersList.length;
-
-                    system = {
-                        ...gameData.system,
-                        appVersion: config.app.version,
-                        worldTitle: gameData.world?.title || 'Foundry VTT',
-                        worldDescription: gameData.world?.description,
-                        worldBackground: systemClient.resolveUrl(gameData.world?.background),
-                        background: systemClient.resolveUrl(
-                            gameData.system?.background ||
-                            gameData.system?.worldBackground ||
-                            (() => {
-                                const sceneData = (systemClient as any).sceneDataCache;
-                                return sceneData?.NUEDEFAULTSCENE0?.background?.src;
-                            })()
-                        ),
-                        nextSession: gameData.world?.nextSession,
-                        status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
-                        actorSyncToken: (systemClient as any).lastActorChange,
-                        users: {
-                            active: activeCount,
-                            total: totalCount
-                        }
-                    };
-                    users = usersList;
-                } else {
-                    system.appVersion = config.app.version;
-                }
-
-                // Add adapter config to system info
-                if (system.id) {
-                    const sid = system.id.toLowerCase();
-                    const adapter = getAdapter(sid);
-                    if (adapter && typeof (adapter as any).getConfig === 'function') {
-                        const config = (adapter as any).getConfig();
-                        if (config) system.config = config;
-                    }
-                }
-            } catch {
-                // Suppress expected transient errors
-            }
-
-            // Global connected status comes from system client
-            const connected = systemClient.isConnected;
-
             if (process.env.NODE_ENV !== 'production') {
+                const systemClient = sessionManager.getSystemClient();
                 const sysState = { connected: systemClient.isConnected, worldState: systemClient.worldState };
                 const userState = userSession ? { connected: userSession.client.isConnected, userId: userSession.client.userId } : null;
-                logger.debug(`Status Handler | Auth: ${isAuthenticated} | World: ${system?.status}`);
-                logger.debug(`Status Handler | System: conn=${sysState.connected}, state=${sysState.worldState}`);
-                if (userState) {
-                    logger.debug(`Status Handler | User: conn=${userState.connected}, user=${userState.userId}`);
-                }
+                // Quieter Dev Logging to prove backend loop is working instead of handling thousands of requests
+                // logger.debug(`Status REST | Auth: ${isAuthenticated} | World: ${sysState.worldState}`);
             }
 
-            // Centralized User Sanitization Helper
-            // Ensures consistent data shape for PlayerList and other UI components
-            const sanitizeUser = (u: any, client: any) => {
-                return {
-                    _id: u._id || u.id,
-                    name: u.name,
-                    role: u.role,
-                    isGM: u.role >= UserRole.ASSISTANT, // Roles 3 (Assistant) and 4 (GM)
-                    active: u.active,
-                    color: u.color,
-                    characterId: u.character,
-                    img: client.resolveUrl(u.avatar || u.img)
-                };
-            }
-
-            // Fetch authoritative user list from System Client
-            let sanitizedUsers: any[] = [];
-            if (users && users.length > 0) {
-                // Map using the centralized helper
-                // Note: 'users' passed into statusHandler might be raw from getGameData()
-                // We prefer fetching fresh if possible, but statusHandler uses cached gameData for speed.
-                // Let's assume 'users' is raw data.
-                // We need a client context to resolve URLs. System client is best.
-                sanitizedUsers = users.map((u: any) => sanitizeUser(u, systemClient));
-            }
+            const basePayload = getSystemStatusPayload();
 
             res.json({
-                connected,
+                ...basePayload,
                 isAuthenticated,
-                currentUserId: userSession?.userId || null,
-                worldId: systemClient.getGameData()?.world?.id || null,
-                initialized: sessionManager.isCacheReady(),
-                users: sanitizedUsers,
-                system: system,
-                url: config.foundry.url,
-                appVersion: config.app.version,
-                debug: config.debug
+                currentUserId: userSession?.userId || null
             });
         } catch (error: any) {
             logger.error(`Status Handler Error: ${error.message}`);

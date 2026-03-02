@@ -49,51 +49,52 @@ export abstract class SocketBase extends EventEmitter {
     }
 
     protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, pageTitle: string }> {
-        logger.info(`[${this.constructor.name}] Performing Handshake (GET /join)...`);
-        const joinResponse = await fetch(`${baseUrl}/join`, {
-            headers: { 'User-Agent': 'SheetDelver/1.0' }
+        logger.info(`[${this.constructor.name}] Performing Handshake (GET /api/status)...`);
+
+        // 1. Fetch JSON status instead of HTML /join
+        const statusRes = await fetch(`${baseUrl}/api/status`, {
+            headers: { 'Accept': 'application/json', 'User-Agent': 'SheetDelver/1.0' }
         });
 
-        if (!joinResponse.ok) {
-            throw new Error(`Handshake failed with status ${joinResponse.status}`);
+        if (!statusRes.ok) {
+            throw new Error(`Handshake failed with status ${statusRes.status}`);
         }
 
-        const setCookie = typeof (joinResponse.headers as any).getSetCookie === 'function'
-            ? (joinResponse.headers as any).getSetCookie()
-            : joinResponse.headers.get('set-cookie');
-        this.updateCookies(setCookie);
+        const status = await statusRes.json();
 
-        const html = await joinResponse.text();
+        // If the backend returned a set-cookie (less likely on /api/status, but just in case)
+        const setCookie = typeof (statusRes.headers as any).getSetCookie === 'function'
+            ? (statusRes.headers as any).getSetCookie()
+            : statusRes.headers.get('set-cookie');
 
-        const titleMatch = html.match(/<title>(.*?)<\/title>/);
-        const pageTitle = titleMatch?.[1] || '';
+        if (setCookie) {
+            this.updateCookies(setCookie);
+        }
 
-        // Check for Setup Mode (Redirect, HTML ID, or specific visual indicators)
-        const isSetup = joinResponse.url.includes('/setup') ||
-            joinResponse.url.includes('/auth') ||
-            html.includes('id="setup"') ||
-            html.includes('Administrator Access Required') ||
-            html.includes('There is currently no active game session') ||
-            pageTitle.includes('Foundry Virtual Tabletop');
+        // 2. Derive States from JSON
+        const isSetupMatch = !status.active;
+        const pageTitle = status.world || (isSetupMatch ? 'Setup' : 'Foundry Virtual Tabletop');
+        const csrfToken: string | null = null; // No longer needed or scraped in V13 programmatic flow
 
-        // Parse CSRF
-        let csrfToken: string | null = null;
-        const csrfMatch = html.match(/csrfToken["']\s*:\s*["']([^"']+)["']/) ||
-            html.match(/name="csrf-token" content="(.*?)"/);
-        if (csrfMatch) csrfToken = csrfMatch[1];
-        logger.debug(`[${this.constructor.name}] CSRF Match: ${csrfToken ? 'Success' : 'Failed'}`);
+        logger.debug(`[${this.constructor.name}] Handshake Complete. Active: ${status.active}, World: ${pageTitle}`);
 
-        return { csrfToken, isSetupMatch: isSetup, pageTitle };
+        return { csrfToken, isSetupMatch, pageTitle };
     }
 
     protected async performLogin(baseUrl: string, userId: string, csrfToken: string | null): Promise<void> {
         logger.info(`[${this.constructor.name}] Performing POST Login (User: ${userId})...`);
-        const payload = {
+
+        // V13 allows programmatic login to /join via application/json without a CSRF token
+        const payload: any = {
             userid: userId,
             password: this.config.password || '',
-            action: 'join',
-            'csrf-token': csrfToken
+            action: 'join'
         };
+
+        // If the server explicitly required one from an older caching flow, pass it (usually ignored in v13)
+        if (csrfToken) {
+            payload['csrf-token'] = csrfToken;
+        }
 
         const loginResponse = await fetch(`${baseUrl}/join`, {
             method: 'POST',
