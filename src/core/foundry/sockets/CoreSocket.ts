@@ -230,12 +230,12 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         this.heartbeatInterval = setInterval(async () => {
             if (!this.isConnected) return;
             try {
-                const { isSetupMatch, csrfToken, users, pageTitle } = await this.performHandshake(this.getBaseUrl());
+                const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
 
                 const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
 
                 // Detection: True Setup OR Gray State (No CSRF & No Users on /join AND Generic Title)
-                if (isSetupMatch || ((!csrfToken && users.length === 0) && isGenericOrErrorTitle)) {
+                if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
                     logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
                     this.worldState = 'setup';
                     this.disconnect(); // Close socket
@@ -266,14 +266,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         logger.info(`CoreSocket | Connecting to ${baseUrl}...`);
 
         try {
-            // 1. Handshake & CSRF & Scraped Users
-            const { csrfToken, isSetupMatch, users: scrapedUsers, pageTitle } = await this.performHandshake(baseUrl);
+            // 1. Handshake & CSRF
+            const { csrfToken, isSetupMatch, pageTitle } = await this.performHandshake(baseUrl);
 
-            // Detection: True Setup OR Gray State (No CSRF & No Users on /join AND Title indicates failure/generic)
-            // If the title is a specific world name, we should try to connect even if scraping failed.
+            // Detection: True Setup OR Gray State (No CSRF AND Title indicates failure/generic)
+            // If the title is a specific world name, we should try to connect.
             const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
 
-            if (isSetupMatch || ((!csrfToken && scrapedUsers.length === 0) && isGenericOrErrorTitle)) {
+            if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
                 logger.info(`CoreSocket | Detected Setup/Gray State (Title="${pageTitle}"). World is closed. Retrying in 5s...`);
                 this.worldState = 'setup';
                 setTimeout(() => this.connect(), 5000);
@@ -298,10 +298,6 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 if (joinData.users) {
                     joinData.users.forEach((u: any) => this.userMap.set(u._id, u));
                 }
-            } else if (scrapedUsers.length > 0) {
-                logger.info(`CoreSocket | Probe failed, but found ${scrapedUsers.length} users via Scraping.`);
-                this.worldState = 'active'; // Assume active if we have users
-                scrapedUsers.forEach((u: any) => this.userMap.set(u._id, u));
             } else {
                 logger.warn('CoreSocket | Discovery failed completely. No world data or users found. Retrying in 5s...');
                 this.worldState = 'offline';

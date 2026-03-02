@@ -48,7 +48,7 @@ export abstract class SocketBase extends EventEmitter {
         this.sessionCookie = Array.from(this.cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
-    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, users: any[], pageTitle: string }> {
+    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, pageTitle: string }> {
         logger.info(`[${this.constructor.name}] Performing Handshake (GET /join)...`);
         const joinResponse = await fetch(`${baseUrl}/join`, {
             headers: { 'User-Agent': 'SheetDelver/1.0' }
@@ -76,9 +76,6 @@ export abstract class SocketBase extends EventEmitter {
             html.includes('There is currently no active game session') ||
             pageTitle.includes('Foundry Virtual Tabletop');
 
-        //logger.debug(`[${this.constructor.name}] Handshake Analysis: URL=${joinResponse.url}, Title=${pageTitle}, isSetup=${isSetup}`);
-        //logger.debug(`[${this.constructor.name}] HTML Snippet: ${html.substring(0, 150)}`);
-
         // Parse CSRF
         let csrfToken: string | null = null;
         const csrfMatch = html.match(/csrfToken["']\s*:\s*["']([^"']+)["']/) ||
@@ -86,17 +83,7 @@ export abstract class SocketBase extends EventEmitter {
         if (csrfMatch) csrfToken = csrfMatch[1];
         logger.debug(`[${this.constructor.name}] CSRF Match: ${csrfToken ? 'Success' : 'Failed'}`);
 
-        // Scrape Users as Fallback
-        const users: any[] = [];
-        // Support attributes like 'disabled' or different quotes
-        const userRegex = /<option\s+value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
-        let match;
-        while ((match = userRegex.exec(html)) !== null) {
-            users.push({ _id: match[1], name: match[2].trim() });
-        }
-        logger.debug(`[${this.constructor.name}] Scraped ${users.length} users from /join HTML.`);
-
-        return { csrfToken, isSetupMatch: isSetup, users, pageTitle };
+        return { csrfToken, isSetupMatch: isSetup, pageTitle };
     }
 
     protected async performLogin(baseUrl: string, userId: string, csrfToken: string | null): Promise<void> {

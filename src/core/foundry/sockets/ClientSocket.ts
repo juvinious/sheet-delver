@@ -23,8 +23,8 @@ export class ClientSocket extends SocketBase {
         try {
             const restoredCookie = this.isRestored ? this.sessionCookie : null;
 
-            // 1. Handshake & CSRF & Scraped Users
-            const { csrfToken, isSetupMatch, users: scrapedUsers } = await this.performHandshake(baseUrl);
+            // 1. Handshake & CSRF
+            const { csrfToken, isSetupMatch } = await this.performHandshake(baseUrl);
 
             if (this.isRestored && restoredCookie) {
                 this.updateCookies(restoredCookie);
@@ -35,12 +35,12 @@ export class ClientSocket extends SocketBase {
                 throw new Error("Cannot connect ClientSocket in Setup Mode");
             }
 
-            // 2. Identification (via Discovery Probe or Scraped Fallback)
+            // 2. Identification (via Discovery Probe or CoreSocket)
             if (!this.userId) {
                 logger.info('ClientSocket | Identifying user ID...');
                 // Prefer user map from CoreSocket if available
                 const coreData = this.coreSocket.getGameData();
-                const users = coreData?.users || (await this.probeWorldState(baseUrl))?.users || scrapedUsers;
+                const users = coreData?.users || (await this.probeWorldState(baseUrl))?.users;
 
                 const user = users?.find((u: any) => u.name === this.config.username);
                 if (user) {
