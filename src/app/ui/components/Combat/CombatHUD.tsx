@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFoundry, Combat, Combatant } from '@/app/ui/context/FoundryContext';
 import { getModule } from '@/modules/core/registry';
-import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SkipForward, SkipBack } from 'lucide-react';
 import RollDialog from '../RollDialog';
 
 export default function CombatHUD() {
@@ -11,22 +11,29 @@ export default function CombatHUD() {
     const [selectedCombatIndex, setSelectedCombatIndex] = useState(0);
     const [isMinimized, setIsMinimized] = useState(false);
 
+    // Optimistic State
+    const [optimisticCombat, setOptimisticCombat] = useState<Combat | null>(null);
+
     // Roll Dialog State
     const [isRollDialogOpen, setIsRollDialogOpen] = useState(false);
     const [rollCommand, setRollCommand] = useState<any>(null); // Type, title, actor, etc.
+
+    // Sync optimistic state with actual state when it arrives
+    useEffect(() => {
+        setOptimisticCombat(null);
+    }, [combats]);
 
     // Hide if not fully in game
     if (['init', 'setup', 'authenticating', 'login', 'startup', 'initializing'].includes(step)) return null;
 
     // Filter to active combats that have started (round > 0)
-    // Actually, we want to see combats even if round === 0 to roll initiative.
-    // The previous logic filtered out round === 0. We need it so we can roll init.
     const activeCombats = combats?.filter(c => ((c as any).scene !== null || (c as any).active === true)) || [];
 
     if (activeCombats.length === 0) return null;
 
     // Safety bounds for selected index
     const activeCombat = activeCombats[Math.min(selectedCombatIndex, activeCombats.length - 1)];
+    const displayCombat = optimisticCombat || activeCombat;
 
     const handleInitiativeClick = (combatant: any) => {
         setRollCommand({
@@ -50,14 +57,13 @@ export default function CombatHUD() {
                 'Authorization': `Bearer ${token}`
             };
 
-            // Calculate formula modification (simplistic for now: just add bonuses to the fallback if they provided them)
+            // Calculate formula modification
             let formulaSuffix = '';
             const totalBonus = (options.abilityBonus || 0) + (options.itemBonus || 0) + (options.talentBonus || 0);
             if (totalBonus > 0) formulaSuffix = `+${totalBonus}`;
             else if (totalBonus < 0) formulaSuffix = `${totalBonus}`;
 
-            // If they manually set something, use that as the formula.
-            const formula = options.manualValue !== undefined ? `${options.manualValue}` : undefined; // Backend handles advantage logic if formula undefined. But we can't easily pass 'advantage' mode cleanly without complex parsing. For now, pass undefined so backend uses default adapter logic. If manual, pass it.
+            const formula = options.manualValue !== undefined ? `${options.manualValue}` : undefined;
 
             await fetch(`/api/combats/${rollCommand.combatId}/combatants/${rollCommand.combatantId}/roll-initiative`, {
                 method: 'POST',
@@ -68,32 +74,105 @@ export default function CombatHUD() {
                 })
             });
             setRollCommand(null);
-            // The socket will push the update, which triggers a re-render.
         } catch (error) {
             console.error('Failed to roll initiative:', error);
         }
     };
 
+    const handleNextTurn = async () => {
+        try {
+            if (!token || !activeCombat) return;
+
+            // Optimistic Update
+            const sorted = [...(activeCombat.combatants || [])].sort((a: any, b: any) => {
+                const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+                const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+                return (ib - ia) || ((a._id || a.id) > (b._id || b.id) ? 1 : -1);
+            });
+
+            let nextRound = activeCombat.round || 0;
+            let nextTurn = (activeCombat.turn ?? -1);
+
+            if (nextRound === 0) {
+                nextRound = 1;
+                nextTurn = 0;
+            } else {
+                nextTurn += 1;
+                if (nextTurn >= sorted.length) {
+                    nextRound += 1;
+                    nextTurn = 0;
+                }
+            }
+
+            setOptimisticCombat({ ...activeCombat, round: nextRound, turn: nextTurn });
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+            await fetch(`/api/combats/${activeCombat._id || activeCombat.id}/next-turn`, {
+                method: 'POST',
+                headers
+            });
+        } catch (error) {
+            setOptimisticCombat(null);
+            console.error('Failed to advance turn:', error);
+        }
+    };
+
+    const handlePreviousTurn = async () => {
+        try {
+            if (!token || !activeCombat) return;
+
+            // Optimistic Update
+            let prevRound = activeCombat.round || 0;
+            let prevTurn = activeCombat.turn ?? 0;
+
+            if (prevRound === 0) {
+                // do nothing
+            } else if (prevTurn === 0) {
+                if (prevRound > 1) {
+                    prevRound -= 1;
+                    prevTurn = (activeCombat.combatants?.length || 1) - 1;
+                } else {
+                    prevRound = 0;
+                    prevTurn = 0;
+                }
+            } else {
+                prevTurn -= 1;
+            }
+
+            setOptimisticCombat({ ...activeCombat, round: prevRound, turn: prevTurn });
+
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+            await fetch(`/api/combats/${activeCombat._id || activeCombat.id}/previous-turn`, {
+                method: 'POST',
+                headers
+            });
+        } catch (error) {
+            setOptimisticCombat(null);
+            console.error('Failed to rewind turn:', error);
+        }
+    };
+
     // Derive sorted combatants for the queue
-    const sortedCombatants = [...(activeCombat?.combatants || [])].sort((a: any, b: any) => {
+    const sortedCombatants = [...(displayCombat?.combatants || [])].sort((a: any, b: any) => {
         const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
         const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
         return (ib - ia) || ((a._id || a.id) > (b._id || b.id) ? 1 : -1);
     });
 
-    const currentTurnIndex = activeCombat?.turn ?? 0;
+    const currentTurnIndex = displayCombat?.turn ?? 0;
 
     // Get the name of current actor
     const currentActorName = sortedCombatants[currentTurnIndex]?.actor?.name || 'Unknown';
 
-    // To create a continuous carousel, we slice the array into two parts:
-    // 1. Those who haven't acted yet (current turn to end)
-    // 2. Those who have acted (start to current turn)
-    // We then insert a special "Divider" element between them
     const unacted = sortedCombatants.slice(currentTurnIndex);
     const acted = sortedCombatants.slice(0, currentTurnIndex);
 
-    // Construct the final visual array
     const carouselItems = [
         ...unacted,
         { isDivider: true, id: 'round-divider' },
@@ -278,15 +357,59 @@ export default function CombatHUD() {
                                     );
                                 })}
                             </div>
+
                         </div>
 
-                        {/* Floating Round Indicator Pill */}
-                        <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 bg-black/95 border border-white/20 rounded-full w-10 h-10 flex items-center justify-center shadow-xl z-[160]">
-                            <span className="text-3xl font-serif text-rose-600 drop-shadow-md -translate-y-1">
-                                {activeCombat?.round || `0`}
-                            </span>
-                        </div>
+                        {/* Floating Round Indicator Pill with Navigation */}
+                        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-[160] w-max">
+                            {/* Previous Turn Button Slot */}
+                            <div className="w-8 h-8 flex items-center justify-center">
+                                {currentUser?.isGM && activeCombat && (activeCombat.round > 1 || (activeCombat.round === 1 && activeCombat.turn > 0)) && (
+                                    <button
+                                        onClick={handlePreviousTurn}
+                                        className="bg-black/90 border border-white/20 rounded-full w-8 h-8 flex items-center justify-center text-white/40 hover:text-white hover:border-white/40 shadow-lg transition-all"
+                                        title="Previous Turn"
+                                    >
+                                        <SkipBack className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
 
+                            {/* Round Indicator */}
+                            <div className="bg-black/95 border border-white/20 rounded-full w-12 h-12 flex items-center justify-center shadow-2xl relative overflow-hidden group/round">
+                                <div className="absolute inset-0 bg-gradient-to-b from-rose-900/20 to-transparent"></div>
+                                <span className="text-3xl font-serif text-rose-600 drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] -translate-y-1 z-10">
+                                    {activeCombat?.round || `0`}
+                                </span>
+                            </div>
+
+                            {/* Next Turn Button Slot */}
+                            <div className="w-8 h-8 flex items-center justify-center">
+                                {(() => {
+                                    if (!activeCombat || activeCombat.round === 0) return null;
+
+                                    const currentCombatant = sortedCombatants[currentTurnIndex];
+                                    const isOwner = currentCombatant?.actor && (
+                                        currentUser?.isGM ||
+                                        currentCombatant.actor.ownership?.[currentUser?._id || currentUser?.id || ''] === 3 ||
+                                        currentCombatant.actor.ownership?.default === 3
+                                    );
+
+                                    if (isOwner || currentUser?.isGM) {
+                                        return (
+                                            <button
+                                                onClick={handleNextTurn}
+                                                className="bg-rose-950/80 border border-rose-800/50 rounded-full w-8 h-8 flex items-center justify-center text-rose-400 hover:text-rose-100 hover:bg-rose-900 hover:border-rose-600 shadow-lg transition-all"
+                                                title={isOwner ? "End Turn" : "Force Next Turn"}
+                                            >
+                                                <SkipForward className="w-4 h-4" />
+                                            </button>
+                                        );
+                                    }
+                                    return null;
+                                })()}
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>

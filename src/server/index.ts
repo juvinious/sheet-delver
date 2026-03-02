@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
 import { getAdapter } from '../modules/core/registry';
+import { createServer } from 'node:http';
+import { Server } from 'socket.io';
 
 async function startServer() {
     const config = await loadConfig();
@@ -19,6 +21,45 @@ async function startServer() {
     const app = express();
     app.use(express.json());
     app.use(cors());
+
+    const httpServer = createServer(app);
+    const io = new Server(httpServer, {
+        cors: {
+            origin: "*",
+            methods: ["GET", "POST"]
+        }
+    });
+
+    // Secure Socket.io Middleware
+    io.use(async (socket, next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) {
+            return next(new Error('Unauthorized: Missing Session Token'));
+        }
+
+        try {
+            const session = await sessionManager.getOrRestoreSession(token);
+            if (!session || !session.client.userId) {
+                return next(new Error('Unauthorized: Invalid or Expired Session'));
+            }
+            // Attach session/client to socket for later use
+            (socket as any).userSession = session;
+            (socket as any).foundryClient = session.client;
+            next();
+        } catch (err) {
+            next(new Error('Internal Authentication Error'));
+        }
+    });
+
+    logger.info('Core Service | Socket.io server initialized with secure middleware');
+
+    // Handle App Socket Connections
+    io.on('connection', (socket) => {
+        logger.debug(`App Socket | Client connected: ${socket.id}`);
+        socket.on('disconnect', () => {
+            logger.debug(`App Socket | Client disconnected: ${socket.id}`);
+        });
+    });
 
     // DEBUG: Global Request Logger
     app.use((req, res, next) => {
@@ -61,7 +102,14 @@ async function startServer() {
 
         if (systemClient.worldState !== 'active') return;
 
-        logger.info('Core Service | System Client Connected. Initializing Backend Services...');
+        // Implementation Plan: Real-time Combat Sync
+        // Listen for combat updates from Foundry and broadcast to all connected app clients
+        systemClient.on('combatUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing combat update to clients...');
+            io.emit('combatUpdate', data);
+        });
+
+        logger.info('Core Service | Initializing Backend Services...');
         (async () => {
             try {
                 const { CompendiumCache } = await import('../core/foundry/compendium-cache');
@@ -88,6 +136,9 @@ async function startServer() {
 
     // --- Middleware: Session Authentication ---
     const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        // Exempt Socket.io handshake from REST middleware
+        if (req.url.includes('socket.io')) return next();
+
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
@@ -853,11 +904,61 @@ async function startServer() {
         try {
             const client = (req as any).foundryClient;
             const combats = await client.getCombats();
-            res.json({ success: true, combats });
+
+            // Consolidate actor fetching to avoid N+1 requests from frontend
+            const enrichedCombats = await Promise.all(combats.map(async (combat: any) => {
+                const actorIds = [...new Set((combat.combatants || []).map((c: any) => c.actorId).filter(Boolean))];
+                const actorsMap: Record<string, any> = {};
+
+                // Fetch all unique actors in this combat
+                await Promise.all(actorIds.map(async (id: any) => {
+                    try {
+                        const actor = await client.getActor(id);
+                        if (actor) actorsMap[id] = actor;
+                    } catch (e) {
+                        console.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
+                    }
+                }));
+
+                // Attach actor data to combatants
+                const enrichedCombatants = (combat.combatants || []).map((c: any) => ({
+                    ...c,
+                    actor: actorsMap[c.actorId] || null
+                }));
+
+                return { ...combat, combatants: enrichedCombatants };
+            }));
+
+            res.json({ success: true, combats: enrichedCombats });
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
     });
+
+    const isAuthorizedForCombatTurn = async (client: any, combat: any, userId: string): Promise<boolean> => {
+        const users = await client.getUsers();
+        const user = users.find((u: any) => (u._id || u.id) === userId);
+        const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+        if (isGM) return true;
+
+        // Check if the current turn's combatant belongs to an actor owned by the user
+        const currentTurn = combat.turn ?? 0;
+        const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+            const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+            const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+            return (ib - ia) || (a._id > b._id ? 1 : -1);
+        });
+
+        const activeCombatant = sortedCombatants[currentTurn];
+        if (!activeCombatant || !activeCombatant.actorId) return false;
+
+        const actor = await client.getActor(activeCombatant.actorId);
+        if (!actor) return false;
+
+        // Foundry ownership check: 3 is OWNER
+        const ownership = actor.ownership?.[userId] || actor.permission?.[userId] || 0;
+        return ownership >= 3;
+    };
 
     appRouter.post('/combats/:id/next-turn', async (req, res) => {
         try {
@@ -870,6 +971,10 @@ async function startServer() {
 
             if (!combat) {
                 return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            if (!(await isAuthorizedForCombatTurn(client, combat, client.userId))) {
+                return res.status(403).json({ error: 'Unauthorized: You do not own the current combatant and are not a GM' });
             }
 
             // Mimic Foundry's turn logic: sort by initiative desc, tie-break by ID
@@ -913,6 +1018,14 @@ async function startServer() {
 
             if (!combat) {
                 return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            const users = await client.getUsers();
+            const user = users.find((u: any) => (u._id || u.id) === client.userId);
+            const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+
+            if (!isGM) {
+                return res.status(403).json({ error: 'Unauthorized: Only GMs can move to previous turns' });
             }
 
             const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
@@ -1367,7 +1480,7 @@ async function startServer() {
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
 
-    app.listen(corePort, '0.0.0.0', () => {
+    httpServer.listen(corePort, '0.0.0.0', () => {
         logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
         logger.info(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
         logger.info(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);

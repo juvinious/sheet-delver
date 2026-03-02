@@ -479,6 +479,12 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     }
                     else {
                         this._updateActorCache(data.type, data.action, data.result, data.operation);
+
+                        // Notify subscribers of Combat changes
+                        if (data.type === 'Combat' || data.type === 'Combatant') {
+                            logger.debug(`CoreSocket | Combat modification detected: ${data.type} ${data.action}`);
+                            this.emit('combatUpdate', data);
+                        }
                     }
                 });
 

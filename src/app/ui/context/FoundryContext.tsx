@@ -4,6 +4,8 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { logger, LOG_LEVEL } from '../logger';
 import { SystemInfo } from '@/shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
+import { getModule } from '@/modules/core/registry';
+import { io, Socket } from 'socket.io-client';
 import { SystemAdapter } from '@/modules/core/interfaces';
 
 export interface User {
@@ -127,6 +129,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [messages, setMessages] = useState<any[]>([]);
     const [appVersion, setAppVersion] = useState<string | null>(null);
     const [lastActorSyncToken, setLastActorSyncToken] = useState<number>(0);
+    const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
+    const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeAdapter, setActiveAdapter] = useState<SystemAdapter | null>(null);
     const [ownedActors, setOwnedActors] = useState<any[]>([]);
     const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
@@ -417,21 +421,66 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         return () => clearInterval(interval);
     }, [step, token, fetchActors, setStep, system, users, currentUserId, sharedContent, appVersion]);
 
-    // Chat and Combat Polling
+    // App Socket Connection for Real-time Sync
+    useEffect(() => {
+        if (!token) {
+            if (appSocket) {
+                appSocket.disconnect();
+                setAppSocket(null);
+            }
+            return;
+        }
+
+        if (appSocket) return;
+
+        const socket = io({
+            auth: { token },
+            reconnectionAttempts: 5,
+            transports: ['polling', 'websocket']
+        });
+
+        socket.on('connect', () => {
+            logger.debug('FoundryContext | App Socket Connected');
+        });
+
+        socket.on('connect_error', (err) => {
+            logger.error('FoundryContext | App Socket Connection Error:', err.message);
+        });
+
+        setAppSocket(socket);
+
+        return () => {
+            socket.disconnect();
+            setAppSocket(null);
+        };
+    }, [token]); // Remove appSocket to prevent infinite loop
+
+    // Chat and Combat Polling & Real-time Sync
     useEffect(() => {
         if (step === 'dashboard' && token) {
             fetchChat();
             fetchCombats(); // Initial fetch
 
+            if (appSocket) {
+                const handleCombatUpdate = (data: any) => {
+                    logger.debug('FoundryContext | Socket Combat Update received:', data);
+                    fetchCombats();
+                };
+                appSocket.on('combatUpdate', handleCombatUpdate);
+                return () => {
+                    appSocket.off('combatUpdate', handleCombatUpdate);
+                };
+            }
+
             const chatInterval = setInterval(fetchChat, 5000);
-            const combatInterval = setInterval(fetchCombats, 3000); // Poll combats faster than chat 
+            const combatInterval = setInterval(fetchCombats, 10000);
 
             return () => {
                 clearInterval(chatInterval);
                 clearInterval(combatInterval);
             };
         }
-    }, [step, token, fetchChat, fetchCombats]);
+    }, [step, token, fetchChat, fetchCombats, appSocket]);
 
     return (
         <FoundryContext.Provider value={{
