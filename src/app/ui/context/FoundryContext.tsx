@@ -7,6 +7,7 @@ import { useNotifications } from '../components/NotificationSystem';
 import { getModule } from '@/modules/core/registry';
 import { io, Socket } from 'socket.io-client';
 import { SystemAdapter } from '@/modules/core/interfaces';
+import { useUI } from '@/app/ui/context/UIContext';
 
 export interface User {
     id?: string;
@@ -119,6 +120,7 @@ const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
 
 export function FoundryProvider({ children }: { children: ReactNode }) {
     const { addNotification } = useNotifications();
+    const { resetUI } = useUI();
     const [step, setStepState] = useState<ConnectionStep>('init');
     const [token, setTokenState] = useState<string | null>(() => {
         if (typeof window !== 'undefined') {
@@ -305,7 +307,15 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
     const handleLogout = async () => {
         try {
+            resetUI();
             setStep('login', 'handleLogout', 'User logged out');
+            setCurrentUserId(null);
+            setOwnedActors([]);
+            setReadOnlyActors([]);
+            setSharedContent(null);
+            setCombats([]);
+            setMessages([]);
+
             await fetch('/api/logout', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -313,7 +323,14 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             setToken(null);
         } catch (e: any) {
             logger.error('FoundryProvider | Logout error:', e);
+            resetUI();
             setStep('login', 'handleLogout error', 'Force transition');
+            setCurrentUserId(null);
+            setOwnedActors([]);
+            setReadOnlyActors([]);
+            setSharedContent(null);
+            setCombats([]);
+            setMessages([]);
             setToken(null);
         }
     };
@@ -470,11 +487,11 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
             if (appSocket) {
                 const handleCombatUpdate = (data: any) => {
-                    logger.debug('FoundryContext | Socket Combat Update received:', data);
+                    //logger.debug('FoundryContext | Socket Combat Update received:', data);
                     fetchCombats();
                 };
                 const handleChatUpdate = (data: any) => {
-                    logger.debug('FoundryContext | Socket Chat Update received:', data);
+                    //logger.debug('FoundryContext | Socket Chat Update received:', data);
                     fetchChat();
                 };
 

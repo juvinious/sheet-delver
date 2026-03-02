@@ -18,6 +18,7 @@ interface UIContextType {
     setActiveJournalId: (id: string | null) => void;
     sharedJournalId: string | null;
     setSharedJournalId: (id: string | null) => void;
+    resetUI: () => void;
 }
 
 const UIContext = createContext<UIContextType | undefined>(undefined);
@@ -34,6 +35,15 @@ export function UIProvider({ children }: { children: ReactNode }) {
     const toggleJournal = () => setJournalOpen(prev => !prev);
     const togglePlayerList = () => setPlayerListOpen(prev => !prev);
 
+    const resetUI = () => {
+        setChatOpen(false);
+        setDiceTrayOpen(false);
+        setJournalOpen(false);
+        setPlayerListOpen(false);
+        setActiveJournalId(null);
+        setSharedJournalId(null);
+    };
+
     return (
         <UIContext.Provider value={{
             isChatOpen, setChatOpen,
@@ -41,7 +51,8 @@ export function UIProvider({ children }: { children: ReactNode }) {
             isJournalOpen, setJournalOpen, toggleJournal,
             isPlayerListOpen, setPlayerListOpen, togglePlayerList,
             activeJournalId, setActiveJournalId,
-            sharedJournalId, setSharedJournalId
+            sharedJournalId, setSharedJournalId,
+            resetUI
         }}>
             {children}
         </UIContext.Provider>

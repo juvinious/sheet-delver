@@ -16,7 +16,7 @@ import { useFoundry } from '@/app/ui/context/FoundryContext';
 import { useUI } from '@/app/ui/context/UIContext';
 
 export default function PlayerList() {
-    const { users, currentUser, handleLogout } = useFoundry();
+    const { users, currentUser, handleLogout, step } = useFoundry();
     const currentUserId = currentUser?._id || currentUser?.id || null;
     const { isPlayerListOpen, setPlayerListOpen } = useUI();
     const isOpen = isPlayerListOpen;
@@ -39,7 +39,7 @@ export default function PlayerList() {
         };
     }, [isOpen, setIsOpen]);
 
-    if (!users || users.length === 0) return null;
+    if (!users || users.length === 0 || step === 'login') return null;
 
     const activeCount = users.filter(u => u.active).length;
 

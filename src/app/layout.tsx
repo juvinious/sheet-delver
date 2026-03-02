@@ -49,9 +49,9 @@ export default function RootLayout({
       >
         <ConfigProvider>
           <NotificationProvider>
-            <FoundryProvider>
-              <JournalProvider>
-                <UIProvider>
+            <UIProvider>
+              <FoundryProvider>
+                <JournalProvider>
                   <VideoPlaysinlineFix />
                   <div className="relative min-h-screen">
                     <ShutdownWatcher />
@@ -63,9 +63,9 @@ export default function RootLayout({
                     <JournalBrowser />
                     <JournalModal />
                   </div>
-                </UIProvider>
-              </JournalProvider>
-            </FoundryProvider>
+                </JournalProvider>
+              </FoundryProvider>
+            </UIProvider>
           </NotificationProvider>
         </ConfigProvider>
       </body>
