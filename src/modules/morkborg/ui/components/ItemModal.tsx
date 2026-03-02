@@ -4,6 +4,7 @@ import { morkborgTheme } from '../../themes/morkborg';
 import { IM_Fell_Double_Pica } from 'next/font/google';
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 
@@ -16,6 +17,7 @@ interface ItemModalProps {
 }
 
 export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModalProps) {
+    const { resolveImageUrl } = useConfig();
     const [activeTab, setActiveTab] = useState<'description' | 'details'>('description');
 
     React.useEffect(() => {
@@ -304,7 +306,7 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                     {/* Header */}
                     <div className="p-4 sm:p-6 flex flex-col sm:flex-row gap-4 sm:gap-6 items-center border-b-2 border-pink-500/50 bg-neutral-900 relative z-10">
                         <div className="w-20 h-20 sm:w-24 sm:h-24 flex-shrink-0">
-                            <img src={item.img} alt={item.name} className="w-full h-full object-contain" />
+                            <img src={resolveImageUrl(item.img || 'icons/svg/item-bag.svg')} alt={item.name} className="w-full h-full object-contain" />
                         </div>
                         <div className="flex-1 w-full text-center sm:text-left">
                             <input
