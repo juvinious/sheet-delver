@@ -5,7 +5,7 @@ SheetDelver's UI is built with **Next.js**, **React**, and **Tailwind CSS**, fol
 ## Core Interaction Model
 
 The UI is driven by a hierarchy of React Contexts that synchronize state with the Backend API:
-- **`FoundryContext`**: Manages authentication, world status polling, and actor synchronization. It implements a robust state machine (`init`, `setup`, `login`, `authenticating`, `dashboard`) to ensure smooth transitions.
+- **`FoundryContext`**: Manages authentication, world status real-time WebSocket synchronization, and actor updates via Socket.io. It implements a robust state machine (`init`, `setup`, `login`, `authenticating`, `dashboard`) to ensure smooth transitions.
 - **`JournalProvider`**: Manages journal entry loading, folder hierarchies, pagination (v13 standard), and GM-shared content.
 - **`UIContext`**: Controls global visibility of sidebars, modals, and the Floating HUD.
 
@@ -29,7 +29,13 @@ A permanent, stylish navigation bar anchored to the bottom of the screen. It pro
 - **Roll Parsing**: Automatically detects and executes `/roll` commands.
 - **Actor Attribution**: Automatically attaches the current user's selected actor as the "speaker".
 
-### 4. Shadowdark Sheet (`src/modules/shadowdark/ui/ShadowdarkSheet.tsx`)
+### 4. Combat HUD (`src/app/ui/components/Combat/CombatHUD.tsx`)
+A dedicated, real-time overlay for active encounters:
+- **Turn Tracking**: Displays the current initiative order, highlighting the active combatant and round number.
+- **Automated Appearance**: Automatically mounts and unmounts based on the Foundry world's combat state.
+- **Universal Initiative**: Integrates with the `InitiativeModal` abstraction to provide a unified rolling experience across different RPG systems (handling advantage, distinct formulas, etc.).
+
+### 5. Shadowdark Sheet (`src/modules/shadowdark/ui/ShadowdarkSheet.tsx`)
 Specialized interface for the Shadowdark RPG, featuring:
 - **Tabbed Navigation**: Abilities, Inventory, Spells, Talents, and Effects.
 - **Real-Time Persistence**: Changes to stats or configuration are instantly synced to Foundry.

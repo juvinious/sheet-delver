@@ -27,8 +27,10 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
     const router = useRouter();
     const {
         token,
-        setActiveAdapter
+        setActiveAdapter,
+        appSocket
     } = useFoundry();
+
     const { isDiceTrayOpen, toggleDiceTray } = useUI();
     const { addNotification: addToast } = useNotifications();
     const { foundryUrl, setFoundryUrl } = useConfig();
@@ -90,7 +92,18 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
     useEffect(() => {
         if (!actorId) return;
         fetchActor(actorId);
-        const interval = setInterval(() => fetchActor(actorId, true), 5000);
+
+        if (appSocket) {
+            const handleActorUpdate = (data: any) => {
+                if (data.actorId === actorId) {
+                    fetchActor(actorId, true);
+                }
+            };
+            appSocket.on('actorUpdate', handleActorUpdate);
+            return () => {
+                appSocket.off('actorUpdate', handleActorUpdate);
+            };
+        }
 
         const timeout = setTimeout(() => {
             if (loadingRef.current) {
@@ -99,10 +112,9 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
         }, 15000);
 
         return () => {
-            clearInterval(interval);
             clearTimeout(timeout);
         };
-    }, [actorId, fetchActor, addNotification]);
+    }, [actorId, fetchActor, addNotification, appSocket]);
 
     useEffect(() => {
         return () => setActiveAdapter(null);

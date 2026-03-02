@@ -109,6 +109,16 @@ async function startServer() {
             io.emit('combatUpdate', data);
         });
 
+        systemClient.on('chatUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing chat update to clients...');
+            io.emit('chatUpdate', data);
+        });
+
+        systemClient.on('actorUpdate', (data: any) => {
+            logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
+            io.emit('actorUpdate', data);
+        });
+
         logger.info('Core Service | Initializing Backend Services...');
         (async () => {
             try {

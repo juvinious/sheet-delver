@@ -27,8 +27,8 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
     const router = useRouter();
     const {
         token,
-        handleChatSend: globalChatSend,
-        setActiveAdapter
+        setActiveAdapter,
+        appSocket
     } = useFoundry();
     const { isDiceTrayOpen, toggleDiceTray } = useUI();
     const { addNotification: addToast } = useNotifications();
@@ -91,7 +91,18 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
     useEffect(() => {
         if (!actorId) return;
         fetchActor(actorId);
-        const interval = setInterval(() => fetchActor(actorId, true), 5000);
+
+        if (appSocket) {
+            const handleActorUpdate = (data: any) => {
+                if (data.actorId === actorId) {
+                    fetchActor(actorId, true);
+                }
+            };
+            appSocket.on('actorUpdate', handleActorUpdate);
+            return () => {
+                appSocket.off('actorUpdate', handleActorUpdate);
+            };
+        }
 
         const timeout = setTimeout(() => {
             if (loadingRef.current) {
@@ -100,10 +111,9 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
         }, 15000);
 
         return () => {
-            clearInterval(interval);
             clearTimeout(timeout);
         };
-    }, [actorId, fetchActor, addNotification]);
+    }, [actorId, fetchActor, addNotification, appSocket]);
 
     // Cleanup active adapter on unmount
     useEffect(() => {

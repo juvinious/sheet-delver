@@ -81,8 +81,13 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     private _updateActorCache(type: string, action: string, result: any, operation?: any) {
         if (!result && action !== 'delete') return;
 
+        if (action === 'create' || action === 'update' || action === 'delete') {
+            if (type === 'Actor' || type === 'Item') {
+                this.lastActorChange = Date.now();
+            }
+        }
+
         if (type === 'Actor') {
-            this.lastActorChange = Date.now();
             const docs = Array.isArray(result) ? result : [result];
             if (action === 'delete') {
                 const ids = operation?.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
@@ -484,6 +489,25 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         if (data.type === 'Combat' || data.type === 'Combatant') {
                             logger.debug(`CoreSocket | Combat modification detected: ${data.type} ${data.action}`);
                             this.emit('combatUpdate', data);
+                        }
+
+                        // Notify subscribers of Chat changes
+                        if (data.type === 'ChatMessage') {
+                            logger.debug(`CoreSocket | Chat modification detected: ${data.action}`);
+                            this.emit('chatUpdate', data);
+                        }
+
+                        // Notify subscribers of Actor changes
+                        if (data.type === 'Actor' || data.type === 'Item') {
+                            logger.debug(`CoreSocket | Actor/Item modification detected: ${data.type} ${data.action}`);
+                            // If it's an item, the operation should contain the parent actor id/uuid we resolved in _updateActorCache
+                            const actorId = data.type === 'Actor'
+                                ? (Array.isArray(data.result) ? data.result[0]?._id : data.result?._id)
+                                : (data.operation?.parentId || (data.operation?.parentUuid ? data.operation.parentUuid.split('.')[1] : null));
+
+                            if (actorId) {
+                                this.emit('actorUpdate', { actorId });
+                            }
                         }
                     }
                 });

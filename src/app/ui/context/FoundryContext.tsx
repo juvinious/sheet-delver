@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '../logger';
 import { SystemInfo } from '@/shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
@@ -110,6 +110,9 @@ interface FoundryContextType {
     // Combats
     combats: Combat[];
     fetchCombats: () => Promise<any>;
+
+    // Real-time
+    appSocket: Socket | null;
 }
 
 const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
@@ -128,7 +131,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [system, setSystem] = useState<SystemInfo | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [appVersion, setAppVersion] = useState<string | null>(null);
-    const [lastActorSyncToken, setLastActorSyncToken] = useState<number>(0);
+    const lastActorSyncTokenRef = useRef<number>(0);
     const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeAdapter, setActiveAdapter] = useState<SystemAdapter | null>(null);
@@ -375,8 +378,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
                     // Actor Sync
                     const newToken = data.system?.actorSyncToken;
-                    if (newToken && newToken !== lastActorSyncToken) {
-                        setLastActorSyncToken(newToken);
+                    if (newToken && newToken !== lastActorSyncTokenRef.current) {
+                        lastActorSyncTokenRef.current = newToken;
                         if (data.isAuthenticated) fetchActors();
                     }
 
@@ -455,7 +458,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         };
     }, [token]); // Remove appSocket to prevent infinite loop
 
-    // Chat and Combat Polling & Real-time Sync
+    // Chat and Combat Real-time Sync
     useEffect(() => {
         if (step === 'dashboard' && token) {
             fetchChat();
@@ -466,19 +469,19 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                     logger.debug('FoundryContext | Socket Combat Update received:', data);
                     fetchCombats();
                 };
+                const handleChatUpdate = (data: any) => {
+                    logger.debug('FoundryContext | Socket Chat Update received:', data);
+                    fetchChat();
+                };
+
                 appSocket.on('combatUpdate', handleCombatUpdate);
+                appSocket.on('chatUpdate', handleChatUpdate);
+
                 return () => {
                     appSocket.off('combatUpdate', handleCombatUpdate);
+                    appSocket.off('chatUpdate', handleChatUpdate);
                 };
             }
-
-            const chatInterval = setInterval(fetchChat, 5000);
-            const combatInterval = setInterval(fetchCombats, 10000);
-
-            return () => {
-                clearInterval(chatInterval);
-                clearInterval(combatInterval);
-            };
         }
     }, [step, token, fetchChat, fetchCombats, appSocket]);
 
@@ -493,7 +496,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             handleLogin, handleChatSend, handleLogout, fetchActors,
             ownedActors, readOnlyActors,
             sharedContent,
-            combats, fetchCombats
+            combats, fetchCombats,
+            appSocket
         }}>
             {children}
         </FoundryContext.Provider>

@@ -8,7 +8,7 @@ SheetDelver is designed as a **Headless Client Proxy** for Foundry VTT. It follo
 ### Core Principles
 - **Dual-Socket Model**: The backend maintains a permanent **System Client** for global world monitoring and a transient **User Client** pool for individual player sessions.
 - **Frontend Agnosticism**: The Frontend (UI) never communicates with Foundry directly. It interacts solely with the SheetDelver API.
-- **Context-Driven State**: The UI uses React Contexts as the single source of truth, synchronized via periodic polling of the Backend API.
+- **Context-Driven State**: The UI uses React Contexts as the single source of truth, synchronized via real-time WebSockets (Socket.io) to the Backend API.
 
 ---
 
@@ -33,8 +33,8 @@ graph TD
         JC["JournalContext (Navigation)"]
         UC["UIContext (Global Modals)"]
         
-        FC -. Polling .-> API
-        JC -. Polling .-> API
+        FC -. WebSockets .-> API
+        JC -. WebSockets .-> API
     end
     
     subgraph "Foundry VTT"
