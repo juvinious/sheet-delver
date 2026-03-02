@@ -204,7 +204,7 @@ export class SessionManager {
         const session = this.sessions.get(sessionId);
         if (session) {
             logger.info(`SessionManager | Destroying session: ${sessionId}`);
-            // session.client.logout(); 
+            await session.client.logout();
             session.client.disconnect();
             this.sessions.delete(sessionId);
             await this.clearSession(sessionId);

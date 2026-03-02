@@ -227,6 +227,27 @@ export abstract class SocketBase extends EventEmitter {
         return discoveryResult;
     }
 
+    public async logout(): Promise<void> {
+        try {
+            const baseUrl = this.getBaseUrl();
+            logger.info(`[${this.constructor.name}] Attempting explicit logout from Foundry via POST /logout...`);
+            const response = await fetch(`${baseUrl}/logout`, {
+                method: 'POST',
+                headers: {
+                    'Cookie': this.sessionCookie || '',
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (response.ok) {
+                logger.info(`[${this.constructor.name}] Extinguished session on Foundry server successfully.`);
+            } else {
+                logger.warn(`[${this.constructor.name}] Logout returned ${response.status}`);
+            }
+        } catch (e: any) {
+            logger.warn(`[${this.constructor.name}] Error during explicit logout: ${e.message}`);
+        }
+    }
+
     public disconnect() {
         if (this.socket) {
             logger.info(`[${this.constructor.name}] Disconnecting socket...`);
