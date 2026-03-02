@@ -257,6 +257,7 @@ export abstract class SocketBase extends EventEmitter {
                 },
                 timestamp: Date.now()
             };
+            this.emit('sharedContentUpdate', this.sharedContent);
         });
 
         socket.on('showEntry', (uuid: string, ...args: any[]) => {
@@ -271,6 +272,7 @@ export abstract class SocketBase extends EventEmitter {
                     },
                     timestamp: Date.now()
                 };
+                this.emit('sharedContentUpdate', this.sharedContent);
             }
         });
     }
