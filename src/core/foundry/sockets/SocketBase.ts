@@ -48,65 +48,53 @@ export abstract class SocketBase extends EventEmitter {
         this.sessionCookie = Array.from(this.cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
-    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, users: any[], pageTitle: string }> {
-        logger.info(`[${this.constructor.name}] Performing Handshake (GET /join)...`);
-        const joinResponse = await fetch(`${baseUrl}/join`, {
-            headers: { 'User-Agent': 'SheetDelver/1.0' }
+    protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, pageTitle: string }> {
+        logger.info(`[${this.constructor.name}] Performing Handshake (GET /api/status)...`);
+
+        // 1. Fetch JSON status instead of HTML /join
+        const statusRes = await fetch(`${baseUrl}/api/status`, {
+            headers: { 'Accept': 'application/json', 'User-Agent': 'SheetDelver/1.0' }
         });
 
-        if (!joinResponse.ok) {
-            throw new Error(`Handshake failed with status ${joinResponse.status}`);
+        if (!statusRes.ok) {
+            throw new Error(`Handshake failed with status ${statusRes.status}`);
         }
 
-        const setCookie = typeof (joinResponse.headers as any).getSetCookie === 'function'
-            ? (joinResponse.headers as any).getSetCookie()
-            : joinResponse.headers.get('set-cookie');
-        this.updateCookies(setCookie);
+        const status = await statusRes.json();
 
-        const html = await joinResponse.text();
+        // If the backend returned a set-cookie (less likely on /api/status, but just in case)
+        const setCookie = typeof (statusRes.headers as any).getSetCookie === 'function'
+            ? (statusRes.headers as any).getSetCookie()
+            : statusRes.headers.get('set-cookie');
 
-        const titleMatch = html.match(/<title>(.*?)<\/title>/);
-        const pageTitle = titleMatch?.[1] || '';
-
-        // Check for Setup Mode (Redirect, HTML ID, or specific visual indicators)
-        const isSetup = joinResponse.url.includes('/setup') ||
-            joinResponse.url.includes('/auth') ||
-            html.includes('id="setup"') ||
-            html.includes('Administrator Access Required') ||
-            html.includes('There is currently no active game session') ||
-            pageTitle.includes('Foundry Virtual Tabletop');
-
-        //logger.debug(`[${this.constructor.name}] Handshake Analysis: URL=${joinResponse.url}, Title=${pageTitle}, isSetup=${isSetup}`);
-        //logger.debug(`[${this.constructor.name}] HTML Snippet: ${html.substring(0, 150)}`);
-
-        // Parse CSRF
-        let csrfToken: string | null = null;
-        const csrfMatch = html.match(/csrfToken["']\s*:\s*["']([^"']+)["']/) ||
-            html.match(/name="csrf-token" content="(.*?)"/);
-        if (csrfMatch) csrfToken = csrfMatch[1];
-        logger.debug(`[${this.constructor.name}] CSRF Match: ${csrfToken ? 'Success' : 'Failed'}`);
-
-        // Scrape Users as Fallback
-        const users: any[] = [];
-        // Support attributes like 'disabled' or different quotes
-        const userRegex = /<option\s+value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
-        let match;
-        while ((match = userRegex.exec(html)) !== null) {
-            users.push({ _id: match[1], name: match[2].trim() });
+        if (setCookie) {
+            this.updateCookies(setCookie);
         }
-        logger.debug(`[${this.constructor.name}] Scraped ${users.length} users from /join HTML.`);
 
-        return { csrfToken, isSetupMatch: isSetup, users, pageTitle };
+        // 2. Derive States from JSON
+        const isSetupMatch = !status.active;
+        const pageTitle = status.world || (isSetupMatch ? 'Setup' : 'Foundry Virtual Tabletop');
+        const csrfToken: string | null = null; // No longer needed or scraped in V13 programmatic flow
+
+        logger.debug(`[${this.constructor.name}] Handshake Complete. Active: ${status.active}, World: ${pageTitle}`);
+
+        return { csrfToken, isSetupMatch, pageTitle };
     }
 
     protected async performLogin(baseUrl: string, userId: string, csrfToken: string | null): Promise<void> {
         logger.info(`[${this.constructor.name}] Performing POST Login (User: ${userId})...`);
-        const payload = {
+
+        // V13 allows programmatic login to /join via application/json without a CSRF token
+        const payload: any = {
             userid: userId,
             password: this.config.password || '',
-            action: 'join',
-            'csrf-token': csrfToken
+            action: 'join'
         };
+
+        // If the server explicitly required one from an older caching flow, pass it (usually ignored in v13)
+        if (csrfToken) {
+            payload['csrf-token'] = csrfToken;
+        }
 
         const loginResponse = await fetch(`${baseUrl}/join`, {
             method: 'POST',
@@ -269,6 +257,7 @@ export abstract class SocketBase extends EventEmitter {
                 },
                 timestamp: Date.now()
             };
+            this.emit('sharedContentUpdate', this.sharedContent);
         });
 
         socket.on('showEntry', (uuid: string, ...args: any[]) => {
@@ -283,6 +272,7 @@ export abstract class SocketBase extends EventEmitter {
                     },
                     timestamp: Date.now()
                 };
+                this.emit('sharedContentUpdate', this.sharedContent);
             }
         });
     }

@@ -120,6 +120,11 @@ export interface SystemAdapter {
      */
     generateRollCard?(actor: any, results: any): string;
     /**
+     * Optional: Return the initiative formula for a given actor.
+     * If not provided, the core system defaults to '1d20'.
+     */
+    getInitiativeFormula?(actor: any): string;
+    /**
      * Optional: Perform an automated roll sequence (e.g. Attack/Defend loop).
      * This moves system-specific logic out of the core server.
      */
@@ -231,4 +236,9 @@ export interface ModuleManifest {
      * Props: { actorId: string; token?: string | null }
      */
     actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
+    /**
+     * Optional: Module-specific roll modal component.
+     * Overrides the generic `RollDialog` in universal interfaces like the Combat Tracker.
+     */
+    rollModal?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
 }

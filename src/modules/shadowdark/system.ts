@@ -26,6 +26,38 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     componentStyles = shadowdarkTheme;
 
+    getInitiativeFormula(actor: any): string {
+        let dexMod = 0;
+
+        // Safety check if actor has a direct mod
+        if (actor?.system?.abilities?.dex?.mod !== undefined && actor?.system?.abilities?.dex?.mod !== null) {
+            dexMod = Number(actor.system.abilities.dex.mod);
+        } else if (actor?.computed?.abilities?.dex?.mod !== undefined && actor?.computed?.abilities?.dex?.mod !== null) {
+            dexMod = Number(actor.computed.abilities.dex.mod);
+        } else if (actor?.system?.abilities?.dex?.value !== undefined && actor?.system?.abilities?.dex?.value !== null) {
+            // Shadowdark specific: ability modifiers are (value - 10) / 2 rounded down
+            // But usually this system already pre-calculates them into .mod. If it's missing entirely (raw combatant payload without derived data), calculate based on Shadowdark rules: standard modifiers
+            // Actually shadowdark modifiers follow standard D&D scale: 18=+4, 16=+3, 14=+2, 12=+1, 10=0, 8=-1
+            dexMod = Math.floor((Number(actor.system.abilities.dex.value) - 10) / 2);
+        }
+
+        if (isNaN(dexMod)) dexMod = 0;
+
+        const hasAdvantage = Array.isArray(actor?.system?.bonuses?.advantage)
+            ? actor.system.bonuses.advantage.includes('initiative')
+            : false;
+        const baseDie = hasAdvantage ? '2d20kh1' : '1d20';
+
+        let modifierString = '';
+        if (dexMod > 0) {
+            modifierString = `+${dexMod}`;
+        } else if (dexMod < 0) {
+            modifierString = `${dexMod}`; // Already includes negative sign
+        }
+
+        return `${baseDie}${modifierString}`;
+    }
+
     match(actor: any): boolean {
         // Broaden heuristic to protect against partial system object or missing systemId
         const hasShadowdarkType = ['player', 'character', 'npc'].includes(actor.type?.toLowerCase());
@@ -273,7 +305,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         });
                     }
                 } catch (err) {
-                    console.error('Error processing effects:', err);
+                    logger.error('Error processing effects:', err);
                 }
 
                 // --- DERIVED STATS ---
@@ -423,7 +455,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
                 // Format: ["path.to.field", "another.path"]
                 // For Shadowdark: Show "Ancestry • Class • Level X"
                 subtext: ['details.ancestry', 'details.class', 'level.value']
-            }
+            },
+            componentStyles: this.componentStyles
         };
     }
 
@@ -864,21 +897,36 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     path = SHORTHANDS[path];
                 }
 
+                // Special Handling for Arrays (Like bonuses.advantage)
+                const isArrayTarget = Array.isArray(getProperty(systemData, path)) || path === 'bonuses.advantage' || path === 'bonuses.weaponMastery';
+
+                if (isArrayTarget) {
+                    let arr = getProperty(systemData, path);
+                    if (!Array.isArray(arr)) arr = [];
+
+                    if (mode === MODES.ADD && value && !arr.includes(value)) {
+                        arr.push(value);
+                    } else if (mode === MODES.OVERRIDE) {
+                        arr = String(value).split(',').map((s: string) => s.trim());
+                    }
+                    setProperty(systemData, path, arr);
+                    logger.debug(`[ShadowdarkAdapter] Applying Array Change: ${key} (mode=${mode}) -> [${arr.join(', ')}]`);
+                    continue;
+                }
+
                 const currentVal = Number(getProperty(systemData, path)) || 0;
                 const changeVal = Number(value) || 0;
                 // NOTE: `value` could be a formula in Foundry (e.g. "@abilities.str.mod").
                 // Evaluating strings is dangerous/complex without a full parser. 
-                // For now, we support numeric literals. If NaN, we skip (or try strict string for Override).
+                // For now, we support numeric literals. If NaN, we skip (or try strict string for Override/Custom).
 
-                if (isNaN(changeVal) && mode !== MODES.OVERRIDE) {
-                    // Try to parse basic string? Or just simple check?
-                    // If value is "1", Number("1") works. 
+                if (isNaN(changeVal) && mode !== MODES.OVERRIDE && mode !== MODES.CUSTOM) {
                     // If value is "@something", Number is NaN.
                     // We will safely ignore complex formulas for now to prevent crashes.
                     continue;
                 }
 
-                let finalVal = currentVal;
+                let finalVal: any = currentVal;
 
                 switch (Number(mode)) {
                     case MODES.ADD:
@@ -888,8 +936,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
                         finalVal = currentVal * changeVal;
                         break;
                     case MODES.OVERRIDE:
-                        // Allow string overrides
+                    case MODES.CUSTOM:
+                        // Allow string overrides (e.g. booleans like "true")
                         finalVal = isNaN(changeVal) ? value : changeVal;
+                        if (finalVal === "true") finalVal = true;
+                        if (finalVal === "false") finalVal = false;
                         break;
                     case MODES.UPGRADE:
                         finalVal = Math.max(currentVal, changeVal);
@@ -1291,6 +1342,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             name: actor.name,
             type: actor.type,
             img: actorImg,
+            ownership: actor.ownership, // Added ownership here
             system: s, // Include raw system data for bindings
             hp: { value: hp.value, max: maxHp },
             ac: ac,

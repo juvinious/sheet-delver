@@ -5,6 +5,8 @@ import rateLimit from 'express-rate-limit';
 import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
 import { getAdapter } from '../modules/core/registry';
+import { createServer } from 'node:http';
+import { Server } from 'socket.io';
 
 async function startServer() {
     const config = await loadConfig();
@@ -19,6 +21,52 @@ async function startServer() {
     const app = express();
     app.use(express.json());
     app.use(cors());
+
+    const httpServer = createServer(app);
+    const io = new Server(httpServer, {
+        cors: {
+            origin: "*",
+            methods: ["GET", "POST"]
+        }
+    });
+
+    // Setup Socket.io Middleware
+    io.use(async (socket, next) => {
+        const token = socket.handshake.auth.token;
+        if (!token) {
+            // Unauthenticated connection (Guest) - only receives global system status
+            return next();
+        }
+
+        try {
+            const session = await sessionManager.getOrRestoreSession(token);
+            if (!session || !session.client.userId) {
+                // Invalid token, but still allow guest connection
+                return next();
+            }
+            // Attach session/client to socket for later use
+            (socket as any).userSession = session;
+            (socket as any).foundryClient = session.client;
+
+            // Join authenticated room for sensitive updates (actors, chat, combat, shared content)
+            socket.join('authenticated');
+            next();
+        } catch (err) {
+            next(); // Degrade to guest
+        }
+    });
+
+    logger.info('Core Service | Socket.io server initialized with secure middleware');
+
+    // Handle App Socket Connections
+    io.on('connection', (socket) => {
+        logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
+        socket.emit('systemStatus', getSystemStatusPayload());
+
+        socket.on('disconnect', () => {
+            logger.debug(`App Socket | Client disconnected: ${socket.id}`);
+        });
+    });
 
     // DEBUG: Global Request Logger
     app.use((req, res, next) => {
@@ -61,7 +109,30 @@ async function startServer() {
 
         if (systemClient.worldState !== 'active') return;
 
-        logger.info('Core Service | System Client Connected. Initializing Backend Services...');
+        // Implementation Plan: Real-time Sync
+        // Broadcast sensitive data only to authenticated clients
+        systemClient.on('combatUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing combat update to clients...');
+            io.to('authenticated').emit('combatUpdate', data);
+        });
+
+        systemClient.on('chatUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing chat update to clients...');
+            io.to('authenticated').emit('chatUpdate', data);
+        });
+
+        systemClient.on('actorUpdate', (data: any) => {
+            logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
+            io.to('authenticated').emit('actorUpdate', data);
+        });
+
+        systemClient.on('sharedContentUpdate', (data: any) => {
+            logger.debug('Core Service | Syncing shared content update to clients...');
+            // In v13, shared content might need to reach specific users, but for now we broadcast to all authenticated
+            io.to('authenticated').emit('sharedContentUpdate', data);
+        });
+
+        logger.info('Core Service | Initializing Backend Services...');
         (async () => {
             try {
                 const { CompendiumCache } = await import('../core/foundry/compendium-cache');
@@ -84,10 +155,16 @@ async function startServer() {
         })();
     });
 
-    await sessionManager.initialize();
+    // Initialize in background so Express can bind port immediately and answer /api/status 
+    sessionManager.initialize().catch(err => {
+        logger.error(`Core Service | SessionManager initialization failed: ${err.message}`);
+    });
 
     // --- Middleware: Session Authentication ---
     const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        // Exempt Socket.io handshake from REST middleware
+        if (req.url.includes('socket.io')) return next();
+
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
@@ -145,13 +222,95 @@ async function startServer() {
     const appRouter = express.Router();
 
 
+    // --- Global Status Payload Generator ---
+    const getSystemStatusPayload = () => {
+        const systemClient = sessionManager.getSystemClient();
+        let system: any = {
+            id: null,
+            status: systemClient.worldState,
+            worldTitle: 'Reconnecting...'
+        };
+        let users = [];
+        try {
+            const gameData = systemClient.getGameData();
+            if (gameData) {
+                const usersList = gameData.users || [];
+                const activeCount = usersList.filter((u: any) => u.active).length;
+                const totalCount = usersList.length;
+
+                system = {
+                    ...gameData.system,
+                    appVersion: config.app.version,
+                    worldTitle: gameData.world?.title || 'Foundry VTT',
+                    worldDescription: gameData.world?.description,
+                    worldBackground: systemClient.resolveUrl(gameData.world?.background),
+                    background: systemClient.resolveUrl(
+                        gameData.system?.background ||
+                        gameData.system?.worldBackground ||
+                        (() => {
+                            const sceneData = (systemClient as any).sceneDataCache;
+                            return sceneData?.NUEDEFAULTSCENE0?.background?.src;
+                        })()
+                    ),
+                    nextSession: gameData.world?.nextSession,
+                    status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
+                    actorSyncToken: (systemClient as any).lastActorChange,
+                    users: { active: activeCount, total: totalCount }
+                };
+                users = usersList;
+            } else {
+                system.appVersion = config.app.version;
+            }
+
+            if (system.id) {
+                const sid = system.id.toLowerCase();
+                const adapter = getAdapter(sid);
+                if (adapter && typeof (adapter as any).getConfig === 'function') {
+                    const cfg = (adapter as any).getConfig();
+                    if (cfg) system.config = cfg;
+                }
+            }
+        } catch { /* Suppress */ }
+
+        // Centralized User Sanitization Helper
+        const sanitizeUser = (u: any, client: any) => ({
+            _id: u._id || u.id,
+            name: u.name,
+            role: u.role,
+            isGM: u.role >= UserRole.ASSISTANT,
+            active: u.active,
+            color: u.color,
+            characterId: u.character,
+            img: client.resolveUrl(u.avatar || u.img)
+        });
+
+        const sanitizedUsers = users?.length > 0 ? users.map((u: any) => sanitizeUser(u, systemClient)) : [];
+
+        return {
+            connected: systemClient.isConnected,
+            worldId: systemClient.getGameData()?.world?.id || null,
+            initialized: sessionManager.isCacheReady(),
+            users: sanitizedUsers,
+            system: system,
+            url: config.foundry.url,
+            appVersion: config.app.version,
+            debug: config.debug
+        };
+    };
+
+    // --- Backend Status Polling Loop ---
+    setInterval(() => {
+        const payload = getSystemStatusPayload();
+        io.emit('systemStatus', payload);
+    }, 4000);
+
     const statusHandler = async (req: express.Request, res: express.Response) => {
         try {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
 
-            // Check if Request has a valid session
+            // Check Auth for REST endpoint response
             let isAuthenticated = false;
             let userSession = null;
             const authHeader = req.headers.authorization;
@@ -163,116 +322,20 @@ async function startServer() {
                 }
             }
 
-            // Source of Truth: The system client (service account) always tracks world state
-            const systemClient = sessionManager.getSystemClient();
-
-            // Authentication: Only the user session determines if we are logged in
-            isAuthenticated = !!(userSession && userSession.client.userId);
-
-            let system: any = {
-                id: null,
-                status: systemClient.worldState,
-                worldTitle: 'Reconnecting...'
-            };
-            let users = [];
-            try {
-                // Fetch global state from system client
-                const gameData = systemClient.getGameData();
-                if (gameData) {
-                    const usersList = gameData.users || [];
-                    const activeCount = usersList.filter((u: any) => u.active).length;
-                    const totalCount = usersList.length;
-
-                    system = {
-                        ...gameData.system,
-                        appVersion: config.app.version,
-                        worldTitle: gameData.world?.title || 'Foundry VTT',
-                        worldDescription: gameData.world?.description,
-                        worldBackground: systemClient.resolveUrl(gameData.world?.background),
-                        background: systemClient.resolveUrl(
-                            gameData.system?.background ||
-                            gameData.system?.worldBackground ||
-                            (() => {
-                                const sceneData = (systemClient as any).sceneDataCache;
-                                return sceneData?.NUEDEFAULTSCENE0?.background?.src;
-                            })()
-                        ),
-                        nextSession: gameData.world?.nextSession,
-                        status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
-                        actorSyncToken: (systemClient as any).lastActorChange,
-                        users: {
-                            active: activeCount,
-                            total: totalCount
-                        }
-                    };
-                    users = usersList;
-                } else {
-                    system.appVersion = config.app.version;
-                }
-
-                // Add adapter config to system info
-                if (system.id) {
-                    const sid = system.id.toLowerCase();
-                    const adapter = getAdapter(sid);
-                    if (adapter && typeof (adapter as any).getConfig === 'function') {
-                        const config = (adapter as any).getConfig();
-                        if (config) system.config = config;
-                    }
-                }
-            } catch {
-                // Suppress expected transient errors
-            }
-
-            // Global connected status comes from system client
-            const connected = systemClient.isConnected;
-
             if (process.env.NODE_ENV !== 'production') {
+                const systemClient = sessionManager.getSystemClient();
                 const sysState = { connected: systemClient.isConnected, worldState: systemClient.worldState };
                 const userState = userSession ? { connected: userSession.client.isConnected, userId: userSession.client.userId } : null;
-                logger.debug(`Status Handler | Auth: ${isAuthenticated} | World: ${system?.status}`);
-                logger.debug(`Status Handler | System: conn=${sysState.connected}, state=${sysState.worldState}`);
-                if (userState) {
-                    logger.debug(`Status Handler | User: conn=${userState.connected}, user=${userState.userId}`);
-                }
+                // Quieter Dev Logging to prove backend loop is working instead of handling thousands of requests
+                // logger.debug(`Status REST | Auth: ${isAuthenticated} | World: ${sysState.worldState}`);
             }
 
-            // Centralized User Sanitization Helper
-            // Ensures consistent data shape for PlayerList and other UI components
-            const sanitizeUser = (u: any, client: any) => {
-                return {
-                    _id: u._id || u.id,
-                    name: u.name,
-                    role: u.role,
-                    isGM: u.role >= UserRole.ASSISTANT, // Roles 3 (Assistant) and 4 (GM)
-                    active: u.active,
-                    color: u.color,
-                    characterId: u.character,
-                    img: client.resolveUrl(u.avatar || u.img)
-                };
-            }
-
-            // Fetch authoritative user list from System Client
-            let sanitizedUsers: any[] = [];
-            if (users && users.length > 0) {
-                // Map using the centralized helper
-                // Note: 'users' passed into statusHandler might be raw from getGameData()
-                // We prefer fetching fresh if possible, but statusHandler uses cached gameData for speed.
-                // Let's assume 'users' is raw data.
-                // We need a client context to resolve URLs. System client is best.
-                sanitizedUsers = users.map((u: any) => sanitizeUser(u, systemClient));
-            }
+            const basePayload = getSystemStatusPayload();
 
             res.json({
-                connected,
+                ...basePayload,
                 isAuthenticated,
-                currentUserId: userSession?.userId || null,
-                worldId: systemClient.getGameData()?.world?.id || null,
-                initialized: sessionManager.isCacheReady(),
-                users: sanitizedUsers,
-                system: system,
-                url: config.foundry.url,
-                appVersion: config.app.version,
-                debug: config.debug
+                currentUserId: userSession?.userId || null
             });
         } catch (error: any) {
             logger.error(`Status Handler Error: ${error.message}`);
@@ -849,6 +912,230 @@ async function startServer() {
         }
     });
 
+    appRouter.get('/combats', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combats = await client.getCombats();
+
+            // Consolidate actor fetching to avoid N+1 requests from frontend
+            const enrichedCombats = await Promise.all(combats.map(async (combat: any) => {
+                const actorIds = [...new Set((combat.combatants || []).map((c: any) => c.actorId).filter(Boolean))];
+                const actorsMap: Record<string, any> = {};
+
+                // Fetch all unique actors in this combat
+                await Promise.all(actorIds.map(async (id: any) => {
+                    try {
+                        const actor = await client.getActor(id);
+                        if (actor) actorsMap[id] = actor;
+                    } catch (e) {
+                        console.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
+                    }
+                }));
+
+                // Attach actor data to combatants
+                const enrichedCombatants = (combat.combatants || []).map((c: any) => ({
+                    ...c,
+                    actor: actorsMap[c.actorId] || null
+                }));
+
+                return { ...combat, combatants: enrichedCombatants };
+            }));
+
+            res.json({ success: true, combats: enrichedCombats });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    const isAuthorizedForCombatTurn = async (client: any, combat: any, userId: string): Promise<boolean> => {
+        const users = await client.getUsers();
+        const user = users.find((u: any) => (u._id || u.id) === userId);
+        const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+        if (isGM) return true;
+
+        // Check if the current turn's combatant belongs to an actor owned by the user
+        const currentTurn = combat.turn ?? 0;
+        const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+            const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+            const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+            return (ib - ia) || (a._id > b._id ? 1 : -1);
+        });
+
+        const activeCombatant = sortedCombatants[currentTurn];
+        if (!activeCombatant || !activeCombatant.actorId) return false;
+
+        const actor = await client.getActor(activeCombatant.actorId);
+        if (!actor) return false;
+
+        // Foundry ownership check: 3 is OWNER
+        const ownership = actor.ownership?.[userId] || actor.permission?.[userId] || 0;
+        return ownership >= 3;
+    };
+
+    appRouter.post('/combats/:id/next-turn', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+
+            // Fetch the specific combat to get current turn/round
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+
+            if (!combat) {
+                return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            if (!(await isAuthorizedForCombatTurn(client, combat, client.userId))) {
+                return res.status(403).json({ error: 'Unauthorized: You do not own the current combatant and are not a GM' });
+            }
+
+            // Mimic Foundry's turn logic: sort by initiative desc, tie-break by ID
+            const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+                const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+                const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+                return (ib - ia) || (a._id > b._id ? 1 : -1);
+            });
+
+            let currentRound = combat.round || 0;
+            let currentTurn = combat.turn ?? -1;
+
+            if (currentRound === 0) {
+                currentRound = 1;
+                currentTurn = 0;
+            } else {
+                currentTurn += 1;
+                if (currentTurn >= sortedCombatants.length) {
+                    currentRound += 1;
+                    currentTurn = 0;
+                }
+            }
+
+            await client.dispatchDocumentSocket('Combat', 'update', {
+                updates: [{ _id: combatId, round: currentRound, turn: currentTurn }]
+            });
+
+            res.json({ success: true, round: currentRound, turn: currentTurn });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.post('/combats/:id/previous-turn', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+
+            if (!combat) {
+                return res.status(404).json({ error: 'Combat not found' });
+            }
+
+            const users = await client.getUsers();
+            const user = users.find((u: any) => (u._id || u.id) === client.userId);
+            const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+
+            if (!isGM) {
+                return res.status(403).json({ error: 'Unauthorized: Only GMs can move to previous turns' });
+            }
+
+            const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+                const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+                const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+                return (ib - ia) || (a._id > b._id ? 1 : -1);
+            });
+
+            let currentRound = combat.round || 0;
+            let currentTurn = combat.turn ?? 0;
+
+            if (currentRound === 0) {
+                // Do nothing if not started
+            } else if (currentTurn === 0) {
+                if (currentRound > 1) {
+                    currentRound -= 1;
+                    currentTurn = Math.max(0, sortedCombatants.length - 1);
+                } else {
+                    currentRound = 0;
+                    currentTurn = 0;
+                }
+            } else {
+                currentTurn -= 1;
+            }
+
+            await client.dispatchDocumentSocket('Combat', 'update', {
+                updates: [{ _id: combatId, round: currentRound, turn: currentTurn }]
+            });
+
+            res.json({ success: true, round: currentRound, turn: currentTurn });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.post('/combats/:id/combatants/:combatantId/roll-initiative', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const combatId = req.params.id;
+            const combatantId = req.params.combatantId;
+            const { formula, advantageMode } = req.body;
+
+            const systemInfo = await client.getSystem();
+            const adapter = getAdapter(systemInfo.id);
+            if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
+
+            const combats = await client.getCombats();
+            const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+            if (!combat) return res.status(404).json({ error: 'Combat not found' });
+
+            const combatant = combat.combatants?.find((c: any) => (c._id || c.id) === combatantId);
+            if (!combatant) return res.status(404).json({ error: 'Combatant not found' });
+
+            const actor = await client.getActor(combatant.actorId);
+            if (!actor) return res.status(404).json({ error: 'Actor not found' });
+
+            let finalFormula = formula;
+            if (!finalFormula) {
+                if (typeof (adapter as any).getInitiativeFormula === 'function') {
+                    finalFormula = (adapter as any).getInitiativeFormula(actor);
+                } else {
+                    finalFormula = '1d20';
+                }
+            }
+
+            // Apply ui-requested explicit advantage/disadvantage to standard D20 rolls
+            if (advantageMode === 'advantage') {
+                finalFormula = finalFormula.replace(/^(?:1d20|2d20k[hl]1)/i, '2d20kh1');
+            } else if (advantageMode === 'disadvantage') {
+                finalFormula = finalFormula.replace(/^(?:1d20|2d20k[hl]1)/i, '2d20kl1');
+            } else if (advantageMode === 'normal') {
+                finalFormula = finalFormula.replace(/^(?:2d20k[hl]1)/i, '1d20');
+            }
+
+            const speaker = {
+                actor: actor._id || actor.id,
+                alias: actor.name
+            };
+
+            const chatMessage = await client.roll(finalFormula, 'Initiative', { speaker });
+            const total = parseInt(chatMessage.content);
+
+            if (isNaN(total)) {
+                throw new Error("Failed to parse roll total from chat message");
+            }
+
+            await client.dispatchDocumentSocket('Combatant', 'update', {
+                updates: [{ _id: combatantId, initiative: total }]
+            }, { type: 'Combat', id: combatId });
+
+            res.json({ success: true, initiative: total });
+        } catch (error: any) {
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    /* TODO Add next or finish round if actorId matches current combatant.actorId */
+
     appRouter.get('/journals', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -1205,7 +1492,7 @@ async function startServer() {
     app.use('/api', appRouter);
     app.use('/admin', adminRouter);
 
-    app.listen(corePort, '0.0.0.0', () => {
+    httpServer.listen(corePort, '0.0.0.0', () => {
         logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
         logger.info(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
         logger.info(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);

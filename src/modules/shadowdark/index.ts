@@ -8,6 +8,7 @@ const manifest: ModuleManifest = {
     info,
     adapter: ShadowdarkAdapter,
     sheet: React.lazy(() => import('./ui/ShadowdarkSheet')),
+    rollModal: React.lazy(() => import('./ui/components/ShadowdarkInitiativeModal')),
     tools: {
         'generator': React.lazy(() => import('./ui/tools/Generator'))
     },

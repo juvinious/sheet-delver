@@ -77,7 +77,7 @@ The script will output:
 ### Test fails on Shutdown Detection
 - Wait a few seconds after clicking "Return to Setup"
 - Check the browser console for errors
-- Verify the polling interval is working (should be 1 second)
+- Verify the socket connection and status checks are working
 
 ## Expected Results
 

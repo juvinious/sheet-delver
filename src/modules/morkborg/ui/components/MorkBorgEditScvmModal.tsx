@@ -50,7 +50,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
                 silver: actor.system?.silver ?? 0
             });
         }
-    }, [isOpen, actor]);
+    }, [isOpen]);
 
     if (!isOpen || !actor) return null;
 
@@ -72,16 +72,39 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
         });
     };
 
+    const handleAbilityChange = (field: string, rawValue: string) => {
+        // Allow the user to type "-" to eventually type "-1"
+        if (rawValue === '-' || rawValue === '') {
+            handleLocalChange('abilities', field, rawValue);
+            return;
+        }
+
+        // Parse and clamp
+        let val = parseInt(rawValue, 10);
+        if (isNaN(val)) return;
+
+        if (val < -3) val = -3;
+        if (val > 6) val = 6;
+
+        handleLocalChange('abilities', field, val);
+    };
+
     const handleConfirm = () => {
         // Dispatch all accumulated changes to the parent
         if (localData.name !== actor.name) onUpdate('name', localData.name);
 
         const sys = actor.system || {};
 
-        if (localData.abilities.strength !== (sys.abilities?.strength?.value ?? 0)) onUpdate('system.abilities.strength.value', localData.abilities.strength);
-        if (localData.abilities.agility !== (sys.abilities?.agility?.value ?? 0)) onUpdate('system.abilities.agility.value', localData.abilities.agility);
-        if (localData.abilities.presence !== (sys.abilities?.presence?.value ?? 0)) onUpdate('system.abilities.presence.value', localData.abilities.presence);
-        if (localData.abilities.toughness !== (sys.abilities?.toughness?.value ?? 0)) onUpdate('system.abilities.toughness.value', localData.abilities.toughness);
+        // Parse any lingering raw "-" to 0 before saving
+        const getAbilitySafe = (val: any) => {
+            const parsed = parseInt(val, 10);
+            return isNaN(parsed) ? 0 : parsed;
+        };
+
+        if (getAbilitySafe(localData.abilities.strength) !== (sys.abilities?.strength?.value ?? 0)) onUpdate('system.abilities.strength.value', getAbilitySafe(localData.abilities.strength));
+        if (getAbilitySafe(localData.abilities.agility) !== (sys.abilities?.agility?.value ?? 0)) onUpdate('system.abilities.agility.value', getAbilitySafe(localData.abilities.agility));
+        if (getAbilitySafe(localData.abilities.presence) !== (sys.abilities?.presence?.value ?? 0)) onUpdate('system.abilities.presence.value', getAbilitySafe(localData.abilities.presence));
+        if (getAbilitySafe(localData.abilities.toughness) !== (sys.abilities?.toughness?.value ?? 0)) onUpdate('system.abilities.toughness.value', getAbilitySafe(localData.abilities.toughness));
 
         if (localData.hp.value !== (sys.hp?.value ?? 0)) onUpdate('system.hp.value', localData.hp.value);
         if (localData.hp.max !== (sys.hp?.max ?? 0)) onUpdate('system.hp.max', localData.hp.max);
@@ -156,36 +179,36 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
                                     <div className="flex items-center justify-between">
                                         <span className="text-neutral-300">Strength</span>
                                         <input
-                                            type="number"
+                                            type="text"
                                             value={localData.abilities?.strength ?? 0}
-                                            onChange={(e) => handleLocalChange('abilities', 'strength', parseInt(e.target.value) || 0)}
+                                            onChange={(e) => handleAbilityChange('strength', e.target.value)}
                                             className="bg-neutral-800 text-center outline-none w-16 text-white appearance-none focus:ring-1 focus:ring-pink-500"
                                         />
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-neutral-300">Agility</span>
                                         <input
-                                            type="number"
+                                            type="text"
                                             value={localData.abilities?.agility ?? 0}
-                                            onChange={(e) => handleLocalChange('abilities', 'agility', parseInt(e.target.value) || 0)}
+                                            onChange={(e) => handleAbilityChange('agility', e.target.value)}
                                             className="bg-neutral-800 text-center outline-none w-16 text-white appearance-none focus:ring-1 focus:ring-pink-500"
                                         />
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-neutral-300">Presence</span>
                                         <input
-                                            type="number"
+                                            type="text"
                                             value={localData.abilities?.presence ?? 0}
-                                            onChange={(e) => handleLocalChange('abilities', 'presence', parseInt(e.target.value) || 0)}
+                                            onChange={(e) => handleAbilityChange('presence', e.target.value)}
                                             className="bg-neutral-800 text-center outline-none w-16 text-white appearance-none focus:ring-1 focus:ring-pink-500"
                                         />
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-neutral-300">Toughness</span>
                                         <input
-                                            type="number"
+                                            type="text"
                                             value={localData.abilities?.toughness ?? 0}
-                                            onChange={(e) => handleLocalChange('abilities', 'toughness', parseInt(e.target.value) || 0)}
+                                            onChange={(e) => handleAbilityChange('toughness', e.target.value)}
                                             className="bg-neutral-800 text-center outline-none w-16 text-white appearance-none focus:ring-1 focus:ring-pink-500"
                                         />
                                     </div>

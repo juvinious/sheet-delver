@@ -5,11 +5,13 @@ interface RollDialogProps {
     isOpen: boolean;
     title: string;
     type: 'attack' | 'ability' | 'spell';
+    actor?: any;
     defaults?: {
         abilityBonus?: number;
         itemBonus?: number;
         talentBonus?: number;
         showItemBonus?: boolean;
+        advantageMode?: 'normal' | 'advantage' | 'disadvantage';
     };
     onConfirm: (options: any) => void;
     onClose: () => void;
@@ -51,11 +53,12 @@ const defaultTheme = {
     selectArrow: "absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400"
 };
 
-export default function RollDialog({ isOpen, title, type, defaults, onConfirm, onClose, theme }: RollDialogProps) {
+export default function RollDialog({ isOpen, title, type, actor, defaults, onConfirm, onClose, theme }: RollDialogProps) {
     const [abilityBonus, setAbilityBonus] = useState(0);
     const [itemBonus, setItemBonus] = useState(0);
     const [talentBonus, setTalentBonus] = useState(0);
     const [rollingMode, setRollingMode] = useState<string>('publicroll');
+    const [advantageMode, setAdvantageMode] = useState<'normal' | 'advantage' | 'disadvantage'>('normal');
     const [isManual, setIsManual] = useState(false);
     const [manualValue, setManualValue] = useState<string>('');
     const popupRef = useRef<HTMLDivElement>(null);
@@ -68,6 +71,7 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
             setAbilityBonus(defaults?.abilityBonus || 0);
             setItemBonus(defaults?.itemBonus || 0);
             setTalentBonus(defaults?.talentBonus || 0);
+            setAdvantageMode(defaults?.advantageMode || 'normal');
 
             // Persistence: Load roll mode
             const saved = localStorage.getItem('sheetdelver_roll_mode');
@@ -99,7 +103,7 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
 
     if (!isOpen) return null;
 
-    const handleRoll = (advantageMode: 'normal' | 'advantage' | 'disadvantage') => {
+    const handleRoll = () => {
         onConfirm({
             abilityBonus,
             itemBonus,
@@ -109,6 +113,19 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
             manualValue: isManual ? Number(manualValue) : undefined
         });
     };
+
+    const toggleAdvantage = (mode: 'advantage' | 'disadvantage') => {
+        if (advantageMode === mode) {
+            setAdvantageMode('normal');
+        } else {
+            setAdvantageMode(mode);
+        }
+    };
+
+    // Determine the main button text
+    let rollBtnText = 'Roll Normal';
+    if (advantageMode === 'advantage') rollBtnText = 'Roll Advantage';
+    if (advantageMode === 'disadvantage') rollBtnText = 'Roll Disadvantage';
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -149,7 +166,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                                 type="number"
                                 value={itemBonus}
                                 onChange={e => setItemBonus(Number(e.target.value))}
-                                className={t.input}
+                                className={`${t.input} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                style={{ MozAppearance: 'textfield' }}
                             />
                         </div>
                     )}
@@ -160,7 +178,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                             type="number"
                             value={abilityBonus}
                             onChange={e => setAbilityBonus(Number(e.target.value))}
-                            className={t.input}
+                            className={`${t.input} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                            style={{ MozAppearance: 'textfield' }}
                         />
                     </div>
 
@@ -171,7 +190,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                                 type="number"
                                 value={talentBonus}
                                 onChange={e => setTalentBonus(Number(e.target.value))}
-                                className={t.input}
+                                className={`${t.input} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                style={{ MozAppearance: 'textfield' }}
                             />
                         </div>
                     )}
@@ -220,7 +240,8 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                                         value={manualValue}
                                         onChange={e => setManualValue(e.target.value)}
                                         placeholder="Enter result..."
-                                        className={t.input}
+                                        className={`${t.input} [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                                        style={{ MozAppearance: 'textfield' }}
                                         autoFocus
                                     />
                                 </div>
@@ -228,7 +249,7 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                         )}
 
                         <button
-                            onClick={() => handleRoll('normal')}
+                            onClick={handleRoll}
                             disabled={isManual && !manualValue.trim()}
                             className={t.rollBtn ? t.rollBtn('normal') : defaultTheme.rollBtn('normal')}
                             style={{
@@ -236,20 +257,32 @@ export default function RollDialog({ isOpen, title, type, defaults, onConfirm, o
                                 cursor: (isManual && !manualValue.trim()) ? 'not-allowed' : 'pointer'
                             }}
                         >
-                            {isManual ? 'Send Result' : 'Roll Normal'}
+                            {isManual ? 'Send Result' : rollBtnText}
                         </button>
 
                         {!isManual && (
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => handleRoll('advantage')}
+                                    onClick={() => toggleAdvantage('advantage')}
                                     className={t.rollBtn ? t.rollBtn('adv') : defaultTheme.rollBtn('adv')}
+                                    style={{
+                                        opacity: advantageMode === 'advantage' || advantageMode === 'normal' ? 1 : 0.4,
+                                        transform: advantageMode === 'advantage' ? 'translateY(2px)' : 'none',
+                                        boxShadow: advantageMode === 'advantage' ? 'none' : undefined,
+                                        borderWidth: advantageMode === 'advantage' ? '4px' : undefined
+                                    }}
                                 >
                                     Advantage
                                 </button>
                                 <button
-                                    onClick={() => handleRoll('disadvantage')}
+                                    onClick={() => toggleAdvantage('disadvantage')}
                                     className={t.rollBtn ? t.rollBtn('dis') : defaultTheme.rollBtn('dis')}
+                                    style={{
+                                        opacity: advantageMode === 'disadvantage' || advantageMode === 'normal' ? 1 : 0.4,
+                                        transform: advantageMode === 'disadvantage' ? 'translateY(2px)' : 'none',
+                                        boxShadow: advantageMode === 'disadvantage' ? 'none' : undefined,
+                                        borderWidth: advantageMode === 'disadvantage' ? '4px' : undefined
+                                    }}
                                 >
                                     Disadvantage
                                 </button>

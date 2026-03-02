@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { IM_Fell_Double_Pica } from 'next/font/google';
 import { Search, Plus, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import { mbDataManager } from '../../data/DataManager';
+import { useConfig } from '@/app/ui/context/ConfigContext';
 
 const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
 
@@ -43,6 +44,7 @@ export default function MorkBorgAddItemModal({
     onConfirm,
     onClose,
 }: MorkBorgAddItemModalProps) {
+    const { resolveImageUrl } = useConfig();
     const [tab, setTab] = useState<TabId>('browse');
     const [search, setSearch] = useState('');
     const [customName, setCustomName] = useState('');
@@ -181,7 +183,7 @@ export default function MorkBorgAddItemModal({
                                             >
                                                 {item.img ? (
                                                     <img
-                                                        src={item.img}
+                                                        src={resolveImageUrl(item.img)}
                                                         alt={item.name}
                                                         width={32}
                                                         height={32}
@@ -230,7 +232,7 @@ export default function MorkBorgAddItemModal({
                                                             >
                                                                 {item.img ? (
                                                                     <img
-                                                                        src={item.img}
+                                                                        src={resolveImageUrl(item.img)}
                                                                         alt={item.name}
                                                                         width={32}
                                                                         height={32}

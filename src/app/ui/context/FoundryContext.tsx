@@ -1,9 +1,11 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '../logger';
 import { SystemInfo } from '@/shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
+import { getModule } from '@/modules/core/registry';
+import { io, Socket } from 'socket.io-client';
 import { SystemAdapter } from '@/modules/core/interfaces';
 
 export interface User {
@@ -15,6 +17,68 @@ export interface User {
     role?: number;
     color?: string;
     characterName?: string;
+}
+/*
+ "tokenId": "aw61JwSg28QcPWj0",
+            "sceneId": "NUEDEFAULTSCENE0",
+            "actorId": "ZTYNPEZtHAuDXBl8",
+            "hidden": false,
+            "_id": "w49gyvcKg74czBbM",
+            "type": "base",
+            "system": {},
+            "img": null,
+            "initiative": 4,
+            "defeated": false,
+            "group": null,
+            "flags": {},
+            "_stats": {
+*/
+export interface Combatant {
+    tokenId: string;
+    sceneId: string;
+    actorId: string;
+    actor: any;
+    hidden: boolean;
+    _id: string;
+    type: string;
+    system: any;
+    img: string | null;
+    initiative: number;
+    defeated: boolean;
+    group: string | null;
+    flags: any;
+    _stats: any;
+}
+
+/*
+"active": true,
+    "_id": "BAs2dbhRcjLV10Hg",
+    "type": "base",
+    "system": {},
+    "scene": null,
+    "groups": [],
+    "combatants": [],
+    "round": 2,
+    "turn": 0,
+    "sort": 0,
+    "flags": {},
+    "_stats":
+    */
+
+
+export interface Combat {
+    id: string;
+    _id?: string;
+    type: string;
+    system: any;
+    scene: string | null;
+    groups: any[];
+    combatants: Combatant[];
+    round: number;
+    turn: number;
+    sort: number;
+    flags: any;
+    stats: any;
 }
 
 export type ConnectionStep = 'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing';
@@ -42,6 +106,13 @@ interface FoundryContextType {
     ownedActors: any[];
     readOnlyActors: any[];
     sharedContent: any | null;
+
+    // Combats
+    combats: Combat[];
+    fetchCombats: () => Promise<any>;
+
+    // Real-time
+    appSocket: Socket | null;
 }
 
 const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
@@ -60,13 +131,16 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [system, setSystem] = useState<SystemInfo | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [appVersion, setAppVersion] = useState<string | null>(null);
-    const [lastActorSyncToken, setLastActorSyncToken] = useState<number>(0);
+    const lastActorSyncTokenRef = useRef<number>(0);
+    const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
+    const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeAdapter, setActiveAdapter] = useState<SystemAdapter | null>(null);
     const [ownedActors, setOwnedActors] = useState<any[]>([]);
     const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
+    const [combats, setCombats] = useState<Combat[]>([]);
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
@@ -122,6 +196,63 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             return data;
         } catch (error: any) {
             logger.error('FoundryProvider | Fetch actors failed:', error.message);
+        }
+    }, [token]);
+
+    const fetchCombats = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('/api/combats', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 401) return;
+            const data = await res.json();
+            if (data.combats) {
+                // Fetch actors for each combat
+                const resolvedCombats = await Promise.all(data.combats.map(async (combat: any) => {
+                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant: any) => {
+                        let actor = null;
+                        if (combatant.actorId) {
+                            try {
+                                const actorRes = await fetch(`/api/actors/${combatant.actorId}`, {
+                                    headers: { 'Authorization': `Bearer ${token}` }
+                                });
+                                actor = await actorRes.json();
+                            } catch (e) {
+                                logger.error(`Failed fetching actor ${combatant.actorId}`, e);
+                            }
+                        }
+
+                        const serializedCombatant: Combatant = {
+                            tokenId: combatant.tokenId,
+                            sceneId: combatant.sceneId,
+                            actorId: combatant.actorId,
+                            _id: combatant._id,
+                            type: combatant.type,
+                            system: combatant.system,
+                            img: combatant.img,
+                            actor: actor,
+                            hidden: combatant.hidden,
+                            initiative: combatant.initiative,
+                            defeated: combatant.defeated,
+                            group: combatant.group,
+                            flags: combatant.flags,
+                            _stats: combatant.stats
+                        };
+                        return serializedCombatant;
+                    }));
+
+                    return {
+                        ...combat,
+                        combatants
+                    };
+                }));
+
+                setCombats(resolvedCombats);
+            }
+            return data;
+        } catch (error: any) {
+            logger.error('FoundryProvider | Fetch combat failed:', error.message);
         }
     }, [token]);
 
@@ -187,15 +318,78 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // --- Main Polling Loop ---
-
+    // --- App Socket & State Initialization ---
     useEffect(() => {
-        const determineStep = (data: any, currentStep: string) => {
-            const status = data.system?.status;
-            const isAuthenticated = data.isAuthenticated || false;
+        let isMounted = true;
 
+        const initStatus = async () => {
+            try {
+                const headers: any = {};
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
+                // Fetch initial status to seed specific user data like currentUserId
+                const res = await fetch('/api/status', { headers, cache: 'no-store' });
+                if (!res.ok) return;
+
+                const data = await res.json();
+                if (!isMounted) return;
+
+                if (data.currentUserId) setCurrentUserId(data.currentUserId);
+
+                // Fetch initial shared content
+                if (token) {
+                    const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
+                    if (scRes.ok) {
+                        const scData = await scRes.json();
+                        setSharedContent(scData);
+                    }
+                }
+            } catch (e) {
+                logger.error('FoundryProvider | Initial status fetch failed', e);
+            }
+        };
+
+        initStatus();
+
+        // Connect socket unconditionally to receive global system statuses (Guest Mode)
+        // If auth token is present, server joins us to the 'authenticated' room
+        const socket = io({
+            auth: token ? { token } : {},
+            reconnectionAttempts: 5,
+            transports: ['polling', 'websocket']
+        });
+
+        socket.on('connect', () => {
+            logger.debug('FoundryContext | App Socket Connected');
+        });
+
+        socket.on('connect_error', (err) => {
+            logger.error('FoundryContext | App Socket Connection Error:', err.message);
+        });
+
+        setAppSocket(socket);
+
+        return () => {
+            isMounted = false;
+            socket.disconnect();
+            setAppSocket(null);
+        };
+    }, [token]);
+
+    // --- Real-time Socket Status Sync ---
+    useEffect(() => {
+        if (!appSocket) return;
+
+        const determineStep = (data: any, currentStep: string) => {
+            const status = data.system?.status || (data.connected ? 'active' : 'offline');
+            const isAuthenticated = !!token;
+
+            if (status === 'setup') return 'setup';
+            if (!data.connected) return 'initializing';
+            if (status === 'offline') return 'initializing'; // Still trying to connect
+            if (status === 'startup') return 'startup';
             if (status !== 'active') return 'setup';
-            if (data.initialized === false) return 'initializing';
+
             if (currentStep === 'authenticating') {
                 return isAuthenticated ? 'dashboard' : 'authenticating';
             }
@@ -207,100 +401,93 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             return isAuthenticated ? 'dashboard' : 'login';
         };
 
-        const interval = setInterval(async () => {
+        const handleSystemStatus = (data: any) => {
             try {
-                const headers: any = {};
-                if (token) headers['Authorization'] = `Bearer ${token}`;
-
-                const res = await fetch('/api/status', { headers, cache: 'no-store' });
-                if (!res.ok) return;
-
-                const data = await res.json();
-
-                // Sync Log Level
                 if (data.debug?.level !== undefined) {
                     logger.setLevel(data.debug.level);
                 }
 
                 if (data.url && typeof window !== 'undefined') {
-                    // Sync foundryUrl to config if not set
                     const { setFoundryUrl, foundryUrl } = (window as any)._sd_config_actions || {};
                     if (setFoundryUrl && foundryUrl !== data.url) setFoundryUrl(data.url);
                 }
 
-                if (data.connected && data.system) {
-                    // Check for world change BEFORE updating any state
+                // Treat both active and offline as valid payloads for determining step
+                if (data.system) {
                     const currentWorldId = data.worldId || null;
-                    if (lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
+                    if (data.connected && lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
                         logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Clearing token.`);
-                        setToken(null);
+                        if (token) setToken(null);
                         setLastWorldId(currentWorldId);
-                    } else if (currentWorldId && !lastWorldId) {
-                        // First time seeing a world ID
+                    } else if (data.connected && currentWorldId && !lastWorldId) {
                         setLastWorldId(currentWorldId);
                     }
 
-                    if (!isEqual(system, data.system)) setSystem(data.system);
-                    if (!isEqual(users, data.users)) setUsers(data.users || []);
-                    if (currentUserId !== data.currentUserId) setCurrentUserId(data.currentUserId);
+                    if (data.connected && !isEqual(system, data.system)) setSystem(data.system);
+                    if (data.connected && !isEqual(users, data.users)) setUsers(data.users || []);
                     if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
 
-                    // Actor Sync
                     const newToken = data.system?.actorSyncToken;
-                    if (newToken && newToken !== lastActorSyncToken) {
-                        setLastActorSyncToken(newToken);
-                        if (data.isAuthenticated) fetchActors();
+                    if (data.connected && newToken && newToken !== lastActorSyncTokenRef.current) {
+                        lastActorSyncTokenRef.current = newToken;
+                        if (token) fetchActors();
                     }
 
                     const targetStep = determineStep(data, step);
                     if (step !== targetStep) {
-                        // Check if we are transitioning TO setup/offline (World Shutdown)
                         if (targetStep === 'setup' && step !== 'setup') {
-                            logger.warn('FoundryProvider | World Shutdown detected. Clearing session.');
-                            setToken(null);
-                            setLastWorldId(null); // Reset world tracking
+                            logger.warn('FoundryProvider | World explicitly in Setup mode. Clearing session.');
+                            if (token) setToken(null);
+                            setLastWorldId(null);
                         }
-
-                        setStep(targetStep as any, 'polling', `Status change: ${targetStep}`);
-                        if (targetStep === 'dashboard') fetchActors();
-                    }
-                } else {
-                    if (step !== 'setup') {
-                        setStep('setup' as any, 'polling', 'Disconnected');
-                        // Also clear token on disconnect to ensure fresh login
-                        if (token) setToken(null);
-                        setLastWorldId(null); // Reset world tracking on disconnect
-                    }
-                    if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
-                }
-
-                // Shared Content Polling (Consolidated)
-                if (data.isAuthenticated && token) {
-                    const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
-                    if (scRes.ok) {
-                        const scData = await scRes.json();
-                        if (!isEqual(sharedContent, scData)) setSharedContent(scData);
+                        setStep(targetStep as any, 'socket', `Status change: ${targetStep}`);
+                        if (targetStep === 'dashboard' && data.connected) fetchActors();
                     }
                 }
             } catch (e) {
-                // Network error - assume disconnected
-                if (step !== 'setup') {
-                    setStep('setup', 'polling', 'Network Error');
-                }
+                logger.error('FoundryProvider | Error handling system status:', e);
             }
-        }, 3000);
+        };
 
-        return () => clearInterval(interval);
-    }, [step, token, fetchActors, setStep, system, users, currentUserId, sharedContent, appVersion]);
+        const handleSharedContentUpdate = (scData: any) => {
+            if (!isEqual(sharedContent, scData)) setSharedContent(scData);
+        };
 
-    // Chat Polling
+        appSocket.on('systemStatus', handleSystemStatus);
+        appSocket.on('sharedContentUpdate', handleSharedContentUpdate);
+
+        return () => {
+            appSocket.off('systemStatus', handleSystemStatus);
+            appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
+        };
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, lastWorldId]);
+
+    // Chat and Combat Real-time Sync
     useEffect(() => {
         if (step === 'dashboard' && token) {
             fetchChat();
-            const interval = setInterval(fetchChat, 5000);
-            return () => clearInterval(interval);
+            fetchCombats(); // Initial fetch
+
+            if (appSocket) {
+                const handleCombatUpdate = (data: any) => {
+                    logger.debug('FoundryContext | Socket Combat Update received:', data);
+                    fetchCombats();
+                };
+                const handleChatUpdate = (data: any) => {
+                    logger.debug('FoundryContext | Socket Chat Update received:', data);
+                    fetchChat();
+                };
+
+                appSocket.on('combatUpdate', handleCombatUpdate);
+                appSocket.on('chatUpdate', handleChatUpdate);
+
+                return () => {
+                    appSocket.off('combatUpdate', handleCombatUpdate);
+                    appSocket.off('chatUpdate', handleChatUpdate);
+                };
+            }
         }
-    }, [step, token, fetchChat]);
+    }, [step, token, fetchChat, fetchCombats, appSocket]);
 
     return (
         <FoundryContext.Provider value={{
@@ -312,7 +499,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             activeAdapter, setActiveAdapter,
             handleLogin, handleChatSend, handleLogout, fetchActors,
             ownedActors, readOnlyActors,
-            sharedContent
+            sharedContent,
+            combats, fetchCombats,
+            appSocket
         }}>
             {children}
         </FoundryContext.Provider>
