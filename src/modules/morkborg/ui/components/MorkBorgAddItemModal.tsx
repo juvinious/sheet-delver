@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import { Search, Plus, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import { mbDataManager } from '../../data/DataManager';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 export interface MorkBorgAddItemModalProps {
     /** The item types allowed, e.g. ['armor','weapon','misc'] or ['feat'] */
@@ -119,7 +119,7 @@ export default function MorkBorgAddItemModal({
                 >
                     {/* Header */}
                     <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-pink-900/50 shrink-0">
-                        <h2 className={`${fell.className} text-2xl text-yellow-400 uppercase tracking-widest leading-tight`}>
+                        <h2 className={`$"font-imfell" text-2xl text-yellow-400 uppercase tracking-widest leading-tight`}>
                             Add Item
                         </h2>
                         <button
@@ -136,7 +136,7 @@ export default function MorkBorgAddItemModal({
                             <button
                                 key={t}
                                 onClick={() => setTab(t)}
-                                className={`${fell.className} flex-1 py-2 text-lg uppercase tracking-widest transition-colors cursor-pointer ${tab === t
+                                className={`$"font-imfell" flex-1 py-2 text-lg uppercase tracking-widest transition-colors cursor-pointer ${tab === t
                                     ? 'bg-pink-950 text-yellow-400 border-b-2 border-pink-500'
                                     : 'text-neutral-400 hover:text-neutral-200'
                                     }`}
@@ -212,7 +212,7 @@ export default function MorkBorgAddItemModal({
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         {isExpanded ? <ChevronDown className="w-4 h-4 text-pink-500" /> : <ChevronRight className="w-4 h-4 text-neutral-500" />}
-                                                        <span className={`${fell.className} text-xl uppercase tracking-widest text-yellow-400`}>
+                                                        <span className={`$"font-imfell" text-xl uppercase tracking-widest text-yellow-400`}>
                                                             {groupBy === 'letter' ? type : (TYPE_LABELS[type] || type)}
                                                         </span>
                                                     </div>
@@ -258,7 +258,7 @@ export default function MorkBorgAddItemModal({
                         <div className="px-6 py-5 space-y-5 flex-1">
                             {/* Name */}
                             <div>
-                                <label className={`${fell.className} text-yellow-400 uppercase tracking-widest text-base block mb-2`}>
+                                <label className={`$"font-imfell" text-yellow-400 uppercase tracking-widest text-base block mb-2`}>
                                     Name
                                 </label>
                                 <input
@@ -274,7 +274,7 @@ export default function MorkBorgAddItemModal({
 
                             {/* Type */}
                             <div>
-                                <label className={`${fell.className} text-yellow-400 uppercase tracking-widest text-base block mb-2`}>
+                                <label className={`$"font-imfell" text-yellow-400 uppercase tracking-widest text-base block mb-2`}>
                                     Type
                                 </label>
                                 <div className="flex flex-wrap gap-2">
@@ -282,7 +282,7 @@ export default function MorkBorgAddItemModal({
                                         <button
                                             key={t}
                                             onClick={() => setCustomType(t)}
-                                            className={`${fell.className} px-3 py-1 text-base uppercase tracking-widest border transition-all cursor-pointer ${customType === t
+                                            className={`$"font-imfell" px-3 py-1 text-base uppercase tracking-widest border transition-all cursor-pointer ${customType === t
                                                 ? 'bg-pink-900 border-pink-500 text-white'
                                                 : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:border-neutral-500'
                                                 }`}
@@ -297,7 +297,7 @@ export default function MorkBorgAddItemModal({
                             <button
                                 onClick={handleCustomCreate}
                                 disabled={!customName.trim()}
-                                className={`${fell.className} w-full py-3 text-xl uppercase tracking-widest border-2 transition-all shadow-[4px_4px_0_0_#000] cursor-pointer ${customName.trim()
+                                className={`$"font-imfell" w-full py-3 text-xl uppercase tracking-widest border-2 transition-all shadow-[4px_4px_0_0_#000] cursor-pointer ${customName.trim()
                                     ? 'bg-pink-900 hover:bg-pink-700 border-pink-500 text-white'
                                     : 'bg-neutral-800 border-neutral-700 text-neutral-600 cursor-not-allowed'
                                     }`}

@@ -25,7 +25,7 @@ export interface LevelUpProps {
 }
 
 export type SectionStatus = 'IDLE' | 'LOADING' | 'READY' | 'ERROR' | 'COMPLETE' | 'DISABLED';
-
+const EMPTY_ARRAY: any[] = [];
 
 export const useLevelUp = (props: LevelUpProps) => {
     const {
@@ -38,9 +38,9 @@ export const useLevelUp = (props: LevelUpProps) => {
         patron,
         patronUuid,
         abilities: _abilities,
-        availableClasses = [],
-        availableLanguages = [],
-        knownLanguages: initialKnownLanguages = [],
+        availableClasses = EMPTY_ARRAY,
+        availableLanguages = EMPTY_ARRAY,
+        knownLanguages: initialKnownLanguages = EMPTY_ARRAY,
         skipLanguageSelection = false,
         onComplete,
     } = props;
@@ -71,7 +71,12 @@ export const useLevelUp = (props: LevelUpProps) => {
     }, [classUuid, targetClassUuid]);
 
     useEffect(() => {
-        if (!activeClassObj && classObj) setActiveClassObj(classObj);
+        if (!classObj) return;
+        const currentStr = JSON.stringify(activeClassObj || {});
+        const newStr = JSON.stringify(classObj || {});
+        if (currentStr !== newStr) {
+            setActiveClassObj(classObj);
+        }
     }, [classObj, activeClassObj]);
 
     // Initialize selectedPatronUuid from props if available
@@ -143,7 +148,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
     // Load token on mount
     useEffect(() => {
-        const stored = sessionStorage.getItem('sheet-delver-token');
+        const stored = localStorage.getItem('sheet-delver-token');
         if (stored) setToken(stored);
     }, []);
 
@@ -764,7 +769,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             let currentClass = activeClassObj;
             let effectiveClassUuid: string | undefined = targetClassUuid || classUuid;
             let classLoaded = Boolean(currentClass);
-
+            /*
             logger.debug("[LevelUp] Init loop starting", {
                 hasActiveClass: !!activeClassObj,
                 hasPropClass: !!classObj,
@@ -772,6 +777,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                 classUuid,
                 token: !!token
             });
+            */
 
             try {
                 // Initial state check - if we have nothing, we are in READY state for selection
@@ -853,7 +859,7 @@ export const useLevelUp = (props: LevelUpProps) => {
 
                 // Authenticated Data fetches (Needs Token and a valid Class)
                 if (token && classLoaded && currentClass) {
-                    logger.debug("[LevelUp] Triggering authenticated data fetches...");
+                    // logger.debug("[LevelUp] Triggering authenticated data fetches...");
                     if (actorId || effectiveClassUuid) {
                         await fetchLevelUpData(effectiveClassUuid);
                     }

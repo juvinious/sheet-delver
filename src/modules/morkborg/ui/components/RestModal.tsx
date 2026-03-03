@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 interface RestModalProps {
     isOpen: boolean;
@@ -65,7 +65,7 @@ export default function RestModal({
 
                     {/* Header */}
                     <div className="flex justify-between items-center px-4 py-2 bg-neutral-900 border-b-2 border-pink-600/30 relative z-10">
-                        <span className={`${fell.className} text-xl uppercase tracking-[0.2em] text-white brightness-125`}>REST</span>
+                        <span className={`$"font-imfell" text-xl uppercase tracking-[0.2em] text-white brightness-125`}>REST</span>
                         <button
                             onClick={onClose}
                             className="text-neutral-500 hover:text-white transition-colors flex items-center gap-1 uppercase text-[10px] font-bold tracking-widest"
@@ -79,7 +79,7 @@ export default function RestModal({
 
                         {/* Rest Length */}
                         <section className="space-y-4">
-                            <h3 className={`${fell.className} text-3xl text-white border-b border-white/10 pb-1 flex items-center gap-2`}>
+                            <h3 className={`$"font-imfell" text-3xl text-white border-b border-white/10 pb-1 flex items-center gap-2`}>
                                 Rest Length
                             </h3>
                             <div className="space-y-3">
@@ -114,7 +114,7 @@ export default function RestModal({
 
                         {/* Food and Drink */}
                         <section className="space-y-4">
-                            <h3 className={`${fell.className} text-3xl text-white border-b border-white/10 pb-1`}>
+                            <h3 className={`$"font-imfell" text-3xl text-white border-b border-white/10 pb-1`}>
                                 Food and Drink
                             </h3>
                             <div className="space-y-3">
@@ -162,7 +162,7 @@ export default function RestModal({
 
                         {/* Infection */}
                         <section className="space-y-4">
-                            <h3 className={`${fell.className} text-3xl text-white border-b border-white/10 pb-1`}>
+                            <h3 className={`$"font-imfell" text-3xl text-white border-b border-white/10 pb-1`}>
                                 Infection
                             </h3>
                             <label className="flex items-start gap-3 group cursor-pointer">
@@ -186,7 +186,7 @@ export default function RestModal({
                             onClick={handleRest}
                             className="w-full bg-white hover:bg-neutral-100 text-black py-4 border-2 border-black flex items-center justify-center gap-3 shadow-[8px_8px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all group"
                         >
-                            <span className={`${fell.className} text-4xl font-bold tracking-widest`}>REST</span>
+                            <span className={`$"font-imfell" text-4xl font-bold tracking-widest`}>REST</span>
                         </button>
                     </div>
                 </div>

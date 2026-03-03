@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { IM_Fell_Double_Pica, Inter } from 'next/font/google';
+
 import grunge from './assets/grunge.png';
 import BackgroundTab from './BackgroundTab';
 import EquipmentTab from './EquipmentTab';
@@ -14,8 +14,8 @@ import MorkBorgEditScvmModal from './components/MorkBorgEditScvmModal';
 import MorkBorgChatStyles from './components/chat/MorkBorgChatStyles';
 import { MorkBorgAdapter } from '../adapter';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
-const inter = Inter({ subsets: ['latin'] });
+
+
 
 interface MorkBorgSheetProps {
     actor: any;
@@ -41,7 +41,7 @@ const StatBlock = ({ label, value, path, max, min = 0, showMax = true, onUpdate 
                 -moz-appearance: textfield;
             }
         `}} />
-        <span className={`${fell.className} text-pink-500 text-sm uppercase tracking-widest mb-1`}>{label}</span>
+        <span className={`$"font-imfell" text-pink-500 text-sm uppercase tracking-widest mb-1`}>{label}</span>
         <div className="flex items-center gap-1 font-mono text-2xl text-white">
             <input
                 type="number"
@@ -71,10 +71,10 @@ const StatBlock = ({ label, value, path, max, min = 0, showMax = true, onUpdate 
 
 const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, onRoll: any }) => (
     <div className="flex items-center gap-2 sm:gap-4 group cursor-pointer justify-center md:justify-end" onClick={() => onRoll('ability', label.toLowerCase())}>
-        <div className={`${fell.className} text-2xl sm:text-3xl w-12 sm:w-16 text-right group-hover:text-pink-500 transition-colors`}>
+        <div className={`$"font-imfell" text-2xl sm:text-3xl w-12 sm:w-16 text-right group-hover:text-pink-500 transition-colors`}>
             {label.substring(0, 3).toUpperCase()}
         </div>
-        <div className={`${fell.className} text-3xl sm:text-4xl font-bold bg-black text-white w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
+        <div className={`$"font-imfell" text-3xl sm:text-4xl font-bold bg-black text-white w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center border-2 border-transparent group-hover:border-pink-500 transition-all shadow-md transform group-hover:scale-110`}>
             {value > 0 ? `+${value}` : value}
         </div>
     </div>
@@ -227,7 +227,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
     };
 
     return (
-        <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
+        <div className={`min-h-screen text-[#111] $"font-inter" selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
             {/* Global Yellow Background Force */}
             <div className="fixed inset-0 -z-50" style={{ backgroundColor: '#ffe900' }}></div>
 
@@ -271,7 +271,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                             </div>
                                         </div>
                                         <div className="flex-1 overflow-hidden">
-                                            <h1 className={`${fell.className} text-4xl sm:text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-[0.85] sm:leading-none mb-1 drop-shadow-md break-words`}>
+                                            <h1 className={`$"font-imfell" text-4xl sm:text-6xl md:text-7xl font-bold uppercase tracking-tighter leading-[0.85] sm:leading-none mb-1 drop-shadow-md break-words`}>
                                                 {sheetActor.name}
                                             </h1>
                                         </div>
@@ -316,7 +316,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                             <div className="flex flex-wrap items-center justify-center gap-4 mt-2">
                                 <button
                                     onClick={() => setIsRestModalOpen(true)}
-                                    className={`${fell.className} bg-neutral-900 text-white px-4 py-1 text-sm border-2 border-black -rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
+                                    className={`$"font-imfell" bg-neutral-900 text-white px-4 py-1 text-sm border-2 border-black -rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
                                 >
                                     REST
                                 </button>
@@ -335,13 +335,13 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                             setConfirmModal(null);
                                         },
                                     })}
-                                    className={`${fell.className} bg-black text-white px-4 py-1 text-sm border-2 border-black rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
+                                    className={`$"font-imfell" bg-black text-white px-4 py-1 text-sm border-2 border-black rotate-1 shadow-[4px_4px_0_0_#000] hover:bg-pink-600 hover:text-white transition-all active:scale-95`}
                                 >
                                     GET BETTER
                                 </button>
                                 <button
                                     onClick={() => handleRoll('broken', 'broken')}
-                                    className={`${fell.className} bg-neutral-800 text-white px-4 py-1 text-sm border-2 border-black -rotate-2 shadow-[4px_4px_0_0_#000] hover:bg-red-600 hover:text-white transition-all active:scale-95`}
+                                    className={`$"font-imfell" bg-neutral-800 text-white px-4 py-1 text-sm border-2 border-black -rotate-2 shadow-[4px_4px_0_0_#000] hover:bg-red-600 hover:text-white transition-all active:scale-95`}
                                 >
                                     BROKEN
                                 </button>
@@ -386,7 +386,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                         }
                                     `}
                                 >
-                                    <div className={`${fell.className} uppercase font-bold tracking-[0.2em] text-xl whitespace-nowrap`}>
+                                    <div className={`$"font-imfell" uppercase font-bold tracking-[0.2em] text-xl whitespace-nowrap`}>
                                         {tab.label}
                                     </div>
                                     {isActive && (
@@ -421,7 +421,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                         }
                                     `}
                                 >
-                                    <div className={`${fell.className} uppercase font-bold tracking-[0.2em] text-xs whitespace-nowrap`}>
+                                    <div className={`$"font-imfell" uppercase font-bold tracking-[0.2em] text-xs whitespace-nowrap`}>
                                         {tab.label}
                                     </div>
                                     {isActive && (

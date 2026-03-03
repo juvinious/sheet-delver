@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Crimson_Pro, Inter } from 'next/font/google';
+
 import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@/app/ui/logger';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 import { TALENT_HANDLERS } from '@/modules/shadowdark/api/talent-handlers';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 
-const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+
+
 
 export default function Generator() {
     const { setFoundryUrl: setConfigFoundryUrl } = useConfig();
@@ -1088,7 +1088,7 @@ export default function Generator() {
     }
 
     return (
-        <div className={`flex flex-col min-h-screen ${crimson.variable} ${inter.variable} font-sans bg-neutral-100 text-black pb-24`}>
+        <div className={`flex flex-col min-h-screen font-crimson font-inter font-sans bg-neutral-100 text-black pb-24`}>
 
             {/* Top Navigation Bar */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-neutral-900 border-b border-neutral-800 px-4 py-3 shadow-md flex items-center justify-between backdrop-blur-sm bg-opacity-95">

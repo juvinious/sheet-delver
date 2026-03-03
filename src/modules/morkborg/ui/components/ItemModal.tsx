@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import RichTextEditor from '@/app/ui/components/RichTextEditor';
 import { morkborgTheme } from '../../themes/morkborg';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
 import { useConfig } from '@/app/ui/context/ConfigContext';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 interface ItemModalProps {
     isOpen: boolean;
@@ -313,7 +313,7 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                                 type="text"
                                 value={item.name}
                                 onChange={(e) => handleChange('name', e.target.value)}
-                                className={`bg-transparent ${fell.className} uppercase text-3xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left`}
+                                className={`bg-transparent $"font-imfell" uppercase text-3xl sm:text-4xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center sm:text-left`}
                             />
                             <div className="h-0.5 bg-gradient-to-r from-transparent via-pink-500/50 to-transparent sm:from-pink-500/50 sm:to-transparent w-full mb-2 shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
                             <div className="font-morkborg text-xl sm:text-2xl text-pink-500 tracking-tighter uppercase opacity-90">
@@ -360,7 +360,7 @@ export default function ItemModal({ isOpen, onClose, onUpdate, item }: ItemModal
                             onClick={onClose}
                             className="w-full bg-white hover:bg-neutral-100 text-black py-4 border-2 border-black flex items-center justify-center gap-3 shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all group"
                         >
-                            <span className={`${fell.className} text-4xl font-bold tracking-tighter uppercase`}>Confirm</span>
+                            <span className={`$"font-imfell" text-4xl font-bold tracking-tighter uppercase`}>Confirm</span>
                         </button>
                     </div>
                 </div>

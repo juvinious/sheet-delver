@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 interface EditScvmModalProps {
     isOpen: boolean;
@@ -161,7 +161,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
                             value={localData.name || ''}
                             onChange={(e) => handleLocalChange('name', null, e.target.value)}
                             placeholder="NAME YOUR SCVM"
-                            className={`bg-transparent ${fell.className} uppercase text-4xl sm:text-5xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center placeholder-neutral-700`}
+                            className={`bg-transparent $"font-imfell" uppercase text-4xl sm:text-5xl text-white tracking-widest leading-none mb-1 w-full outline-none border-none focus:ring-0 text-center placeholder-neutral-700`}
                         />
                         <div className="h-0.5 bg-gradient-to-r from-transparent via-pink-500/50 to-transparent w-full shadow-[0_0_10px_rgba(236,72,153,0.5)]"></div>
                     </div>
@@ -173,7 +173,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
 
                             {/* Core Abilities */}
                             <div className="space-y-4">
-                                <h3 className={`text-pink-500 text-xl tracking-widest uppercase border-b border-pink-500/30 pb-1 ${fell.className}`}>Abilities</h3>
+                                <h3 className={`text-pink-500 text-xl tracking-widest uppercase border-b border-pink-500/30 pb-1 $"font-imfell"`}>Abilities</h3>
 
                                 <div className="space-y-3 font-mono text-lg uppercase tracking-tight">
                                     <div className="flex items-center justify-between">
@@ -217,7 +217,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
 
                             {/* Resources & Wealth */}
                             <div className="space-y-4">
-                                <h3 className={`text-pink-500 text-xl tracking-widest uppercase border-b border-pink-500/30 pb-1 ${fell.className}`}>Resources</h3>
+                                <h3 className={`text-pink-500 text-xl tracking-widest uppercase border-b border-pink-500/30 pb-1 $"font-imfell"`}>Resources</h3>
 
                                 <div className="space-y-3 font-mono text-lg uppercase tracking-tight">
                                     <div className="flex items-center justify-between">
@@ -297,7 +297,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
                             onClick={handleConfirm}
                             className="w-full bg-white hover:bg-neutral-100 text-black py-3 border-2 border-black flex items-center justify-center shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all"
                         >
-                            <span className={`${fell.className} text-3xl font-bold tracking-tighter uppercase`}>Confirm</span>
+                            <span className={`$"font-imfell" text-3xl font-bold tracking-tighter uppercase`}>Confirm</span>
                         </button>
                     </div>
                 </div>

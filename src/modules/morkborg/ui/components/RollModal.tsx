@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 interface RollModalProps {
     isOpen: boolean;
@@ -78,7 +78,7 @@ export default function RollModal({
 
                     {/* Header */}
                     <div className="flex justify-between items-center px-4 py-2 bg-neutral-900 border-b-2 border-pink-500/20 relative z-10">
-                        <span className={`${fell.className} text-xl uppercase tracking-[0.2em] text-white brightness-125`}>{title}</span>
+                        <span className={`$"font-imfell" text-xl uppercase tracking-[0.2em] text-white brightness-125`}>{title}</span>
                         <button
                             onClick={onClose}
                             className="text-neutral-500 hover:text-white transition-colors flex items-center gap-1 uppercase text-[10px] font-bold tracking-widest"
@@ -91,7 +91,7 @@ export default function RollModal({
                     <div className="p-8 space-y-6 relative z-10 bg-black/40">
                         {/* DR Input Row */}
                         <div className="flex items-center justify-between gap-4">
-                            <label className={`${fell.className} text-3xl text-white drop-shadow-lg`}>
+                            <label className={`$"font-imfell" text-3xl text-white drop-shadow-lg`}>
                                 {type === 'attack' ? 'Target DR:' : 'Difficulty DR:'}
                             </label>
                             <input
@@ -105,7 +105,7 @@ export default function RollModal({
 
                         {/* Modified DR Row */}
                         <div className="flex items-center justify-between gap-4">
-                            <label className={`${fell.className} text-3xl text-white drop-shadow-lg`}>
+                            <label className={`$"font-imfell" text-3xl text-white drop-shadow-lg`}>
                                 Modified DR:
                             </label>
                             <div className="bg-transparent border-2 border-neutral-800 p-2 text-2xl text-neutral-500 w-20 text-center font-mono brightness-75">
@@ -120,7 +120,7 @@ export default function RollModal({
 
                         {/* Target/Incoming Row */}
                         <div className="flex flex-col gap-2">
-                            <label className={`${fell.className} text-3xl text-white leading-tight drop-shadow-lg`}>
+                            <label className={`$"font-imfell" text-3xl text-white leading-tight drop-shadow-lg`}>
                                 {type === 'attack' ? 'Target Armor:' : 'Incoming Attack:'}
                             </label>
                             <input
@@ -144,7 +144,7 @@ export default function RollModal({
                             className="w-full bg-white hover:bg-neutral-100 text-black py-4 border-2 border-black flex items-center justify-center gap-3 shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all group"
                         >
                             <span className="text-3xl animate-pulse">🎲</span>
-                            <span className={`${fell.className} text-4xl font-bold tracking-tighter`}>ROLL</span>
+                            <span className={`$"font-imfell" text-4xl font-bold tracking-tighter`}>ROLL</span>
                         </button>
                     </div>
                 </div>

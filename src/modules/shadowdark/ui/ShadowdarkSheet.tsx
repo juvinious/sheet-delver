@@ -6,7 +6,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 import { shadowdarkTheme } from './themes/shadowdark';
 import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
-import { Crimson_Pro, Inter } from 'next/font/google';
+
 import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { shouldShowSpellsTab } from '../rules';
 import { Menu, X, Check } from 'lucide-react';
@@ -22,8 +22,8 @@ import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
 import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
-const crimson = Crimson_Pro({ subsets: ['latin'], variable: '--font-crimson' });
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
+
+
 
 
 interface ShadowdarkSheetProps {
@@ -366,7 +366,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const secondaryTabs = overflowTabs;
 
     return (
-        <div className={`flex flex-col h-full relative pb-0 ${crimson.variable} ${inter.variable} font-sans ${viewMode === 'simple' ? 'bg-black' : 'bg-neutral-100'} text-black`}>
+        <div className={`flex flex-col h-full relative pb-0 font-crimson font-inter font-sans ${viewMode === 'simple' ? 'bg-black' : 'bg-neutral-100'} text-black`}>
             {/* Loading Overlay */}
             <LoadingModal message="Loading System Data..." visible={loadingSystem} theme={shadowdarkTheme.loadingModal} />
 

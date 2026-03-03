@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Inter } from 'next/font/google';
+
 import { LayoutGrid, Package, Sparkles, AlertCircle } from 'lucide-react';
 
-const inter = Inter({ subsets: ['latin'] });
+
 
 interface GenericSheetProps {
     actor: any;
@@ -21,7 +21,7 @@ export default function GenericSheet({ actor, onUpdate }: GenericSheetProps) {
     const effects = actor.effects || [];
 
     return (
-        <div className={`flex flex-col h-[100dvh] w-full bg-neutral-50 text-neutral-900 ${inter.className}`}>
+        <div className={`flex flex-col h-[100dvh] w-full bg-neutral-50 text-neutral-900 $"font-inter"`}>
             {/* Header */}
             <header className="shrink-0 bg-white border-b border-neutral-200 p-4 shadow-sm z-10 sticky top-0">
                 <div className="flex items-center gap-4 max-w-3xl mx-auto">

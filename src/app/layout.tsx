@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Cinzel } from "next/font/google";
+import { Geist, Geist_Mono, Cinzel, Inter, IM_Fell_Double_Pica, Crimson_Pro } from "next/font/google";
 import "./globals.css";
 
 import ShutdownWatcher from "@/app/ui/components/ShutdownWatcher";
@@ -19,16 +19,50 @@ import VideoPlaysinlineFix from "@/app/ui/components/VideoPlaysinlineFix";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["system-ui", "arial"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["monospace"],
 });
 
 const cinzel = Cinzel({
   variable: "--font-cinzel",
   subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["serif"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["sans-serif"],
+});
+
+const imFell = IM_Fell_Double_Pica({
+  weight: "400",
+  variable: "--font-imfell",
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["serif"],
+});
+
+const crimson = Crimson_Pro({
+  variable: "--font-crimson",
+  subsets: ["latin"],
+  preload: false,
+  display: "swap",
+  fallback: ["serif"],
 });
 
 export const metadata: Metadata = {
@@ -44,7 +78,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${cinzel.variable} ${inter.variable} ${imFell.variable} ${crimson.variable} font-sans antialiased`}
         suppressHydrationWarning
       >
         <ConfigProvider>

@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import { Dices, Pencil } from 'lucide-react';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 export interface MorkBorgRollConfig {
     title: string;
@@ -233,7 +233,7 @@ export default function MorkBorgRollModal({
                     <div className="absolute -top-3 -right-3 text-2xl select-none">💀</div>
 
                     {/* Title */}
-                    <h2 className={`${fell.className} text-2xl text-yellow-400 uppercase tracking-wide mb-1 leading-tight`}>
+                    <h2 className={`$"font-imfell" text-2xl text-yellow-400 uppercase tracking-wide mb-1 leading-tight`}>
                         {config.title}
                     </h2>
                     <div className="text-pink-500 font-mono text-xs uppercase tracking-widest mb-4">
@@ -276,11 +276,11 @@ export default function MorkBorgRollModal({
                                     {renderRollModeSelector()}
                                     <div className="flex gap-3">
                                         <button onClick={handleAutoAttackDefendRoll}
-                                            className={`${fell.className} flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer`}>
+                                            className={`$"font-imfell" flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer`}>
                                             Roll
                                         </button>
                                         <button onClick={onClose}
-                                            className={`${fell.className} bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
+                                            className={`$"font-imfell" bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
                                             Cancel
                                         </button>
                                     </div>
@@ -297,11 +297,11 @@ export default function MorkBorgRollModal({
                                     {renderRollModeSelector()}
                                     <div className="flex gap-3">
                                         <button onClick={onConfirm}
-                                            className={`${fell.className} flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer`}>
+                                            className={`$"font-imfell" flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer`}>
                                             Roll
                                         </button>
                                         <button onClick={onClose}
-                                            className={`${fell.className} bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
+                                            className={`$"font-imfell" bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
                                             Cancel
                                         </button>
                                     </div>
@@ -399,7 +399,7 @@ export default function MorkBorgRollModal({
                                                     ? (attackHit === null || (attackHit === true && isNaN(damageDieVal)))
                                                     : (defendPassed === null || (!defendPassed && isNaN(parseInt(defendDamageInput, 10))))
                                             }
-                                            className={`${fell.className} flex-1 text-white text-xl py-2 px-4 border tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${(config.rollType === 'attack' ? attackHit !== null && (!attackHit || !isNaN(damageDieVal)) : defendPassed !== null && (defendPassed || !isNaN(parseInt(defendDamageInput, 10))))
+                                            className={`$"font-imfell" flex-1 text-white text-xl py-2 px-4 border tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${(config.rollType === 'attack' ? attackHit !== null && (!attackHit || !isNaN(damageDieVal)) : defendPassed !== null && (defendPassed || !isNaN(parseInt(defendDamageInput, 10))))
                                                 ? 'bg-pink-900 hover:bg-pink-700 border-pink-500'
                                                 : 'bg-neutral-800 border-neutral-700 text-neutral-600 cursor-not-allowed'
                                                 }`}
@@ -407,7 +407,7 @@ export default function MorkBorgRollModal({
                                             Submit
                                         </button>
                                         <button onClick={onClose}
-                                            className={`${fell.className} bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
+                                            className={`$"font-imfell" bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
                                             Cancel
                                         </button>
                                     </div>
@@ -460,7 +460,7 @@ export default function MorkBorgRollModal({
                                         <button
                                             onClick={handleSimpleManualSubmit}
                                             disabled={simpleTotal === null}
-                                            className={`${fell.className} flex-1 text-white text-xl py-2 px-4 border tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${simpleTotal !== null
+                                            className={`$"font-imfell" flex-1 text-white text-xl py-2 px-4 border tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${simpleTotal !== null
                                                 ? 'bg-pink-900 hover:bg-pink-700 border-pink-500'
                                                 : 'bg-neutral-800 border-neutral-700 text-neutral-600 cursor-not-allowed'
                                                 }`}
@@ -468,7 +468,7 @@ export default function MorkBorgRollModal({
                                             Submit
                                         </button>
                                         <button onClick={onClose}
-                                            className={`${fell.className} bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
+                                            className={`$"font-imfell" bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer`}>
                                             Cancel
                                         </button>
                                     </div>

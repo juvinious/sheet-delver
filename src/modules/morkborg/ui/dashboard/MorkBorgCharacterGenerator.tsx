@@ -1,15 +1,15 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { IM_Fell_Double_Pica, Inter } from 'next/font/google';
+
 import grunge from './assets/grunge.png';
 import { mbDataManager } from '../../data/DataManager';
 import { logger } from '@/core/logger';
 import { randomRotation } from '../components/utils';
 import { AlignCenterHorizontal, AlignCenterVertical, Skull, Bone } from 'lucide-react';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
-const inter = Inter({ subsets: ['latin'] });
+
+
 
 function randomTheme(currentTheme: any) {
     const themes = [
@@ -324,7 +324,7 @@ export default function MorkBorgCharacterGenerator() {
 
     const [character, setCharacter] = useState(() => randomCharacter(classInclusion));
     return (
-        <div className={`min-h-screen text-[#111] ${inter.className} selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
+        <div className={`min-h-screen text-[#111] $"font-inter" selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
 
             {/* Randomly selected theme background */}
             <div className="fixed inset-0 -z-50" style={{ backgroundColor: theme.colors.background }}>

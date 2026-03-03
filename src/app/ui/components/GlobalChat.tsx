@@ -3,11 +3,11 @@
 import { useState, useRef, useEffect } from 'react';
 import ChatTab from './ChatTab';
 import DiceTray from './DiceTray';
-import { Inter } from 'next/font/google';
+
 import { MessageSquare } from 'lucide-react';
 import { SystemAdapter, RollMode } from '@/shared/interfaces';
 
-const inter = Inter({ subsets: ['latin'] });
+
 
 import { useFoundry } from '@/app/ui/context/FoundryContext';
 import { useUI } from '@/app/ui/context/UIContext';
@@ -75,7 +75,7 @@ export default function GlobalChat(props: GlobalChatProps) {
     }, [isChatOpen, isDiceOpen, setChatOpen, setDiceTrayOpen]);
 
     return (
-        <div ref={containerRef} className={`fixed bottom-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-[100] flex flex-col items-center sm:items-end gap-4 pointer-events-none ${inter.className} `}>
+        <div ref={containerRef} className={`fixed bottom-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-[100] flex flex-col items-center sm:items-end gap-4 pointer-events-none $"font-inter" `}>
 
             {/* --- WINDOWS --- */}
             <div className="flex flex-col-reverse items-center gap-4 pointer-events-none hud-panel">

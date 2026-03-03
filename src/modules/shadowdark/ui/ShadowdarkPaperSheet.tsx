@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
     resolveEntityName,
     resolveEntityUuid
@@ -8,6 +8,8 @@ import {
 import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import NotesModal from './components/NotesModal';
+import { LevelUpModal } from './components/LevelUpModal';
+import { useNotifications } from '@/app/ui/components/NotificationSystem';
 import { logger } from '@/core/logger';
 
 
@@ -32,6 +34,21 @@ export default function ShadowdarkPaperSheet({
 }: ShadowdarkPaperSheetProps) {
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
+    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+    const [levelUpData, setLevelUpData] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState('main');
+    const [viewMode, setViewMode] = useState<'paper' | 'list'>('paper');
+    const { addNotification } = useNotifications();
+
+    // Auto-close Level Up Modal when level effectively changes
+    useEffect(() => {
+        if (showLevelUpModal && levelUpData && actor.system?.level?.value === levelUpData.targetLevel) {
+            setShowLevelUpModal(false);
+            setLevelUpData(null);
+            addNotification('Level Up Complete!', 'success');
+        }
+    }, [actor.system?.level?.value, showLevelUpModal, levelUpData, addNotification]);
+
     // Helper to safely render values that might be objects (Foundry data structure)
     const getDisplayValue = (val: any) => {
         if (val && typeof val === 'object' && 'value' in val) {
@@ -271,11 +288,33 @@ export default function ShadowdarkPaperSheet({
                             </div>
                         </div>
                         {/* Level */}
-                        <div className="border-2 border-black h-16 p-1 relative">
+                        <div className="border-2 border-black h-16 p-1 relative flex items-center justify-center">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Level</div>
-                            <div className="flex items-end justify-center h-full w-full pb-1 px-1">
-                                <span className="text-2xl font-bold w-full text-center">{actor.system?.level?.value || 0}</span>
-                            </div>
+                            {actor.computed?.levelUp ? (
+                                <button
+                                    onClick={() => {
+                                        setLevelUpData({
+                                            currentLevel: actor.system?.level?.value || 0,
+                                            targetLevel: (actor.system?.level?.value || 0) + 1,
+                                            classObj: actor.computed?.classDetails,
+                                            ancestry: actor.system?.ancestry,
+                                            patron: actor.computed?.patronDetails,
+                                            abilities: actor.system?.abilities,
+                                            spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
+                                            classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
+                                            patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
+                                        });
+                                        setShowLevelUpModal(true);
+                                    }}
+                                    className="bg-amber-500 text-black px-2 py-1 text-xs font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer mt-3"
+                                >
+                                    LEVEL UP!
+                                </button>
+                            ) : (
+                                <div className="flex items-end justify-center h-full w-full pb-1 px-1">
+                                    <span className="text-2xl font-bold w-full text-center">{actor.system?.level?.value || 0}</span>
+                                </div>
+                            )}
                         </div>
                         {/* XP */}
                         <div className="border-2 border-black h-16 relative flex flex-col">
@@ -591,6 +630,31 @@ export default function ShadowdarkPaperSheet({
                 onUpdate={onUpdate}
                 token={token}
             />
+
+            {showLevelUpModal && levelUpData && (
+                <LevelUpModal
+                    actorId={actor._id || actor.id}
+                    currentLevel={levelUpData.currentLevel}
+                    targetLevel={levelUpData.targetLevel}
+                    ancestry={levelUpData.ancestry}
+                    classObj={levelUpData.classObj}
+                    classUuid={levelUpData.classUuid}
+                    patron={levelUpData.patron}
+                    patronUuid={levelUpData.patronUuid}
+                    abilities={levelUpData.abilities}
+                    spells={levelUpData.spells}
+                    onCancel={() => setShowLevelUpModal(false)}
+                    onComplete={(updatedData) => {
+                        const effectiveLevel = actor.system?.level?.value || 0;
+                        if (effectiveLevel !== levelUpData.targetLevel) {
+                            onUpdate('', updatedData);
+                        } else {
+                            setShowLevelUpModal(false);
+                            setLevelUpData(null);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }

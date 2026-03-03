@@ -1,9 +1,9 @@
 import React from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 interface ItemInfoModalProps {
     isOpen: boolean;
@@ -43,7 +43,7 @@ export default function ItemInfoModal({ isOpen, onClose, item }: ItemInfoModalPr
 
                     {/* Title and Type Section */}
                     <div className="px-6 pt-8 pb-4 relative z-10 text-center">
-                        <h2 className={`${fell.className} text-4xl text-white drop-shadow-lg mb-4 capitalize leading-tight uppercase tracking-widest`}>
+                        <h2 className={`$"font-imfell" text-4xl text-white drop-shadow-lg mb-4 capitalize leading-tight uppercase tracking-widest`}>
                             {item.name}
                         </h2>
 
@@ -72,7 +72,7 @@ export default function ItemInfoModal({ isOpen, onClose, item }: ItemInfoModalPr
                             className="w-full bg-white hover:bg-neutral-100 text-black py-4 border-2 border-black flex items-center justify-center gap-3 shadow-[6px_6px_0_0_rgba(0,0,0,1)] active:translate-x-1 active:translate-y-1 active:shadow-none transition-all group"
                         >
                             <span className="text-3xl animate-pulse">✕</span>
-                            <span className={`${fell.className} text-4xl font-bold tracking-tighter uppercase`}>Close</span>
+                            <span className={`$"font-imfell" text-4xl font-bold tracking-tighter uppercase`}>Close</span>
                         </button>
                     </div>
                 </div>

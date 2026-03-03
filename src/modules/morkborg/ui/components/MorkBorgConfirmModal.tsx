@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { IM_Fell_Double_Pica } from 'next/font/google';
+
 import { Check } from 'lucide-react';
 
-const fell = IM_Fell_Double_Pica({ weight: '400', subsets: ['latin'] });
+
 
 export interface MorkBorgConfirmConfig {
     title: string;
@@ -49,7 +49,7 @@ export default function MorkBorgConfirmModal({
                 >
                     {/* Title bar */}
                     <div className="flex items-center justify-between mb-5 border-b border-pink-900/50 pb-3">
-                        <h2 className={`${fell.className} text-2xl text-yellow-400 uppercase tracking-widest leading-tight`}>
+                        <h2 className={`$"font-imfell" text-2xl text-yellow-400 uppercase tracking-widest leading-tight`}>
                             {config.title}
                         </h2>
                         <button
@@ -73,13 +73,13 @@ export default function MorkBorgConfirmModal({
                     <div className="flex gap-3">
                         <button
                             onClick={onClose}
-                            className={`${fell.className} flex-1 bg-black hover:bg-neutral-900 text-neutral-300 text-xl py-2 px-4 border-2 border-neutral-700 tracking-widest uppercase transition-colors cursor-pointer`}
+                            className={`$"font-imfell" flex-1 bg-black hover:bg-neutral-900 text-neutral-300 text-xl py-2 px-4 border-2 border-neutral-700 tracking-widest uppercase transition-colors cursor-pointer`}
                         >
                             Cancel
                         </button>
                         <button
                             onClick={onConfirm}
-                            className={`${fell.className} flex-1 flex items-center justify-center gap-2 text-white text-xl py-2 px-4 border-2 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${config.dangerous
+                            className={`$"font-imfell" flex-1 flex items-center justify-center gap-2 text-white text-xl py-2 px-4 border-2 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer ${config.dangerous
                                 ? 'bg-red-900 hover:bg-red-700 border-red-500'
                                 : 'bg-pink-900 hover:bg-pink-700 border-pink-500'
                                 }`}
