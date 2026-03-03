@@ -453,7 +453,7 @@ async function startServer() {
             const normalize = async (actorList: any[]) => Promise.all(actorList.map(async (actor: any) => {
                 if (!actor.computed) actor.computed = {};
                 if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
-                if (adapter.resolveActorNames) adapter.resolveActorNames(actor, cache);
+                if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
 
                 // Resolve top-level image
                 if (actor.img) actor.img = client.resolveUrl(actor.img);

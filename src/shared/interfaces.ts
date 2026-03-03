@@ -26,6 +26,68 @@ export interface SystemInfo {
     config?: any;
     componentStyles?: SystemAdapter['componentStyles'];
 }
+
+export interface User {
+    id?: string;
+    _id?: string;
+    name: string;
+    active?: boolean;
+    isGM?: boolean;
+    role?: number;
+    color?: string;
+    characterName?: string;
+}
+
+export interface Combatant {
+    tokenId: string;
+    sceneId: string;
+    actorId: string;
+    actor: any;
+    hidden: boolean;
+    _id: string;
+    type: string;
+    system: any;
+    img: string | null;
+    initiative: number;
+    defeated: boolean;
+    group: string | null;
+    flags: any;
+    _stats: any;
+}
+
+export interface Combat {
+    id: string;
+    _id?: string;
+    type: string;
+    system: any;
+    scene: string | null;
+    groups: any[];
+    combatants: Combatant[];
+    round: number;
+    turn: number;
+    sort: number;
+    flags: any;
+    stats: any;
+}
+
+export type ConnectionStep = 'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing';
+
+
+export interface ActorCardBlock {
+    title: string;
+    value: string | number;
+    subValue?: string | number;
+    valueClass?: string;
+}
+
+export interface ActorCardData {
+    name?: string;
+    img?: string;
+    subtext?: string;
+    blocks?: ActorCardBlock[];
+    footer?: React.ReactNode | string;
+}
+
 export interface ActorSheetData {
     id: string;
     name: string;
@@ -99,10 +161,11 @@ export interface SystemAdapter {
     postCreate?(client: any, actorId: string, sourceData: any): Promise<void>;
     getActor?(client: any, actorId: string): Promise<any>;
     resolveDocument?(client: any, uuid: string): Promise<any | null>;
-    resolveActorNames?(actor: any, cache: any): void;
+    resolveActorNames?(actor: any, cache: any): void | Promise<void>;
     loadSupplementaryData?(cache: any): Promise<void>;
     expandTableResults?(client: any, table: any): Promise<any[] | null>;
     validateUpdate?(path: string, value: any): boolean;
+    getActorCardData?(actor: any): ActorCardData;
     /**
      * Optional: Calculate derived/computed stats from normalized actor data.
      * Called by the core /api/actors/:id endpoint after normalizeActorData.

@@ -1,11 +1,4 @@
 {
     "id": "shadowdark",
-    "title": "Shadowdark RPG",
-    "actorCard": {
-        "subtext": [
-            "details.class",
-            "details.ancestry",
-            "level.value"
-        ]
-    }
+    "title": "Shadowdark RPG"
 }

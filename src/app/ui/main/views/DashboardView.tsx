@@ -150,7 +150,6 @@ export const DashboardView = ({
                                 actor={actor}
                                 index={idx}
                                 theme={theme}
-                                subtextPaths={system?.config?.actorCard?.subtext}
                                 onDelete={confirmDeletion}
                             />
                         ))}

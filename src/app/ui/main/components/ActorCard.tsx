@@ -1,13 +1,14 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { ActorCardBlock } from '@/shared/interfaces';
 
 interface ActorCardProps {
     actor: any;
     index: number;
     theme: Theme;
     clickable?: boolean;
-    subtextPaths?: string[];
     onDelete: (id: string, name: string) => void;
 }
 
@@ -16,16 +17,21 @@ export const ActorCard = ({
     index,
     theme,
     clickable = true,
-    subtextPaths,
     onDelete
 }: ActorCardProps) => {
 
+    const { activeAdapter } = useFoundry();
+
     const handleClick = () => {
         if (!clickable) return;
-        // Navigation is handled by window.location for full refresh/load context, 
-        // or could be router.push but MainPage used window.location.href
         window.location.href = `/actors/${actor.id}`;
     };
+
+    const customData = activeAdapter?.getActorCardData?.(actor) || {};
+
+    const displayName = customData.name || actor.name;
+    const displayImg = customData.img || actor.img || '/icons/svg/mystery-man.svg';
+    const displaySubtext = customData.subtext || actor.type;
 
     return (
         <div
@@ -41,8 +47,8 @@ export const ActorCard = ({
             <div className="flex items-start gap-4">
                 <div className="relative">
                     <img
-                        src={actor.img || '/icons/svg/mystery-man.svg'}
-                        alt={actor.name}
+                        src={displayImg}
+                        alt={displayName}
                         className="w-16 h-16 rounded-lg bg-black/40 object-cover border border-white/10 group-hover:border-amber-500/30 transition-colors"
                         onError={(e) => {
                             (e.target as HTMLImageElement).src = '/icons/svg/mystery-man.svg';
@@ -64,44 +70,56 @@ export const ActorCard = ({
                         <Trash2 className="w-4 h-4 transition-transform group-hover/delete:scale-110" />
                     </button>
                     <h3 className={`font-bold text-lg truncate pr-8 ${theme.accent} ${clickable ? 'group-hover:brightness-125' : ''}`}>
-                        {actor.name}
+                        {displayName}
                     </h3>
 
-                    {subtextPaths ? (
-                        <p className="opacity-60 text-sm mb-2 capitalize truncate">
-                            {subtextPaths
-                                .map((path: string) => {
-                                    const rawVal = path.split('.').reduce((obj, key) => obj?.[key], actor);
-                                    return rawVal;
-                                })
-                                .filter(Boolean)
-                                .join(' • ') || actor.type}
-                        </p>
-                    ) : (
-                        <p className="opacity-60 text-sm mb-2 capitalize truncate">{actor.type}</p>
-                    )}
+                    <p className="opacity-60 text-sm mb-2 capitalize truncate">{displaySubtext}</p>
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                        {(actor.hp || actor.derived?.hp) && (
-                            <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
-                                <span className="opacity-50 text-[10px] uppercase tracking-tighter block">HP</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="font-mono font-bold text-green-400">
-                                        {actor.hp?.value ?? actor.derived?.hp?.value ?? '?'}
-                                    </span>
-                                    <span className="opacity-30 text-xs">/ {actor.hp?.max ?? actor.derived?.hp?.max ?? '?'}</span>
+                        {customData.blocks ? (
+                            customData.blocks.map((block: ActorCardBlock, idx: number) => (
+                                <div key={idx} className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
+                                    <span className="opacity-50 text-[10px] uppercase tracking-tighter block">{block.title}</span>
+                                    <div className="flex items-baseline gap-1">
+                                        <span className={`font-mono font-bold ${block.valueClass || 'text-white'}`}>
+                                            {block.value}
+                                        </span>
+                                        {block.subValue && (
+                                            <span className="opacity-30 text-xs">{block.subValue}</span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                        {(actor.ac !== undefined || actor.derived?.ac !== undefined) && (
-                            <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
-                                <span className="opacity-50 text-[10px] uppercase tracking-tighter block">AC</span>
-                                <span className="font-mono font-bold text-blue-400">
-                                    {actor.ac ?? actor.derived?.ac ?? '?'}
-                                </span>
-                            </div>
+                            ))
+                        ) : (
+                            // Fallback rendering
+                            <>
+                                {(actor.hp || actor.derived?.hp) && (
+                                    <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
+                                        <span className="opacity-50 text-[10px] uppercase tracking-tighter block">HP</span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="font-mono font-bold text-green-400">
+                                                {actor.hp?.value ?? actor.derived?.hp?.value ?? '?'}
+                                            </span>
+                                            <span className="opacity-30 text-xs">/ {actor.hp?.max ?? actor.derived?.hp?.max ?? '?'}</span>
+                                        </div>
+                                    </div>
+                                )}
+                                {(actor.ac !== undefined || actor.derived?.ac !== undefined) && (
+                                    <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
+                                        <span className="opacity-50 text-[10px] uppercase tracking-tighter block">AC</span>
+                                        <span className="font-mono font-bold text-blue-400">
+                                            {actor.ac ?? actor.derived?.ac ?? '?'}
+                                        </span>
+                                    </div>
+                                )}
+                            </>
                         )}
                     </div>
+                    {customData.footer && (
+                        <div className="mt-2 text-xs opacity-70 border-t border-white/10 pt-2">
+                            {customData.footer}
+                        </div>
+                    )}
                 </div>
             </div >
         </div >

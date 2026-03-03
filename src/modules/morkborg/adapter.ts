@@ -97,13 +97,38 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         };
     }
 
+    getActorCardData(actor: any): import('../../shared/interfaces').ActorCardData {
+        const charClass = actor.derived?.class?.name || actor.type || 'Unknown';
+        const subtext = charClass;
+
+        const blocks: import('../../shared/interfaces').ActorCardBlock[] = [];
+
+        if (actor.derived?.maxHp || actor.system?.hp?.max) {
+            blocks.push({
+                title: 'HP',
+                value: actor.derived?.currentHp ?? actor.system?.hp?.value ?? '?',
+                subValue: `/ ${actor.derived?.maxHp ?? actor.system?.hp?.max ?? '?'}`,
+                valueClass: 'text-green-400'
+            });
+        }
+
+        if (actor.derived?.omens?.max || actor.system?.omens?.max) {
+            blocks.push({
+                title: 'OMENS',
+                value: actor.derived?.omens?.value ?? actor.system?.omens?.value ?? 0,
+                subValue: `/ ${actor.derived?.omens?.max ?? actor.system?.omens?.max ?? 0}`,
+                valueClass: 'text-purple-400'
+            });
+        }
+
+        return {
+            subtext,
+            blocks
+        };
+    }
+
     getConfig() {
         return {
-            actorCard: {
-                // Subtext paths to display on actor cards
-                // Format: ["path.to.field", "another.path"]
-                subtext: ['derived.class.name']
-            },
             componentStyles: {
                 rollDialog: {
                     overlay: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50",

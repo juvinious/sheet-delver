@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useFoundry, Combat, Combatant } from '@/app/ui/context/FoundryContext';
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+import { Combat, Combatant } from '@/shared/interfaces';
 import { getModule } from '@/modules/core/registry';
 import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SkipForward, SkipBack } from 'lucide-react';
 import RollDialog from '../RollDialog';

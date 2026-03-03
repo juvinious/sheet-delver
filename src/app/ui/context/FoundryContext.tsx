@@ -2,87 +2,12 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '../logger';
-import { SystemInfo } from '@/shared/interfaces';
+import { SystemInfo, User, Combat, Combatant, ConnectionStep } from '@/shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
 import { getModule } from '@/modules/core/registry';
 import { io, Socket } from 'socket.io-client';
 import { SystemAdapter } from '@/modules/core/interfaces';
 import { useUI } from '@/app/ui/context/UIContext';
-
-export interface User {
-    id?: string;
-    _id?: string;
-    name: string;
-    active?: boolean;
-    isGM?: boolean;
-    role?: number;
-    color?: string;
-    characterName?: string;
-}
-/*
- "tokenId": "aw61JwSg28QcPWj0",
-            "sceneId": "NUEDEFAULTSCENE0",
-            "actorId": "ZTYNPEZtHAuDXBl8",
-            "hidden": false,
-            "_id": "w49gyvcKg74czBbM",
-            "type": "base",
-            "system": {},
-            "img": null,
-            "initiative": 4,
-            "defeated": false,
-            "group": null,
-            "flags": {},
-            "_stats": {
-*/
-export interface Combatant {
-    tokenId: string;
-    sceneId: string;
-    actorId: string;
-    actor: any;
-    hidden: boolean;
-    _id: string;
-    type: string;
-    system: any;
-    img: string | null;
-    initiative: number;
-    defeated: boolean;
-    group: string | null;
-    flags: any;
-    _stats: any;
-}
-
-/*
-"active": true,
-    "_id": "BAs2dbhRcjLV10Hg",
-    "type": "base",
-    "system": {},
-    "scene": null,
-    "groups": [],
-    "combatants": [],
-    "round": 2,
-    "turn": 0,
-    "sort": 0,
-    "flags": {},
-    "_stats":
-    */
-
-
-export interface Combat {
-    id: string;
-    _id?: string;
-    type: string;
-    system: any;
-    scene: string | null;
-    groups: any[];
-    combatants: Combatant[];
-    round: number;
-    turn: number;
-    sort: number;
-    flags: any;
-    stats: any;
-}
-
-export type ConnectionStep = 'init' | 'reconnecting' | 'login' | 'dashboard' | 'setup' | 'startup' | 'authenticating' | 'initializing';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -189,7 +114,10 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const res = await fetch('/api/actors', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.status === 401) return;
+            if (res.status === 401) {
+                setToken(null);
+                return;
+            }
             const data = await res.json();
             if (data.ownedActors || data.actors) {
                 setOwnedActors(data.ownedActors || data.actors || []);
@@ -207,7 +135,10 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const res = await fetch('/api/combats', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.status === 401) return;
+            if (res.status === 401) {
+                setToken(null);
+                return;
+            }
             const data = await res.json();
             if (data.combats) {
                 // Fetch actors for each combat
@@ -415,6 +346,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
 
             if (!hasCompleteWorldData) return 'startup';
+
+            // If connected and active, but no token, we must be at login
             return isAuthenticated ? 'dashboard' : 'login';
         };
 
@@ -478,6 +411,20 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
     }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, lastWorldId]);
+
+    // Hydrate activeAdapter when system changes
+    useEffect(() => {
+        if (system?.id) {
+            const moduleManifest = getModule(system.id);
+            if (moduleManifest?.adapter) {
+                setActiveAdapter(new moduleManifest.adapter());
+            } else {
+                setActiveAdapter(null);
+            }
+        } else {
+            setActiveAdapter(null);
+        }
+    }, [system?.id]);
 
     // Chat and Combat Real-time Sync
     useEffect(() => {

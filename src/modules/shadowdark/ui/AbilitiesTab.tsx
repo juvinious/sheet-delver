@@ -62,7 +62,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                 onChange={(e) => setHpVal(parseInt(e.target.value) || 0)}
                                 onBlur={(e) => {
                                     let val = parseInt(e.target.value);
-                                    const max = actor.computed?.maxHp || 1;
+                                    const max = actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? 1;
                                     if (val > max) val = max;
                                     if (val !== parseInt(e.target.value)) e.target.value = val.toString();
                                     if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
@@ -71,7 +71,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                 className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <span className="text-neutral-400 text-xl font-sans font-light">/</span>
-                            <span>{actor.computed?.maxHp ?? actor.system.attributes.hp.max}</span>
+                            <span>{actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? 0}</span>
                         </div>
                     </div>
                 )}

@@ -457,7 +457,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                             defaultValue={actor.system.attributes.hp.value}
                                             onBlur={(e) => {
                                                 let val = parseInt(e.target.value);
-                                                const max = actor.computed?.maxHp || 1;
+                                                const max = actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? 1;
                                                 // Enforce Max HP Cap
                                                 if (val > max) val = max;
                                                 // Reset input display if it was capped
@@ -480,7 +480,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                             {(actor.computed?.ac !== undefined) && (
                                 <div className="flex flex-col items-center">
                                     <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">AC</span>
-                                    <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed.ac}</span>
+                                    <span className="font-serif font-bold text-xl md:text-2xl">{actor.computed?.ac ?? actor.system?.attributes?.ac?.value ?? 10}</span>
                                 </div>
                             )}
                             <button

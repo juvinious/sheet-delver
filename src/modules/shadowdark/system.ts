@@ -444,18 +444,73 @@ export class ShadowdarkAdapter implements SystemAdapter {
         return actorData;
     }
 
+    getActorCardData(actor: any): import('../../shared/interfaces').ActorCardData {
+        const resolveItemName = (refId: string, type: string) => {
+            if (!refId) return undefined;
+            // 1. Try matching by ID or UUID exactly
+            let item = actor.items?.find((i: any) =>
+                i.id === refId ||
+                i._id === refId ||
+                i.uuid === refId ||
+                (typeof refId === 'string' && refId.endsWith(i.id)) ||
+                (typeof refId === 'string' && refId.endsWith(i._id))
+            );
+            // 2. Fallback to just finding the first item of that type
+            if (!item) {
+                item = actor.items?.find((i: any) => i.type?.toLowerCase() === type.toLowerCase());
+            }
+            return item?.name;
+        };
+
+        const fallbackAncestry = resolveItemName(actor.system?.ancestry || actor.system?.details?.ancestry, 'ancestry');
+        const fallbackClass = resolveItemName(actor.system?.class || actor.system?.details?.class, 'class');
+
+        const ancestry = actor.system?.details?.ancestry || actor.computed?.resolvedNames?.ancestry || fallbackAncestry;
+        const charClass = actor.system?.details?.class || actor.computed?.resolvedNames?.class || fallbackClass;
+        const level = actor.system?.level?.value || actor.system?.attributes?.level?.value || 1;
+
+        const subtextParts = [];
+        if (ancestry && ancestry !== 'Unknown') subtextParts.push(ancestry);
+        if (charClass && charClass !== 'Unknown') subtextParts.push(charClass);
+
+        if (subtextParts.length === 0) {
+            const typeStr = actor.type ? actor.type.charAt(0).toUpperCase() + actor.type.slice(1) : 'Unknown';
+            subtextParts.push(typeStr);
+        }
+
+        subtextParts.push(`Level ${level}`);
+        const subtext = subtextParts.join(' • ');
+
+        const blocks: import('../../shared/interfaces').ActorCardBlock[] = [];
+
+        if (actor.computed?.maxHp || actor.system?.attributes?.hp) {
+            blocks.push({
+                title: 'HP',
+                value: actor.system?.attributes?.hp?.value ?? '?',
+                subValue: `/ ${actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? '?'}`,
+                valueClass: 'text-green-400'
+            });
+        }
+
+        if (actor.system?.attributes?.ac?.value !== undefined) {
+            blocks.push({
+                title: 'AC',
+                value: actor.system.attributes.ac.value,
+                valueClass: 'text-blue-400'
+            });
+        }
+
+        return {
+            subtext,
+            blocks
+        };
+    }
+
     /**
      * Get adapter configuration (server-side, no browser access needed)
-     * This includes UI configuration like actorCard.subtext
      */
     getConfig() {
         return {
-            actorCard: {
-                // Subtext paths to display on actor cards
-                // Format: ["path.to.field", "another.path"]
-                // For Shadowdark: Show "Ancestry • Class • Level X"
-                subtext: ['details.ancestry', 'details.class', 'level.value']
-            },
             componentStyles: this.componentStyles
         };
     }
@@ -512,11 +567,6 @@ export class ShadowdarkAdapter implements SystemAdapter {
             id: sysInfo.id,
             title: sysInfo.title,
             version: sysInfo.version,
-            config: {
-                actorCard: {
-                    subtext: ['level.value', 'details.class']
-                }
-            },
             classes: [] as any[],
             ancestries: [] as any[],
             backgrounds: [] as any[],
@@ -1855,12 +1905,12 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
 
-    public resolveActorNames(actor: any, cache: any): void {
+    public async resolveActorNames(actor: any, cache: any): Promise<void> {
         // Ensure computed exists
         if (!actor.computed) actor.computed = {};
         if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
 
-        const resolve = (uuid: string, current: string) => {
+        const resolve = async (uuid: string, current: string) => {
             if (current) return current; // Already resolved browser-side
             if (!uuid || typeof uuid !== 'string') return undefined;
 
@@ -1903,14 +1953,39 @@ export class ShadowdarkAdapter implements SystemAdapter {
                     if (!name) logger.debug(`[ShadowdarkAdapter] Failed normalized: ${normalized}`);
                     else logger.debug(`[ShadowdarkAdapter] Success normalized: ${normalized} -> ${name}`);
                 }
+
+                if (!name && typeof cache.getKeys === 'function') {
+                    const keys = cache.getKeys();
+                    const suffix = uuid.includes('.') ? uuid : `.${uuid}`;
+                    const matchedKey = keys.find((k: string) => k.endsWith(suffix));
+                    if (matchedKey) {
+                        name = cache.getName(matchedKey);
+                        logger.debug(`[ShadowdarkAdapter] Resolved suffix match for ${uuid} -> ${matchedKey} -> ${name}`);
+                    }
+                }
+                if (!name && typeof window === 'undefined') {
+                    const { dataManager } = await import('./data/DataManager');
+                    const doc = await dataManager.getDocument(uuid);
+                    if (doc) {
+                        name = doc.name;
+                        logger.debug(`[ShadowdarkAdapter] Resolved via DataManager for ${uuid} -> ${name}`);
+                    } else {
+                        // try short ID just in case
+                        const shortDoc = dataManager.findDocumentByName(uuid);
+                        if (shortDoc) {
+                            name = shortDoc.name;
+                            logger.debug(`[ShadowdarkAdapter] Resolved via DataManager.findDocumentByName for ${uuid} -> ${name}`);
+                        }
+                    }
+                }
             }
             return name;
         };
 
         if (actor.system) {
-            actor.computed.resolvedNames.class = resolve(actor.system.class, actor.computed.resolvedNames.class);
-            actor.computed.resolvedNames.ancestry = resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
-            actor.computed.resolvedNames.background = resolve(actor.system.background, actor.computed.resolvedNames.background);
+            actor.computed.resolvedNames.class = await resolve(actor.system.class, actor.computed.resolvedNames.class);
+            actor.computed.resolvedNames.ancestry = await resolve(actor.system.ancestry, actor.computed.resolvedNames.ancestry);
+            actor.computed.resolvedNames.background = await resolve(actor.system.background, actor.computed.resolvedNames.background);
         }
     }
 

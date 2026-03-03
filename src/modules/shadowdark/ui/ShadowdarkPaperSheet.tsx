@@ -9,7 +9,7 @@ import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import NotesModal from './components/NotesModal';
 import { logger } from '@/core/logger';
- 
+
 
 interface ShadowdarkPaperSheetProps {
     actor: any;
@@ -198,14 +198,14 @@ export default function ShadowdarkPaperSheet({
                                         className="w-10 text-center bg-transparent outline-none border-b-2 border-black hover:bg-neutral-100 focus:bg-neutral-100 rounded"
                                     />
                                     <span className="text-neutral-400 mx-1 text-xl">/</span>
-                                    {actor.computed?.maxHp || 0}
+                                    {actor.system?.attributes?.hp?.max || 0}
                                 </div>
                             </div>
                             {/* AC Box */}
                             <div className="border-2 border-black h-24 relative flex flex-col">
                                 <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit">AC</div>
                                 <div className="flex-1 flex items-center justify-center text-3xl font-bold">
-                                    {actor.computed?.ac || 10}
+                                    {actor.computed?.ac ?? actor.system?.attributes?.ac?.value ?? 10}
                                 </div>
                             </div>
                         </div>
@@ -483,7 +483,7 @@ export default function ShadowdarkPaperSheet({
                         <div className="border-2 border-black h-16 relative flex flex-col items-center justify-center">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Slots</div>
                             <div className="text-2xl font-bold">
-                                {actor.computed?.slotsUsed || 0} / {actor.computed?.maxSlots || 10}
+                                {actor.computed?.slotsUsed ?? usedSlots} / {actor.computed?.maxSlots ?? actor.system?.slots ?? 10}
                             </div>
                         </div>
 
