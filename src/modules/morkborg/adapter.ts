@@ -98,7 +98,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 
     getActorCardData(actor: any): import('../../shared/interfaces').ActorCardData {
-        const charClass = actor.derived?.class?.name || actor.type || 'Unknown';
+        const charClass = this.getClass(actor).name || actor.type;
         const subtext = charClass;
 
         const blocks: import('../../shared/interfaces').ActorCardBlock[] = [];
@@ -120,6 +120,23 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 valueClass: 'text-purple-400'
             });
         }
+
+        if (actor.derived?.powers?.max || actor.system?.powerUses?.max) {
+            blocks.push({
+                title: 'POWERS',
+                value: actor.derived?.powers?.value ?? actor.system?.powerUses?.value ?? 0,
+                subValue: `/ ${actor.derived?.powers?.max ?? actor.system?.powerUses?.max ?? 0}`,
+                valueClass: 'text-purple-400'
+            });
+        }
+
+        //if (actor.derived?.silver || actor.system?.silver) {
+        blocks.push({
+            title: 'SILVER',
+            value: actor.derived?.silver ?? actor.system?.silver ?? 0, // if not available it'll be 0
+            valueClass: 'text-yellow-400'
+        });
+        //}
 
         return {
             subtext,
