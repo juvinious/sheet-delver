@@ -16,6 +16,7 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 
 ## Common dashboard
 A common view and shared dashboard amongst systems. It will display a users owned actors. There are common tools (if implemented) for each system, such as for creating characters or importing listed above the character list.
+
 <img src="images/dashboard.png" width="25%">
 
 ## Supported Systems
