@@ -14,6 +14,10 @@ A modern, external character sheet interface for [Foundry VTT](https://foundryvt
 - **Resilient Connection**: Dual-layered socket system (System/User) with high-stability auto-reconnection.
 - **Mobile Friendly**: Optimized touch targets and responsive layouts.
 
+## Common dashboard
+A common view and shared dashboard amongst systems. It will display a users owned actors. There are common tools (if implemented) for each system, such as for creating characters or importing listed above the character list.
+<img src="images/dashboard.png" width="25%">
+
 ## Supported Systems
 
 ### Shadowdark RPG
@@ -27,6 +31,8 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 - **Formatted Chat**: Rich chat messages for rolls and abilities with inline roll buttons.
 - **Character Import**: Import characters via JSON from Shadowdarklings.
 - **Level Up Wizard**: Guided level-up process with talent/boon rolling and choice resolution.
+<img src="images/sheets/shadowdark/sd-character-sheet.png" width="25%">
+<img src="images/sheets/shadowdark/sd-paper-view.png" width="25%">
 
 ### Mörk Borg
 SheetDelver provides dedicated support for the Mörk Borg RPG system:
@@ -41,6 +47,7 @@ SheetDelver provides dedicated support for the Mörk Borg RPG system:
 - **Rest System**: Rest modal with food/drink condition tracking, infection handling, and HP recovery rolls.
 - **Spend Omen**: Omen spending with outcome reminder card.
 - **Broken & Initiative**: Broken condition rolls and individual/party initiative.
+<img src="images/sheets/morkborg/mb-character-sheet.png" width="25%">
 
 ## Planned System Support
 - **Generic**: Fallback support for any Foundry system (Raw data view).

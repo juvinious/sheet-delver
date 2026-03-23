@@ -259,6 +259,16 @@ async function startServer() {
                 };
                 users = usersList;
             } else {
+                // No full game data available yet.
+                // If the probe discovered the world (service account missing), surface that info.
+                const probeData = (systemClient as any).probeWorldData;
+                if (probeData) {
+                    system.worldTitle = probeData.title || system.worldTitle;
+                    system.worldDescription = probeData.description || null;
+                    // Surface user count discovered by the guest probe
+                    const userMapSize = (systemClient as any).userMap?.size || 0;
+                    system.users = { active: 0, total: userMapSize };
+                }
                 system.appVersion = config.app.version;
             }
 

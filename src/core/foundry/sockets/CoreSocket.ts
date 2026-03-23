@@ -36,6 +36,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public userId: string | null = null;
     public lastActorChange: number = Date.now();
 
+    /**
+     * World data discovered via the guest probe step.
+     * Populated when the probe succeeds but the service account login fails.
+     * Used to surface world title/description to the UI in 'world-closed' state.
+     * Cleared once a full socket connection is established.
+     */
+    public probeWorldData: any = null;
+
     // Core Socket maintains the singular connection
     private consecutiveFailures = 0;
     private lastLaunchActivity = 0;
@@ -260,7 +268,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
             if (joinData && joinData.world) {
                 logger.info(`CoreSocket | Discovered world "${joinData.world.title}" via Probe.`);
-                this.worldState = 'active';
+                // Stay in 'startup' — world is alive but we haven't completed login yet.
+                // Do NOT set 'active' here; that only happens after the socket connects
+                // and getWorldStatus() confirms the world is fully active.
+                this.worldState = 'startup';
+                this.probeWorldData = joinData.world;  // Cache for UI surface during recovery
                 // Update Cache and User Map
                 if (joinData.users) {
                     joinData.users.forEach((u: any) => this.userMap.set(u._id, u));
@@ -279,7 +291,12 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     this.userId = user._id;
                     logger.info(`CoreSocket | Resolved Service Account ID: ${this.userId} (Username: ${this.config.username})`);
                 } else {
-                    logger.warn(`CoreSocket | Could not resolve User ID for ${this.config.username}`);
+                    // The world is running but the service account doesn't exist in it.
+                    // Surface world info and retry on a longer interval so we don't hammer the server.
+                    const availableUsers = Array.from(this.userMap.values()).map((u: any) => u.name).join(', ');
+                    logger.warn(`CoreSocket | Service account "${this.config.username}" not found in world "${this.probeWorldData?.title || 'unknown'}". Available users: [${availableUsers || 'none'}]. Retrying in 15s...`);
+                    this.worldState = 'startup';  // World is alive; we just can't authenticate
+                    setTimeout(() => this.connect(), 15000);
                     return;
                 }
             }
@@ -340,6 +357,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
                     logger.info('CoreSocket | World is ACTIVE. Fetching game data via socket...');
                     this.worldState = 'active';
+                    this.probeWorldData = null;  // Full connection established; probe cache no longer needed
                     this.emit('connect');
 
                     this.startHeartbeat();

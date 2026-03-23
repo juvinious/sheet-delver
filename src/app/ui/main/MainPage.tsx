@@ -7,6 +7,7 @@ import { useTheme } from './hooks/useTheme';
 import { LoginView } from './views/LoginView';
 import { SetupView } from './views/SetupView';
 import { DashboardView } from './views/DashboardView';
+import { WorldClosedView } from './views/WorldClosedView';
 import { LoadingScreen } from './components/LoadingScreen';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 
@@ -66,6 +67,10 @@ export default function MainPage({ initialUrl }: MainPageProps) {
             )}
 
             {step === 'setup' && <SetupView appVersion={appVersion || ''} />}
+
+            {step === 'world-closed' && (
+                <WorldClosedView system={system} appVersion={appVersion || ''} theme={theme} />
+            )}
 
             {step === 'dashboard' && (
                 <DashboardView
