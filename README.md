@@ -6,16 +6,16 @@
 A modern, external character sheet interface for [Foundry VTT](https://foundryvtt.com/).
 
 ## Key Features
+- **Character Sheets**: Custom designed sheets by system, see below for supported systems.
 - **Real-Time Interactions**: Instant display of images and journals shared by the GM ("Show to Players"), with support for both broadcast and targeted sharing.
 - **Rich Journal Browser**: Advanced journal viewing with folder support, rich text rendering, and pagination.
-- **Global Chat**: Integrated chat with roll parsing, dice support, and actor-specific roll buttons.
-- **Floating HUD**: Centralized access to character sheets, journals, and global settings.
-- **User Monitoring**: Real-time list of active players with connection status and avatar resolution.
-- **Resilient Connection**: Dual-layered socket system (System/User) with high-stability auto-reconnection.
 - **Mobile Friendly**: Optimized touch targets and responsive layouts.
 
-## Common dashboard
-A common view and shared dashboard amongst systems. It will display a users owned actors. There are common tools (if implemented) for each system, such as for creating characters or importing listed above the character list.
+## Commonly Shared Features
+- **Dashboard**: Initial view and shared amongst all supported systems. It will display a users owned actors and additional tools (if implemented) such as for creating or importing characters.
+- **Chat**: A common chat interface for all systems. It will display a users chat messages and allow them to send messages to the GM. It will also display a list of active players and their connection status.
+- **Dice Roller**: Universal dice roller modeled after the dice tray module for Foundry VTT. 
+- **Combat Tracker**: Combat tracker HUD that displays at top whenever the system detects an active combat. It allows for rolling initiative and ending turn.
 
 <img src="images/dashboard.png" width="25%">
 
@@ -39,7 +39,7 @@ While not yet feature-complete, SheetDelver offers robust support for Shadowdark
 SheetDelver provides dedicated support for the Mörk Borg RPG system:
 - **Character Sheets**: Full character sheet with the signature Mörk Borg aesthetic — yellow, black, and pink brutalist design.
 - **Ability Rolls**: Click any ability (STR/AGI/PRE/TOU) to open a roll confirmation modal showing the resolved formula before dispatching.
-- **Roll Modal**: Generic confirmation dialog for all rollable actions — shows formula, optional DR, and roll mode selector (Public/GM Only/Blind/Self), persisted to localStorage.
+- **Roll Modal**: Generic confirmation dialog for all rollable actions — shows formula, optional DR, and roll mode selector (Public/GM Only/Blind/Self).
 - **Feats & Scrolls**: Formula feats roll via the modal with resolved `@ability` values; macro feats (e.g. Brew Decoctions) trigger immediately; passive feats display only.
 - **Violence Tab**: Equipped weapons and armor only — with Attack/Defend roll buttons using the full automated sequence.
 - **Custom Chat Cards**: Styled Mörk Borg chat cards for all roll outcomes (ability tests, feat rolls, attacks, defense, initiative, broken, get better, decoctions).
@@ -51,8 +51,8 @@ SheetDelver provides dedicated support for the Mörk Borg RPG system:
 <img src="images/sheets/morkborg/mb-character-sheet.png" width="25%">
 
 ## Planned System Support
-- **Generic**: Fallback support for any Foundry system (Raw data view).
-- **D&D 5e**: Basic adapter support (Stats, Skills).
+- **D&D 5e**: Planned...
+- **PF2E**: Planned...
 
 ## Architecture
 SheetDelver follows a **Decoupled Core/Shell** architecture with a centralized **Context Driven State**:
