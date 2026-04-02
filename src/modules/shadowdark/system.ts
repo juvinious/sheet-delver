@@ -1,13 +1,12 @@
 import { SystemAdapter, ActorSheetData } from '../core/interfaces';
 import { normalizeItemData } from './rules';
 import { logger } from '../../core/logger';
-import { dataManager, DataManager } from './data/DataManager';
 import { CompendiumCache } from '../../core/foundry/compendium-cache';
 import { isClassSpellcaster } from './rules';
 import { shadowdarkTheme } from './ui/themes/shadowdark';
 import { ShadowdarkCache } from './caching';
 import { ShadowdarkNormalizer } from './normalization';
-import { ShadowdarkDiscovery } from './discovery';
+// which would break the client bundle. They are imported dynamically inside async methods.
 
 /**
  * ShadowdarkAdapter is the primary entry point for the Shadowdark module.
@@ -65,38 +64,34 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
     /**
      * Resolves high-level card data for world-level actor previews (Dashboard).
+     *
+     * Priority for name resolution:
+     *   1. actor.computed.resolvedNames — already populated by the normalization pipeline.
+     *   2. dataManager.index — the always-available in-memory UUID registry (initialized at boot).
+     *   3. Humanized last segment of the UUID string as a last resort.
+     *
+     * Note: ShadowdarkCache.systemData scan was removed — it duplicated DataManager and was only
+     * populated after a full discovery run, making it unreliable for dashboard cards.
      */
     getActorCardData(actor: any): any {
         const s = actor.system || {};
         const names = actor.computed?.resolvedNames || {};
         const cache = ShadowdarkCache.getInstance();
-        
-        const resolveFallback = (val: any) => {
-            if (!val || typeof val !== 'string') return '';
-            if (!val.includes('.')) return val;
-            
-            const doc = dataManager.index.get(val);
-            if (doc) return doc.name;
 
-            if (cache.systemData) {
-                for (const col of ['ancestries', 'classes', 'backgrounds']) {
-                    const match = (cache.systemData[col] || []).find((i: any) => i.uuid === val || i.name === val);
-                    if (match) return match.name;
-                }
-            }
-
-            return val.split('.').pop()!.replace(/^[a-z]/, (c: string) => c.toUpperCase());
+        const resolve = (val: any) => {
+            const { resolveDocumentName } = require('./normalization');
+            return resolveDocumentName(val, cache.systemData);
         };
 
-        const ancestry = names.ancestry || resolveFallback(s.ancestry);
-        const className = names.class || resolveFallback(s.class);
+        const ancestry = names.ancestry || resolve(s.ancestry);
+        const className = names.class || resolve(s.class);
         const level = s.level?.value || 0;
 
         return {
-            subtext: `${ancestry} ${className} ${level}`,
-            ancestry: ancestry,
+            subtext: `${ancestry} ${className} ${level}`.trim(),
+            ancestry,
             class: className,
-            level: level
+            level
         };
     }
 
@@ -133,7 +128,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             items: (actorData.items || []).map((item: any) => normalizeItemData(item))
         };
 
-        await ShadowdarkNormalizer.resolveActorNames(actor, client);
+        await ShadowdarkNormalizer.resolveActorNames(actor, systemData);
         const normalized = ShadowdarkNormalizer.normalizeActorData(actor, systemData);
 
         cache.setActor(actorId, normalized);
@@ -144,13 +139,14 @@ export class ShadowdarkAdapter implements SystemAdapter {
      * Fetches and caches system-wide data (Classes, Spells, etc.)
      */
     async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
+        const { ShadowdarkDiscovery } = await import('./discovery');
         return ShadowdarkDiscovery.getSystemData(client, options);
     }
 
     /**
      * Delegated normalization logic.
      */
-    normalizeActorData(actor: any, client?: any): ActorSheetData {
+    normalizeActorData(actor: any, _client?: any): ActorSheetData {
         const cache = ShadowdarkCache.getInstance();
         return ShadowdarkNormalizer.normalizeActorData(actor, cache.systemData);
     }
@@ -158,8 +154,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
     /**
      * Delegated name resolution logic.
      */
-    async resolveActorNames(actor: any, client: any): Promise<void> {
-        return ShadowdarkNormalizer.resolveActorNames(actor, client);
+    async resolveActorNames(actor: any, clientOrCache: any): Promise<void> {
+        const cache = ShadowdarkCache.getInstance();
+        let systemData = cache.systemData;
+
+        if (!systemData && clientOrCache && typeof clientOrCache.getSystem === 'function') {
+            systemData = await this.getSystemData(clientOrCache);
+        }
+
+        return ShadowdarkNormalizer.resolveActorNames(actor, systemData);
     }
 
     /**
@@ -180,8 +183,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
         let classDoc = null;
         let patronDoc = null;
 
-        if (classUuid) classDoc = await dataManager.getDocument(classUuid);
-        if (patronUuid) patronDoc = await dataManager.getDocument(patronUuid);
+        if (classUuid) classDoc = await this.resolveDocument(client, classUuid);
+        if (patronUuid) patronDoc = await this.resolveDocument(client, patronUuid);
 
         if (!classDoc && classUuid) {
             try {
@@ -215,8 +218,8 @@ export class ShadowdarkAdapter implements SystemAdapter {
             }
 
             if (classDoc.name) {
-                availableSpells = await dataManager.getAllDocuments();
-                availableSpells = availableSpells.filter(d => d.documentType === 'Spell' && d.system?.class?.includes(classDoc.name));
+                const { dataManager } = await import('./data/DataManager');
+                availableSpells = await dataManager.getSpellsBySource(classDoc.name);
             }
         }
 
@@ -343,9 +346,11 @@ export class ShadowdarkAdapter implements SystemAdapter {
      * If not found in cache, it fetches from Foundry.
      */
     async getCompendiumItem(client: any, uuid: string): Promise<any | null> {
-        const doc = await dataManager.getDocument(uuid);
+        const { dataManager } = await import('./data/DataManager');
+        let doc = await dataManager.getDocument(uuid, client);
         if (doc) return doc;
 
+        // Remote fetch (Socket)
         try {
             return await client.fetchByUuid(uuid);
         } catch (e) {
@@ -357,9 +362,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
     /**
      * Required for manifest-based initialization.
      */
-    async initialize(client: any): Promise<void> {
+    async initialize(client?: any): Promise<void> {
         logger.info('[ShadowdarkAdapter] Initializing Phase 4 Service Layer...');
-        await this.getSystemData(client);
+        if (client) await this.getSystemData(client);
     }
 }
 

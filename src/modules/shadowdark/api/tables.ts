@@ -1,7 +1,7 @@
 import { dataManager } from '../data/DataManager';
 
 /**
- * GET /api/roll-table
+ * GET /api/modules/shadowdark/roll-table
  * List all roll tables
  */
 export async function handleListRollTables() {
@@ -21,16 +21,16 @@ export async function handleListRollTables() {
  * GET /api/roll-table/[id]
  * Get specific table
  */
-export async function handleGetRollTable(request: Request, id: string) {
+export async function handleGetRollTable(request: Request, id: string, client?: any) {
     try {
         // Try to find by ID in our index (which handles both UUID and short ID)
-        let table = await dataManager.getDocument(id);
+        let table = await dataManager.getDocument(id, client);
 
         if (!table) {
             // Try searching for the UUID in the index
             const index = await dataManager.getIndex();
             const uuid = Object.keys(index).find(k => k.endsWith(`.${id}`));
-            if (uuid) table = await dataManager.getDocument(uuid);
+            if (uuid) table = await dataManager.getDocument(uuid, client);
         }
 
         if (!table) {
@@ -47,9 +47,9 @@ export async function handleGetRollTable(request: Request, id: string) {
  * POST /api/roll-table/[id]/draw
  * Execute a draw
  */
-export async function handleDrawRollTable(request: Request, id: string) {
+export async function handleDrawRollTable(request: Request, id: string, client?: any) {
     try {
-        const result = await dataManager.draw(id);
+        const result = await dataManager.draw(id, client);
 
         if (!result) {
             return Response.json({ error: `Draw failed for table: ${id}` }, { status: 404 });
@@ -68,9 +68,9 @@ export async function handleDrawRollTable(request: Request, id: string) {
  * POST /api/roll-table/[id]/draw/[resultId]
  * Fetch a specific result pool for that range
  */
-export async function handleGetResultPool(request: Request, tableId: string, resultId: string) {
+export async function handleGetResultPool(request: Request, tableId: string, resultId: string, client?: any) {
     try {
-        const table = await dataManager.getDocument(tableId);
+        const table = await dataManager.getDocument(tableId, client);
         if (!table) return Response.json({ error: `Table not found: ${tableId}` }, { status: 404 });
 
         // User wants the result pool from that range. 

@@ -18,9 +18,10 @@ interface DetailsTabProps {
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
     onDeleteItem?: (itemId: string) => void;
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
+    triggerLevelUp?: () => void;
 }
 
-export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem }: DetailsTabProps) {
+export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp }: DetailsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -310,25 +311,52 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
 
 
                 {/* Languages */}
-                <div className={cardStyle}>
-                    <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white flex justify-between items-center">
+                <div className={cardStyleWithoutPadding}>
+                    <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
                         <span className="font-serif font-bold text-lg uppercase">Languages</span>
-                        <button
-                            onClick={() => setIsLanguageModalOpen(true)}
-                            className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
-                            title="Edit Languages"
-                        >
-                            Edit
-                        </button>
+                        <div className="flex items-center gap-2">
+                            {(() => {
+                                const { maxCommon = 0, maxRare = 0 } = actor.computed?.languageLimits || {};
+                                const currentCommon = (actor.system?.languages || []).length;
+                                const currentRare = (actor.system?.rareLanguages || []).length;
+
+                                return (
+                                    <>
+                                        <div className="flex items-center gap-1.5 mr-1">
+                                            <div 
+                                                title="Common Languages Limit"
+                                                className="bg-neutral-100 text-black text-[10px] px-1.5 py-0.5 border border-black font-bold uppercase tracking-tighter shadow-[1px_1px_0px_0px_rgba(255,255,255,0.3)]"
+                                            >
+                                                {currentCommon}/{maxCommon}
+                                            </div>
+                                            {maxRare > 0 && (
+                                                <div 
+                                                    title="Rare Languages Limit"
+                                                    className="bg-amber-100 text-amber-900 text-[10px] px-1.5 py-0.5 border border-amber-800 font-bold uppercase tracking-tighter shadow-[1px_1px_0px_0px_rgba(180,83,9,0.5)]"
+                                                >
+                                                    {currentRare}/{maxRare} R
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => setIsLanguageModalOpen(true)}
+                                            className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
+                                        >
+                                            Edit
+                                        </button>
+                                    </>
+                                );
+                            })()}
+                        </div>
                     </div>
-                    <div className="p-1 flex flex-wrap gap-2">
+                    <div className="p-2 flex flex-wrap gap-2 bg-white">
                         {(() => {
                             const RARE_LANGS = ['celestial', 'diabolic', 'draconic', 'primordial', 'abyssal', 'undercommon'];
                             const actorLangs = actor.details?.languages || [];
                             const resolvedLangs = actorLangs.map((l: any) => {
                                 const name = typeof l === 'string' ? l : (l.name || '');
                                 // Find extra info in systemData for tooltips
-                                const match = systemData?.languages?.find((sl: any) => 
+                                const match = systemData?.languages?.find((sl: any) =>
                                     sl.name === name || sl.uuid === name || (typeof l === 'object' && sl.uuid === l.uuid)
                                 );
 
@@ -481,9 +509,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     }}
                     availableLanguages={systemData?.languages || []}
                     currentLanguages={(actor.system?.languages || []).map((id: string) => {
-                        const found = systemData?.languages?.find((l: any) => 
-                            l.uuid === id || 
-                            l.name === id || 
+                        const found = systemData?.languages?.find((l: any) =>
+                            l.uuid === id ||
+                            l.name === id ||
                             (typeof id === 'string' && id.endsWith(l.uuid.split('.').pop()!))
                         );
                         return found?.uuid || id;

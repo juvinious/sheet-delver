@@ -6,10 +6,6 @@ import { getConfig } from '@/core/config';
 
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn
- * Learn a spell by UUID
- */
-/**
- * POST /api/modules/shadowdark/actors/[id]/spells/learn
  * Learn a spell by UUID or ID
  */
 export async function handleLearnSpell(actorId: string, request: Request, client?: any) {
@@ -201,6 +197,10 @@ import { shadowdarkAdapter } from '../system';
 
 /**
  * GET /api/modules/shadowdark/actors/[id]/spellcaster
+ *
+ * Returns spellcaster info for an actor.
+ * Uses the normalized actor from the adapter (which already handles caching and
+ * name resolution internally) — no separate raw fetch is needed.
  */
 export async function handleGetSpellcasterInfo(actorId: string, clientOverride?: any) {
     try {
@@ -209,26 +209,15 @@ export async function handleGetSpellcasterInfo(actorId: string, clientOverride?:
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const rawActor = await client.getActor(actorId);
-        if (!rawActor) {
+        // getActor fetches, normalizes, resolves names, and caches — one operation.
+        const normalizedActor = await shadowdarkAdapter.getActor(client, actorId);
+        if (!normalizedActor || normalizedActor.error) {
             return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
         }
 
-        // The raw payload from getActor lacks normalized structures (e.g. system.abilities, fully parsed items).
-        // Since the cache overhaul streamlined data resolution, isSpellcaster needs full normalized data.
-        const normalizedActor = await shadowdarkAdapter.getActor(client, actorId);
-        const targetActor = normalizedActor?.error ? rawActor : normalizedActor;
-
-        // Explicitly resolve names so rules.ts can match the class string (e.g., "Wizard" instead of UUID)
-        const { CompendiumCache } = await import('../../../core/foundry/compendium-cache');
-        const cache = CompendiumCache.getInstance();
-        if (shadowdarkAdapter.resolveActorNames) {
-            shadowdarkAdapter.resolveActorNames(targetActor, cache);
-        }
-
-        // Unified check using rules.ts
-        const isCaster = isSpellcaster(targetActor);
-        const magicItemCaster = canUseMagicItems(targetActor);
+        // Unified spellcaster check using rules.ts (works on normalized actor).
+        const isCaster = isSpellcaster(normalizedActor);
+        const magicItemCaster = canUseMagicItems(normalizedActor);
 
         return NextResponse.json({
             isSpellcaster: isCaster,

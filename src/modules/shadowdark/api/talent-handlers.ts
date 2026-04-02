@@ -1,6 +1,5 @@
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { logger } from '../../../core/logger';
-import { dataManager, DataManager } from '../data/DataManager';
 import { createEffect } from '../utils/Sanitizer';
 import { shadowdarkAdapter } from '../system';
 
@@ -13,7 +12,7 @@ export interface TalentHandler {
     config?: any;
     onInit?: (context: { actor: any, targetLevel: number }) => { requiredTalents?: number; choiceRolls?: number };
     isBlocked?: (state: any) => boolean;
-    resolveItems?: (state: any, targetLevel: number, client?: any) => Promise<any[]>;
+    resolveItems?: (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => Promise<any[]>;
     mutateItem?: (item: any, state: any) => void;
 }
 
@@ -169,17 +168,15 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         },
         action: 'weapon-mastery',
         config: { required: 1 },
-        resolveItems: async (state: any, targetLevel: number, client?: any) => {
+        resolveItems: async (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => {
             const items = [];
             if (state.weaponMasterySelection && state.weaponMasterySelection.selected.length > 0) {
                 const selection = state.weaponMasterySelection.selected[0];
                 const uuid = 'Compendium.shadowdark.talents.5bpWuaT0KTNzuzCu';
 
                 let doc = null;
-                if (client) {
-                    doc = await shadowdarkAdapter.resolveDocument(client, uuid);
-                } else {
-                    doc = await dataManager.getDocument(uuid);
+                if (resolveDocFn) {
+                    doc = await resolveDocFn(uuid);
                 }
 
                 if (doc) {
@@ -230,17 +227,15 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         },
         action: 'armor-mastery',
         config: { required: 1 },
-        resolveItems: async (state: any, targetLevel: number, client?: any) => {
+        resolveItems: async (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => {
             const items = [];
             if (state.armorMasterySelection && state.armorMasterySelection.selected.length > 0) {
                 const selection = state.armorMasterySelection.selected[0];
                 const uuid = 'Compendium.shadowdark.talents.BsRPGhKXYwJBI9ex';
 
                 let doc = null;
-                if (client) {
-                    doc = await shadowdarkAdapter.resolveDocument(client, uuid);
-                } else {
-                    doc = await dataManager.getDocument(uuid);
+                if (resolveDocFn) {
+                    doc = await resolveDocFn(uuid);
                 }
 
                 if (doc) {

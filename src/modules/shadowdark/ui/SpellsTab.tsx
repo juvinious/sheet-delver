@@ -301,12 +301,29 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const filteredSpellOptions = useMemo(() => {
         if (!systemData?.spells || !editingTier || !modalFilterClass) return [];
         const seen = new Set();
+        const filterLower = modalFilterClass.toLowerCase();
+
         return systemData.spells.filter((s: any) => {
             const spellTier = Number(s.tier !== undefined ? s.tier : s.system?.tier);
             if (spellTier !== editingTier) return false;
+
             const classData = s.class || s.system?.class || [];
-            const spellClasses = (Array.isArray(classData) ? classData.join('|') : String(classData)).toLowerCase();
-            if (!spellClasses.includes(modalFilterClass.toLowerCase())) return false;
+            const classArray = Array.isArray(classData) ? classData : [classData];
+
+            // Resolve class names from UUIDs/IDs using systemData.classes
+            const resolvedClasses = classArray.map(c => {
+                if (typeof c !== 'string') return '';
+                const lowerC = c.toLowerCase();
+                if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
+
+                const match = (systemData.classes || []).find((cls: any) =>
+                    cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
+                );
+                return match ? match.name.toLowerCase() : lowerC;
+            });
+
+            if (!resolvedClasses.some(c => c.includes(filterLower))) return false;
+
             if (seen.has(s.name)) return false;
             seen.add(s.name);
             return true;
@@ -347,12 +364,26 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             if (iTier !== editingTier) return false;
 
             const classData = i.system?.class || i.class || '';
-            const spellClasses = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
+            const classArray = Array.isArray(classData) ? classData : (typeof classData === 'string' ? classData.split(',').map(s => s.trim()) : [classData]);
+
+            const filterLower = modalFilterClass.toLowerCase();
+
+            // Resolve class names from UUIDs/IDs
+            const resolvedClasses = classArray.map(c => {
+                if (typeof c !== 'string') return '';
+                const lowerC = c.toLowerCase();
+                if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
+
+                const match = (systemData?.classes || []).find((cls: any) =>
+                    cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
+                );
+                return match ? match.name.toLowerCase() : lowerC;
+            });
 
             // Primary class match: if spell has no class assigned, it belongs to the primary class
-            const isPrimaryClassDefault = spellClasses === "" && source?.type === 'class';
+            const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
 
-            return spellClasses.includes(modalFilterClass) || isPrimaryClassDefault;
+            return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
         }).map((s: any) => ({
             name: s.name,
             uuid: s.flags?.core?.sourceId || s.uuid || s._id,

@@ -1,7 +1,7 @@
 import { logger } from '../../core/logger';
-import { DataManager } from './data/DataManager';
 import { ShadowdarkCache } from './caching';
 import { createHash } from 'node:crypto';
+import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 
 /**
  * Service to handle the discovery and initialization of system-wide data
@@ -10,73 +10,138 @@ import { createHash } from 'node:crypto';
 export class ShadowdarkDiscovery {
     private static pendingFetch: Promise<any> | null = null;
     private static readonly CACHE_NS = 'shadowdark';
-    private static readonly SYSTEM_DATA_KEY = 'system-data';
-    private static readonly SYSTEM_DATA_SIG_KEY = 'system-data-sig';
+    private static _appVersion: string | null = null;
+    private static readonly BASE_DATA_KEY = 'system-data-v3';
+    private static readonly BASE_SIG_KEY = 'system-data-sig';
+
+    // List of core Shadowdark compendium packs to discover
+    private static readonly DISCOVERY_PACKS = [
+        { id: 'shadowdark.ancestries', type: 'Item' },
+        { id: 'shadowdark.backgrounds', type: 'Item' },
+        { id: 'shadowdark.classes', type: 'Item' },
+        { id: 'shadowdark.class-abilities', type: 'Item' },
+        { id: 'shadowdark.conditions', type: 'Item' },
+        { id: 'shadowdark.gear', type: 'Item' },
+        { id: 'shadowdark.languages', type: 'Item' },
+        { id: 'shadowdark.magic-items', type: 'Item' },
+        { id: 'shadowdark.patrons-and-deities', type: 'Item' },
+        { id: 'shadowdark.spells', type: 'Item' },
+        { id: 'shadowdark.talents', type: 'Item' },
+        { id: 'shadowdark.rollable-tables', type: 'RollTable' },
+        { id: 'shadowdark-community-content.items', type: 'Item' },
+        { id: 'shadowdark-community-content.roll-tables', type: 'RollTable' }
+    ];
+
+    private static readonly FORCE_DISCOVERY = false;
 
     /**
-     * Discovers all system data from local packs and the Foundry server.
+     * Discovers all system data directly from the Foundry server.
      */
     static async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
         const cache = ShadowdarkCache.getInstance();
-        
-        if (cache.isSystemDataFresh()) {
+
+        if (!this.FORCE_DISCOVERY && cache.isSystemDataFresh()) {
             return cache.systemData;
         }
 
         if (this.pendingFetch) return this.pendingFetch;
 
         this.pendingFetch = (async () => {
-            let results: any = null;
             try {
-                // Initialize base results from system info
-                const sysInfo = await client.getSystem();
-                results = this._initializeResults(sysInfo);
+                const { PersistentCache } = await import('../../core/cache/PersistentCache');
+                const persistentCache = PersistentCache.getInstance();
+                const version = await this._getAppVersion();
                 
-                if (options?.minimal) return results;
+                const dataKey = `${this.BASE_DATA_KEY}-${version}`;
+                const sigKey = `${this.BASE_SIG_KEY}-${version}`;
 
-                const { persistentCache } = await import('../../core/cache/PersistentCache');
                 const currentSig = await this._computeSignature(client);
-                const storedSig = await persistentCache.get<string>(this.CACHE_NS, this.SYSTEM_DATA_SIG_KEY);
+                const cachedSig = await persistentCache.get<string>(this.CACHE_NS, sigKey);
 
-                if (currentSig && storedSig && currentSig === storedSig) {
-                    const diskData = await persistentCache.get<any>(this.CACHE_NS, this.SYSTEM_DATA_KEY);
-                    if (diskData) {
-                        diskData.PREDEFINED_EFFECTS = results.PREDEFINED_EFFECTS;
-                        cache.setSystemData(diskData);
-                        return diskData;
+                if (!this.FORCE_DISCOVERY && currentSig && cachedSig === currentSig) {
+                    const cachedData = await persistentCache.get<any>(this.CACHE_NS, dataKey);
+                    if (cachedData && Array.isArray(cachedData.items) && (cachedData.items.length > 0 || cachedData.ancestries?.length > 0)) {
+                        logger.debug('[ShadowdarkDiscovery] Loading system data from disk cache');
+                        // Restore effects which aren't cached
+                        cachedData.PREDEFINED_EFFECTS = { ...SYSTEM_PREDEFINED_EFFECTS };
+                        cache.setSystemData(cachedData);
+                        return cachedData;
                     }
                 }
 
-                // Deep Discovery
+                logger.info('[ShadowdarkDiscovery] Performing Parallel Deep Discovery from Foundry...');
+                const results = this._initializeResults({});
                 const processedUuids = new Set<string>();
-                const dataManager = DataManager.getInstance();
-                
-                // 1. From DataManager (Local JSON)
-                const allDocs = await dataManager.getAllDocuments();
-                this._processDocuments(allDocs, results, processedUuids);
 
-                // 2. From Socket (Remote Foundry)
-                // TODO: Link to adapter's socket discovery logic
+                // Fetch all packs in parallel
+                const packPromises = this.DISCOVERY_PACKS.map(async (packInfo) => {
+                    try {
+                        const isCommunity = packInfo.id.startsWith('shadowdark-community-content');
+                        let docs: any[] = [];
+                        
+                        // Shallow fetch for community content, deep fetch for core
+                        if (!isCommunity && typeof client.getPackDocuments === 'function') {
+                            docs = await client.getPackDocuments(packInfo.id, packInfo.type) || [];
+                        } else {
+                            // getPackEntries is usually much faster as it only returns indices
+                            docs = await client.getPackEntries?.(packInfo.id) || [];
+                        }
+
+                        if (docs.length > 0) {
+                            return docs.map(d => ({
+                                ...d,
+                                pack: packInfo.id,
+                                uuid: d.uuid || `Compendium.${packInfo.id}.${d._id || d.id}`
+                            }));
+                        }
+                    } catch (err) {
+                        logger.warn(`[ShadowdarkDiscovery] Failed to fetch pack ${packInfo.id}:`, err);
+                    }
+                    return [];
+                });
+
+                const allPacksResults = await Promise.all(packPromises);
                 
-                // 3. World Items
-                // TODO: Link to adapter's world-item processing
+                // Process results in a single pass
+                for (const mappedDocs of allPacksResults) {
+                    if (mappedDocs.length > 0) {
+                        this._processDocuments(mappedDocs, results, processedUuids);
+                    }
+                }
 
                 if (currentSig) {
-                    await persistentCache.set(this.CACHE_NS, this.SYSTEM_DATA_KEY, results);
-                    await persistentCache.set(this.CACHE_NS, this.SYSTEM_DATA_SIG_KEY, currentSig);
+                    await persistentCache.set(this.CACHE_NS, dataKey, results);
+                    await persistentCache.set(this.CACHE_NS, sigKey, currentSig);
                 }
-                
+
+                // Final Discovery Summary
+                logger.info(`[ShadowdarkDiscovery] Discovery complete. Ancestries: ${results.ancestries.length}, Classes: ${results.classes.length}, Spells: ${results.spells.length}, Items/Gear: ${results.items.length}`);
+
                 cache.setSystemData(results);
                 return results;
             } catch (e) {
                 logger.error('[ShadowdarkDiscovery] Discovery failed:', e);
-                return cache.systemData || results || {};
+                return cache.systemData || ({} as any);
             } finally {
                 this.pendingFetch = null;
             }
         })();
 
         return this.pendingFetch;
+    }
+
+    private static async _getAppVersion(): Promise<string> {
+        if (this._appVersion) return this._appVersion;
+        try {
+            const fs = await import('node:fs');
+            const path = await import('node:path');
+            const pkgPath = path.join(process.cwd(), 'package.json');
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            this._appVersion = pkg.version || '0.0.0';
+        } catch (e) {
+            this._appVersion = '0.0.0';
+        }
+        return this._appVersion || '0.0.0';
     }
 
     private static _initializeResults(sysInfo: any) {
@@ -90,16 +155,24 @@ export class ShadowdarkDiscovery {
             languages: [],
             spells: [],
             talents: [],
+            items: [],
+            tables: [],
             titles: {},
-            PREDEFINED_EFFECTS: {} // Source from talent-effects.ts if needed
+            PREDEFINED_EFFECTS: { ...SYSTEM_PREDEFINED_EFFECTS }
         };
     }
 
     private static async _computeSignature(client: any): Promise<string | null> {
         try {
-            const sys = await client.getSystem();
-            const world = await client.getWorldStatus?.() || 'unknown';
-            const sig = `${sys.version}-${world}`;
+            // Read version from package.json for cache busting
+            const version = await this._getAppVersion();
+
+            // Only check world status if we don't have it (or just use a generic 'world' key if not supported)
+            // getWorldStatus is useful for cache-busting between different worlds on the same server
+            const world = (typeof client.getWorldStatus === 'function') ? await client.getWorldStatus() : 'unknown';
+            const packCount = this.DISCOVERY_PACKS.length;
+
+            const sig = `${world}-${packCount}-${version}`;
             return createHash('md5').update(sig).digest('hex');
         } catch (e) {
             return null;
@@ -114,17 +187,54 @@ export class ShadowdarkDiscovery {
 
             const type = (doc.type || doc.documentType || "").toLowerCase();
             switch (type) {
-                case 'ancestry': results.ancestries.push(doc); break;
-                case 'class': 
-                    results.classes.push(doc); 
+                case 'ancestry':
+                    results.ancestries.push(doc);
+                    break;
+                case 'background':
+                    results.backgrounds.push(doc);
+                    break;
+                case 'class':
+                    results.classes.push(doc);
                     if (doc.system?.titles) results.titles[doc.name] = doc.system.titles;
                     break;
-                case 'background': results.backgrounds.push(doc); break;
-                case 'deity': results.deities.push(doc); break;
-                case 'patron': results.patrons.push(doc); break;
-                case 'language': results.languages.push(doc); break;
-                case 'spell': results.spells.push(doc); break;
-                case 'talent': results.talents.push(doc); break;
+                case 'deity':
+                    results.deities.push(doc);
+                    break;
+                case 'patron':
+                    results.patrons.push(doc);
+                    break;
+                case 'language':
+                    results.languages.push(doc);
+                    break;
+                case 'spell':
+                    results.spells.push(doc);
+                    break;
+                case 'talent':
+                case 'talent (random)':
+                case 'talent (class)':
+                case 'class ability':
+                case 'class-ability':
+                    results.talents.push(doc);
+                    break;
+                case 'armor':
+                case 'weapon':
+                case 'basic':
+                case 'scroll':
+                case 'wand':
+                case 'potion':
+                case 'gem':
+                case 'item':
+                case 'property':
+                case 'spell-effect':
+                case 'effect':
+                case 'condition':
+                    results.items.push(doc);
+                    break;
+                case 'rolltable':
+                case 'table':
+                case 'roll-table':
+                    results.tables.push(doc);
+                    break;
             }
         });
     }

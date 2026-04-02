@@ -11,6 +11,7 @@ import NotesModal from './components/NotesModal';
 import { LevelUpModal } from './components/LevelUpModal';
 import { useNotifications } from '@/app/ui/components/NotificationSystem';
 import { logger } from '@/core/logger';
+import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 
 
 interface ShadowdarkPaperSheetProps {
@@ -34,20 +35,13 @@ export default function ShadowdarkPaperSheet({
 }: ShadowdarkPaperSheetProps) {
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
-    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
-    const [levelUpData, setLevelUpData] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState('main');
     const [viewMode, setViewMode] = useState<'paper' | 'list'>('paper');
     const { addNotification } = useNotifications();
 
-    // Auto-close Level Up Modal when level effectively changes
-    useEffect(() => {
-        if (showLevelUpModal && levelUpData && actor.system?.level?.value === levelUpData.targetLevel) {
-            setShowLevelUpModal(false);
-            setLevelUpData(null);
-            addNotification('Level Up Complete!', 'success');
-        }
-    }, [actor.system?.level?.value, showLevelUpModal, levelUpData, addNotification]);
+    // Shadowdark Level-Up Logic (Consolidated)
+    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any);
+
+    // Level Up Modal is handled via hook
 
     // Helper to safely render values that might be objects (Foundry data structure)
     const getDisplayValue = (val: any) => {
@@ -244,8 +238,8 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit">Attacks</div>
                             <div className="p-2 space-y-2 flex-1">
                                 {([
-                                    ...(actor.derived?.attacks?.melee || []).map((a: any) => ({ ...a, _displayType: 'Melee' })),
-                                    ...(actor.derived?.attacks?.ranged || []).map((a: any) => ({ ...a, _displayType: 'Ranged' }))
+                                    ...(actor.computed?.attacks?.melee || []).map((a: any) => ({ ...a, _displayType: 'Melee' })),
+                                    ...(actor.computed?.attacks?.ranged || []).map((a: any) => ({ ...a, _displayType: 'Ranged' }))
                                 ]).slice(0, 5).map((atk: any, i: number) => (
                                     <div
                                         key={i}
@@ -292,21 +286,8 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Level</div>
                             {actor.computed?.levelUp ? (
                                 <button
-                                    onClick={() => {
-                                        setLevelUpData({
-                                            currentLevel: actor.system?.level?.value || 0,
-                                            targetLevel: (actor.system?.level?.value || 0) + 1,
-                                            classObj: actor.computed?.classDetails,
-                                            ancestry: actor.system?.ancestry,
-                                            patron: actor.computed?.patronDetails,
-                                            abilities: actor.system?.abilities,
-                                            spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
-                                            classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
-                                            patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
-                                        });
-                                        setShowLevelUpModal(true);
-                                    }}
-                                    className="bg-amber-500 text-black px-2 py-1 text-xs font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer mt-3"
+                                    onClick={triggerLevelUp}
+                                    className="mt-1 bg-amber-500 text-black px-1 py-0.5 text-[10px] font-bold rounded animate-pulse cursor-pointer hover:bg-amber-400"
                                 >
                                     LEVEL UP!
                                 </button>
@@ -362,7 +343,7 @@ export default function ShadowdarkPaperSheet({
                         <div className="border-2 border-black h-16 p-1 relative">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Deity</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
-                                <div className="text-lg font-bold w-full text-center truncate px-1 uppercase">
+                                <div className="text-lg font-bold w-full text-center truncate px-1 capitalize">
                                     {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || ''}
                                 </div>
                             </div>
@@ -377,7 +358,7 @@ export default function ShadowdarkPaperSheet({
                                         <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Patron</div>
                                         <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                             <div className="text-lg font-bold w-full text-center truncate px-1">
-                                            {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || ''}
+                                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || ''}
                                             </div>
                                         </div>
                                     </div>
@@ -391,52 +372,36 @@ export default function ShadowdarkPaperSheet({
                     {/* --- COLUMN 3: Talents & Spells --- */}
                     <div className="flex flex-col gap-4">
                         {/* Spells Box (Conditional) */}
-                        {(() => {
-                            // Check if character is a spellcaster (has ability, class, or talent)
-                            const hasAbility = !!actor.computed?.spellcastingAbility;
-                            const className = resolveEntityName(actor.system?.class, actor, systemData, 'classes') || '';
-                            const isKnownCaster = className.match(/wizard|priest|witch|druid|seer/i);
-                            const hasCastingTalent = actor.items?.some((i: any) =>
-                                (i.type === 'Talent' || i.type === 'Boon') &&
-                                (i.name.toLowerCase().includes('spellcast') || i.name.toLowerCase().includes('learn spell'))
-                            );
+                        {actor.computed?.isSpellcaster && (
+                            <div className="border-2 border-black flex flex-col relative min-h-[4rem]">
+                                <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Spells</div>
+                                <div className="p-4 pt-8 space-y-1 overflow-auto">
+                                    {(actor.items?.filter((i: any) => i.type === 'Spell') || [])
+                                        .sort((a: any, b: any) => {
+                                            const tierA = Number(a.system?.tier ?? 0);
+                                            const tierB = Number(b.system?.tier ?? 0);
+                                            if (tierA !== tierB) return tierA - tierB;
 
-                            const isCaster = hasAbility || isKnownCaster || hasCastingTalent;
-
-                            if (isCaster) {
-                                return (
-                                    <div className="border-2 border-black flex flex-col relative min-h-[4rem]">
-                                        <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Spells</div>
-                                        <div className="p-4 pt-8 space-y-1 overflow-auto">
-                                            {(actor.items?.filter((i: any) => i.type === 'Spell') || [])
-                                                .sort((a: any, b: any) => {
-                                                    const tierA = Number(a.system?.tier ?? 0);
-                                                    const tierB = Number(b.system?.tier ?? 0);
-                                                    if (tierA !== tierB) return tierA - tierB;
-
-                                                    const nameA = a.name || "";
-                                                    const nameB = b.name || "";
-                                                    return nameA.localeCompare(nameB);
-                                                })
-                                                .map((item: any, i: number) => (
-                                                    <div
-                                                        key={i}
-                                                        onClick={() => triggerRollDialog('item', item.id || item._id)}
-                                                        className="flex justify-between items-baseline border-b border-black border-dotted pb-0.5 text-xs font-bold uppercase cursor-pointer hover:bg-neutral-100 hover:text-amber-700 transition-colors"
-                                                    >
-                                                        <span className="truncate">{item.name}</span>
-                                                        {item.system?.tier !== undefined && <span className="text-[10px] text-neutral-500 ml-2">T{item.system.tier}</span>}
-                                                    </div>
-                                                ))}
-                                            {(!actor.items?.some((i: any) => i.type === 'Spell')) && (
-                                                <div className="text-[10px] text-neutral-400 italic text-center mt-2">No spells prepared</div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            }
-                            return null;
-                        })()}
+                                            const nameA = a.name || "";
+                                            const nameB = b.name || "";
+                                            return nameA.localeCompare(nameB);
+                                        })
+                                        .map((item: any, i: number) => (
+                                            <div
+                                                key={i}
+                                                onClick={() => triggerRollDialog('item', item.id || item._id)}
+                                                className="flex justify-between items-baseline border-b border-black border-dotted pb-0.5 text-xs font-bold uppercase cursor-pointer hover:bg-neutral-100 hover:text-amber-700 transition-colors"
+                                            >
+                                                <span className="truncate">{item.name}</span>
+                                                {item.system?.tier !== undefined && <span className="text-[10px] text-neutral-500 ml-2">T{item.system.tier}</span>}
+                                            </div>
+                                        ))}
+                                    {(!actor.items?.some((i: any) => i.type === 'Spell')) && (
+                                        <div className="text-[10px] text-neutral-400 italic text-center mt-2">No spells prepared</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Talents Box */}
                         <div className="border-2 border-black flex flex-col relative min-h-[8rem]">
@@ -459,20 +424,10 @@ export default function ShadowdarkPaperSheet({
                         {/* Languages Box */}
                         <div className="border-2 border-black flex flex-col relative min-h-[4rem]">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Languages</div>
-                            <div className="p-4 pt-8 pb-2 overflow-auto">
-                                {(() => {
-                                    const allLangs = actor.details?.languages || [];
-
-                                    if (allLangs.length === 0) {
-                                        return <div className="text-[10px] text-neutral-400 italic text-center">No languages known</div>;
-                                    }
-
-                                    return (
-                                        <div className="text-xs font-bold uppercase">
-                                            {allLangs.join(', ')}
-                                        </div>
-                                    );
-                                })()}
+                            <div className="p-4 pt-8 pb-2 overflow-auto text-center">
+                                <div className="text-xs font-bold uppercase tracking-wider">
+                                    {(actor.details?.languages || []).join(', ')}
+                                </div>
                             </div>
                         </div>
 
@@ -619,16 +574,14 @@ export default function ShadowdarkPaperSheet({
                     patronUuid={levelUpData.patronUuid}
                     abilities={levelUpData.abilities}
                     spells={levelUpData.spells}
-                    onCancel={() => setShowLevelUpModal(false)}
-                    onComplete={(updatedData) => {
-                        const effectiveLevel = actor.system?.level?.value || 0;
-                        if (effectiveLevel !== levelUpData.targetLevel) {
-                            onUpdate('', updatedData);
-                        } else {
-                            setShowLevelUpModal(false);
-                            setLevelUpData(null);
-                        }
+                    availableClasses={systemData?.classes || []}
+                    availableLanguages={systemData?.languages || []}
+                    onComplete={async (_data: any) => {
+                        addNotification('Level Up Successful! Updating sheet...', 'success');
+                        await new Promise(resolve => setTimeout(resolve, 800));
+                        closeLevelUp();
                     }}
+                    onCancel={closeLevelUp}
                 />
             )}
         </div>

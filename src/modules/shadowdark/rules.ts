@@ -45,8 +45,15 @@ export const calculateMaxSlots = (actor: any) => {
 
 export const calculateCoinSlots = (coins: any) => {
     if (!coins) return 0;
-    const total = (Number(coins.gp) || 0) + (Number(coins.sp) || 0) + (Number(coins.cp) || 0);
-    return Math.floor(total / 100);
+    const gp = Number(coins.gp) || 0;
+    const sp = Number(coins.sp) || 0;
+    const cp = Number(coins.cp) || 0;
+
+    // Total Value in GP: 100 CP = 10 SP = 1 GP
+    const totalGP = gp + (sp / 10) + (cp / 100);
+
+    // 10 GP = 1 Slot
+    return Math.floor(totalGP / 10);
 };
 
 export const calculateGemSlots = (gems: any[]) => {
@@ -190,6 +197,106 @@ export const calculateAbilities = (systemData: any) => {
         res[key] = { ...stat, value: val, mod };
     }
     return res;
+};
+
+/**
+ * Calculates attack summaries (to-hit, damage) for an actor's weapons.
+ */
+export const calculateAttacks = (actor: any, items: any[]) => {
+    const melee: any[] = [];
+    const ranged: any[] = [];
+
+    const stats = actor.computed?.abilities || actor.stats || {};
+    const strMod = Number(stats.str?.mod || stats.STR?.mod || 0);
+    const dexMod = Number(stats.dex?.mod || stats.DEX?.mod || 0);
+
+    const weapons = items.filter(i => i.type === 'Weapon' && i.system?.equipped);
+
+    for (const w of weapons) {
+        const s = w.system || {};
+        const isFinesse = (s.properties || []).some((p: string) => p.toLowerCase().includes('finesse'));
+        const isThrown = (s.properties || []).some((p: string) => p.toLowerCase().includes('thrown'));
+        const isRangedType = s.type === 'ranged';
+        const attackBonus = Number(s.bonuses?.attackBonus || 0);
+        const damageBonus = Number(s.bonuses?.damageBonus || 0);
+
+        // Determine To-Hit
+        let toHit = attackBonus;
+        if (isRangedType) toHit += dexMod;
+        else if (isFinesse) toHit += Math.max(strMod, dexMod);
+        else toHit += strMod;
+
+        const toHitStr = `${toHit >= 0 ? '+' : ''}${toHit}`;
+
+        // Damage
+        const dmgDie = s.damage?.melee || s.damage?.ranged || '1d4';
+        let dmgMod = damageBonus;
+        if (!isRangedType) dmgMod += strMod; // Strength adds to melee damage in SD
+        
+        const dmgStr = `${dmgDie}${dmgMod !== 0 ? (dmgMod > 0 ? '+' : '') + dmgMod : ''}`;
+
+        const attackData = {
+            id: w._id || w.id,
+            name: w.name,
+            img: w.img,
+            toHit: toHitStr,
+            damage: dmgStr,
+            handedness: s.handedness || 'one-handed',
+            properties: s.properties || []
+        };
+
+        if (isRangedType || isThrown) ranged.push(attackData);
+        if (!isRangedType) melee.push(attackData);
+    }
+
+    return { melee, ranged };
+};
+
+/**
+ * Calculates language selection limits based on class and ancestry.
+ */
+export const getLanguageLimits = (actor: any, systemData?: any) => {
+    const items = actor.items || [];
+    const findItem = (type: string) => items.find((i: any) => (i.type || "").toLowerCase() === type.toLowerCase());
+
+    const classObj = findItem('class');
+    const ancestryObj = findItem('ancestry');
+    const backgroundObj = findItem('background');
+
+    const cl = classObj?.system?.languages || {};
+    const al = ancestryObj?.system?.languages || {};
+    const bl = backgroundObj?.system?.languages || {};
+
+    const baseCommon = (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
+                       (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || 0);
+
+    const baseRare = (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || 0);
+
+    // Count fixed languages if we have access to systemData to check rarity
+    let fixedCommon = 0;
+    let fixedRare = 0;
+
+    if (systemData?.languages) {
+        const allFixed = Array.from(new Set([
+            ...(cl.fixed || []),
+            ...(al.fixed || []),
+            ...(bl.fixed || [])
+        ]));
+
+        for (const f of allFixed) {
+            const lang = systemData.languages.find((l: any) => l.name === f || l.uuid === f);
+            if (lang?.rarity === 'rare') {
+                fixedRare++;
+            } else {
+                fixedCommon++;
+            }
+        }
+    }
+
+    return {
+        maxCommon: baseCommon + fixedCommon,
+        maxRare: baseRare + fixedRare
+    };
 };
 
 
@@ -349,7 +456,7 @@ export const normalizeItemData = (item: any, baseUrl?: string) => {
  * Normalizes an actor document and computes all derived Shadowdark stats.
  * This is the single source of truth for both client and server.
  */
-export const normalizeActorData = (actor: any, items: any[] = []) => {
+export const normalizeActorData = (actor: any, items: any[] = [], systemData: any = null) => {
     const s = actor.system || {};
     const computed = { ...(actor.computed || {}) };
 
@@ -404,7 +511,24 @@ export const normalizeActorData = (actor: any, items: any[] = []) => {
     computed.canUseMagicItems = canUseMagicItems(actorProxy);
     computed.showSpellsTab = shouldShowSpellsTab(actorProxy);
 
-    // 7. Find Key Items (Class, Ancestry, etc.)
+    // 7. Attacks & Combat
+    computed.attacks = calculateAttacks(actorProxy, items);
+
+    // 8. Inventory Categorization (for UI components)
+    // Exclude non-physical items like Spells, Talents, etc.
+    const physicalItems = items.filter(i => 
+        !['Talent', 'Spell', 'Effect', 'Class', 'Ancestry', 'Background', 'Deity', 'Title', 'Language', 'Patron', 'Gem', 'Boon'].includes(i.type)
+    );
+
+    const eq = physicalItems.filter(i => i.system?.equipped);
+    const st = physicalItems.filter(i => i.system?.stashed);
+    const cr = physicalItems.filter(i => !i.system?.equipped && !i.system?.stashed);
+    computed.inventory = { equipped: eq, stashed: st, carried: cr };
+
+    // 9. Language Limits
+    computed.languageLimits = getLanguageLimits(actorProxy, systemData);
+
+    // 9. Find Key Items (Class, Ancestry, etc.)
     const lowerType = (i: any) => (i.type || "").toLowerCase();
     computed.classDetails = items.find((i: any) => lowerType(i) === 'class');
     computed.ancestryDetails = items.find((i: any) => lowerType(i) === 'ancestry');

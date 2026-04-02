@@ -62,16 +62,35 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
 
                     const gearItems = allDocs.filter((d: any) => {
                         // Filter out non-items or folders
-                        if (d.type === 'Item' && d._key && d._key.startsWith('!folders!')) return false;
+                        if (d._key && d._key.startsWith('!folders!')) return false;
 
                         // Filter out effects/bonuses from magic-items.db
-                        const validTypes = ['Basic', 'Weapon', 'Armor', 'Potion', 'Scroll'];
-                        if (!d.type || !validTypes.includes(d.type)) return false;
+                        const validTypes = ['Basic', 'Weapon', 'Armor', 'Potion', 'Scroll', 'Wand', 'Gem', 'item', 'Item'];
+                        const dType = d.type || "";
+                        const typeMatch = validTypes.some(t => t.toLowerCase() === dType.toLowerCase());
 
                         // Check specific packs
-                        if (d.pack === 'gear' || d.pack === 'magic-items') return true;
+                        const dPack = d.pack || "";
+                        const validPacks = ['items', 'gear', 'magic-items', 'shadowdark.items', 'shadowdark.magic-items'];
+                        const packMatch = validPacks.some(vp => dPack.toLowerCase().includes(vp));
+
+                        if (typeMatch && packMatch) return true;
+                        
+                        // Debug log for potential false negatives
+                        if (allDocs.length < 500 && dType && !typeMatch) {
+                            // Only log if we have relatively few total docs and it's an item-like doc
+                            if (dPack.includes('items')) logger.debug(`[GearSelectionModal] Rejected Item: ${d.name} (Type: ${dType}, Pack: ${dPack})`);
+                        }
+
                         return false;
                     });
+                    
+                    logger.debug(`[GearSelectionModal] Filtered Gear Count: ${gearItems.length}`);
+                    
+                    // Log unique packs for debugging
+                    const uniquePacks = Array.from(new Set(allDocs.map((d: any) => d.pack || "unknown"))).slice(0, 10);
+                    logger.debug(`[GearSelectionModal] Registry Packs (first 10): ${uniquePacks.join(', ')}`);
+                    
                     setItems(gearItems);
                 } catch (e) {
                     logger.error("Failed to load gear:", e);
@@ -112,7 +131,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
             // Category Logic
             let category: GearCategory | null = null;
 
-            if (item.pack === 'magic-items' || item.system?.magicItem === true) {
+            if (item.pack === 'magic-items' || item.pack === 'shadowdark.magic-items' || item.system?.magicItem === true) {
                 category = 'Magic Items';
             } else if (item.folder && FOLDER_IDS[item.folder]) {
                 category = FOLDER_IDS[item.folder];
@@ -122,7 +141,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                 category = 'Weapons';
             } else {
                 // Fallback for items in gear.db without a folder (if any)
-                if (item.pack === 'gear') category = 'Basic Gear';
+                if (item.pack === 'gear' || item.pack === 'shadowdark.items') category = 'Basic Gear';
             }
 
             if (category) {

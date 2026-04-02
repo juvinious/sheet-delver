@@ -207,7 +207,14 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
     // 2. Resolve additional items from handlers
     for (const handler of TALENT_HANDLERS) {
         if (handler.resolveItems) {
-            const extra = await handler.resolveItems(state, targetLevel, client);
+            const extra = await handler.resolveItems(state, targetLevel, async (uuid: string) => {
+                if (client) {
+                    const { shadowdarkAdapter } = await import('../system');
+                    return shadowdarkAdapter.resolveDocument(client, uuid);
+                } else {
+                    return dataManager.getDocument(uuid);
+                }
+            });
             items.push(...extra);
         }
     }
