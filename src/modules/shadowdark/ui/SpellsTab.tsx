@@ -171,7 +171,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         const sources: Map<string, any> = new Map();
 
         // 1. Primary Class
-        const classItem = actor.computed?.classDetails || actor.items?.find((i: any) => i.type === 'Class');
+        const classItem = actor.computed?.classDetails || actor.items?.find((i: any) => (i.type || "").toLowerCase() === 'class');
         if (classItem?.system?.spellcasting?.ability) {
             const classKey = (classItem.name || "").toLowerCase();
             sources.set(classKey, {
@@ -184,18 +184,23 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         } else if (actor.system?.class && systemData?.classes) {
             // Fallback: Resolve via systemData if class identified by UUID
             const classRef = actor.system.class;
-            const resolvedClass = systemData.classes.find((c: any) => c.uuid === classRef || c.name.toLowerCase() === classRef.toLowerCase());
-            if (resolvedClass?.spellcasting?.ability) {
+            const resolvedClass = systemData.classes.find((c: any) => 
+                c.uuid === classRef || 
+                c.name.toLowerCase() === (String(classRef).toLowerCase()) ||
+                (typeof classRef === 'string' && classRef.endsWith(c.uuid.split('.').pop()!))
+            );
+            const spellcasting = resolvedClass?.system?.spellcasting || resolvedClass?.spellcasting;
+            if (spellcasting?.ability) {
                 const classKey = resolvedClass.name.toLowerCase();
                 sources.set(classKey, {
                     name: resolvedClass.name,
                     type: 'class',
                     classKey: classKey,
-                    spellcasting: resolvedClass.spellcasting,
+                    spellcasting: spellcasting,
                     bonusSpells: 0
                 });
             } else {
-                console.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!resolvedClass?.spellcasting?.ability}`);
+                console.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!spellcasting?.ability}`);
             }
         } else {
             console.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
@@ -258,18 +263,29 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     }, [actor.items, actor.computed?.classDetails, systemData, actor.system]);
 
     const getAccessibleTiers = (source: any) => {
-        const level = actor.level?.value || actor.system?.level?.value || 0;
-        const tiers = [];
+        const level = Number(actor.level?.value || actor.system?.level?.value || 0);
+        const tiers: number[] = [];
 
-        if (source.type === 'class' && source.spellcasting?.spellsknown) {
-            const table = source.spellcasting.spellsknown;
-            const levelData = table[String(level)] || table[level];
-            if (levelData) {
-                for (let t = 1; t <= 5; t++) {
-                    const known = levelData[String(t)] || levelData[t];
-                    if (known !== undefined && known !== null && known !== 0) {
-                        tiers.push(t);
+        if (source.type === 'class') {
+            const table = source.spellcasting?.spellsknown;
+            if (table) {
+                const levelData = table[String(level)] || table[level];
+                if (levelData) {
+                    for (let t = 1; t <= 5; t++) {
+                        const known = levelData[String(t)] || levelData[t];
+                        if (known !== undefined && known !== null && Number(known) !== 0) {
+                            tiers.push(t);
+                        }
                     }
+                }
+            }
+            
+            // Fallback for known caster classes if table is missing or empty
+            if (tiers.length === 0) {
+                const knownCasters = ['wizard', 'priest', 'witch', 'warlock', 'seer', 'druid', 'bard'];
+                if (knownCasters.includes(source.classKey.toLowerCase())) {
+                    const maxTier = Math.min(5, Math.max(1, Math.ceil(level / 2)));
+                    for (let t = 1; t <= maxTier; t++) tiers.push(t);
                 }
             }
         } else if (source.type === 'talent') {

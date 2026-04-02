@@ -398,7 +398,8 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                     <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                                     <div className="flex flex-col md:flex-row md:items-center gap-x-3 gap-y-1">
                                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                            {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                            {actor.details?.title && <span className="text-amber-500 mr-2">{actor.details.title}</span>}
+                                            {actor.details?.ancestry || ''} {actor.details?.class || ''}
                                         </p>
                                         <button
                                             onClick={() => {

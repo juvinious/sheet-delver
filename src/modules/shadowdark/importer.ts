@@ -2,6 +2,8 @@ import { FoundryClient } from '@/core/foundry';
 import fs from 'fs';
 import path from 'path';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
+import { shadowdarkAdapter } from './system';
+import { sanitizeItem, sanitizeItems } from './utils/Sanitizer';
 
 export interface ImportResult {
     success: boolean;
@@ -79,8 +81,8 @@ export class ShadowdarkImporter {
 
             if (itemUuid) {
                 log(`[findItem] Found in mapping: ${itemUuid}`);
-                const item = await client.fetchByUuid(itemUuid);
-                if (item) return item;
+                const item = await shadowdarkAdapter.resolveDocument(client, itemUuid);
+                if (item) return sanitizeItem(item);
                 log(`[findItem] WARN: Mapping UUID ${itemUuid} could not be resolved`);
             }
 
@@ -96,7 +98,8 @@ export class ShadowdarkImporter {
                 if (itemIndex) {
                     const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
                     log(`[findItem] Found in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                    return await client.fetchByUuid(uuid);
+                    const item = await shadowdarkAdapter.resolveDocument(client, uuid);
+                    return item ? sanitizeItem(item) : null;
                 }
             }
 
@@ -112,7 +115,8 @@ export class ShadowdarkImporter {
                     if (itemIndex) {
                         const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
                         log(`[findItem] Fallback Match in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                        return await client.fetchByUuid(uuid);
+                        const item = await shadowdarkAdapter.resolveDocument(client, uuid);
+                        return item ? sanitizeItem(item) : null;
                     }
                 }
             }
@@ -142,15 +146,15 @@ export class ShadowdarkImporter {
 
                     if (itemIndex) {
                         const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
-                        const item = await client.fetchByUuid(uuid);
-                        if (item && item.system?.class && item.system.class.includes(classObj._id)) { // UUID check? 
+                        const item = await shadowdarkAdapter.resolveDocument(client, uuid);
+                        if (item && item.system?.class && item.system.class.includes(classObj._id)) {
                             // Wait, classObj from findItem is the doc. system.class stores strings? likely UUIDs or names.
                             // Shadowdark system stores Class UUIDs in spell.system.class array.
                             // classObj is the fetched Item.
                             // We should check if item.system.class includes classObj._id or classObj.uuid (if available)
                             // Re-fetching confirms logic.
                             log(`[findSpell] Found and verified class match: ${item.name}`);
-                            return item;
+                            return sanitizeItem(item);
                         }
                     }
                 }
@@ -167,7 +171,8 @@ export class ShadowdarkImporter {
                 if (itemIndex) {
                     const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
                     log(`[findSpell] Fallback Match in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                    return await client.fetchByUuid(uuid);
+                    const item = await shadowdarkAdapter.resolveDocument(client, uuid);
+                    return item ? sanitizeItem(item) : null;
                 }
             }
 
@@ -194,7 +199,7 @@ export class ShadowdarkImporter {
             let foundTalent = null;
             if (patternStr) {
                 const uuid = mBonus[patternStr];
-                foundTalent = await client.fetchByUuid(uuid);
+                foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
             }
 
             if (!foundTalent) {
@@ -209,9 +214,8 @@ export class ShadowdarkImporter {
             }
 
             if (foundTalent) {
-                // Clone to avoid mutating cached object if fetchByUuid returns cache reference
-                // CoreSocket usually returns fresh object from JSON parse, but valid to be safe.
-                foundTalent = JSON.parse(JSON.stringify(foundTalent));
+                // Use Sanitizer to get a clean, fresh object
+                foundTalent = sanitizeItem(foundTalent);
 
                 if (foundTalent.system?.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
 
@@ -265,8 +269,8 @@ export class ShadowdarkImporter {
                 const classIndices = pack.index.filter((i: any) => i.type === 'Class');
                 for (const idx of classIndices) {
                     const uuid = idx.uuid || `Compendium.${pack.id}.Item.${idx._id}`;
-                    const doc = await client.fetchByUuid(uuid);
-                    if (doc) classes.push(doc);
+                    const doc = await shadowdarkAdapter.resolveDocument(client, uuid);
+                    if (doc) classes.push(sanitizeItem(doc));
                 }
             }
             return classes;
@@ -360,17 +364,17 @@ export class ShadowdarkImporter {
                 // Starting Spells
                 if (classObj.system?.startingSpells) {
                     for (const uuid of classObj.system.startingSpells) {
-                        const item = await client.fetchByUuid(uuid);
-                        if (item) spells.push(item);
+                        const item = await shadowdarkAdapter.resolveDocument(client, uuid);
+                        if (item) spells.push(sanitizeItem(item));
                     }
                 }
 
                 // Fixed Class Talents
                 if (classObj.system?.talents) {
                     for (const uuid of classObj.system.talents) {
-                        const item = await client.fetchByUuid(uuid);
+                        const item = await shadowdarkAdapter.resolveDocument(client, uuid);
                         if (item) {
-                            const obj = JSON.parse(JSON.stringify(item));
+                            const obj = sanitizeItem(item);
                             const exists = talents.find(t => t.name === obj.name);
                             if (!exists) {
                                 if (obj.effects?.[0]?.changes?.[0]?.value !== "REPLACEME") {
@@ -392,7 +396,7 @@ export class ShadowdarkImporter {
                     const item = await findItem(g.name, type);
                     if (item) {
                         log(`Found: ${item.name}`);
-                        const itemData = JSON.parse(JSON.stringify(item));
+                        const itemData = sanitizeItem(item);
                         if (itemData.system) itemData.system.quantity = g.quantity;
                         gear.push(itemData);
                     } else {
@@ -476,7 +480,7 @@ export class ShadowdarkImporter {
                     }
 
                     if (item) {
-                        const itemData = JSON.parse(JSON.stringify(item));
+                        const itemData = sanitizeItem(item);
                         itemData.name = m.name;
                         if (itemData.system) {
                             if (m.bonus) {
@@ -558,39 +562,7 @@ export class ShadowdarkImporter {
             log(`[Importer] Actor Created: ${createdActor._id}`);
 
             // Embed Items
-            const allItems = [...gear, ...classAbilities, ...spells, ...talents].filter(i => i.type !== 'Class');
-
-            // SANITIZATION
-            if (SYSTEM_PREDEFINED_EFFECTS) {
-                for (const item of allItems) {
-                    if (item.effects && Array.isArray(item.effects) && item.effects.length > 0 && typeof item.effects[0] === 'string') {
-                        log(`[Sanitizer] Clearing invalid string effects for ${item.name}`);
-                        item.effects = [];
-
-                        const name = (item.name || "").toLowerCase();
-                        const predefinedMatch = Object.values(SYSTEM_PREDEFINED_EFFECTS).find((def: any) =>
-                            name.includes(def.label.toLowerCase()) ||
-                            def.label.toLowerCase().includes(name)
-                        );
-
-                        if (predefinedMatch) {
-                            log(`[Sanitizer] Polyfilling effect ${predefinedMatch.label} for ${item.name}`);
-                            item.effects.push({
-                                name: predefinedMatch.label,
-                                icon: predefinedMatch.icon || "icons/svg/aura.svg",
-                                changes: predefinedMatch.changes || [{
-                                    key: predefinedMatch.key,
-                                    mode: predefinedMatch.mode,
-                                    value: predefinedMatch.value
-                                }],
-                                transfer: true,
-                                disabled: false,
-                                _id: Math.random().toString(36).substring(2, 15)
-                            });
-                        }
-                    }
-                }
-            }
+            const allItems = sanitizeItems([...gear, ...classAbilities, ...spells, ...talents]).filter(i => i.type !== 'Class');
 
             if (allItems.length > 0) {
                 log(`[Importer] Creating ${allItems.length} embedded items...`);

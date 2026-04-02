@@ -1,6 +1,8 @@
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { logger } from '../../../core/logger';
-import { dataManager } from '../data/DataManager';
+import { dataManager, DataManager } from '../data/DataManager';
+import { createEffect } from '../utils/Sanitizer';
+import { shadowdarkAdapter } from '../system';
 
 export interface TalentHandler {
     id: string;
@@ -51,18 +53,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                         const effectConfig = SYSTEM_PREDEFINED_EFFECTS[selectionMap[stat]];
 
                         if (effectConfig) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${effectConfig.label})`,
-                                icon: effectConfig.icon,
-                                changes: [
-                                    {
-                                        key: effectConfig.key,
-                                        mode: effectConfig.mode,
-                                        value: String(effectConfig.value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${effectConfig.label})`,
+                                effectConfig.icon,
+                                [{ key: effectConfig.key, value: effectConfig.value }],
+                                { sourceName: "Stat Improvement" }
+                            ));
                         }
                     });
                 }
@@ -101,18 +97,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                         const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
                         if (config) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${config.label})`,
-                                icon: config.icon,
-                                changes: [
-                                    {
-                                        key: config.key,
-                                        mode: config.mode,
-                                        value: String(value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${config.label})`,
+                                config.icon,
+                                [{ key: config.key, value: value }],
+                                { sourceName: "Stat Distribution" }
+                            ));
                         }
                     }
                 });
@@ -153,18 +143,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                         const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
                         if (config) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${config.label})`,
-                                icon: config.icon,
-                                changes: [
-                                    {
-                                        key: config.key,
-                                        mode: config.mode,
-                                        value: String(value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${config.label})`,
+                                config.icon,
+                                [{ key: config.key, value: value }],
+                                { sourceName: "Stat Distribution (Warlock)" }
+                            ));
                         }
                     }
                 });
@@ -193,7 +177,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                 let doc = null;
                 if (client) {
-                    doc = await client.fetchByUuid(uuid);
+                    doc = await shadowdarkAdapter.resolveDocument(client, uuid);
                 } else {
                     doc = await dataManager.getDocument(uuid);
                 }
@@ -254,7 +238,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                 let doc = null;
                 if (client) {
-                    doc = await client.fetchByUuid(uuid);
+                    doc = await shadowdarkAdapter.resolveDocument(client, uuid);
                 } else {
                     doc = await dataManager.getDocument(uuid);
                 }
@@ -338,18 +322,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 );
 
                 if (!hasEffect) {
-                    item.effects.push({
-                        name: "Bonus Spellcasting Class",
-                        icon: effectConfig.icon,
-                        changes: [
-                            {
-                                key: effectConfig.key,
-                                mode: effectConfig.mode,
-                                value: foundCls
-                            }
-                        ],
-                        transfer: true
-                    });
+                    item.effects.push(createEffect(
+                        "Bonus Spellcasting Class",
+                        effectConfig.icon,
+                        [{ key: effectConfig.key, value: foundCls }],
+                        { sourceName: "Class Feature" }
+                    ));
                 }
             }
         }
@@ -372,13 +350,6 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return isMissingEffects && hasDefinition;
         },
         mutateItem: (item: any) => {
-            // 1. Clean up invalid effects (strings)
-            if (item.effects && Array.isArray(item.effects) && item.effects.length > 0 && typeof item.effects[0] === 'string') {
-                logger.warn(`[TalentHandler] Clearing invalid string effects for ${item.name}`);
-                item.effects = [];
-            }
-
-            // 2. Try to polyfill from standard definitions
             const name = (item.name || "").toLowerCase();
             const predefinedMatch = Object.values(SYSTEM_PREDEFINED_EFFECTS).find((def: any) =>
                 name.includes(def.label.toLowerCase()) ||
@@ -387,27 +358,21 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
             if (predefinedMatch) {
                 if (!item.effects) item.effects = [];
-
-                // Deduplicate
                 const exists = item.effects.some((e: any) => e.name === predefinedMatch.label);
                 if (!exists) {
-                    item.effects.push({
-                        name: predefinedMatch.label,
-                        icon: predefinedMatch.icon || "icons/svg/aura.svg",
-                        changes: predefinedMatch.changes || [{
+                    item.effects.push(createEffect(
+                        predefinedMatch.label,
+                        predefinedMatch.icon || "icons/svg/aura.svg",
+                        predefinedMatch.changes || [{
                             key: predefinedMatch.key,
-                            mode: predefinedMatch.mode,
                             value: predefinedMatch.value
                         }],
-                        transfer: true,
-                        disabled: false,
-                        _id: Math.random().toString(36).substring(2, 15) // Generate valid ID
-                    });
+                        { sourceName: "Predefined Definition" }
+                    ));
                 }
             }
         }
-    }
-    ,
+    },
     {
         id: 'generic-choice',
         description: "Parse 'Choose one' or 'X or Y' talents",

@@ -139,6 +139,17 @@ async function startServer() {
                 const cache = CompendiumCache.getInstance();
                 await cache.initialize(systemClient);
                 sessionManager.setCache(cache);
+
+                // Eagerly warm up the adapter's system data cache
+                const sysInfo = await systemClient.getSystem();
+                if (sysInfo && sysInfo.id) {
+                    const { getAdapter } = await import('../modules/core/registry');
+                    const adapter = getAdapter(sysInfo.id);
+                    if (adapter && adapter.initialize) {
+                        logger.info(`Core Service | Initializing Adapter for ${sysInfo.id}...`);
+                        await adapter.initialize(systemClient);
+                    }
+                }
             } catch (e: any) {
                 logger.error(`Core Service | Compendium Cache initialization failed: ${e.message}`);
             }

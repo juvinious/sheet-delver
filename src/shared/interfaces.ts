@@ -158,6 +158,11 @@ export interface SystemAdapter {
     match(actor: any): boolean;
     renderNavigation?: boolean;
     getSystemData(client: any, options?: { minimal?: boolean }): Promise<any>;
+    /**
+     * Optional: Perform asynchronous initialization for the adapter.
+     * Use this for tasks like cache warming, pre-fetching data, or setup.
+     */
+    initialize?(client: any): Promise<void>;
     postCreate?(client: any, actorId: string, sourceData: any): Promise<void>;
     getActor?(client: any, actorId: string): Promise<any>;
     resolveDocument?(client: any, uuid: string): Promise<any | null>;

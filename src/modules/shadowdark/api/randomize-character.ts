@@ -1,59 +1,54 @@
 
 import { NextResponse } from 'next/server';
-import { ShadowdarkAdapter } from '../system';
+import { shadowdarkAdapter, ShadowdarkAdapter } from '../system';
 import { logger } from '../../../core/logger';
 
 // --- Logic Helpers ---
 
 async function getRandomAncestry(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.ancestries || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomClass(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = (systemData.classes || []).filter((c: any) => c.name !== "Level 0");
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomBackground(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.backgrounds || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     // Backgrounds are often simple items, but we fetch full doc to be safe/consistent
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomDeity(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.deities || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomPatron(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     // Patrons might be in systemData or need ensuring.
     // Assuming they are in systemData.patrons (if added to adapter)
@@ -62,7 +57,7 @@ async function getRandomPatron(client: any, systemData?: any) {
     const options = systemData.patrons || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 function getRandomAlignment() {
@@ -84,9 +79,9 @@ async function getRandomName(client: any, ancestryUuid?: string) {
     if (!ancestryUuid) return "Unnamed";
 
     try {
-        const ancestry = await client.fetchByUuid(ancestryUuid);
+        const ancestry = await shadowdarkAdapter.resolveDocument(client, ancestryUuid);
         if (ancestry?.system?.nameTable) {
-            const table = await client.fetchByUuid(ancestry.system.nameTable);
+            const table = await shadowdarkAdapter.resolveDocument(client, ancestry.system.nameTable);
             if (table && table.results) {
                 const results = table.results;
                 const max = Math.max(...results.map((r: any) => (r.range?.[1] || 0)));

@@ -175,13 +175,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             <div className="w-3" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {(() => {
-                                const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
-                                const lvl = actor.system?.level?.value ?? 1;
-                                const sysTitle = systemData?.titles?.[clsName]?.find((t: any) => lvl >= t.from && lvl <= t.to);
-                                const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
-                                return actor.system?.title || sysTitle?.[alignment] || '-';
-                            })()}
+                            {actor.details?.title || '-'}
                         </div>
                     </div>
 
@@ -193,7 +187,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2 font-bold">
                             <span className="w-full">
-                                {resolveEntityName(actor.system?.class, actor, systemData, 'classes') || '-'}
+                                {actor.details?.class || '-'}
                             </span>
                         </div>
                     </div>
@@ -235,7 +229,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             <div className="w-3" />
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries') || '-'}
+                            {actor.details?.ancestry || '-'}
                         </div>
                     </div>
 
@@ -251,7 +245,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds') || '-'}
+                            {actor.details?.background || '-'}
                         </div>
                     </div>
 
@@ -291,7 +285,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}
+                            {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}
                         </div>
                     </div>
 
@@ -308,7 +302,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 </button>
                             </div>
                             <div className="p-2 font-serif text-lg bg-white font-bold">
-                                {actor.details?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || '-'}
+                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || '-'}
                             </div>
                         </div>
                     )}
@@ -330,31 +324,18 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className="p-1 flex flex-wrap gap-2">
                         {(() => {
                             const RARE_LANGS = ['celestial', 'diabolic', 'draconic', 'primordial', 'abyssal', 'undercommon'];
-                            const actorLangsRaw = actor.system?.languages || [];
-                            const resolvedLangs = actorLangsRaw.filter((l: any) => l != null).map((l: any) => {
-                                const isObj = typeof l === 'object';
-                                const val = isObj ? l.name : l;
-                                // Find match in systemData.languages (compendium data)
-                                const match = systemData?.languages?.find((sl: any) =>
-                                    sl.uuid === val || sl.name === val || sl.uuid === l.uuid
+                            const actorLangs = actor.details?.languages || [];
+                            const resolvedLangs = actorLangs.map((l: any) => {
+                                const name = typeof l === 'string' ? l : (l.name || '');
+                                // Find extra info in systemData for tooltips
+                                const match = systemData?.languages?.find((sl: any) => 
+                                    sl.name === name || sl.uuid === name || (typeof l === 'object' && sl.uuid === l.uuid)
                                 );
 
-                                // Robust rarity detection
-                                let rarity = match ? match.rarity : (isObj ? l.rarity : null);
-                                if (!rarity && val) {
-                                    const lowerVal = val.toString().toLowerCase();
-                                    if (RARE_LANGS.some(rl => lowerVal.includes(rl))) {
-                                        rarity = 'rare';
-                                    }
-                                }
-
                                 return {
-                                    raw: val,
-                                    original: l,
-                                    name: match ? match.name : (isObj ? l.name : l),
-                                    desc: match ? (match.description || match.desc) : (isObj ? (l.description || l.desc) : 'Description unavailable.'),
-                                    rarity: rarity || 'common',
-                                    uuid: match ? match.uuid : (isObj ? l.uuid : null)
+                                    name: name,
+                                    desc: match ? (match.description || match.desc) : (typeof l === 'object' ? (l.description || l.desc) : 'Description unavailable.'),
+                                    rarity: match ? match.rarity : (typeof l === 'object' ? l.rarity : 'common')
                                 };
                             });
 
@@ -500,7 +481,11 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     }}
                     availableLanguages={systemData?.languages || []}
                     currentLanguages={(actor.system?.languages || []).map((id: string) => {
-                        const found = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                        const found = systemData?.languages?.find((l: any) => 
+                            l.uuid === id || 
+                            l.name === id || 
+                            (typeof id === 'string' && id.endsWith(l.uuid.split('.').pop()!))
+                        );
                         return found?.uuid || id;
                     })}
                     maxCommon={(() => {

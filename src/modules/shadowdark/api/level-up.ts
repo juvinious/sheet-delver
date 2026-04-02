@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getClient } from '../../../core/foundry/instance';
 import { logger } from '../../../app/ui/logger';
 import { getConfig } from '../../../core/config';
-import { ShadowdarkAdapter } from '../system';
+import { shadowdarkAdapter, ShadowdarkAdapter } from '../system';
 import { dataManager } from '../data/DataManager';
 import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
 import * as levelUpEngine from './level-up-engine';
@@ -32,8 +32,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
             actor = await client.getActor(actorId);
         }
 
-        const adapter = new ShadowdarkAdapter();
-        const data = await adapter.getLevelUpData(client, actor, classId || undefined, patronId || undefined);
+        const data = await shadowdarkAdapter.getLevelUpData(client, actor, classId || undefined, patronId || undefined);
 
         return NextResponse.json({ success: true, data });
 
@@ -74,7 +73,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
         if (hitDie === '1d4' && classId) {
             try {
                 logger.info(`[API] Fetching class doc for ${classId}`);
-                const classDoc = await dataManager.getDocument(classId) || await client.fetchByUuid(classId);
+                const classDoc = await shadowdarkAdapter.resolveDocument(client, classId);
                 if (classDoc && classDoc.system && classDoc.system.hitPoints) {
                     hitDie = classDoc.system.hitPoints;
                     logger.info(`[API] Found hitDie from class doc: ${hitDie}`);

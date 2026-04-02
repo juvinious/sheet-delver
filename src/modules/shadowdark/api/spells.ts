@@ -26,18 +26,8 @@ export async function handleLearnSpell(actorId: string, request: Request, client
             return NextResponse.json({ error: 'Spell UUID is required' }, { status: 400 });
         }
 
-        // 1. Fetch Spell Data (Local or Remote)
-        let spellData: any = null;
-
-        // Try Local First
-        if (spellUuid.startsWith('Compendium.')) {
-            spellData = await dataManager.getDocument(spellUuid);
-        }
-
-        // Fallback to Remote
-        if (!spellData) {
-            spellData = await foundryClient.fetchByUuid(spellUuid);
-        }
+        // 1. Fetch Spell Data (Unified Resolver)
+        const spellData = await shadowdarkAdapter.resolveDocument(foundryClient, spellUuid);
 
         if (!spellData) {
             return NextResponse.json({ error: 'Spell not found' }, { status: 404 });
@@ -207,6 +197,7 @@ export async function handleGetSpellsBySource(request: Request) {
     }
 }
 import { isSpellcaster, canUseMagicItems } from '../rules';
+import { shadowdarkAdapter } from '../system';
 
 /**
  * GET /api/modules/shadowdark/actors/[id]/spellcaster
@@ -218,14 +209,26 @@ export async function handleGetSpellcasterInfo(actorId: string, clientOverride?:
             return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const actor = await client.getActor(actorId);
-        if (!actor) {
+        const rawActor = await client.getActor(actorId);
+        if (!rawActor) {
             return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
         }
 
+        // The raw payload from getActor lacks normalized structures (e.g. system.abilities, fully parsed items).
+        // Since the cache overhaul streamlined data resolution, isSpellcaster needs full normalized data.
+        const normalizedActor = await shadowdarkAdapter.getActor(client, actorId);
+        const targetActor = normalizedActor?.error ? rawActor : normalizedActor;
+
+        // Explicitly resolve names so rules.ts can match the class string (e.g., "Wizard" instead of UUID)
+        const { CompendiumCache } = await import('../../../core/foundry/compendium-cache');
+        const cache = CompendiumCache.getInstance();
+        if (shadowdarkAdapter.resolveActorNames) {
+            shadowdarkAdapter.resolveActorNames(targetActor, cache);
+        }
+
         // Unified check using rules.ts
-        const isCaster = isSpellcaster(actor);
-        const magicItemCaster = canUseMagicItems(actor);
+        const isCaster = isSpellcaster(targetActor);
+        const magicItemCaster = canUseMagicItems(targetActor);
 
         return NextResponse.json({
             isSpellcaster: isCaster,

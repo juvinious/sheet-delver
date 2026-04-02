@@ -192,6 +192,7 @@ export const calculateAbilities = (systemData: any) => {
     return res;
 };
 
+
 /**
  * Unified Spellcaster Logic for Shadowdark
  */
@@ -236,14 +237,20 @@ export const isInnateCaster = (actor: any): boolean => {
 };
 
 export const isSpellcaster = (actor: any): boolean => {
-    if (isInnateCaster(actor)) return true;
-
     const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
 
-    // Check for explicit Spell items
+    // 1. Check for Class with explicit spellcasting metadata
+    if (items.some((i: any) => 
+        (i.type || "").toLowerCase() === 'class' && 
+        (i.system?.spellcasting?.ability || i.system?.spellcasting?.base)
+    )) return true;
+
+    if (isInnateCaster(actor)) return true;
+
+    // 2. Check for explicit Spell items
     if (items.some((i: any) => (i.type || "").toLowerCase() === 'spell')) return true;
 
-    // Check for Spellcasting Talents/Boons (Broad detection)
+    // 3. Check for Spellcasting Talents/Boons (Broad detection)
     if (items.some((i: any) => {
         if (i.type !== 'Talent' && i.type !== 'Boon') return false;
         const name = (i.name || "").toLowerCase();
@@ -266,4 +273,143 @@ export const canUseMagicItems = (actor: any): boolean => {
 export const shouldShowSpellsTab = (actor: any): boolean => {
     // Show if they are a caster OR have magic items they can use
     return isSpellcaster(actor) || canUseMagicItems(actor);
+};
+
+/**
+ * Unified Normalization Logic for Shadowdark
+ */
+
+/**
+ * Normalizes an item document with Shadowdark-specific properties (slots, light sources, etc.)
+ */
+export const normalizeItemData = (item: any, baseUrl?: string) => {
+    if (!item) return null;
+
+    // Helper for URL resolution
+    const resolveUrl = (url: string) => {
+        if (!url) return url;
+        if (url.startsWith('http') || url.startsWith('https') || url.startsWith('data:')) return url;
+        if (!baseUrl) return url;
+        const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        return `${cleanBase}/${cleanPath}`;
+    };
+
+    const itemData: any = {
+        id: item._id || item.id,
+        name: item.name,
+        type: item.type,
+        img: resolveUrl(item.img),
+        system: (typeof item.system?.toObject === 'function' ? item.system.toObject() : item.system) || {},
+        uuid: item.uuid || (item._id ? `Item.${item._id}` : undefined),
+        effects: item.effects ? Array.from(item.effects).map((e: any) => ({
+            _id: e.id || e._id,
+            name: e.name || e.label,
+            changes: e.changes,
+            disabled: e.disabled,
+            icon: e.icon || e.img
+        })) : []
+    };
+
+    // Calculate slot usage for physical items
+    if (itemData.system?.slots && itemData.type !== "Gem") {
+        itemData.slotsUsed = calculateItemSlots(itemData);
+        itemData.showQuantity = (Number(itemData.system.slots.per_slot) > 1) || (Number(itemData.system.quantity) > 1);
+    }
+
+    // Light source progress indicators
+    if (itemData.system?.light?.isSource) {
+        itemData.isLightSource = true;
+        itemData.lightSourceActive = itemData.system.light.active;
+        itemData.lightSourceUsed = itemData.system.light.hasBeenUsed;
+
+        const maxSeconds = (Number(itemData.system.light.longevityMins) || 0) * 60;
+        let progress = "◆";
+        for (let x = 1; x < 4; x++) {
+            if (Number(itemData.system.light.remainingSecs) > (maxSeconds * x / 4)) {
+                progress += " ◆";
+            } else {
+                progress += " ◇";
+            }
+        }
+        itemData.lightSourceProgress = progress;
+
+        const timeRemaining = Math.ceil(Number(itemData.system.light.remainingSecs) / 60);
+        if (Number(itemData.system.light.remainingSecs) < 60) {
+            itemData.lightSourceTimeRemaining = "< 1 min";
+        } else {
+            itemData.lightSourceTimeRemaining = `${timeRemaining} min`;
+        }
+    }
+
+    return itemData;
+};
+
+/**
+ * Normalizes an actor document and computes all derived Shadowdark stats.
+ * This is the single source of truth for both client and server.
+ */
+export const normalizeActorData = (actor: any, items: any[] = []) => {
+    const s = actor.system || {};
+    const computed = { ...(actor.computed || {}) };
+
+    // 1. Initial Ability Scores (Base + Bonus)
+    let stats = calculateAbilities(s);
+
+    // 2. Apply Effects (Active Bonuses)
+    // Create a working shadow of system data to apply effects to
+    const effectApplied = JSON.parse(JSON.stringify(s));
+    const allEffects = items.reduce((acc, i) => {
+        if (i.effects) acc.push(...i.effects);
+        return acc;
+    }, []);
+    
+    // Also include actor's own effects
+    const actorEffects = actor.effects?.contents || (Array.isArray(actor.effects) ? actor.effects : []);
+    allEffects.push(...actorEffects);
+
+    applyEffects(effectApplied, allEffects);
+
+    // Re-calculate abilities after effects
+    stats = calculateAbilities(effectApplied);
+    computed.abilities = stats;
+
+    // 3. Derived Stats
+    const actorProxy = { ...actor, system: effectApplied, items, computed };
+    computed.ac = calculateAC(actorProxy, items);
+    computed.maxSlots = calculateMaxSlots(actorProxy);
+    
+    // 4. Slot Calculation
+    let usedSlots = 0;
+    items.forEach((i: any) => {
+        if (!i.system?.stashed && i.type !== 'Gem') {
+            usedSlots += calculateItemSlots(i);
+        }
+    });
+    usedSlots += calculateGemSlots(items.filter((i: any) => i.type === 'Gem' && !i.system?.stashed));
+    usedSlots += calculateCoinSlots(effectApplied.coins);
+    
+    computed.slotsUsed = Math.max(0, usedSlots);
+    computed.gearSlots = computed.maxSlots; // Compatibility mapping
+
+    // 5. XP & Leveling
+    const levelVal = Number(effectApplied.level?.value) || 0;
+    const xpVal = Number(effectApplied.level?.xp) || 0;
+    const nextXP = Number(effectApplied.level?.xp_max) || (Math.max(1, levelVal) * 10);
+    computed.xpNextLevel = nextXP;
+    computed.levelUp = xpVal >= nextXP && nextXP > 0;
+
+    // 6. Character Status Flags
+    computed.isSpellcaster = isSpellcaster(actorProxy);
+    computed.canUseMagicItems = canUseMagicItems(actorProxy);
+    computed.showSpellsTab = shouldShowSpellsTab(actorProxy);
+
+    // 7. Find Key Items (Class, Ancestry, etc.)
+    const lowerType = (i: any) => (i.type || "").toLowerCase();
+    computed.classDetails = items.find((i: any) => lowerType(i) === 'class');
+    computed.ancestryDetails = items.find((i: any) => lowerType(i) === 'ancestry');
+    computed.backgroundDetails = items.find((i: any) => lowerType(i) === 'background');
+    computed.patronDetails = items.find((i: any) => lowerType(i) === 'patron');
+
+    return computed;
 };

@@ -26,7 +26,7 @@ import {
     handleRandomizeTalents,
     handleRandomizeLanguages
 } from './api/randomize-character';
-import { ShadowdarkAdapter } from './system';
+import { shadowdarkAdapter } from './system';
 
 // Initialize data cache
 dataManager.initialize();
@@ -172,8 +172,7 @@ export const apiRoutes = {
         const client = (request as any).foundryClient;
         if (!client) return Response.json({ error: 'Not authenticated' }, { status: 401 });
 
-        const shadowDarkAdapter = new ShadowdarkAdapter();
-        const systemData = await shadowDarkAdapter.getSystemData(client, { minimal: true });
+        const systemData = await shadowdarkAdapter.getSystemData(client, { minimal: true });
 
         const effects = Object.entries(systemData.PREDEFINED_EFFECTS || {}).map(([id, effect]: [string, any]) => ({
             id,

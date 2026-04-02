@@ -1,6 +1,11 @@
 import { logger } from '../../../core/logger';
+import { DataStore } from './DataStore';
+import { TableHydrator } from './TableHydrator';
 
-
+/**
+ * DataManager maintains the in-memory index of all system documents 
+ * loaded from local JSON packs.
+ */
 export class DataManager {
     private static instance: DataManager;
     public index: Map<string, any> = new Map();
@@ -17,199 +22,36 @@ export class DataManager {
 
     public async initialize() {
         if (this.initialized) return;
+        
+        // Browser safety: Skip file indexing in client-side context
         if (typeof window !== 'undefined') {
-            this.initialized = true; // Mark as "done" but empty in browser
+            this.initialized = true;
             return;
         }
 
-        let path: any;
-        let fs: any;
         try {
-            path = (await import('node:path')).default;
-            fs = (await import('node:fs')).default;
+            logger.info('[DataManager] Initializing Shadowdark Data Registry...');
+            
+            // 1. Scan and Index Packs
+            const { index: scanIndex, resultsMap } = DataStore.scanPacks();
+            this.index = scanIndex;
+
+            // 2. Hydrate RollTables
+            const hydratedCount = TableHydrator.hydrateTables(this.index, resultsMap);
+            
+            logger.info(`[DataManager] Registry initialized with ${this.index.size} documents, ${hydratedCount} tables hydrated.`);
+            this.initialized = true;
         } catch (e) {
-            logger.error('[DataManager] Failed to load Node.js modules:', e);
-            return;
+            logger.error('[DataManager] Failed to initialize registry:', e);
         }
-
-        const packsDir = path.join(process.cwd(), 'src/modules/shadowdark/data/packs');
-
-        if (!fs.existsSync(packsDir)) {
-            logger.warn(`[DataManager] Packs directory not found: ${packsDir}`);
-            return;
-        }
-
-        const resultsMap: Map<string, any[]> = new Map();
-
-        const scanDirectory = (dir: string) => {
-            const files = fs.readdirSync(dir);
-            for (const file of files) {
-                const fullPath = path.join(dir, file);
-                const stat = fs.statSync(fullPath);
-
-                if (stat.isDirectory()) {
-                    scanDirectory(fullPath);
-                } else if (file.endsWith('.json')) {
-                    try {
-                        const content = fs.readFileSync(fullPath, 'utf-8');
-                        const data = JSON.parse(content);
-
-                        // Handle embedded documents (files starting with '!' or having certain _key patterns)
-                        const internalKey = data._key || '';
-                        const parentDir = path.basename(dir);
-                        const packName = parentDir.replace('.db', '');
-                        const system = 'shadowdark';
-
-                        if (file.startsWith('!') || internalKey.startsWith('!')) {
-                            // Example: !tables.results!RQ0vogfVtJGuT9oT.TlVUTCMj9MkYslL5.json
-                            // Example: !tables!yVogBTQYwjpWB7YI.json
-
-                            if ((file.startsWith('!tables.results!') || internalKey.startsWith('!tables.results!')) && data._id) {
-                                // Extract table ID from filename or key
-                                const keyToMatch = file.startsWith('!tables.results!') ? file : internalKey;
-                                const match = keyToMatch.match(/!tables\.results!([^.]+)\.([^.]+)/);
-
-                                if (match) {
-                                    const tableId = match[1];
-                                    const resultId = match[2];
-
-                                    // Index by result ID
-                                    this.index.set(resultId, data);
-
-                                    // Also index by full embedded UUID format
-                                    const embeddedUuid = `Compendium.${system}.${packName}.${tableId}.TableResult.${resultId}`;
-                                    this.index.set(embeddedUuid, data);
-
-                                    // Collect for hydration
-                                    if (!resultsMap.has(tableId)) resultsMap.set(tableId, []);
-                                    resultsMap.get(tableId)?.push(data);
-
-                                    continue; // Skip regular indexing
-                                }
-                            } else if ((file.startsWith('!tables!') || internalKey.startsWith('!tables!')) && data._id) {
-                                // This is an actual RollTable document
-                                const docType = 'RollTable';
-                                const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
-                                const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
-
-                                data.pack = packName;
-                                data.uuid = uuidLong;
-                                data.documentType = docType;
-
-                                this.index.set(uuidShort, data);
-                                this.index.set(uuidLong, data);
-
-                                continue; // Skip regular indexing
-                            }
-                        }
-
-                        // Regular Indexing
-                        if (data._id) {
-                            let docType = data.type === 'Actor' ? 'Actor' : 'Item';
-                            if (packName === 'rollable-tables') docType = 'RollTable';
-
-                            // If we missed a RollTable because of missing prefix/key (unlikely but safe)
-                            if (docType === 'RollTable' && data.results) {
-                                // Already handled in the hydration loop later
-                            }
-
-                            const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
-                            const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
-
-                            data.pack = packName;
-                            data.uuid = uuidLong;
-                            data.documentType = docType;
-
-                            this.index.set(uuidShort, data);
-                            this.index.set(uuidLong, data);
-                        }
-
-                    } catch (e) {
-                        logger.error(`[DataManager] Failed to parse ${file}`, e);
-                    }
-                }
-            }
-        };
-
-        logger.time('[DataManager] Indexing');
-        scanDirectory(packsDir);
-
-        // Hydrate tables with their results
-        let hydratedCount = 0;
-        for (const [uuid, doc] of this.index.entries()) {
-            if (doc.documentType === 'RollTable' && doc._id) {
-                const hydratedResults = resultsMap.get(doc._id);
-                if (hydratedResults && hydratedResults.length > 0) {
-                    logger.debug(`[DataManager] Table ${doc.name} hydrated via resultsMap with ${hydratedResults.length} items`);
-                    // Sort by range start to be safe
-                    doc.results = hydratedResults.sort((a, b) => (a.range?.[0] || 0) - (b.range?.[0] || 0));
-                    hydratedCount++;
-                } else if (doc.results && Array.isArray(doc.results) && typeof doc.results[0] === 'string') {
-                    // FALLBACK: Synthetic Hydration for tables with string IDs but no external result docs found
-                    // Search for those IDs in the index
-                    const syntheticResults: any[] = [];
-                    logger.debug(`[DataManager] Attempting synthetic hydration for table ${doc.name} (${doc.results.length} IDs)`);
-                    doc.results.forEach((id: string, index: number) => {
-                        let resultDoc = this.index.get(id);
-
-                        // Try resolving as UUID if simple ID lookup fails
-                        if (!resultDoc && doc.pack) {
-                            resultDoc = this.index.get(`Compendium.shadowdark.${doc.pack}.${id}`);
-                        }
-
-                        if (resultDoc) {
-                            // If it's already a TableResult (has range), use it
-                            if (resultDoc.range) {
-                                syntheticResults.push(resultDoc);
-                            } else if (resultDoc.documentType === 'RollTable') {
-                                // Don't hydrate nested tables, just link them
-                                syntheticResults.push({
-                                    _id: id,
-                                    type: 2, // document
-                                    documentCollection: 'RollTable',
-                                    documentId: resultDoc._id,
-                                    text: resultDoc.name,
-                                    img: resultDoc.img,
-                                    range: [index + 1, index + 1],
-                                    weight: 1,
-                                    drawn: false
-                                });
-                            } else {
-                                // Create a synthetic TableResult wrapper
-                                syntheticResults.push({
-                                    _id: id,
-                                    type: 'document',
-                                    documentUuid: resultDoc.uuid || `Compendium.shadowdark.${doc.pack}.Item.${id}`,
-                                    name: resultDoc.name,
-                                    range: [index + 1, index + 1],
-                                    weight: 1
-                                });
-                            }
-                        } else {
-                            logger.warn(`[DataManager] Failed to resolve result ID ${id} for table ${doc.name}`);
-                        }
-                    });
-
-                    if (syntheticResults.length > 0) {
-                        doc.results = syntheticResults;
-                        hydratedCount++;
-                    }
-                }
-            }
-        }
-        if (hydratedCount > 0) {
-            logger.info(`DataManager | Hydrated ${hydratedCount} RollTables with results.`);
-        }
-        logger.timeEnd('[DataManager] Indexing');
-        logger.debug(`[DataManager] Indexed ${this.index.size} entries.`);
-        this.initialized = true;
     }
 
-    public async getDocument(uuid: string): Promise<any | null> {
-        // If not initialized yet, do it lazily
+    /**
+     * Get a document from the index by its ID or UUID.
+     */
+    public async getDocument(query: string): Promise<any | null> {
         if (!this.initialized) await this.initialize();
-
-        return this.index.get(uuid) || null;
+        return this.index.get(query) || null;
     }
 
     /**

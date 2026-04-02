@@ -1,5 +1,6 @@
-import { dataManager } from '../data/DataManager';
 import { logger } from '../../../core/logger';
+import { shadowdarkAdapter } from '../system';
+import { sanitizeItem } from '../utils/Sanitizer';
 
 /**
  * Resolves all associated documents (talents, features, gear) for a class or ancestry.
@@ -29,21 +30,15 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
         const uuid = (typeof ref === 'string') ? ref : (ref as any).uuid;
         if (uuid) {
             try {
-                let item = null;
-                if (client) {
-                    item = await client.fetchByUuid(uuid);
-                } else {
-                    item = await dataManager.getDocument(uuid);
-                }
-
+                const item = await shadowdarkAdapter.resolveDocument(client, uuid);
                 if (item) {
-                    const sanitized = (item.toObject ? item.toObject() : { ...item });
-                    delete sanitized._id;
+                    const clean = sanitizeItem(item);
+                    delete clean._id;
 
                     // ATTACH UUID: Essential for duplication checks in the Generator
-                    sanitized.uuid = uuid;
+                    clean.uuid = uuid;
 
-                    baggage.push(sanitized);
+                    baggage.push(clean);
                 }
             } catch (e) {
                 logger.error(`[GearResolver] Failed to resolve baggage ${uuid}:`, e);
@@ -86,15 +81,9 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
     const resolvedItems = [];
     for (const entry of candidates) {
         try {
-            let item = null;
-            if (client) {
-                item = await client.fetchByUuid(entry);
-            } else {
-                item = await dataManager.getDocument(entry);
-            }
-
+            const item = await shadowdarkAdapter.resolveDocument(client, entry);
             if (item) {
-                const clean = (item.toObject ? item.toObject() : { ...item });
+                const clean = sanitizeItem(item);
                 delete clean._id;
 
                 // ATTACH UUID: Essential for duplication checks
@@ -114,7 +103,7 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
         if (Array.isArray(list)) {
             for (const entry of list) {
                 if (typeof entry === 'object' && entry.name && entry.type) {
-                    resolvedItems.push(entry);
+                    resolvedItems.push(sanitizeItem(entry));
                 }
             }
         }

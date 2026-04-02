@@ -274,7 +274,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Ancestry</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <span className="text-lg font-bold w-full text-center truncate">
-                                    {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries') || ''}
+                                    {actor.details?.ancestry || ''}
                                 </span>
                             </div>
                         </div>
@@ -283,7 +283,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Class</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <span className="text-lg font-bold w-full text-center truncate">
-                                    {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes') || ''}
+                                    {actor.details?.class || ''}
                                 </span>
                             </div>
                         </div>
@@ -336,21 +336,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Title</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <div className="text-lg font-bold w-full text-center truncate px-1">
-                                    {(() => {
-                                        const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
-                                        const lvl = actor.system?.level?.value ?? 1;
-
-                                        // Case-insensitive lookup for class titles
-                                        let titleList = systemData?.titles?.[clsName];
-                                        if (!titleList && clsName && systemData?.titles) {
-                                            const key = Object.keys(systemData.titles).find(k => k.toLowerCase() === clsName.toLowerCase());
-                                            if (key) titleList = systemData.titles[key];
-                                        }
-
-                                        const sysTitle = titleList?.find((t: any) => lvl >= t.from && lvl <= t.to);
-                                        const alignment = (actor.system?.alignment || 'neutral').toLowerCase();
-                                        return getDisplayValue(actor.system?.title) || sysTitle?.[alignment] || '';
-                                    })()}
+                                    {actor.details?.title || '-'}
                                 </div>
                             </div>
                         </div>
@@ -359,7 +345,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Alignment</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <div className="text-lg font-bold w-full text-center truncate px-1 capitalize">
-                                    {getDisplayValue(actor.system?.alignment) || ''}
+                                    {actor.details?.alignment || ''}
                                 </div>
                             </div>
                         </div>
@@ -368,7 +354,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Background</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <div className="text-lg font-bold w-full text-center truncate px-1">
-                                    {actor.computed?.resolvedNames?.background || resolveEntityName(actor.system?.background, actor, systemData, 'backgrounds') || ''}
+                                    {actor.details?.background || ''}
                                 </div>
                             </div>
                         </div>
@@ -376,8 +362,8 @@ export default function ShadowdarkPaperSheet({
                         <div className="border-2 border-black h-16 p-1 relative">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Deity</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
-                                <div className="text-lg font-bold w-full text-center truncate px-1">
-                                    {resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || ''}
+                                <div className="text-lg font-bold w-full text-center truncate px-1 uppercase">
+                                    {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || ''}
                                 </div>
                             </div>
                         </div>
@@ -391,7 +377,7 @@ export default function ShadowdarkPaperSheet({
                                         <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Patron</div>
                                         <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                             <div className="text-lg font-bold w-full text-center truncate px-1">
-                                                {resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || ''}
+                                            {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || ''}
                                             </div>
                                         </div>
                                     </div>
@@ -475,17 +461,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Languages</div>
                             <div className="p-4 pt-8 pb-2 overflow-auto">
                                 {(() => {
-                                    // 1. Gather languages from system
-                                    const systemLangs = actor.system?.languages || [];
-
-                                    // 2. Gather languages from items
-                                    const itemLangs = (actor.items?.filter((i: any) => i.type === 'Language') || []).map((i: any) => i.name);
-
-                                    // 3. Resolve names and deduplicate
-                                    const allLangs = Array.from(new Set([
-                                        ...systemLangs.map((l: any) => resolveEntityName(l, actor, systemData, 'languages')),
-                                        ...itemLangs
-                                    ])).filter(l => !!l && l !== '-').sort();
+                                    const allLangs = actor.details?.languages || [];
 
                                     if (allLangs.length === 0) {
                                         return <div className="text-[10px] text-neutral-400 italic text-center">No languages known</div>;

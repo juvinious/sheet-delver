@@ -17,16 +17,22 @@ const moduleMap = new Map<string, ModuleManifest>();
 modules.forEach(m => {
     moduleMap.set(m.info.id, m);
     // Also map aliases if needed? 
-    // Mork Borg alias might be needed
     if (m.info.id === 'morkborg') {
         moduleMap.set('mork-borg', m);
     }
 });
 
+const adapterInstances = new Map<string, SystemAdapter>();
+
 export const getAdapter = (systemId: string): SystemAdapter | null => {
+    if (adapterInstances.has(systemId)) {
+        return adapterInstances.get(systemId)!;
+    }
     const manifest = moduleMap.get(systemId) || moduleMap.get('generic');
     if (!manifest) return null;
-    return new manifest.adapter();
+    const adapter = new manifest.adapter();
+    adapterInstances.set(systemId, adapter);
+    return adapter;
 };
 
 export const getSheet = (systemId: string) => {
@@ -36,7 +42,8 @@ export const getSheet = (systemId: string) => {
 
 
 export const getMatchingAdapter = (actor: any): SystemAdapter => {
-    if (!actor) return getAdapter('generic')!;
+    const genericAdapter = getAdapter('generic')!;
+    if (!actor) return genericAdapter;
 
     const actorName = actor.name || 'Unknown';
     const actorId = actor.id || actor._id || 'unknown';
@@ -55,8 +62,8 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
         // Skip generic for matching
         if (m.info.id === 'generic') continue;
 
-        const adapter = new m.adapter();
-        if (adapter.match(actor)) {
+        const adapter = getAdapter(m.info.id);
+        if (adapter && adapter.match(actor)) {
             logger.debug(`[Registry] Matched ${actorName} (${actorId}) via heuristic: ${m.info.id}`);
             return adapter;
         }
@@ -65,7 +72,7 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
     // 3. Fallback to generic
     const keys = actor.system ? Object.keys(actor.system) : 'no system';
     logger.debug(`[Registry] No match for ${actorName} (${actorId}). Keys present: ${JSON.stringify(keys)}. Falling back to generic.`);
-    return getAdapter('generic')!;
+    return genericAdapter;
 };
 
 export const getTool = (systemId: string, toolId: string) => {
