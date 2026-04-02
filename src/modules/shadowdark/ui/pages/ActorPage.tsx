@@ -115,11 +115,6 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
         };
     }, [actorId, fetchActor, addNotification, appSocket]);
 
-    // Cleanup active adapter on unmount
-    useEffect(() => {
-        return () => setActiveAdapter(null);
-    }, [setActiveAdapter]);
-
     // handleChatSend was unused in original code but is useful context for chat.
     // However, if logic doesn't call it, it's dead code. Checking...
     // The lint says it is unused. Let's remove it if it's truly not called.

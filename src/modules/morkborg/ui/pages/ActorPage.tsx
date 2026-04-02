@@ -116,9 +116,6 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
         };
     }, [actorId, fetchActor, addNotification, appSocket]);
 
-    useEffect(() => {
-        return () => setActiveAdapter(null);
-    }, [setActiveAdapter]);
 
     const handleRoll = async (type: string, key: string, options: any = {}) => {
         if (!actor) return;
