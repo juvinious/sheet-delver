@@ -108,8 +108,21 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [step, token]);
 
+    const lastActorFetchTimeRef = useRef<number>(0);
+    const FETCH_THROTTLE_MS = 2000;
+
     const fetchActors = useCallback(async () => {
         if (!token) return;
+
+        // Simple throttle to prevent rapid-fire requests from multiple socket events
+        const now = Date.now();
+        if (now - lastActorFetchTimeRef.current < FETCH_THROTTLE_MS) {
+            logger.debug('FoundryProvider | Skipping fetchActors (throttled)');
+            return;
+        }
+
+        lastActorFetchTimeRef.current = now;
+
         try {
             const res = await fetch('/api/actors', {
                 headers: { 'Authorization': `Bearer ${token}` }

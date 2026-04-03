@@ -100,6 +100,7 @@ security:
         enabled: true           # Enable/disable login rate limiting
         window-minutes: 15      # Time window in minutes
         max-attempts: 5         # Maximum login attempts per window
+    body-limit: 10mb            # Maximum JSON request body size (for large character imports)
 ```
 
 ### Running Locally

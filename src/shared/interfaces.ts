@@ -143,6 +143,7 @@ export interface AppConfig {
             windowMinutes: number;
             maxAttempts: number;
         };
+        bodyLimit: string;
     };
 }
 

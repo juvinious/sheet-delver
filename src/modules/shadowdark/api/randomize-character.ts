@@ -1,5 +1,3 @@
-
-import { NextResponse } from 'next/server';
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../system';
 import { logger } from '../../../core/logger';
 
@@ -306,62 +304,62 @@ export async function handleRandomizeName(request: Request) {
         const client = (request as any).foundryClient;
         const body = await request.json().catch(() => ({}));
         const name = await getRandomName(client, body.ancestryUuid);
-        return NextResponse.json({ name });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ name });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeAncestry(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const ancestry = await getRandomAncestry(client);
-        return NextResponse.json({ ancestry });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ ancestry });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeClass(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const cls = await getRandomClass(client);
-        return NextResponse.json({ class: cls });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ class: cls });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeBackground(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const bg = await getRandomBackground(client);
-        return NextResponse.json({ background: bg });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ background: bg });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeAlignment(request: Request) {
     try {
         const alignment = getRandomAlignment();
-        return NextResponse.json({ alignment });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ alignment });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeDeity(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const deity = await getRandomDeity(client);
-        return NextResponse.json({ deity });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ deity });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizePatron(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const patron = await getRandomPatron(client);
-        return NextResponse.json({ patron });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ patron });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeStats(request: Request) {
     try {
         const stats = getRandomStats();
-        return NextResponse.json({ stats });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ stats });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeGear(request: Request) {
@@ -369,8 +367,8 @@ export async function handleRandomizeGear(request: Request) {
         const client = (request as any).foundryClient;
         const body = await request.json().catch(() => ({}));
         const gear = await getRandomGear(client, body.level0 === true);
-        return NextResponse.json({ gear });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ gear });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeTalents(request: Request) {
@@ -380,8 +378,8 @@ export async function handleRandomizeTalents(request: Request) {
         const ancestry = body.ancestryUuid ? await client.fetchByUuid(body.ancestryUuid) : null;
         const cls = body.classUuid ? await client.fetchByUuid(body.classUuid) : null;
         const talents = getRandomTalents(ancestry, cls);
-        return NextResponse.json({ talents });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ talents });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeLanguages(request: Request) {
@@ -397,8 +395,8 @@ export async function handleRandomizeLanguages(request: Request) {
         const intMod = body.intMod || 0;
 
         const languages = await getRandomLanguages(client, systemData, ancestry, cls, intMod);
-        return NextResponse.json({ languages });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ languages });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 
@@ -407,7 +405,7 @@ export async function handleRandomizeLanguages(request: Request) {
 export async function handleRandomizeCharacter(request: Request) {
     try {
         const client = (request as any).foundryClient;
-        if (!client) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!client) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json().catch(() => ({}));
         const isLevel0 = body.level0 === true;
@@ -416,7 +414,7 @@ export async function handleRandomizeCharacter(request: Request) {
         const systemData = await adapter.getSystemData(client);
 
         if (!systemData.ancestries?.length || !systemData.classes?.length) {
-            return NextResponse.json({ error: 'System data incomplete' }, { status: 500 });
+            return Response.json({ error: 'System data incomplete' }, { status: 500 });
         }
 
         // Parallel fetch for basic randoms
@@ -471,10 +469,10 @@ export async function handleRandomizeCharacter(request: Request) {
             gold: 0 // Removed per request
         };
 
-        return NextResponse.json(result);
+        return Response.json(result);
 
     } catch (e: any) {
         logger.error(`Randomize Character Error: ${e.message}`);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return Response.json({ error: e.message }, { status: 500 });
     }
 }

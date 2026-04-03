@@ -1,4 +1,3 @@
-import { NextResponse } from 'next/server';
 import { getClient } from '../../../core/foundry/instance';
 import { logger } from '../../../app/ui/logger';
 import { getConfig } from '../../../core/config';
@@ -19,7 +18,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
     logger.info(`[API] handleGetLevelUpData | actorId: ${actorId} | url: ${request.url}`);
     try {
         if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
         // 1. Fetch Request Query Params
@@ -34,11 +33,11 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
 
         const data = await shadowdarkAdapter.getLevelUpData(client, actor, classId || undefined, patronId || undefined);
 
-        return NextResponse.json({ success: true, data });
+        return Response.json({ success: true, data });
 
     } catch (error: any) {
         logger.error('[API] Level-Up Data Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to fetch level-up data' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to fetch level-up data' }, { status: 500 });
     }
 }
 
@@ -50,7 +49,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
     logger.info(`[API] handleRollHP called for actorId: ${actorId}`);
     try {
         if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
         const body = await request.json();
@@ -136,7 +135,7 @@ export async function handleRollHP(actorId: string | undefined, request: Request
         // Shadowdark Rule: Minimum 1 HP gain
         total = Math.max(1, total || 0);
 
-        return NextResponse.json({
+        return Response.json({
             success: true,
             formula: hitDie,
             total: total,
@@ -149,13 +148,13 @@ export async function handleRollHP(actorId: string | undefined, request: Request
 
     } catch (error: any) {
         logger.error('[API] Roll HP Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to roll HP' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to roll HP' }, { status: 500 });
     }
 }
 
 export async function handleRollGold(actorId: string | undefined, request: Request, client: any, userSession?: any) {
     if (!client || !client.isConnected) {
-        return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+        return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
 
     // Shadowdark Standard Gold: 2d6 * 5
@@ -212,10 +211,10 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
             }
         }
 
-        return NextResponse.json({ success: true, roll: { total } });
+        return Response.json({ success: true, roll: { total } });
     } catch (e: any) {
         logger.error("Gold Roll Failed", e);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return Response.json({ error: e.message }, { status: 500 });
     }
 }
 
@@ -225,14 +224,14 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
 export async function handleRollTalent(actorId: string | undefined, request: Request, client: any) {
     try {
         if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
         const body = await request.json();
         const { tableUuidOrName, targetLevel } = body;
 
         if (!tableUuidOrName) {
-            return NextResponse.json({ error: 'tableUuidOrName is required' }, { status: 400 });
+            return Response.json({ error: 'tableUuidOrName is required' }, { status: 400 });
         }
 
         // Pre-fetch actor items if checking for duplicates
@@ -268,7 +267,7 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             attempts++;
             const result = await dataManager.draw(tableUuidOrName, client);
             if (!result) {
-                return NextResponse.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
+                return Response.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
             }
 
             finalRollResult = result;
@@ -333,7 +332,7 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             }
         }
 
-        return NextResponse.json({
+        return Response.json({
             success: true,
             roll: finalRollResult?.total,
             formula: finalRollResult?.formula,
@@ -347,7 +346,7 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
 
     } catch (error: any) {
         logger.error('[API] Roll Talent Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to roll talent' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to roll talent' }, { status: 500 });
     }
 }
 
@@ -369,10 +368,10 @@ export async function handleResolveChoice(actorId: string | undefined, request: 
 
         // Implementation for resolving specific choices (Weapon Mastery, etc)
         // This might just return structured data for the frontend to store until finalize
-        return NextResponse.json({ success: true, selection });
+        return Response.json({ success: true, selection });
 
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: error.message }, { status: 500 });
     }
 }
 
@@ -383,7 +382,7 @@ export async function handleResolveChoice(actorId: string | undefined, request: 
 export async function handleFinalizeLevelUp(actorId: string, request: Request, client: any) {
     try {
         if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
         const body = await request.json();
@@ -394,7 +393,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         let actor = null;
         if (actorId && actorId !== 'new') {
             actor = await client.getActor(actorId);
-            if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+            if (!actor) return Response.json({ error: 'Actor not found' }, { status: 404 });
         }
 
         // Backend assembly and validation
@@ -461,7 +460,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
             }
         }
 
-        return NextResponse.json({
+        return Response.json({
             success: true,
             actorId,
             items: finalItems,
@@ -472,6 +471,6 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
 
     } catch (error: any) {
         logger.error('[API] Finalize Level-Up Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to finalize level-up' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to finalize level-up' }, { status: 500 });
     }
 }

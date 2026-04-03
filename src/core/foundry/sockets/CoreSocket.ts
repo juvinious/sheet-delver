@@ -101,6 +101,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 const ids = operation?.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
                 ids.forEach((id: string) => this.actorDataCache.delete(id));
             } else {
+                if (action === 'get' && docs.length > 5) {
+                    logger.debug(`CoreSocket | Caching batch of ${docs.length} actors (get)`);
+                }
+
                 docs.forEach((actor: any) => {
                     const id = actor?._id || actor?.id;
                     if (id) {
@@ -115,7 +119,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                             this.actorDataCache.delete(id);
                         } else {
                             // Create or get: Full object
-                            logger.debug(`CoreSocket | Setting new cached actor ${id} (${type} ${action})`);
+                            if (action !== 'get' || docs.length <= 5) {
+                                logger.debug(`CoreSocket | Setting new cached actor ${id} (${type} ${action})`);
+                            }
                             this.actorDataCache.set(id, actor);
                         }
                     }
@@ -914,56 +920,61 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public async fetchByUuid(uuid: string): Promise<any> {
         if (!uuid || typeof uuid !== 'string') return null;
 
-        // 1. World Document (e.g. Actor.ID, Item.ID)
-        if (!uuid.startsWith('Compendium.')) {
-            const [type, id] = uuid.split('.');
-            if (type && id) {
-                const response = await this.dispatchDocumentSocket(type, 'get', { query: { _id: id }, broadcast: false });
-                return response?.result?.[0];
+        try {
+            logger.debug(`[CoreSocket] [TRACE] fetchByUuid START: ${uuid}`);
+
+            // 1. World Document (e.g. Actor.ID, Item.ID)
+            if (!uuid.startsWith('Compendium.')) {
+                const [type, id] = uuid.split('.');
+                if (type && id) {
+                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid World Document: ${type} ${id}`);
+                    const response = await this.dispatchDocumentSocket(type, 'get', { query: { _id: id }, broadcast: false });
+                    return response?.result?.[0];
+                }
+                return null;
             }
+
+            // 2. Compendium Document (e.g. Compendium.pack.Type.ID)
+            const parts = uuid.split('.');
+            if (parts.length < 4) return null;
+
+            const packId = `${parts[1]}.${parts[2]}`;
+            const type = parts[3];
+            const id = parts[4];
+
+
+            // 2b. Foundry Network Fetch
+            const typesToTry = [type];
+            if (type === 'Item') typesToTry.push('Items');
+            else if (type === 'JournalEntry') typesToTry.push('JournalEntries');
+            else if (type === 'Actor') typesToTry.push('Actors');
+
+            for (const t of typesToTry) {
+                try {
+                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Emit (getDocuments): ${packId} ${t} ${id}`);
+                    // Fetch using the standard 'ids' operation
+                    const response: any = await this.emitSocketEvent('getDocuments', {
+                        type: t,
+                        operation: { pack: packId, ids: [id] }
+                    }, 1500); // Shorter timeout for faster iteration
+
+                    if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Success: ${uuid}`);
+                        return response.result[0];
+                    }
+                } catch (e) {
+                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Attempt Failed (${t}): ${e}`);
+                    // Try next type
+                    continue;
+                }
+            }
+
+            logger.debug(`[CoreSocket] [TRACE] fetchByUuid FAILED: ${uuid}`);
+            return null;
+        } catch (error) {
+            logger.error(`[CoreSocket] [TRACE] fetchByUuid CRITICAL ERROR: ${uuid}`, error);
             return null;
         }
-
-        // 2. Compendium Document (e.g. Compendium.pack.Type.ID)
-        const parts = uuid.split('.');
-        if (parts.length < 4) return null;
-
-        const packId = `${parts[1]}.${parts[2]}`;
-        const type = parts[3];
-        const id = parts[4];
-
-        // 2a. System Fallback (Try first for speed & reliability)
-        if (this.adapter?.resolveDocument) {
-            const resolved = await this.adapter.resolveDocument(this, uuid);
-            if (resolved) return resolved;
-        }
-
-        // 2b. Foundry Network Fetch
-        // 2b. Foundry Network Fetch
-        // Try both singular and plural collection names if needed
-        const typesToTry = [type];
-        if (type === 'Item') typesToTry.push('Items');
-        else if (type === 'JournalEntry') typesToTry.push('JournalEntries');
-        else if (type === 'Actor') typesToTry.push('Actors');
-
-        for (const t of typesToTry) {
-            try {
-                // Fetch using the standard 'ids' operation
-                const response: any = await this.emitSocketEvent('getDocuments', {
-                    type: t,
-                    operation: { pack: packId, ids: [id] }
-                }, 1500); // Shorter timeout for faster iteration
-
-                if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
-                    return response.result[0];
-                }
-            } catch (e) {
-                // Try next type
-                continue;
-            }
-        }
-
-        return null;
     }
 
     async updateActor(id: string, data: any): Promise<any> {

@@ -73,19 +73,14 @@ export class ShadowdarkDiscovery {
                 const results = this._initializeResults({});
                 const processedUuids = new Set<string>();
 
-                // Fetch all packs in parallel
+                // Fetch all packs in parallel (Shallow Discovery: Indices Only)
                 const packPromises = this.DISCOVERY_PACKS.map(async (packInfo) => {
                     try {
-                        const isCommunity = packInfo.id.startsWith('shadowdark-community-content');
                         let docs: any[] = [];
                         
-                        // Shallow fetch for community content, deep fetch for core
-                        if (!isCommunity && typeof client.getPackDocuments === 'function') {
-                            docs = await client.getPackDocuments(packInfo.id, packInfo.type) || [];
-                        } else {
-                            // getPackEntries is usually much faster as it only returns indices
-                            docs = await client.getPackEntries?.(packInfo.id) || [];
-                        }
+                        // Always use getPackEntries for discovery (Names, UUIDs, Types only)
+                        // This is much faster as it avoids transferring full document data.
+                        docs = await client.getPackEntries?.(packInfo.id) || [];
 
                         if (docs.length > 0) {
                             return docs.map(d => ({

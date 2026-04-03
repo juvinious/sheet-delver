@@ -9,6 +9,7 @@ import { ShadowdarkCache } from '../caching';
 export class DataManager {
     private static instance: DataManager;
     private initialized = false;
+    private pendingFetches = new Map<string, Promise<any>>();
 
     private constructor() { }
 
@@ -26,7 +27,7 @@ export class DataManager {
     }
 
     /**
-     * Get a document by its UUID, fetching from Foundry if not cached.
+     * Get a document by its UUID, fetching from Foundry if not cached or shallow.
      */
     public async getDocument(uuid: string, client?: any): Promise<any | null> {
         if (!uuid) return null;
@@ -34,27 +35,89 @@ export class DataManager {
         // 1. Check Module Cache first
         const cache = ShadowdarkCache.getInstance();
         const systemData = cache.systemData;
+        let cachedDoc: any = null;
+        let collection: string | null = null;
         
         if (systemData) {
             // Search through the discovered collections
             const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
             for (const key of collections) {
                 const doc = systemData[key]?.find((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
-                if (doc) return doc;
+                if (doc) {
+                    cachedDoc = doc;
+                    collection = key;
+                    break;
+                }
             }
         }
 
-        // 2. Fetch from Foundry if client is provided
+        // 2. Fulfillment / Lazy Hydration
+        // If we have a cached doc but it's shallow (index only), hydrate it from Foundry
+        const isShallow = cachedDoc && !cachedDoc.system && cachedDoc.type !== 'RollTable';
+
+        if (cachedDoc && !isShallow) return cachedDoc;
+
+        // 3. Fetch from Foundry if client is provided (Fulfillment)
         if (client) {
-            try {
-                const doc = await client.fetchByUuid(uuid);
-                return doc;
-            } catch (e) {
-                logger.warn(`[DataManager] Failed to fetch document ${uuid} from Foundry:`, e);
+            // Deduplication: Check if this UUID is already being fetched
+            if (this.pendingFetches.has(uuid)) {
+                logger.debug(`[DataManager] Reusing in-flight fetch for ${uuid}`);
+                return this.pendingFetches.get(uuid);
             }
+
+            const fetchPromise = (async () => {
+                try {
+                    logger.debug(`[DataManager] [TRACE] Hydrating ${uuid} from Foundry...`);
+                    const fullDoc = await client.fetchByUuid(uuid);
+                    logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
+
+                    if (fullDoc) {
+                        // Universal Caching: Ensure doc is cached even if not in discovery index
+                        const cache = ShadowdarkCache.getInstance();
+                        const systemData = cache.systemData || {};
+
+                        // Identify appropriate collection or default to 'items'
+                        let targetCollection = collection;
+                        if (!targetCollection) {
+                            const type = (fullDoc.type || fullDoc.documentType || "").toLowerCase();
+                            const typeMap: Record<string, string> = {
+                                'ancestry': 'ancestries',
+                                'class': 'classes',
+                                'background': 'backgrounds',
+                                'deity': 'deities',
+                                'patron': 'patrons',
+                                'language': 'languages',
+                                'spell': 'spells',
+                                'talent': 'talents',
+                                'rolltable': 'tables'
+                            };
+                            targetCollection = typeMap[type] || 'items';
+                        }
+
+                        if (!systemData[targetCollection]) systemData[targetCollection] = [];
+
+                        const idx = systemData[targetCollection].findIndex((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                        if (idx !== -1) {
+                            systemData[targetCollection][idx] = { ...fullDoc, uuid: uuid, pack: systemData[targetCollection][idx].pack };
+                        } else {
+                            // Add new entry if it didn't exist in discovered data
+                            systemData[targetCollection].push({ ...fullDoc, uuid: uuid });
+                        }
+                    }
+                    return fullDoc;
+                } catch (e) {
+                    logger.warn(`[DataManager] Failed to fetch document ${uuid} from Foundry:`, e);
+                    return cachedDoc; // Return index as fallback if socket fails
+                } finally {
+                    this.pendingFetches.delete(uuid);
+                }
+            })();
+
+            this.pendingFetches.set(uuid, fetchPromise);
+            return fetchPromise;
         }
 
-        return null;
+        return cachedDoc; // Return index as fallback if socket fails
     }
 
     /**

@@ -123,7 +123,7 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
 
                 {/* Header */}
                 <div className="bg-black p-6 flex justify-center items-center border-b-4 border-neutral-900">
-                    <h2 className="text-3xl font-black uppercase tracking-widest text-white font-serif drop-shadow-md">Shadowdarkling Importer</h2>
+                    <h2 className="text-3xl font-black uppercase tracking-widest text-white font-serif drop-shadow-md">Shadowdarklings Importer</h2>
                 </div>
 
                 {/* Content */}
@@ -134,6 +134,11 @@ export default function ShadowdarkImportModal({ onClose, onImportSuccess, token 
                         <>
                             <div className="mb-6">
                                 <p className="text-neutral-900 font-black mb-2 uppercase text-sm tracking-widest font-serif">Paste JSON Export</p>
+                                <button className="bg-black text-white px-6 py-2 inline-block absolute bottom-28 right-0 border-r-4 border-b-4 border-white shadow-sm z-10 cursor-pointer uppercase" onClick={() => {
+                                    window.open('https://shadowdarklings.net/create#!', '_blank');
+                                }}>
+                                    Go to Shadowdarklings.net
+                                </button>
                                 <textarea
                                     value={jsonInput}
                                     onChange={(e) => setJsonInput(e.target.value)}
