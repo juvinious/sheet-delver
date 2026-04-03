@@ -651,24 +651,36 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         this.heartbeatPaused = true;
         
         try {
-            // Try 1: getCompendiumIndex (Standard modern approach with retries)
-            for (let i = 0; i < 3; i++) {
-                try {
-                    const response: any = await this.emitSocketEvent('getCompendiumIndex', packId, 10000);
-                    if (Array.isArray(response)) return response;
-                    if (response?.result && Array.isArray(response.result)) return response.result;
-                } catch (e) {
-                    if (i === 2) logger.debug(`CoreSocket | getCompendiumIndex failed for ${packId}: ${e}`);
-                    await new Promise(r => setTimeout(r, 1000)); // Short backoff
-                }
-            }
-
-            // Try 2: getDocuments with index flag (Consolidated v13 signature)
+            // Strategy 1: Unified modifyDocument API (The CRUD-master V13 approach - PROVEN WINNER)
             try {
-                const response: any = await this.emitSocketEvent('getDocuments', 'Item', { index: true, pack: packId }, 10000);
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 1 (modifyDocument): ${packId}`);
+                const response: any = await this.emitSocketEvent('modifyDocument', {
+                    type: packId.includes('tables') ? 'RollTable' : 'Item',
+                    action: 'get',
+                    operation: { pack: packId, index: true }
+                }, 5000);
                 if (response?.result && Array.isArray(response.result)) return response.result;
             } catch (e) {
-                logger.debug(`CoreSocket | getDocuments index fallback failed for ${packId}: ${e}`);
+                // Trial fallback
+            }
+
+            // Strategy 2: Modern getDocuments with index flag (Canonical V13)
+            try {
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 2 (getDocuments): ${packId}`);
+                const response: any = await this.emitSocketEvent('getDocuments', packId.includes('tables') ? 'RollTable' : 'Item', { index: true, pack: packId }, 5000);
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                // Trial fallback
+            }
+
+            // Strategy 3: Legacy getCompendiumIndex (V11/V12 Alias)
+            try {
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 3 (getCompendiumIndex): ${packId}`);
+                const response: any = await this.emitSocketEvent('getCompendiumIndex', packId, 5000);
+                if (Array.isArray(response)) return response;
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                // Trial fallback
             }
 
             logger.error(`CoreSocket | All entry fetch strategies failed for pack ${packId}`);
@@ -1020,16 +1032,26 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             for (const baseType of typesToTry) {
                 const trialTypes = collectionMapping[baseType] || [baseType];
                 for (const t of trialTypes) {
+                    // Try 1: Unified modifyDocument API (PROVEN WINNER)
                     try {
-                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid trial: ${packId} ${t} ${id}`);
-                        // Consolidated v13 signature: (documentName, { ids, pack })
-                        const resp: any = await this.emitSocketEvent('getDocuments', t, { ids: [id], pack: packId }, 10000);
-                        if (resp?.result?.[0]) {
-                            logger.debug(`[CoreSocket] [TRACE] fetchByUuid SUCCESS: ${uuid} resolved as ${t}`);
-                            return resp.result[0];
-                        }
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 1 (modifyDocument): ${packId} ${t} ${id}`);
+                        const resp: any = await this.emitSocketEvent('modifyDocument', {
+                            type: t,
+                            action: 'get',
+                            operation: { pack: packId, ids: [id] }
+                        }, 5000);
+                        if (resp?.result?.[0]) return resp.result[0];
                     } catch (e) {
-                         // Silent trial fallback
+                         // Trial fallback
+                    }
+
+                    // Try 2: Modern getDocuments with options object
+                    try {
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 2 (getDocuments): ${packId} ${t} ${id}`);
+                        const resp: any = await this.emitSocketEvent('getDocuments', t, { ids: [id], pack: packId }, 5000);
+                        if (resp?.result?.[0]) return resp.result[0];
+                    } catch (e) {
+                         // Trial fallback
                     }
                 }
             }
