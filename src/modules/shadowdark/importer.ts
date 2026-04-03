@@ -5,6 +5,7 @@ import path from 'path';
 import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 import { shadowdarkAdapter } from './system';
 import { sanitizeItem, sanitizeItems, createEffect } from './utils/Sanitizer';
+import { enrichItem, resolveSubItems, EnrichmentContext } from './api/actor-enricher';
 
 export interface ImportResult {
     success: boolean;
@@ -239,47 +240,7 @@ export class ShadowdarkImporter {
 
                     if (foundTalent.system?.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
 
-                    // Apply Predefined System Effects (Automation) 
-                    const predefinedKey = bonus.bonusName || bonus.name;
-                    const predef = SYSTEM_PREDEFINED_EFFECTS[predefinedKey];
-                    if (predef) {
-                        log(`[findTalent] Applying predefined effect for '${predefinedKey}'...`);
-                        foundTalent.img = predef.icon || foundTalent.img;
-                        
-                        const changes = predef.changes || (predef.key ? [{ key: predef.key, mode: predef.mode || 2, value: predef.value }] : []);
-                        
-                        if (changes.length > 0) {
-                            // Resolve "REPLACEME" in changes if needed
-                            const resolvedChanges = changes.map(c => ({
-                                ...c,
-                                value: String(c.value).replace("REPLACEME", bonus.bonusTo || "")
-                            }));
-
-                            // Add to talent's effects
-                            const effect = createEffect(predef.label, predef.icon, resolvedChanges, { 
-                                sourceName: "Shadowdarkling Import",
-                                flags: { shadowdarkling: { category: bonus.sourceCategory, name: predefinedKey } }
-                            });
-                            
-                            foundTalent.effects = foundTalent.effects || [];
-                            foundTalent.effects.push(effect);
-                        }
-                    }
-
-                    if (foundTalent.effects?.[0]?.changes?.[0]?.value === "REPLACEME") {
-                        let val = "";
-                        if (mBonus[bonus.bonusName]) val = bonus.bonusTo;
-                        else if (mBonus[bonus.bonusTo]) val = bonus.bonusName;
-
-                        if (val) {
-                            val = val.replace(/\b\w/g, (s: string) => s.toUpperCase());
-                            foundTalent.name += ` (${val})`;
-                            if (foundTalent.effects[0].changes) {
-                                foundTalent.effects[0].changes[0].value = val.replace(/\s+/g, "-").toLowerCase();
-                            }
-                        }
-                    }
-
+                    // Apply Enrichment patterns (Boon Name, Patron name, etc.)
                     if (bonus.sourceCategory === "Boon" && !foundTalent.name.includes("[")) foundTalent.name += ` [${bonus.boonPatron}]`;
                     if (bonus.sourceCategory?.startsWith("BlackLotusTalent")) foundTalent.name += " [BlackLotus]";
 
@@ -308,6 +269,25 @@ export class ShadowdarkImporter {
             const getClassList = async () => {
                 return systemData.classes || [];
             };
+
+            // Patron Analysis
+            let patronName = json.patron;
+            if (!patronName && json.bonuses) {
+                const patronBonus = json.bonuses.find((b: any) => b.sourceCategory === 'Patron' && b.name === 'Patron');
+                if (patronBonus) patronName = patronBonus.bonusTo;
+            }
+
+            const enrichmentContext: EnrichmentContext = {
+                addedSourceIds: new Set<string>(),
+                addedNames: new Set<string>(),
+                targetLevel: json.level || 1,
+                actor: null, // Will be set after creation if needed
+                bonuses: json.bonuses || [],
+                mapping: this.mapping,
+                patronName: patronName || undefined
+            };
+
+            const resolveDoc = (uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid);
 
 
             // --- MAIN LOGIC ---
@@ -359,22 +339,31 @@ export class ShadowdarkImporter {
                 findItem(json.ancestry, "Ancestry"),
                 findItem(json.background, "Background"),
                 findItem(json.deity, "Deity"),
-                (async () => {
-                    let patronName = json.patron;
-                    if (!patronName && json.bonuses) {
-                        const patronBonus = json.bonuses.find((b: any) => b.sourceCategory === 'Patron' && b.name === 'Patron');
-                        if (patronBonus) patronName = patronBonus.bonusTo;
-                    }
-                    return patronName ? findItem(patronName, "Patron") : null;
-                })()
+                patronName ? findItem(patronName, "Patron") : Promise.resolve(null)
             ];
 
             const [ancestry, background, deity, patron] = await Promise.all(coreResolvers);
 
-            if (ancestry) actorData.system.ancestry = ancestry.uuid || `Item.${ancestry._id}`;
-            if (background) actorData.system.background = background.uuid || `Item.${background._id}`;
-            if (deity) actorData.system.deity = deity.uuid || `Item.${deity._id}`;
-            if (patron) actorData.system.patron = patron.uuid || `Item.${patron._id}`;
+            if (ancestry) {
+                actorData.system.ancestry = ancestry.uuid || `Item.${ancestry._id}`;
+                const ancestryTalents = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
+                talents.push(...ancestryTalents);
+            }
+            if (background) {
+                actorData.system.background = background.uuid || `Item.${background._id}`;
+                const bgTalents = await resolveSubItems(background, resolveDoc, enrichmentContext);
+                talents.push(...bgTalents);
+            }
+            if (deity) {
+                actorData.system.deity = deity.uuid || `Item.${deity._id}`;
+                const deityTalents = await resolveSubItems(deity, resolveDoc, enrichmentContext);
+                talents.push(...deityTalents);
+            }
+            if (patron) {
+                actorData.system.patron = patron.uuid || `Item.${patron._id}`;
+                const patronTalents = await resolveSubItems(patron, resolveDoc, enrichmentContext);
+                talents.push(...patronTalents);
+            }
 
             // Languages
             if (json.languages) {
@@ -393,24 +382,16 @@ export class ShadowdarkImporter {
                 // Starting Spells (Fixed)
                 if (classObj.system?.startingSpells) {
                     const startSpells = await Promise.all(classObj.system.startingSpells.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
-                    spells.push(...startSpells.filter(Boolean).map(sanitizeItem));
-                }
-
-                // Fixed Class Talents
-                if (classObj.system?.talents) {
-                    log(`[Importer] Hydrating ${classObj.system.talents.length} class-defined talents...`);
-                    const fixedTalents = await Promise.all(classObj.system.talents.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
-                    for (const item of fixedTalents.filter(Boolean)) {
-                        const obj = sanitizeItem(item);
-                        const existing = talents.find(t => t.name.toLowerCase() === obj.name.toLowerCase());
-                        if (!existing) {
-                            trace(`[Importer] Adding class talent: ${obj.name}`);
-                            talents.push(obj);
-                        } else {
-                            trace(`[Importer] Class talent already present (skipping duplicate): ${obj.name}`);
-                        }
+                    for (const s of startSpells.filter(Boolean)) {
+                        const enriched = await enrichItem(s, enrichmentContext);
+                        if (enriched) spells.push(enriched);
                     }
                 }
+
+                // Fixed Class Talents & Features
+                log(`[Importer] Hydrating class-defined talents and features...`);
+                const classAbilitiesResolved = await resolveSubItems(classObj, resolveDoc, enrichmentContext);
+                talents.push(...classAbilitiesResolved);
             }
 
             // 4. Parallel Gear Resolution
@@ -580,16 +561,22 @@ export class ShadowdarkImporter {
                         if (/^Spell:/.test(bonus.name)) {
                             const spell = await findSpell(bonus, classList);
                             if (spell) {
-                                trace(`[Importer] Resolved spell: ${spell.name}`);
-                                spells.push(spell);
+                                trace(`[Importer] Resolving spell bonus: ${spell.name}`);
+                                const enriched = await enrichItem(spell, enrichmentContext);
+                                if (enriched) {
+                                    spells.push(enriched);
+                                }
                             }
                             return null;
                         }
 
                         const talent = await findTalent(bonus);
                         if (talent) {
-                            trace(`[Importer] Resolved talent: ${talent.name}`);
-                            talents.push(talent);
+                            trace(`[Importer] Enriching talent: ${talent.name}`);
+                            const enriched = await enrichItem(talent, { ...enrichmentContext, bonusTo: bonus.bonusTo });
+                            if (enriched) {
+                                talents.push(enriched);
+                            }
                         }
                         return null;
                     }));

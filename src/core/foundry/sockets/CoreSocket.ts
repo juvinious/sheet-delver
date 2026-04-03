@@ -47,6 +47,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     // Core Socket maintains the singular connection
     private consecutiveFailures = 0;
     private lastLaunchActivity = 0;
+    private heartbeatPaused = false;
     private userMap = new Map<string, any>();
     private actorDataCache = new Map<string, any>();
 
@@ -364,13 +365,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     logger.info('CoreSocket | World is ACTIVE. Fetching game data via socket...');
                     this.worldState = 'active';
                     this.probeWorldData = null;  // Full connection established; probe cache no longer needed
-                    this.emit('connect');
-
-                    this.startHeartbeat();
 
                     // 6. Fetch Game Data via Socket (The canonical bootstrap way)
                     const gameData = await this.getWorldData();
                     const sceneData = await this.fetchSceneData();
+
+                    // 7. Start Heartbeat ONLY after bootstrapping is complete
+                    this.startHeartbeat();
+                    this.emit('connect');
                     if (gameData) {
                         this.gameDataCache = gameData;
                         if (sceneData) {
@@ -426,7 +428,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 });
 
                 this.socket.on('connect_error', (err) => {
-                    logger.error(`CoreSocket | Socket connection error: ${err.message}`);
+                    logger.error(`CoreSocket | Socket connection error: ${err.message}. State: connected=${this.socket?.connected}, active=${(this.socket as any).active}`);
                     clearTimeout(timeout);
                     reject(err);
                 });
@@ -529,8 +531,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
         // Required polling: Foundry does NOT emit a 'disconnect' socket event when dropping to setup
         // The websocket stays alive. We must poll /api/status to know the world shut down.
+        // Polling loop slowed to 15s to prevent saturation during intensive operations like discovery
+        // Polling loop slowed to 30s to prevent saturation during intensive operations like discovery
         this.heartbeatInterval = setInterval(async () => {
-            if (!this.isConnected) return;
+            if (!this.isConnected || this.isConnecting || this.worldState === 'startup' || this.heartbeatPaused) return;
             try {
                 const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
                 const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
@@ -544,7 +548,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             } catch (e) {
                 // Ignore transient network errors
             }
-        }, 5000);
+        }, 30000);
     }
 
     private stopHeartbeat() {
@@ -578,18 +582,31 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
 
     // Rename to avoid conflict with EventEmitter
-    public async emitSocketEvent<T>(event: string, payload: any, timeoutMs: number = 5000): Promise<T> {
+    public async emitSocketEvent<T>(event: string, ...payloads: any[]): Promise<T> {
         if (!this.socket || !this.isConnected) throw new Error(`Not connected to Foundry`);
 
+        // Default timeout to 10s for better reliability on compendium lookups
+        let timeoutMs = 10000;
+        const lastArg = payloads[payloads.length - 1];
+        if (typeof lastArg === 'number' && payloads.length > 1) {
+            timeoutMs = payloads.pop();
+        }
+
+        const sid = this.getSessionId()?.slice(0, 8) || 'none';
+        logger.debug(`[CoreSocket] [TRACE] emitSocketEvent: ${event} (SID: ${sid}...)`);
+
         return new Promise((resolve, reject) => {
-            this.socket!.emit(event, payload, (response: any) => {
+            this.socket!.emit(event, ...payloads, (response: any) => {
                 if (response?.error) {
                     reject(new Error(typeof response.error === 'string' ? response.error : JSON.stringify(response.error)));
                 } else {
                     resolve(response);
                 }
             });
-            setTimeout(() => reject(new Error(`Timeout waiting for event: ${event}`)), timeoutMs);
+            setTimeout(() => {
+                const state = `connected=${this.socket?.connected}, active=${(this.socket as any)?.active}`;
+                reject(new Error(`Timeout waiting for event: ${event}. Socket Context: ${state}, SID: ${sid}`));
+            }, timeoutMs);
         });
     }
 
@@ -626,6 +643,38 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         } catch (error: any) {
             if (failHard) this.consecutiveFailures++;
             throw error;
+        }
+    }
+
+    public async getPackEntries(packId: string): Promise<any[]> {
+        logger.debug(`CoreSocket | Fetching entries for pack ${packId}...`);
+        this.heartbeatPaused = true;
+        
+        try {
+            // Try 1: getCompendiumIndex (Standard modern approach with retries)
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response: any = await this.emitSocketEvent('getCompendiumIndex', packId, 10000);
+                    if (Array.isArray(response)) return response;
+                    if (response?.result && Array.isArray(response.result)) return response.result;
+                } catch (e) {
+                    if (i === 2) logger.debug(`CoreSocket | getCompendiumIndex failed for ${packId}: ${e}`);
+                    await new Promise(r => setTimeout(r, 1000)); // Short backoff
+                }
+            }
+
+            // Try 2: getDocuments with index flag (Consolidated v13 signature)
+            try {
+                const response: any = await this.emitSocketEvent('getDocuments', 'Item', { index: true, pack: packId }, 10000);
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                logger.debug(`CoreSocket | getDocuments index fallback failed for ${packId}: ${e}`);
+            }
+
+            logger.error(`CoreSocket | All entry fetch strategies failed for pack ${packId}`);
+            return [];
+        } finally {
+            this.heartbeatPaused = false;
         }
     }
 
@@ -934,38 +983,54 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 return null;
             }
 
-            // 2. Compendium Document (e.g. Compendium.pack.Type.ID)
+            // 2. Compendium Document (Agnostically parse segments)
             const parts = uuid.split('.');
             if (parts.length < 4) return null;
 
-            const packId = `${parts[1]}.${parts[2]}`;
-            const type = parts[3];
-            const id = parts[4];
+            // Anatomy: Compendium.[PACK_VENDOR].[PACK_NAME].[OPTIONAL_TYPE].[ID]
+            const id = parts.pop()!;
+            const lastSegment = parts[parts.length - 1];
+            
+            // Heuristic for type: If the segment before ID starts with a Capital letter, it's likely the Type
+            const hasTypeSegment = lastSegment.match(/^[A-Z]/);
+            const typeFromUuid = hasTypeSegment ? lastSegment : null;
+            
+            // Pack ID is everything after 'Compendium' and before the ID (and Type if present)
+            const packParts = hasTypeSegment ? parts.slice(1, -1) : parts.slice(1);
+            const packId = packParts.join('.');
 
 
-            // 2b. Foundry Network Fetch
-            const typesToTry = [type];
-            if (type === 'Item') typesToTry.push('Items');
-            else if (type === 'JournalEntry') typesToTry.push('JournalEntries');
-            else if (type === 'Actor') typesToTry.push('Actors');
+            // Agnostic Trial Strategy: try the UUID type first, then common fallbacks
+            const typesToTry = [];
+            if (typeFromUuid) typesToTry.push(typeFromUuid);
+            
+            const fallbackBaseTypes = ['Item', 'Actor', 'JournalEntry', 'RollTable'];
+            for (const bt of fallbackBaseTypes) {
+                if (bt !== typeFromUuid) typesToTry.push(bt);
+            }
 
-            for (const t of typesToTry) {
-                try {
-                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Emit (getDocuments): ${packId} ${t} ${id}`);
-                    // Fetch using the standard 'ids' operation
-                    const response: any = await this.emitSocketEvent('getDocuments', {
-                        type: t,
-                        operation: { pack: packId, ids: [id] }
-                    }, 5000); // Increased timeout for stability
+            // Map base types to potential socket collection names (v13 standard vs legacy)
+            const collectionMapping: Record<string, string[]> = {
+                'Item': ['Item', 'Items'],
+                'Actor': ['Actor', 'Actors'],
+                'JournalEntry': ['JournalEntry', 'JournalEntries'],
+                'RollTable': ['RollTable', 'RollTables']
+            };
 
-                    if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
-                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Success: ${uuid}`);
-                        return response.result[0];
+            for (const baseType of typesToTry) {
+                const trialTypes = collectionMapping[baseType] || [baseType];
+                for (const t of trialTypes) {
+                    try {
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid trial: ${packId} ${t} ${id}`);
+                        // Consolidated v13 signature: (documentName, { ids, pack })
+                        const resp: any = await this.emitSocketEvent('getDocuments', t, { ids: [id], pack: packId }, 10000);
+                        if (resp?.result?.[0]) {
+                            logger.debug(`[CoreSocket] [TRACE] fetchByUuid SUCCESS: ${uuid} resolved as ${t}`);
+                            return resp.result[0];
+                        }
+                    } catch (e) {
+                         // Silent trial fallback
                     }
-                } catch (e) {
-                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Attempt Failed (${t}): ${e}`);
-                    // Try next type
-                    continue;
                 }
             }
 

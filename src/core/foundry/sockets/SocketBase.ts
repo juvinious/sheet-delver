@@ -52,8 +52,18 @@ export abstract class SocketBase extends EventEmitter {
         logger.info(`[${this.constructor.name}] Performing Handshake (GET /api/status)...`);
 
         // 1. Fetch JSON status instead of HTML /join
+        // IMPORTANT: Must send existing cookies to maintain session continuity
+        const headers: Record<string, string> = {
+            'Accept': 'application/json',
+            'User-Agent': 'SheetDelver/1.0'
+        };
+
+        if (this.sessionCookie) {
+            headers['Cookie'] = this.sessionCookie;
+        }
+
         const statusRes = await fetch(`${baseUrl}/api/status`, {
-            headers: { 'Accept': 'application/json', 'User-Agent': 'SheetDelver/1.0' }
+            headers
         });
 
         if (!statusRes.ok) {

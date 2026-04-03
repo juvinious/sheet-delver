@@ -369,6 +369,27 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         }
     },
     {
+        id: 'add-wis-to-rolls',
+        description: "Add Wisdom modifier to rolls (Warlock/Kytheros)",
+        matches: (item: any) => {
+            const name = (item.name || "").toLowerCase();
+            return name.includes("addwistorolls") || name.includes("wisdom to rolls");
+        },
+        mutateItem: (item: any) => {
+            if (!item.effects) item.effects = [];
+            // Kytheros Boon: Add Wisdom mod to Spellcasting checks
+            const effect = createEffect(
+                "Wisdom to Spellcasting",
+                "icons/magic/control/sihouette-hold-beam-green.webp",
+                [{ key: "system.bonuses.spellcastingCheckBonusAttribute", value: "wis" }],
+                { sourceName: "Kytheros Boon" }
+            );
+            if (!item.effects.some((e: any) => e.name === effect.name)) {
+                item.effects.push(effect);
+            }
+        }
+    },
+    {
         id: 'generic-choice',
         description: "Parse 'Choose one' or 'X or Y' talents",
         matches: (item: any) => {

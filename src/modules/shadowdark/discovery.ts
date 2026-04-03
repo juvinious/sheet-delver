@@ -50,10 +50,14 @@ export class ShadowdarkDiscovery {
             try {
                 const { PersistentCache } = await import('../../core/cache/PersistentCache');
                 const persistentCache = PersistentCache.getInstance();
-                const version = await this._getAppVersion();
                 
-                const dataKey = `${this.BASE_DATA_KEY}-${version}`;
-                const sigKey = `${this.BASE_SIG_KEY}-${version}`;
+                // Fetch the actual Shadowdark system version from the world
+                const system = await client.getSystem?.() || {};
+                const systemVersion = system.version || 'unknown';
+                
+                // Use system version for the key (Format: system-data-v.3.6.2)
+                const dataKey = `system-data-v.${systemVersion}`;
+                const sigKey = `system-data-sig-v.${systemVersion}`;
 
                 const currentSig = await this._computeSignature(client);
                 const cachedSig = await persistentCache.get<string>(this.CACHE_NS, sigKey);
@@ -61,7 +65,7 @@ export class ShadowdarkDiscovery {
                 if (!this.FORCE_DISCOVERY && currentSig && cachedSig === currentSig) {
                     const cachedData = await persistentCache.get<any>(this.CACHE_NS, dataKey);
                     if (cachedData && Array.isArray(cachedData.items) && (cachedData.items.length > 0 || cachedData.ancestries?.length > 0)) {
-                        logger.debug('[ShadowdarkDiscovery] Loading system data from disk cache');
+                        logger.debug(`[ShadowdarkDiscovery] Loading system data (v${systemVersion}) from disk cache`);
                         // Restore effects which aren't cached
                         cachedData.PREDEFINED_EFFECTS = { ...SYSTEM_PREDEFINED_EFFECTS };
                         cache.setSystemData(cachedData);
@@ -69,42 +73,47 @@ export class ShadowdarkDiscovery {
                     }
                 }
 
-                logger.info('[ShadowdarkDiscovery] Performing Parallel Deep Discovery from Foundry...');
+                logger.info(`[ShadowdarkDiscovery] Performing Parallel Deep Discovery for Shadowdark v${systemVersion}...`);
                 const results = this._initializeResults({});
                 const processedUuids = new Set<string>();
 
-                // Fetch all packs in parallel (Shallow Discovery: Indices Only)
-                const packPromises = this.DISCOVERY_PACKS.map(async (packInfo) => {
+                // Fetch all packs sequentially to prevent socket saturation
+                for (const packInfo of this.DISCOVERY_PACKS) {
                     try {
-                        let docs: any[] = [];
-                        
-                        // Always use getPackEntries for discovery (Names, UUIDs, Types only)
-                        // This is much faster as it avoids transferring full document data.
-                        docs = await client.getPackEntries?.(packInfo.id) || [];
-
+                        const docs = await client.getPackEntries?.(packInfo.id) || [];
                         if (docs.length > 0) {
-                            return docs.map(d => ({
+                            const mappedDocs = docs.map((d: any) => ({
                                 ...d,
                                 pack: packInfo.id,
                                 uuid: d.uuid || `Compendium.${packInfo.id}.${d._id || d.id}`
                             }));
+                            this._processDocuments(mappedDocs, results, processedUuids);
                         }
                     } catch (err) {
                         logger.warn(`[ShadowdarkDiscovery] Failed to fetch pack ${packInfo.id}:`, err);
                     }
-                    return [];
-                });
-
-                const allPacksResults = await Promise.all(packPromises);
-                
-                // Process results in a single pass
-                for (const mappedDocs of allPacksResults) {
-                    if (mappedDocs.length > 0) {
-                        this._processDocuments(mappedDocs, results, processedUuids);
-                    }
                 }
 
                 if (currentSig) {
+                    // PURGE OLD CACHE: Delete any existing system-data files that don't match this version
+                    try {
+                        const fs = await import('node:fs');
+                        const path = await import('node:path');
+                        const cacheDir = path.join(process.cwd(), '.data', 'cache', this.CACHE_NS);
+                        
+                        if (fs.existsSync(cacheDir)) {
+                            const files = fs.readdirSync(cacheDir);
+                            for (const file of files) {
+                                if (file.startsWith('system-data-') && !file.includes(systemVersion)) {
+                                    logger.info(`[ShadowdarkDiscovery] Purging stale cache file: ${file}`);
+                                    fs.unlinkSync(path.join(cacheDir, file));
+                                }
+                            }
+                        }
+                    } catch (purgeError) {
+                        logger.warn('[ShadowdarkDiscovery] Cache purge failed (non-critical):', purgeError);
+                    }
+
                     await persistentCache.set(this.CACHE_NS, dataKey, results);
                     await persistentCache.set(this.CACHE_NS, sigKey, currentSig);
                 }

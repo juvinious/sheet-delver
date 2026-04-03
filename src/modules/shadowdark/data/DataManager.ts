@@ -73,9 +73,8 @@ export class DataManager {
                 try {
                     logger.debug(`[DataManager] [TRACE] Hydrating ${uuid} from Foundry...`);
                     const fullDoc = await client.fetchByUuid(uuid);
-                    logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
-
                     if (fullDoc) {
+                        logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
                         const cache = ShadowdarkCache.getInstance();
                         const systemData = cache.systemData || {};
                         const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
@@ -118,8 +117,11 @@ export class DataManager {
                             logger.debug(`[DataManager] Adding new hydrated doc to fallback collection: ${target}`);
                             systemData[target].push({ ...fullDoc, uuid: uuid, isShallow: false });
                         }
+                        return fullDoc;
+                    } else {
+                        logger.warn(`[DataManager] Hydration for ${uuid} returned no data.`);
+                        return null; 
                     }
-                    return fullDoc;
                 } catch (e) {
                     logger.warn(`[DataManager] Failed to fetch document ${uuid} from Foundry:`, e);
                     return cachedDoc; // Return index as fallback if socket fails
