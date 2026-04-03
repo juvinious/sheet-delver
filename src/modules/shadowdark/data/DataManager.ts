@@ -41,12 +41,16 @@ export class DataManager {
         if (systemData) {
             // Search through the discovered collections
             const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+            
+            // PRIORITY 1: Find a non-shallow match
             for (const key of collections) {
                 const doc = systemData[key]?.find((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
-                if (doc) {
+                if (doc && (doc.system || doc.type === 'RollTable')) {
+                    return doc;
+                }
+                if (doc && !cachedDoc) {
                     cachedDoc = doc;
                     collection = key;
-                    break;
                 }
             }
         }
@@ -72,13 +76,29 @@ export class DataManager {
                     logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
 
                     if (fullDoc) {
-                        // Universal Caching: Ensure doc is cached even if not in discovery index
                         const cache = ShadowdarkCache.getInstance();
                         const systemData = cache.systemData || {};
+                        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
 
-                        // Identify appropriate collection or default to 'items'
-                        let targetCollection = collection;
-                        if (!targetCollection) {
+                        // Universal Caching: Update *all* collections that contain this UUID
+                        let foundInAny = false;
+                        for (const key of collections) {
+                            if (!systemData[key]) continue;
+                            const idx = systemData[key].findIndex((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                            if (idx !== -1) {
+                                logger.debug(`[DataManager] Hydrating existing entry in collection: ${key}`);
+                                systemData[key][idx] = { 
+                                    ...fullDoc, 
+                                    uuid: uuid, 
+                                    pack: systemData[key][idx].pack,
+                                    isShallow: false 
+                                };
+                                foundInAny = true;
+                            }
+                        }
+
+                        // If not found in any collection, add to a fallback collection based on type
+                        if (!foundInAny) {
                             const type = (fullDoc.type || fullDoc.documentType || "").toLowerCase();
                             const typeMap: Record<string, string> = {
                                 'ancestry': 'ancestries',
@@ -89,19 +109,14 @@ export class DataManager {
                                 'language': 'languages',
                                 'spell': 'spells',
                                 'talent': 'talents',
+                                'class-ability': 'talents', // Standardize to talents
+                                'feature': 'talents',       // Standardize to talents
                                 'rolltable': 'tables'
                             };
-                            targetCollection = typeMap[type] || 'items';
-                        }
-
-                        if (!systemData[targetCollection]) systemData[targetCollection] = [];
-
-                        const idx = systemData[targetCollection].findIndex((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
-                        if (idx !== -1) {
-                            systemData[targetCollection][idx] = { ...fullDoc, uuid: uuid, pack: systemData[targetCollection][idx].pack };
-                        } else {
-                            // Add new entry if it didn't exist in discovered data
-                            systemData[targetCollection].push({ ...fullDoc, uuid: uuid });
+                            const target = typeMap[type] || 'items';
+                            if (!systemData[target]) systemData[target] = [];
+                            logger.debug(`[DataManager] Adding new hydrated doc to fallback collection: ${target}`);
+                            systemData[target].push({ ...fullDoc, uuid: uuid, isShallow: false });
                         }
                     }
                     return fullDoc;

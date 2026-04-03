@@ -956,7 +956,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     const response: any = await this.emitSocketEvent('getDocuments', {
                         type: t,
                         operation: { pack: packId, ids: [id] }
-                    }, 1500); // Shorter timeout for faster iteration
+                    }, 5000); // Increased timeout for stability
 
                     if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
                         logger.debug(`[CoreSocket] [TRACE] fetchByUuid Socket Success: ${uuid}`);

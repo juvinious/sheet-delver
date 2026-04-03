@@ -2,9 +2,9 @@ import { logger } from '../../core/logger';
 import { FoundryClient } from '../../core/foundry';
 import fs from 'fs';
 import path from 'path';
-import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
+import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
 import { shadowdarkAdapter } from './system';
-import { sanitizeItem, sanitizeItems } from './utils/Sanitizer';
+import { sanitizeItem, sanitizeItems, createEffect } from './utils/Sanitizer';
 
 export interface ImportResult {
     success: boolean;
@@ -166,21 +166,105 @@ export class ShadowdarkImporter {
                 }
 
                 if (!foundTalent) {
-                    let searchName = bonus.name;
+                    const uuid = findEffectUuid(bonus.bonusName || bonus.name);
+                    if (uuid) {
+                        log(`[findTalent] Found match in TALENT_EFFECTS_MAP: ${uuid}`);
+                        foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
+                    }
+                }
+
+                if (!foundTalent) {
+                    let searchName = bonus.bonusName || bonus.name;
+                    
                     // Special Handling: Kobold Knacks
-                    if (searchName === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
+                    if (bonus.name === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
                         searchName = 'Knack (Luck)';
                     }
 
-                    log(`[findTalent] Mapping failed, trying dynamic search for '${searchName}'...`);
+                    log(`[findTalent] Mapping failed, trying dynamic search for '${searchName}' (Type: Talent/Feature)...`);
                     foundTalent = await findItem(searchName, 'Talent', true) || await findItem(searchName, 'Feature', true);
+
+                    // Spellcasting Special Handling: Wizard / Priest / Seer / Witch
+                    if (!foundTalent && searchName.includes('Spellcasting')) {
+                        const classMatch = searchName.split(' ')[0]; // e.g. "Wizard" from "Wizard Spellcasting"
+                        const lookup = `${classMatch} Spellcasting`;
+                        const uuid = findEffectUuid(lookup);
+                        if (uuid) {
+                            log(`[findTalent] Resolved specific spellcasting: ${lookup}`);
+                            foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
+                        }
+                    }
+
+                    // Warlock/Boon Fallback: Try searching in Spells
+                    if (!foundTalent && (bonus.sourceCategory === 'Boon' || bonus.sourceCategory === 'Patron')) {
+                        log(`[findTalent] Boon/Patron search fallback to Spells for '${searchName}'...`);
+                        foundTalent = await findItem(searchName, 'Spell', true);
+                    }
+
+                    // Final Fallback: try bonus.name if it differs from bonusName
+                    if (!foundTalent && bonus.name !== searchName) {
+                        log(`[findTalent] Final fallback search for '${bonus.name}'...`);
+                        foundTalent = await findItem(bonus.name, 'Talent', true) || await findItem(bonus.name, 'Feature', true);
+                    }
                 }
 
                 if (foundTalent) {
-                    // Use Sanitizer to get a clean, fresh object
-                    foundTalent = sanitizeItem(foundTalent);
+                    const isBoon = bonus.sourceCategory === 'Boon' || bonus.sourceCategory === 'Patron' || bonus.name === 'LearnSpellFromPatron';
+                    const isSpell = foundTalent.type === 'Spell';
+
+                    // Boon Wrapping Logic: If we resolved a Boon to a Spell, wrap it in a Talent
+                    if (isBoon && isSpell) {
+                        log(`[findTalent] Wrapping Boon Spell '${foundTalent.name}' as a Talent...`);
+                        
+                        const spellDoc = sanitizeItem(foundTalent);
+                        // Ensure spell isn't already in library
+                        if (!spells.find(s => s.name?.toLowerCase() === spellDoc.name?.toLowerCase())) {
+                            spells.push(spellDoc);
+                        }
+
+                        // Create the Boon Talent
+                        foundTalent = {
+                            name: `Boon: ${spellDoc.name}`,
+                            type: 'Talent',
+                            img: spellDoc.img || 'icons/magic/symbols/rune-glitter-blue.webp',
+                            system: {
+                                description: `<p><strong>Boon of the Patron:</strong> You have gained the spell <em>${spellDoc.name}</em> from your patron (${bonus.boonPatron || "Unknown"}).</p>${spellDoc.system?.description || ""}`,
+                                talentClass: 'class',
+                                level: bonus.gainedAtLevel
+                            }
+                        };
+                    } else {
+                        foundTalent = sanitizeItem(foundTalent);
+                    }
 
                     if (foundTalent.system?.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
+
+                    // Apply Predefined System Effects (Automation) 
+                    const predefinedKey = bonus.bonusName || bonus.name;
+                    const predef = SYSTEM_PREDEFINED_EFFECTS[predefinedKey];
+                    if (predef) {
+                        log(`[findTalent] Applying predefined effect for '${predefinedKey}'...`);
+                        foundTalent.img = predef.icon || foundTalent.img;
+                        
+                        const changes = predef.changes || (predef.key ? [{ key: predef.key, mode: predef.mode || 2, value: predef.value }] : []);
+                        
+                        if (changes.length > 0) {
+                            // Resolve "REPLACEME" in changes if needed
+                            const resolvedChanges = changes.map(c => ({
+                                ...c,
+                                value: String(c.value).replace("REPLACEME", bonus.bonusTo || "")
+                            }));
+
+                            // Add to talent's effects
+                            const effect = createEffect(predef.label, predef.icon, resolvedChanges, { 
+                                sourceName: "Shadowdarkling Import",
+                                flags: { shadowdarkling: { category: bonus.sourceCategory, name: predefinedKey } }
+                            });
+                            
+                            foundTalent.effects = foundTalent.effects || [];
+                            foundTalent.effects.push(effect);
+                        }
+                    }
 
                     if (foundTalent.effects?.[0]?.changes?.[0]?.value === "REPLACEME") {
                         let val = "";
@@ -196,7 +280,7 @@ export class ShadowdarkImporter {
                         }
                     }
 
-                    if (bonus.sourceCategory === "Boon") foundTalent.name += ` [${bonus.boonPatron}]`;
+                    if (bonus.sourceCategory === "Boon" && !foundTalent.name.includes("[")) foundTalent.name += ` [${bonus.boonPatron}]`;
                     if (bonus.sourceCategory?.startsWith("BlackLotusTalent")) foundTalent.name += " [BlackLotus]";
 
                     return foundTalent;
@@ -314,10 +398,17 @@ export class ShadowdarkImporter {
 
                 // Fixed Class Talents
                 if (classObj.system?.talents) {
+                    log(`[Importer] Hydrating ${classObj.system.talents.length} class-defined talents...`);
                     const fixedTalents = await Promise.all(classObj.system.talents.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
                     for (const item of fixedTalents.filter(Boolean)) {
                         const obj = sanitizeItem(item);
-                        if (!talents.find(t => t.name === obj.name)) talents.push(obj);
+                        const existing = talents.find(t => t.name.toLowerCase() === obj.name.toLowerCase());
+                        if (!existing) {
+                            trace(`[Importer] Adding class talent: ${obj.name}`);
+                            talents.push(obj);
+                        } else {
+                            trace(`[Importer] Class talent already present (skipping duplicate): ${obj.name}`);
+                        }
                     }
                 }
             }
@@ -461,29 +552,48 @@ export class ShadowdarkImporter {
             }
 
 
-            // 6. Parallel Bonuses Resolution
-            if (json.bonuses) {
-                log(`[Importer] Resolving ${json.bonuses.length} dynamic bonuses in parallel...`);
-                const bonusPromises = json.bonuses.map(async (bonus: any) => {
-                    if (/^ExtraLanguage:/.test(bonus.name)) return null;
-                    if (/^ExtraLanguageManual:/.test(bonus.name)) return null;
-                    if (/^GrantSpecialTalent:/.test(bonus.name)) return null;
-                    if (bonus.sourceCategory === 'Patron' && bonus.name === 'Patron') return null;
-                    if (this.mapping.ignoreTalents?.includes(bonus.name)) return null;
+            // 6. Chunked Bonuses Resolution
+            if (json.bonuses && json.bonuses.length > 0) {
+                log(`[Importer] Resolving ${json.bonuses.length} dynamic bonuses in chunks...`);
+                const CHUNK_SIZE = 5; // Small chunks for maximum stability
+                const bonuses = json.bonuses;
 
-                    if (bonus.name === "SetWeaponTypeDamage") bonus.bonusTo = bonus.bonusTo.split(":")[0];
+                for (let i = 0; i < bonuses.length; i += CHUNK_SIZE) {
+                    const chunk = bonuses.slice(i, i + CHUNK_SIZE);
+                    trace(`[Importer] Processing bonus chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(bonuses.length / CHUNK_SIZE)}`);
+                    
+                    await Promise.all(chunk.map(async (bonus: any) => {
+                        if (/^ExtraLanguage:/.test(bonus.name)) return null;
+                        if (/^ExtraLanguageManual:/.test(bonus.name)) return null;
+                        if (/^GrantSpecialTalent:/.test(bonus.name)) return null;
+                        if (bonus.sourceCategory === 'Patron' && bonus.name === 'Patron') {
+                            trace(`[Importer] Skipping redundant Patron bonus: ${bonus.bonusTo}`);
+                            return null;
+                        }
+                        if (this.mapping.ignoreTalents?.includes(bonus.name)) {
+                            trace(`[Importer] Ignoring talent per mapping: ${bonus.name}`);
+                            return null;
+                        }
 
-                    if (/^Spell:/.test(bonus.name)) {
-                        const spell = await findSpell(bonus, classList);
-                        if (spell) spells.push(spell);
+                        if (bonus.name === "SetWeaponTypeDamage") bonus.bonusTo = bonus.bonusTo.split(":")[0];
+
+                        if (/^Spell:/.test(bonus.name)) {
+                            const spell = await findSpell(bonus, classList);
+                            if (spell) {
+                                trace(`[Importer] Resolved spell: ${spell.name}`);
+                                spells.push(spell);
+                            }
+                            return null;
+                        }
+
+                        const talent = await findTalent(bonus);
+                        if (talent) {
+                            trace(`[Importer] Resolved talent: ${talent.name}`);
+                            talents.push(talent);
+                        }
                         return null;
-                    }
-
-                    const talent = await findTalent(bonus);
-                    if (talent) talents.push(talent);
-                    return null;
-                });
-                await Promise.all(bonusPromises);
+                    }));
+                }
             }
 
             // 7. Create Actor and Items
