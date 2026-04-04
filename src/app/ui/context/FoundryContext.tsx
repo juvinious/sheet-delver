@@ -345,22 +345,16 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
 
-            if (status === 'setup') return 'setup';
-
             // Wait until backend is fully initialized (Cache + Discovery)
             if (!data.connected || data.initialized === false) {
                 // If the probe discovered a world (worldTitle present and status is startup),
                 // the world is running but the service account cannot log in.
-                // Show world info without login form rather than the generic booting spinner.
-                const hasWorldInfo = status === 'startup' &&
-                    !!data.system?.worldTitle &&
-                    data.system.worldTitle !== 'Reconnecting...';
-                return hasWorldInfo ? 'world-closed' : 'initializing';
+                return status === 'startup' && !!data.system?.worldTitle ? 'startup' : 'initializing';
             }
 
-            if (status === 'offline') return 'initializing'; // Still trying to connect
+            if (status === 'setup') return 'setup';
+            if (status === 'offline') return 'initializing';
             if (status === 'startup') return 'startup';
-            if (status !== 'active') return 'setup';
 
             if (currentStep === 'authenticating') {
                 return isAuthenticated ? 'dashboard' : 'authenticating';
@@ -411,7 +405,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
                     const targetStep = determineStep(data, step);
                     if (step !== targetStep) {
-                        if (targetStep === 'setup' && step !== 'setup') {
+                        // CRITICAL: Only clear token if we are explicitly in setup mode AND was in something else.
+                        // Or if we are in 'login' but previously thought we were authenticated.
+                        if (targetStep === 'setup' && step !== 'startup' && step !== 'initializing') {
                             logger.warn('FoundryProvider | World explicitly in Setup mode. Clearing session.');
                             if (token) setToken(null);
                             setLastWorldId(null);

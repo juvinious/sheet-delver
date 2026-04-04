@@ -88,7 +88,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
         const level = s.level?.value || 0;
 
         return {
-            subtext: `${ancestry} ${className} ${level}`.trim(),
+            subtext: `${ancestry} • ${className === 'Level 0' ? 'Adventurer' : className} • Level ${level}`.trim(),
             ancestry,
             class: className,
             level

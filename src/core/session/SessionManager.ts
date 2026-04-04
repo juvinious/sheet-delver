@@ -196,25 +196,29 @@ export class SessionManager {
     }
 
     public async getOrRestoreSession(sessionId: string): Promise<Session | undefined> {
-        // Always check world state first - reject all sessions if in setup
-        if (this.systemClient.worldState === 'setup') {
-            const session = this.sessions.get(sessionId);
+        const session = this.sessions.get(sessionId);
+
+        // Defer validation if world is not yet active/discovered
+        if (this.systemClient.worldState === 'setup' || this.systemClient.worldState === 'offline') {
             if (session) {
-                logger.warn(`SessionManager | World in setup mode. Destroying session ${sessionId}.`);
-                await this.destroySession(sessionId);
+                // Return existing session from memory, but avoid world ID checks
+                session.lastActive = Date.now();
+                return session;
             }
-            return undefined;
+            // If not in memory, try to restore from disk without strict world verification
+            return this.tryRestoreSession(sessionId, true).then(restored => 
+                restored ? this.sessions.get(sessionId) : undefined
+            );
         }
 
         // Check for active session in memory
-        const session = this.sessions.get(sessionId);
         if (session) {
-            // Validate world ID for active sessions
+            // Validate world ID for active sessions if world info is available
             const currentWorldId = this.systemClient.getGameData()?.world?.id;
 
-            if (!currentWorldId) {
-                // No world data available - world might be starting up
-                logger.warn(`SessionManager | No world ID available. Session ${sessionId} validation deferred.`);
+            if (!currentWorldId || this.systemClient.worldState !== 'active') {
+                // No world data available or world still starting up - defer validation
+                logger.debug(`SessionManager | World not fully active (${this.systemClient.worldState}). Deferring validation for session ${sessionId}.`);
                 session.lastActive = Date.now();
                 return session;
             }
