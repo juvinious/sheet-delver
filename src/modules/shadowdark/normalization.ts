@@ -139,6 +139,11 @@ export class ShadowdarkNormalizer {
             if (item.system?.description) {
                 item.system.description = formatDescription(item.system.description);
             }
+            
+            // Debug weapon normalization
+            if (item.type === 'Weapon') {
+                // logger.debug(`[DEBUG] Normalized weapon ${item.name}: derived=`, JSON.stringify(item.derived));
+            }
 
             return item;
         });
@@ -182,13 +187,32 @@ export class ShadowdarkNormalizer {
                 biography: s.details?.biography?.value || '',
                 notes: s.details?.notes?.value || '',
                 title: (() => {
-                    const clsName = computed.resolvedNames?.class || resolveDocumentName(s.class, cachedSystemData);
-                    const titles = cachedSystemData?.titles?.[clsName];
+                    const alignment = (s.alignment || 'neutral').toLowerCase();
+                    const clsItem = computed.classDetails || actorItems.find((i: any) => (i.type || '').toLowerCase() === 'class');
+                    
+                    let titles = clsItem?.system?.titles;
+                    if (!titles || !Array.isArray(titles) || titles.length === 0) {
+                        let clsName = computed.resolvedNames?.class || resolveDocumentName(s.class, cachedSystemData);
+                        
+                        // If it resolved to a UUID segment or was missing, check the embedded item name
+                        if ((!clsName || clsName === s.class?.split('.').pop()) && clsItem) {
+                            clsName = clsItem.name;
+                        }
+
+                        titles = cachedSystemData?.titles?.[clsName];
+                        logger.debug(`[DEBUG] Title resolution for class '${clsName}': found ${titles?.length || 0} titles in cache`);
+                    }
+
                     if (titles && Array.isArray(titles)) {
                         const match = titles.find((t: any) => level >= t.from && level <= t.to);
+                        logger.debug(`[DEBUG] Title match for level ${level}, alignment ${alignment}:`, match ? (match[alignment] || match.neutral) : 'NONE');
                         if (match) return match[alignment] || match.neutral || '';
                     }
-                    return s.title || '';
+
+                    // Fallback to imported title or system title
+                    const fallback = s.details?.title || s.title || '';
+                    logger.debug(`[DEBUG] Title fallback selected: ${fallback}`);
+                    return fallback;
                 })()
             },
             luck: s.luck || {},

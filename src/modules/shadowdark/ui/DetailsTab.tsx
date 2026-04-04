@@ -8,6 +8,7 @@ import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from '../ui/themes/shadowdark';
+import { isRareLanguage } from '../rules';
 
 interface DetailsTabProps {
     actor: any;
@@ -317,26 +318,29 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         <div className="flex items-center gap-2">
                             {(() => {
                                 const { maxCommon = 0, maxRare = 0 } = actor.computed?.languageLimits || {};
-                                const currentCommon = (actor.system?.languages || []).length;
-                                const currentRare = (actor.system?.rareLanguages || []).length;
+                                // Split languages by rarity using the centralized helper
+                                const allLangs = (actor.system?.languages || []);
+                                const currentCommon = allLangs.filter((id: string) => {
+                                    const lang = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                                    return !isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
+                                }).length;
+                                const currentRare = allLangs.filter((id: string) => {
+                                    const lang = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                                    return isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
+                                }).length;
+
+                                const totalCurrent = currentCommon + currentRare;
+                                const totalMax = maxCommon + maxRare;
 
                                 return (
                                     <>
                                         <div className="flex items-center gap-1.5 mr-1">
                                             <div 
-                                                title="Common Languages Limit"
+                                                title="Total Languages Limit"
                                                 className="bg-neutral-100 text-black text-[10px] px-1.5 py-0.5 border border-black font-bold uppercase tracking-tighter shadow-[1px_1px_0px_0px_rgba(255,255,255,0.3)]"
                                             >
-                                                {currentCommon}/{maxCommon}
+                                                {totalCurrent}/{totalMax}
                                             </div>
-                                            {maxRare > 0 && (
-                                                <div 
-                                                    title="Rare Languages Limit"
-                                                    className="bg-amber-100 text-amber-900 text-[10px] px-1.5 py-0.5 border border-amber-800 font-bold uppercase tracking-tighter shadow-[1px_1px_0px_0px_rgba(180,83,9,0.5)]"
-                                                >
-                                                    {currentRare}/{maxRare} R
-                                                </div>
-                                            )}
                                         </div>
                                         <button
                                             onClick={() => setIsLanguageModalOpen(true)}
@@ -352,16 +356,16 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     <div className="p-2 flex flex-wrap gap-2 bg-white">
                         {(() => {
                             const RARE_LANGS = ['celestial', 'diabolic', 'draconic', 'primordial', 'abyssal', 'undercommon'];
-                            const actorLangs = actor.details?.languages || [];
+                            const actorLangs = actor.system?.languages || [];
                             const resolvedLangs = actorLangs.map((l: any) => {
-                                const name = typeof l === 'string' ? l : (l.name || '');
+                                const id = typeof l === 'string' ? l : (l.name || l.uuid || '');
                                 // Find extra info in systemData for tooltips
                                 const match = systemData?.languages?.find((sl: any) =>
-                                    sl.name === name || sl.uuid === name || (typeof l === 'object' && sl.uuid === l.uuid)
+                                    sl.uuid === id || sl.name === id || (typeof id === 'string' && id.endsWith(sl.uuid?.split('.').pop()!))
                                 );
 
                                 return {
-                                    name: name,
+                                    name: match ? match.name : id,
                                     desc: match ? (match.description || match.desc) : (typeof l === 'object' ? (l.description || l.desc) : 'Description unavailable.'),
                                     rarity: match ? match.rarity : (typeof l === 'object' ? l.rarity : 'common')
                                 };
@@ -369,7 +373,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
 
                             return resolvedLangs.sort((a: any, b: any) => a.name.localeCompare(b.name))
                                 .map((lang: any, i: number) => {
-                                    const isRare = lang.rarity?.toLowerCase() === 'rare';
+                                    const isRare = isRareLanguage(lang.name) || lang.rarity?.toLowerCase() === 'rare';
                                     const bgColor = isRare ? 'bg-black' : 'bg-[#78557e]';
 
                                     // Scrub HTML tags for tooltip
@@ -516,69 +520,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         );
                         return found?.uuid || id;
                     })}
-                    maxCommon={(() => {
-                        const findObj = (id: string, list: any[]) => {
-                            const embedded = actor.items?.find((i: any) =>
-                                i.id === id || i.uuid === id || (typeof id === 'string' && id.endsWith(i.id))
-                            );
-                            if (embedded) return embedded;
-                            return list?.find(i => i.uuid === id || i._id === id || i.name === id || (id?.includes('.') && id.endsWith(i._id)));
-                        };
-
-                        const classObj = findObj(actor.system?.class, systemData?.classes);
-                        const ancestryObj = findObj(actor.system?.ancestry, systemData?.ancestries);
-                        const backgroundObj = findObj(actor.system?.background, systemData?.backgrounds);
-
-                        const cl = classObj?.system?.languages || classObj?.languages || {};
-                        const al = ancestryObj?.system?.languages || ancestryObj?.languages || {};
-                        const bl = backgroundObj?.system?.languages || backgroundObj?.languages || {};
-
-                        const allFixed = Array.from(new Set([
-                            ...(cl.fixed || []),
-                            ...(al.fixed || []),
-                            ...(bl.fixed || [])
-                        ]));
-
-                        const fixedCommon = allFixed.filter(f => {
-                            const l = systemData?.languages?.find((lang: any) => lang.name === f || lang.uuid === f);
-                            return !l?.rarity || l.rarity === 'common';
-                        }).length;
-
-                        return (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
-                            (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || 0) +
-                            fixedCommon;
-                    })()}
-                    maxRare={(() => {
-                        const findObj = (id: string, list: any[]) => {
-                            const embedded = actor.items?.find((i: any) =>
-                                i.id === id || i.uuid === id || (typeof id === 'string' && id.endsWith(i.id))
-                            );
-                            if (embedded) return embedded;
-                            return list?.find(i => i.uuid === id || i._id === id || i.name === id || (id?.includes('.') && id.endsWith(i._id)));
-                        };
-
-                        const classObj = findObj(actor.system?.class, systemData?.classes);
-                        const ancestryObj = findObj(actor.system?.ancestry, systemData?.ancestries);
-                        const backgroundObj = findObj(actor.system?.background, systemData?.backgrounds);
-
-                        const cl = classObj?.system?.languages || classObj?.languages || {};
-                        const al = ancestryObj?.system?.languages || ancestryObj?.languages || {};
-                        const bl = backgroundObj?.system?.languages || backgroundObj?.languages || {};
-
-                        const allFixed = Array.from(new Set([
-                            ...(cl.fixed || []),
-                            ...(al.fixed || []),
-                            ...(bl.fixed || [])
-                        ]));
-
-                        const fixedRare = allFixed.filter(f => {
-                            const l = systemData?.languages?.find((lang: any) => lang.name === f || lang.uuid === f);
-                            return l?.rarity === 'rare';
-                        }).length;
-
-                        return (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || 0) +
-                            fixedRare;
-                    })()}
+                    maxCommon={actor.computed?.languageLimits?.maxCommon || 0}
+                    maxRare={actor.computed?.languageLimits?.maxRare || 0}
                 />
             )}
 

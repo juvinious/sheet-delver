@@ -176,7 +176,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
             name: item.name,
             type: item.type,
             img: item.img,
-            system: JSON.parse(JSON.stringify(item.system))
+            system: JSON.parse(JSON.stringify(item.system || {}))
         };
 
         // Reset specific fields for a new distinct item

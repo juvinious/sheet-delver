@@ -1,4 +1,30 @@
 
+
+/**
+ * Standard Shadowdark language classification
+ */
+export const SHADOWDARK_LANGUAGES = {
+    common: [
+        'common', 'dwarvish', 'elvish', 'giant', 'goblin', 
+        'merran', 'orcish', 'reptilian', 'sylvan', 'thanian'
+    ],
+    rare: [
+        'celestial', 'diabolic', 'draconic', 'primordial'
+    ]
+};
+
+/**
+ * Helper to determine if a language is considered rare.
+ */
+export const isRareLanguage = (name: string): boolean => {
+    const lower = (name || '').toLowerCase();
+    if (SHADOWDARK_LANGUAGES.rare.some(r => lower.includes(r))) return true;
+    if (SHADOWDARK_LANGUAGES.common.some(c => lower.includes(c))) return false;
+    
+    // Default system fallback for unknown languages
+    return false;
+};
+
 export const calculateItemSlots = (item: any) => {
     const s = item.system?.slots;
     if (!s) return 0;
@@ -239,9 +265,11 @@ export const calculateAttacks = (actor: any, items: any[]) => {
             id: w._id || w.id,
             name: w.name,
             img: w.img,
-            toHit: toHitStr,
-            damage: dmgStr,
-            handedness: s.handedness || 'one-handed',
+            derived: {
+                toHit: toHitStr,
+                damage: dmgStr,
+                handedness: s.handedness || 'one-handed',
+            },
             properties: s.properties || []
         };
 
@@ -263,39 +291,99 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
     const ancestryObj = findItem('ancestry');
     const backgroundObj = findItem('background');
 
-    const cl = classObj?.system?.languages || {};
-    const al = ancestryObj?.system?.languages || {};
-    const bl = backgroundObj?.system?.languages || {};
+    // Helper: get language config from an embedded item, or fall back to systemData lookup by UUID
+    const getLangConfig = (embeddedItem: any, uuid: string | undefined, systemList: any[] | undefined) => {
+        const fromItem = embeddedItem?.system?.languages;
+        if (fromItem && Object.keys(fromItem).length > 0) return fromItem;
+        if (!uuid || !systemList) return {};
+        const found = systemList.find((s: any) =>
+            s.uuid === uuid || s._id === uuid || s.name === uuid ||
+            (uuid.includes('.') && (s.uuid === uuid || uuid.endsWith(s._id || s.uuid)))
+        );
+        return found?.system?.languages || found?.languages || {};
+    };
 
-    const baseCommon = (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
-                       (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || 0);
+    const cl = getLangConfig(classObj, actor.system?.class, systemData?.classes);
+    const al = getLangConfig(ancestryObj, actor.system?.ancestry, systemData?.ancestries);
+    const bl = getLangConfig(backgroundObj, actor.system?.background, systemData?.backgrounds);
 
-    const baseRare = (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || 0);
+    const allFixed = Array.from(new Set([
+        ...(cl.fixed || []),
+        ...(al.fixed || []),
+        ...(bl.fixed || [])
+    ]));
 
-    // Count fixed languages if we have access to systemData to check rarity
+    const allSelectOptions = Array.from(new Set([
+        ...(cl.selectOptions || []),
+        ...(al.selectOptions || []),
+        ...(bl.selectOptions || [])
+    ]));
+
     let fixedCommon = 0;
     let fixedRare = 0;
+    let optionCommon = 0;
+    let optionRare = 0;
 
-    if (systemData?.languages) {
-        const allFixed = Array.from(new Set([
-            ...(cl.fixed || []),
-            ...(al.fixed || []),
-            ...(bl.fixed || [])
-        ]));
-
-        for (const f of allFixed) {
-            const lang = systemData.languages.find((l: any) => l.name === f || l.uuid === f);
-            if (lang?.rarity === 'rare') {
-                fixedRare++;
+    const countRarity = (pool: any[], counter: { common: number, rare: number }) => {
+        for (const f of pool) {
+            const lang = systemData?.languages?.find((l: any) => l.name === f || l.uuid === f);
+            const name = lang?.name || (typeof f === 'string' ? f : '');
+            if (isRareLanguage(name)) {
+                counter.rare++;
             } else {
-                fixedCommon++;
+                counter.common++;
             }
+        }
+    };
+
+    const fixedCounts = { common: 0, rare: 0 };
+    const optionCounts = { common: 0, rare: 0 };
+    
+    countRarity(allFixed, fixedCounts);
+    countRarity(allSelectOptions, optionCounts);
+
+    // If limits were explicitly defined by the old integer system, use them.
+    // Otherwise, infer slots from the new `selectOptions` array (assuming 1 slot per rarity pool presented, which is standard for Shadowdark classes granting specific localized choices).
+    // E.g., if a class gives [Diabolic, Celestial] in selectOptions, it grants 1 rare choice pool.
+
+    const fallbackCommonSelect = optionCounts.common > 0 ? 1 : 0;
+    const fallbackRareSelect = optionCounts.rare > 0 ? 1 : 0;
+
+    // Core rule: Every player gets 'Common' (1) and +1 for each point of INT mod.
+    // If we're examining a specific NPC without a class/ancestry, we won't strictly enforce player rules, but we'll apply it uniformly for UI limits on actors.
+    const intMod = Number(actor.system?.abilities?.int?.mod) || 0;
+    const playerBaseCommon = (actor.type === "Player" || actor.type === "Character") ? (1 + Math.max(0, intMod)) : 0;
+
+    const baseCommon = playerBaseCommon + 
+                       (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
+                       (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || Number(fallbackCommonSelect));
+
+    const baseRare = (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || Number(fallbackRareSelect));
+
+    const calculatedMaxCommon = baseCommon + fixedCounts.common;
+    const calculatedMaxRare = baseRare + fixedCounts.rare;
+
+    // Calculate current languages possessed to establish a floor limit. This prevents regressions
+    // where dynamically granted or legacy languages exceed the strict static calculation limits.
+    const currentLanguages = actor.system?.languages || [];
+    let currentCommon = 0;
+    let currentRare = 0;
+    
+    for (const id of currentLanguages) {
+        const lang = systemData?.languages?.find((l: any) => 
+            l.uuid === id || l.name === id || (typeof id === 'string' && id.endsWith(l.uuid?.split('.').pop()!))
+        );
+        const name = lang?.name || (typeof id === 'string' ? id : '');
+        if (isRareLanguage(name)) {
+            currentRare++;
+        } else {
+            currentCommon++;
         }
     }
 
     return {
-        maxCommon: baseCommon + fixedCommon,
-        maxRare: baseRare + fixedRare
+        maxCommon: Math.max(calculatedMaxCommon, currentCommon),
+        maxRare: Math.max(calculatedMaxRare, currentRare)
     };
 };
 

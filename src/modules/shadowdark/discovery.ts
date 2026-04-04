@@ -1,4 +1,5 @@
 import { logger } from '../../core/logger';
+import { isRareLanguage } from './rules';
 import { ShadowdarkCache } from './caching';
 import { createHash } from 'node:crypto';
 import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
@@ -234,6 +235,8 @@ export class ShadowdarkDiscovery {
                     results.patrons.push(doc);
                     break;
                 case 'language':
+                    // Normalize rarity based on user requirements
+                    doc.rarity = isRareLanguage(doc.name) ? 'rare' : 'common';
                     results.languages.push(doc);
                     break;
                 case 'spell':
