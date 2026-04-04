@@ -51,9 +51,9 @@ export class ShadowdarkImporter {
 
         try {
             log(`[Importer] Starting Import (Server-Side). Name: ${json.name}`);
-            
+
             await this.loadMapping();
-            
+
             // Ensure connected
             // @ts-ignore
             if (!client.isConnected) {
@@ -78,7 +78,7 @@ export class ShadowdarkImporter {
 
                 // 1. Check Index (Cache-First)
                 const indexDoc = dataManager.findDocumentByName(itemName, type);
-                
+
                 // 2. Resolve/Hydrate by UUID (Always goes through DataManager for fulfillment)
                 if (indexDoc) {
                     const uuid = indexDoc.uuid || indexDoc._id;
@@ -176,7 +176,7 @@ export class ShadowdarkImporter {
 
                 if (!foundTalent) {
                     let searchName = bonus.bonusName || bonus.name;
-                    
+
                     // Special Handling: Kobold Knacks
                     if (bonus.name === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
                         searchName = 'Knack (Luck)';
@@ -216,7 +216,7 @@ export class ShadowdarkImporter {
                     // Boon Wrapping Logic: If we resolved a Boon to a Spell, wrap it in a Talent
                     if (isBoon && isSpell) {
                         log(`[findTalent] Wrapping Boon Spell '${foundTalent.name}' as a Talent...`);
-                        
+
                         const spellDoc = sanitizeItem(foundTalent);
                         // Ensure spell isn't already in library
                         if (!spells.find(s => s.name?.toLowerCase() === spellDoc.name?.toLowerCase())) {
@@ -266,19 +266,9 @@ export class ShadowdarkImporter {
                 return null;
             };
 
-            const resolveCompendiumUuid = (doc: any, fallbackName: string, isCore: boolean = false): string => {
-                if (!doc) {
-                    return fallbackName || "";
-                }
-                // Trust the discovery cache UUID verbatim.
-                if (doc.uuid) return doc.uuid;
-                
-                // Fallback for raw objects without UUIDs (Mirroring working log format)
-                if (doc.pack && (doc._id || doc.id)) {
-                    return `Compendium.${doc.pack}.Item.${doc._id || doc.id}`;
-                }
-                
-                return doc.name || fallbackName || "";
+            const resolveCompendiumUuid = (doc: any, fallbackName: string): string => {
+                if (!doc) return fallbackName || "";
+                return doc.uuid || doc._id || doc.id || doc.name || fallbackName || "";
             };
 
             const getClassList = async () => {
@@ -352,7 +342,7 @@ export class ShadowdarkImporter {
                         title: json.title || ""
                     },
                     slots: json.gearSlotsTotal || 10,
-                    languages: [] 
+                    languages: []
                 }
             };
 
@@ -374,22 +364,22 @@ export class ShadowdarkImporter {
             const [ancestry, background, deity, patron] = await Promise.all(coreResolvers);
 
             if (ancestry) {
-                actorData.system.ancestry = resolveCompendiumUuid(ancestry, json.ancestry, true);
+                actorData.system.ancestry = resolveCompendiumUuid(ancestry, json.ancestry);
                 const ancestryTalents = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
                 talents.push(...ancestryTalents);
             }
             if (background) {
-                actorData.system.background = resolveCompendiumUuid(background, json.background, true);
+                actorData.system.background = resolveCompendiumUuid(background, json.background);
                 const bgTalents = await resolveSubItems(background, resolveDoc, enrichmentContext);
                 talents.push(...bgTalents);
             }
             if (deity) {
-                actorData.system.deity = resolveCompendiumUuid(deity, json.deity, true);
+                actorData.system.deity = resolveCompendiumUuid(deity, json.deity);
                 const deityTalents = await resolveSubItems(deity, resolveDoc, enrichmentContext);
                 talents.push(...deityTalents);
             }
             if (patron) {
-                actorData.system.patron = resolveCompendiumUuid(patron, patronName, true);
+                actorData.system.patron = resolveCompendiumUuid(patron, patronName);
                 const patronTalents = await resolveSubItems(patron, resolveDoc, enrichmentContext);
                 talents.push(...patronTalents);
             }
@@ -409,7 +399,7 @@ export class ShadowdarkImporter {
             const classList = await getClassList();
             const classObj = await findItem(json.class, "Class");
             if (classObj) {
-                actorData.system.class = resolveCompendiumUuid(classObj, json.class, true);
+                actorData.system.class = resolveCompendiumUuid(classObj, json.class);
 
                 // Starting Spells (Fixed)
                 if (classObj.system?.startingSpells) {
@@ -436,7 +426,7 @@ export class ShadowdarkImporter {
                     const item = await findItem(g.name, type);
                     if (item) {
                         const itemData = sanitizeItem(item);
-                        
+
                         // Ammo quantity fix: If it's a stackable ammo type and quantity is 1 (Shadowdarkling representation), 
                         // set it to 20 for standard Foundry behavior.
                         let quantity = g.quantity;
@@ -581,7 +571,7 @@ export class ShadowdarkImporter {
                 for (let i = 0; i < bonuses.length; i += CHUNK_SIZE) {
                     const chunk = bonuses.slice(i, i + CHUNK_SIZE);
                     trace(`[Importer] Processing bonus chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(bonuses.length / CHUNK_SIZE)}`);
-                    
+
                     await Promise.all(chunk.map(async (bonus: any) => {
                         if (/^ExtraLanguage:/.test(bonus.name)) return null;
                         if (/^ExtraLanguageManual:/.test(bonus.name)) return null;
@@ -629,7 +619,9 @@ export class ShadowdarkImporter {
 
             log(`[Importer] Actor Created: ${createdActor._id}`);
 
-            const allItems = sanitizeItems([...gear, ...classAbilities, ...spells, ...talents]).filter(i => i.type !== 'Class');
+            //logger.debug("[Importer] actor: ", JSON.stringify(actorData, null, 2));
+
+            const allItems = sanitizeItems([...gear, ...classAbilities, ...spells, ...talents]);//.filter(i => i.type !== 'Class');
 
             if (allItems.length > 0) {
                 log(`[Importer] Creating ${allItems.length} embedded items in parallel chunks...`);

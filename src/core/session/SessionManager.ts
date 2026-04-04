@@ -46,6 +46,8 @@ export class SessionManager {
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
     private cacheInstance: any = null;
+    private systemInitialized: boolean = false; // Holistic initialization flag
+    private bootstrapPromise: Promise<void> | null = null; // Idempotency guard
 
     constructor(config: FoundryConfig) {
         this.config = config;
@@ -81,18 +83,57 @@ export class SessionManager {
         try {
             // Wait for connection AND world discovery
             await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error("CoreSocket connection timeout")), 30000);
+                const timeout = setTimeout(() => reject(new Error("CoreSocket connection timeout")), 15000);
                 this.systemClient.once('connect', () => {
                     clearTimeout(timeout);
                     resolve();
                 });
                 this.systemClient.connect().catch(reject);
             });
-            logger.info('SessionManager | Core System Socket Ready.');
+            logger.info('SessionManager | Core System Socket Connected.');
 
         } catch (e: any) {
-            logger.error(`SessionManager | Core Socket failed to initialize: ${e.message}`);
+            logger.error(`SessionManager | Core Socket failed to connect: ${e.message}`);
         }
+    }
+
+    /**
+     * Holistic bootstrap sequence to ensure all systems are ready before releasing clients.
+     */
+    public async bootstrap(client: CoreSocket): Promise<void> {
+        if (this.systemInitialized) return;
+        if (this.bootstrapPromise) return this.bootstrapPromise;
+
+        return this.bootstrapPromise = (async () => {
+            logger.info('SessionManager | Bootstrapping systems...');
+            this.systemInitialized = false;
+
+            try {
+                // 1. Core Compendium Cache Warmup (Global indices)
+                const { CompendiumCache } = await import('../foundry/compendium-cache');
+                const cache = CompendiumCache.getInstance();
+                await cache.initialize(client);
+                this.setCache(cache);
+
+                // 2. Module-Specific Adapter Initialization (Targeted Discovery/Cache)
+                const sysInfo = await client.getSystem();
+                if (sysInfo?.id) {
+                    const { getAdapter } = await import('../../modules/core/registry');
+                    const adapter = getAdapter(sysInfo.id.toLowerCase());
+                    if (adapter?.initialize) {
+                        logger.info(`SessionManager | Bootstrapping adapter for ${sysInfo.id}...`);
+                        await adapter.initialize(client);
+                    }
+                }
+
+                this.systemInitialized = true;
+                logger.info('SessionManager | System bootstrap complete.');
+            } catch (err: any) {
+                logger.error(`SessionManager | Bootstrap failed: ${err.message}`);
+                this.bootstrapPromise = null; // Allow retry if failed
+                throw err;
+            }
+        })();
     }
 
     public getSystemClient(): CoreSocket {
@@ -100,7 +141,7 @@ export class SessionManager {
     }
 
     public isCacheReady(): boolean {
-        return this.cacheInstance?.hasLoaded() || false;
+        return this.systemInitialized && (this.cacheInstance?.hasLoaded() || false);
     }
 
     public setCache(cache: any) {

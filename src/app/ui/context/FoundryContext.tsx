@@ -346,7 +346,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const isAuthenticated = !!token;
 
             if (status === 'setup') return 'setup';
-            if (!data.connected) {
+
+            // Wait until backend is fully initialized (Cache + Discovery)
+            if (!data.connected || data.initialized === false) {
                 // If the probe discovered a world (worldTitle present and status is startup),
                 // the world is running but the service account cannot log in.
                 // Show world info without login form rather than the generic booting spinner.
@@ -355,6 +357,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                     data.system.worldTitle !== 'Reconnecting...';
                 return hasWorldInfo ? 'world-closed' : 'initializing';
             }
+
             if (status === 'offline') return 'initializing'; // Still trying to connect
             if (status === 'startup') return 'startup';
             if (status !== 'active') return 'setup';

@@ -52,8 +52,20 @@ export class ShadowdarkDiscovery {
                 const persistentCache = PersistentCache.getInstance();
 
                 // Fetch the actual Shadowdark system version from the world
-                const system = await client.getSystem?.() || {};
-                const systemVersion = system.version || 'unknown';
+                // Implementation Note: client.getSystem() might be empty if called too early in the handshake
+                let system = await client.getSystem?.() || {};
+                let systemVersion = system.version || 'unknown';
+
+                if (systemVersion === 'unknown') {
+                    logger.debug('[ShadowdarkDiscovery] System version is unknown, waiting for client stabilization...');
+                    // Short retry loop for version discovery
+                    for (let i = 0; i < 5; i++) {
+                        await new Promise(r => setTimeout(r, 1000));
+                        system = await client.getSystem?.() || {};
+                        systemVersion = system.version || 'unknown';
+                        if (systemVersion !== 'unknown') break;
+                    }
+                }
 
                 // Use system version for the key (Format: system-data-v.3.6.2)
                 const dataKey = `system-data-v.${systemVersion}`;
@@ -71,6 +83,8 @@ export class ShadowdarkDiscovery {
                         cache.setSystemData(cachedData);
                         return cachedData;
                     }
+                } else {
+                    logger.debug(`[ShadowdarkDiscovery] Cache signature mismatch or missing. Current: ${currentSig}, Cached: ${cachedSig}`);
                 }
 
                 logger.info(`[ShadowdarkDiscovery] Performing Parallel Deep Discovery for Shadowdark v${systemVersion}...`);
@@ -111,7 +125,7 @@ export class ShadowdarkDiscovery {
                         const path = await import('node:path');
                         const cacheDir = path.join(process.cwd(), '.data', 'cache', this.CACHE_NS);
 
-                        if (fs.existsSync(cacheDir)) {
+                        if (fs.existsSync(cacheDir) && systemVersion !== 'unknown') {
                             const files = fs.readdirSync(cacheDir);
                             for (const file of files) {
                                 if (file.startsWith('system-data-') && !file.includes(systemVersion)) {
@@ -181,12 +195,14 @@ export class ShadowdarkDiscovery {
             // Read version from package.json for cache busting
             const version = await this._getAppVersion();
 
-            // Only check world status if we don't have it (or just use a generic 'world' key if not supported)
-            // getWorldStatus is useful for cache-busting between different worlds on the same server
-            const world = (typeof client.getWorldStatus === 'function') ? await client.getWorldStatus() : 'unknown';
+            // Use stable identifiers from getGameData() if available
+            const gameData = (typeof client.getGameData === 'function') ? client.getGameData() : null;
+            const worldId = gameData?.world?.id || (typeof client.getWorldStatus === 'function' ? await client.getWorldStatus() : 'unknown');
+            const systemId = gameData?.system?.id || 'shadowdark';
+            const systemVersion = gameData?.system?.version || 'unknown';
             const packCount = this.DISCOVERY_PACKS.length;
 
-            const sig = `${world}-${packCount}-${version}`;
+            const sig = `${worldId}-${systemId}-${systemVersion}-${packCount}-${version}`;
             return createHash('md5').update(sig).digest('hex');
         } catch (e) {
             return null;

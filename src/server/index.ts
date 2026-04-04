@@ -169,27 +169,14 @@ async function startServer() {
 
         logger.info('Core Service | System Client connected/reconnected. Ensuring Backend Services is running...');
         
-        // Only perform initial discovery if not already warmed up
+        // Holistic bootstrap: Cache -> Adapter -> Discovery
+        // This is now an awaited, sequential block to ensure 'initialized' 
+        // only flips once everything is confirmed and safe.
         (async () => {
             try {
-                const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-                const cache = CompendiumCache.getInstance();
-                
-                // Fixed: Check hasLoaded if available or just let initialize handle it
-                await cache.initialize(systemClient);
-                sessionManager.setCache(cache);
-
-                // Eagerly warm up the adapter's system data cache if needed
-                const sysInfo = await systemClient.getSystem();
-                if (sysInfo && sysInfo.id) {
-                    const { getAdapter } = await import('../modules/core/registry');
-                    const adapter = getAdapter(sysInfo.id);
-                    if (adapter && adapter.initialize) {
-                        await adapter.initialize(systemClient);
-                    }
-                }
+                await sessionManager.bootstrap(systemClient);
             } catch (e: any) {
-                logger.error(`Core Service | Service initialization check failed: ${e.message}`);
+                logger.error(`Core Service | Bootstrap failed: ${e.message}`);
             }
         })();
     });
@@ -435,6 +422,9 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    // --- Global Guard: Block API until bootstrap complete ---
+    appRouter.use(ensureInitialized);
+
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
@@ -449,7 +439,8 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/system/data', ensureInitialized, async (req: any, res: any) => {
+    // System Data (Already has ensureInitialized via router.use)
+    appRouter.get('/system/data', async (req: any, res: any) => {
         try {
             // Auth handled by middleware
             const systemClient = sessionManager.getSystemClient();

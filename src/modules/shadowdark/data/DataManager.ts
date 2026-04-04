@@ -79,6 +79,12 @@ export class DataManager {
                         const systemData = cache.systemData || {};
                         const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
 
+                        const enrichedDoc = { 
+                            ...fullDoc, 
+                            uuid: uuid, 
+                            isShallow: false 
+                        };
+
                         // Universal Caching: Update *all* collections that contain this UUID
                         let foundInAny = false;
                         for (const key of collections) {
@@ -87,10 +93,8 @@ export class DataManager {
                             if (idx !== -1) {
                                 logger.debug(`[DataManager] Hydrating existing entry in collection: ${key}`);
                                 systemData[key][idx] = { 
-                                    ...fullDoc, 
-                                    uuid: uuid, 
-                                    pack: systemData[key][idx].pack,
-                                    isShallow: false 
+                                    ...enrichedDoc,
+                                    pack: systemData[key][idx].pack
                                 };
                                 foundInAny = true;
                             }
@@ -115,9 +119,9 @@ export class DataManager {
                             const target = typeMap[type] || 'items';
                             if (!systemData[target]) systemData[target] = [];
                             logger.debug(`[DataManager] Adding new hydrated doc to fallback collection: ${target}`);
-                            systemData[target].push({ ...fullDoc, uuid: uuid, isShallow: false });
+                            systemData[target].push(enrichedDoc);
                         }
-                        return fullDoc;
+                        return enrichedDoc;
                     } else {
                         logger.warn(`[DataManager] Hydration for ${uuid} returned no data.`);
                         return null; 

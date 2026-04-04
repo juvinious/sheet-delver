@@ -357,6 +357,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         this.sceneDataCache = null; // Clear scene cache
                         this.userMap.clear();
                         clearTimeout(timeout);
+                        // Still emit connect for setup mode to release the bootstrap lock
                         this.emit('connect');
                         resolve();
                         return;
@@ -372,7 +373,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
                     // 7. Start Heartbeat ONLY after bootstrapping is complete
                     this.startHeartbeat();
-                    this.emit('connect');
+                    // DEFERRED: We no longer emit 'connect' here, as gameDataCache isn't set yet.
+                    // This prevents bootstrapping races.
                     if (gameData) {
                         this.gameDataCache = gameData;
                         if (sceneData) {
