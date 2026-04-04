@@ -15,6 +15,16 @@ export interface EnrichmentContext {
 }
 
 /**
+ * Mandatory traits by Ancestry/Class Name for rule-based injection.
+ * These are added if they aren't already resolved from the base document.
+ */
+const RULE_DEFAULTS: Record<string, string[]> = {
+    "Orc": ["Compendium.shadowdark.talents.Item.LR6h4lXVXwx7AFQ6"],       // Sturdy
+    "Half-Orc": ["Compendium.shadowdark.talents.Item.LR6h4lXVXwx7AFQ6"],  // Sturdy
+    "Human": ["Compendium.shadowdark.talents.Item.DYWFJu5XeazJYc0P"]     // Ambitious
+};
+
+/**
  * Standardized item enrichment for Shadowdark characters.
  * Identical logic shared between Generator (Client) and Importer (Server).
  */
@@ -132,37 +142,80 @@ export async function resolveSubItems(
     const items: any[] = [];
     if (!parentItem?.system) return items;
 
-    // Shadowdark System: Class and Ancestry items can have 'talents', 'features', 'abilities'
-    // but we must check 'talentChoiceCount' to see if they are FIXED or CHOICES.
-    const choiceCount = parentItem.system.talentChoiceCount || 0;
-    const rawTalents = parentItem.system.talents || [];
-    
-    // Logic from main: Only auto-add talents if choiceCount is 0 or all are fixed
-    const talentRefs = (choiceCount === 0 || rawTalents.length <= choiceCount) ? rawTalents : [];
-    
+    // Logic: Always include Fixed base traits. Choices are handled via UI or JSON.
+    const isClass = parentItem.type === "Class";
+    const isAncestry = parentItem.type === "Ancestry";
+
+    const talentRefs = parentItem.system.talents || [];
     const featureRefs = parentItem.system.features || [];
     const abilityRefs = parentItem.system.abilities || [];
-    
-    const allRefs = [...talentRefs, ...featureRefs, ...abilityRefs];
+    const classAbilities = parentItem.system.classAbilities || [];
+    const startingSpells = parentItem.system.startingSpells || [];
 
-    logger.debug(`[ActorEnricher] Resolving ${allRefs.length} sub-items for ${parentItem.name}...`);
+    // Aggregate references
+    let allRefs = [
+        ...talentRefs, 
+        ...featureRefs, 
+        ...abilityRefs, 
+        ...classAbilities, 
+        ...startingSpells
+    ];
 
-    for (const ref of allRefs) {
+    // Inject Rule Defaults if missing
+    const defaults = RULE_DEFAULTS[parentItem.name];
+    if (defaults) {
+        defaults.forEach(uuid => {
+            if (!allRefs.includes(uuid)) {
+                allRefs.push(uuid);
+            }
+        });
+    }
+
+    logger.debug(`[ActorEnricher] Resolving ${allRefs.length} sub-items for ${parentItem.name} (${parentItem.type})...`);
+
+    const resolvePromises = allRefs.map(async (ref) => {
         const uuid = (typeof ref === 'string') ? ref : (ref.uuid || ref._id || ref.id);
-        if (!uuid) continue;
+        if (!uuid) return null;
 
         try {
             const doc = await resolveDocFn(uuid);
             if (doc) {
-                const enriched = await enrichItem(doc, context);
-                if (enriched) items.push(enriched);
+                // FILTERING RULES (Shadowdark System):
+                let include = true;
+
+                if (doc.type === "Talent") {
+                    // IF Parent is Ancestry: Resolve ONLY if Fixed (length <= choiceCount)
+                    if (isAncestry) {
+                        const count = parentItem.system.talentChoiceCount || 0;
+                        const total = parentItem.system.talents?.length || 0;
+                        if (total > count) {
+                            include = false;
+                            logger.debug(`[ActorEnricher] Skipping ancestry choice talent: ${doc.name}`);
+                        }
+                    }
+                    // IF Parent is Class: Resolve ALL talents
+                    const isChoiceTemplate = doc.effects?.[0]?.changes?.[0]?.value === "REPLACEME";
+                    if (isChoiceTemplate && !isClass && !context.bonusTo) {
+                        include = false;
+                        logger.debug(`[ActorEnricher] Skipping un-resolved choice template: ${doc.name}`);
+                    }
+                }
+
+                if (include) {
+                    return await enrichItem(doc, context);
+                }
             } else {
                 logger.warn(`[ActorEnricher] Could not resolve sub-item: ${uuid}`);
             }
         } catch (e) {
-            // Graceful failure for dead links/orphaned UUIDs
-            logger.error(`[ActorEnricher] Orphaned UUID caught: ${uuid}`);
+            logger.error(`[ActorEnricher] Error resolving sub-item ${uuid}:`, e);
         }
+        return null;
+    });
+
+    const results = await Promise.all(resolvePromises);
+    for (const enriched of results) {
+        if (enriched) items.push(enriched);
     }
 
     return items;

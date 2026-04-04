@@ -150,12 +150,63 @@ export class DataManager {
         
         for (const key of collections) {
             const found = systemData[key]?.find((doc: any) => {
-                if (doc.name?.toLowerCase() !== normalized) return false;
-                if (!type) return true;
-                const docType = (doc.type || doc.documentType || "").toLowerCase();
-                return docType === type.toLowerCase();
+                const docName = doc.name?.toLowerCase() || "";
+                
+                // 1. Check for Name Match
+                let nameMatches = (docName === normalized);
+                
+                // 2. Fuzzy prefix match as fallback
+                if (!nameMatches) {
+                    if (docName.includes(normalized) && (docName.startsWith('language:') || docName.startsWith('deity:') || docName.startsWith('patron:'))) {
+                        nameMatches = true;
+                    }
+                }
+
+                if (!nameMatches) return false;
+
+                // 3. Type Match (if provided)
+                if (type) {
+                    const docType = (doc.type || doc.documentType || "").toLowerCase();
+                    
+                    // Map common Shadowdarkling singular to Foundry plural collections
+                    const typeMap: Record<string, string> = {
+                        'ancestry': 'ancestries',
+                        'class': 'classes',
+                        'deity': 'deities',
+                        'patron': 'patrons',
+                        'language': 'languages',
+                        'spell': 'spells',
+                        'talent': 'talents',
+                        'item': 'items',
+                        'table': 'tables'
+                    };
+
+                    // Map common Shadowdarkling singular to Foundry plural collections
+                    const targetCollection = typeMap[type.toLowerCase()] || `${type.toLowerCase()}s`;
+                    if (key === targetCollection) return true;
+
+                    // Fallback to internal type check if collection doesn't match
+                    return docType === type.toLowerCase();
+                }
+
+                return true;
             });
+
             if (found) return found;
+        }
+        
+        // Final Global Fallback: Search all collections by name if type-specific search fails
+        for (const key of Object.keys(systemData)) {
+            if (Array.isArray(systemData[key])) {
+                const found = systemData[key].find((doc: any) => {
+                    const docName = (doc.name || "").toLowerCase();
+                    return docName === name.toLowerCase() || docName === normalized.toLowerCase();
+                });
+                if (found) {
+                    logger.debug(`[DataManager] Found '${name}' via global fallback in collection: ${key}`);
+                    return found;
+                }
+            }
         }
         
         return null;

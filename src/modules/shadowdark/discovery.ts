@@ -50,11 +50,11 @@ export class ShadowdarkDiscovery {
             try {
                 const { PersistentCache } = await import('../../core/cache/PersistentCache');
                 const persistentCache = PersistentCache.getInstance();
-                
+
                 // Fetch the actual Shadowdark system version from the world
                 const system = await client.getSystem?.() || {};
                 const systemVersion = system.version || 'unknown';
-                
+
                 // Use system version for the key (Format: system-data-v.3.6.2)
                 const dataKey = `system-data-v.${systemVersion}`;
                 const sigKey = `system-data-sig-v.${systemVersion}`;
@@ -80,13 +80,23 @@ export class ShadowdarkDiscovery {
                 // Fetch all packs sequentially to prevent socket saturation
                 for (const packInfo of this.DISCOVERY_PACKS) {
                     try {
-                        const docs = await client.getPackEntries?.(packInfo.id) || [];
+                        // Request type and system fields so we don't have a "Blind Discovery"
+                        const docs = await client.getPackEntries?.(packInfo.id, { 
+                            index: true, 
+                            fields: ["type", "system"] 
+                        }) || [];
                         if (docs.length > 0) {
-                            const mappedDocs = docs.map((d: any) => ({
-                                ...d,
-                                pack: packInfo.id,
-                                uuid: d.uuid || `Compendium.${packInfo.id}.${d._id || d.id}`
-                            }));
+                            const mappedDocs = docs.map((d: any) => {
+                                const id = d._id || d.id;
+                                // MIRROR WORKING LOG FORMAT: Compendium.<scope>.<pack>.Item.<id>
+                                // The logs show that Foundry manually sends '.Item.' for these references.
+                                const uuid = d.uuid || `Compendium.${packInfo.id}.Item.${id}`;
+                                return {
+                                    ...d,
+                                    pack: packInfo.id,
+                                    uuid: uuid
+                                };
+                            });
                             this._processDocuments(mappedDocs, results, processedUuids);
                         }
                     } catch (err) {
@@ -100,7 +110,7 @@ export class ShadowdarkDiscovery {
                         const fs = await import('node:fs');
                         const path = await import('node:path');
                         const cacheDir = path.join(process.cwd(), '.data', 'cache', this.CACHE_NS);
-                        
+
                         if (fs.existsSync(cacheDir)) {
                             const files = fs.readdirSync(cacheDir);
                             for (const file of files) {

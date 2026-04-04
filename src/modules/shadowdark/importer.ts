@@ -266,6 +266,21 @@ export class ShadowdarkImporter {
                 return null;
             };
 
+            const resolveCompendiumUuid = (doc: any, fallbackName: string, isCore: boolean = false): string => {
+                if (!doc) {
+                    return fallbackName || "";
+                }
+                // Trust the discovery cache UUID verbatim.
+                if (doc.uuid) return doc.uuid;
+                
+                // Fallback for raw objects without UUIDs (Mirroring working log format)
+                if (doc.pack && (doc._id || doc.id)) {
+                    return `Compendium.${doc.pack}.Item.${doc._id || doc.id}`;
+                }
+                
+                return doc.name || fallbackName || "";
+            };
+
             const getClassList = async () => {
                 return systemData.classes || [];
             };
@@ -296,6 +311,17 @@ export class ShadowdarkImporter {
             const actorData: any = {
                 name: json.name || "Unnamed",
                 type: "Player",
+                img: "systems/shadowdark/assets/tokens/cowled_token_green.webp",
+                prototypeToken: {
+                    name: json.name || "Unnamed",
+                    actorLink: true,
+                    displayName: 0,
+                    texture: {
+                        src: "systems/shadowdark/assets/tokens/cowled_token_green.webp",
+                        scaleX: 1,
+                        scaleY: 1
+                    }
+                },
                 system: {
                     abilities: {
                         str: { base: json.rolledStats.STR, bonus: 0 },
@@ -322,6 +348,9 @@ export class ShadowdarkImporter {
                         value: json.level || 1,
                         xp: json.XP || 0
                     },
+                    details: {
+                        title: json.title || ""
+                    },
                     slots: json.gearSlotsTotal || 10,
                     languages: [] 
                 }
@@ -345,22 +374,22 @@ export class ShadowdarkImporter {
             const [ancestry, background, deity, patron] = await Promise.all(coreResolvers);
 
             if (ancestry) {
-                actorData.system.ancestry = ancestry.uuid || `Item.${ancestry._id}`;
+                actorData.system.ancestry = resolveCompendiumUuid(ancestry, json.ancestry, true);
                 const ancestryTalents = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
                 talents.push(...ancestryTalents);
             }
             if (background) {
-                actorData.system.background = background.uuid || `Item.${background._id}`;
+                actorData.system.background = resolveCompendiumUuid(background, json.background, true);
                 const bgTalents = await resolveSubItems(background, resolveDoc, enrichmentContext);
                 talents.push(...bgTalents);
             }
             if (deity) {
-                actorData.system.deity = deity.uuid || `Item.${deity._id}`;
+                actorData.system.deity = resolveCompendiumUuid(deity, json.deity, true);
                 const deityTalents = await resolveSubItems(deity, resolveDoc, enrichmentContext);
                 talents.push(...deityTalents);
             }
             if (patron) {
-                actorData.system.patron = patron.uuid || `Item.${patron._id}`;
+                actorData.system.patron = resolveCompendiumUuid(patron, patronName, true);
                 const patronTalents = await resolveSubItems(patron, resolveDoc, enrichmentContext);
                 talents.push(...patronTalents);
             }
@@ -368,16 +397,19 @@ export class ShadowdarkImporter {
             // Languages
             if (json.languages) {
                 log(`[Importer] Resolving ${json.languages.split(',').length} languages in parallel...`);
-                const langPromises = json.languages.split(/\s*,\s*/).map((lang: string) => findItem(lang, "Language"));
+                const langPromises = json.languages.split(/\s*,\s*/).map((lang: string) => findItem(lang.trim(), "Language"));
                 const resolvedLangs = await Promise.all(langPromises);
-                actorData.system.languages = resolvedLangs.filter(Boolean).map(l => l.uuid || `Item.${l._id}`);
+                const rawLangs = json.languages.split(/\s*,\s*/);
+                actorData.system.languages = resolvedLangs.map((l, i) => {
+                    return resolveCompendiumUuid(l, rawLangs[i].trim());
+                }).filter((l: string) => l && l.length > 0);
             }
 
             // Class & Static Items
             const classList = await getClassList();
             const classObj = await findItem(json.class, "Class");
             if (classObj) {
-                actorData.system.class = classObj.uuid || `Item.${classObj._id}`;
+                actorData.system.class = resolveCompendiumUuid(classObj, json.class, true);
 
                 // Starting Spells (Fixed)
                 if (classObj.system?.startingSpells) {
@@ -404,7 +436,14 @@ export class ShadowdarkImporter {
                     const item = await findItem(g.name, type);
                     if (item) {
                         const itemData = sanitizeItem(item);
-                        if (itemData.system) itemData.system.quantity = g.quantity;
+                        
+                        // Ammo quantity fix: If it's a stackable ammo type and quantity is 1 (Shadowdarkling representation), 
+                        // set it to 20 for standard Foundry behavior.
+                        let quantity = g.quantity;
+                        const isAmmo = itemData.name.toLowerCase().includes('arrow') || itemData.name.toLowerCase().includes('bolt');
+                        if (isAmmo && quantity === 1) quantity = 20;
+
+                        if (itemData.system) itemData.system.quantity = quantity;
                         return itemData;
                     } else {
                         // Custom Handlers

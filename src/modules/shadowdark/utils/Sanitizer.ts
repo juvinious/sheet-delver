@@ -29,7 +29,11 @@ export function sanitizeItem(item: any): any {
             const val = clean.system[key];
             if (Array.isArray(val) && (val.length === 0 || typeof val[0] === 'string')) {
                 // Heuristic: If it's a known non-problematic array (like 'class' or 'languages'), keep it
-                const whitelist = ['class', 'languages', 'talents', 'talentChoices'];
+                const whitelist = [
+                    'class', 'languages', 'talents', 'talentChoices', 
+                    'properties', 'ammoClass', 'armorClass', 'baseWeapon', 
+                    'baseArmor', 'range', 'bonus', 'ac'
+                ];
                 if (!whitelist.includes(key)) {
                     delete clean.system[key];
                 }

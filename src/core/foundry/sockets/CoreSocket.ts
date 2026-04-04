@@ -646,8 +646,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         }
     }
 
-    public async getPackEntries(packId: string): Promise<any[]> {
-        logger.debug(`CoreSocket | Fetching entries for pack ${packId}...`);
+    public async getPackEntries(packId: string, options: any = { index: true }): Promise<any[]> {
+        logger.debug(`CoreSocket | Fetching entries for pack ${packId} (options: ${JSON.stringify(options)})...`);
         this.heartbeatPaused = true;
         
         try {
@@ -657,7 +657,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 const response: any = await this.emitSocketEvent('modifyDocument', {
                     type: packId.includes('tables') ? 'RollTable' : 'Item',
                     action: 'get',
-                    operation: { pack: packId, index: true }
+                    operation: { 
+                        pack: packId, 
+                        index: true,
+                        fields: options.fields || []
+                    }
                 }, 5000);
                 if (response?.result && Array.isArray(response.result)) return response.result;
             } catch (e) {
@@ -667,7 +671,11 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             // Strategy 2: Modern getDocuments with index flag (Canonical V13)
             try {
                 logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 2 (getDocuments): ${packId}`);
-                const response: any = await this.emitSocketEvent('getDocuments', packId.includes('tables') ? 'RollTable' : 'Item', { index: true, pack: packId }, 5000);
+                const response: any = await this.emitSocketEvent('getDocuments', packId.includes('tables') ? 'RollTable' : 'Item', { 
+                    index: true, 
+                    pack: packId,
+                    fields: options.fields || []
+                }, 5000);
                 if (response?.result && Array.isArray(response.result)) return response.result;
             } catch (e) {
                 // Trial fallback
@@ -1012,49 +1020,56 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             const packId = packParts.join('.');
 
 
-            // Agnostic Trial Strategy: try the UUID type first, then common fallbacks
-            const typesToTry = [];
-            if (typeFromUuid) typesToTry.push(typeFromUuid);
+            // Extract type from UUID if possible (e.g., ...Item...)
+            // Since we popped the ID from 'parts', the new last item IS the type segment (if present).
+            const typeInUuid = (parts.length >= 2) ? parts[parts.length - 1] : null;
             
-            const fallbackBaseTypes = ['Item', 'Actor', 'JournalEntry', 'RollTable'];
-            for (const bt of fallbackBaseTypes) {
-                if (bt !== typeFromUuid) typesToTry.push(bt);
+            // Core Foundry types that are valid roots for compendium lookups
+            const coreTypes = ['Item', 'Actor', 'JournalEntry', 'RollTable', 'Scene', 'Macro', 'Playlist'];
+            
+            let typesToTry: string[] = [];
+            if (typeInUuid && coreTypes.includes(typeInUuid)) {
+                typesToTry = [typeInUuid];
+            } else {
+                typesToTry = ['Item', 'Actor', 'JournalEntry', 'RollTable'];
             }
 
-            // Map base types to potential socket collection names (v13 standard vs legacy)
-            const collectionMapping: Record<string, string[]> = {
-                'Item': ['Item', 'Items'],
-                'Actor': ['Actor', 'Actors'],
-                'JournalEntry': ['JournalEntry', 'JournalEntries'],
-                'RollTable': ['RollTable', 'RollTables']
-            };
+            // Trial timeout: Tighten to 500ms for local speed
+            const TRIAL_TIMEOUT = 500;
 
-            for (const baseType of typesToTry) {
-                const trialTypes = collectionMapping[baseType] || [baseType];
-                for (const t of trialTypes) {
-                    // Try 1: Unified modifyDocument API (PROVEN WINNER)
+            for (const t of typesToTry) {
+                    if (!this.isConnected) return null; // Bail fast if disconnected
+                    
+                    // Strategy 1: modifyDocument (The successful one in latest tests)
                     try {
                         logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 1 (modifyDocument): ${packId} ${t} ${id}`);
                         const resp: any = await this.emitSocketEvent('modifyDocument', {
                             type: t,
                             action: 'get',
                             operation: { pack: packId, ids: [id] }
-                        }, 5000);
-                        if (resp?.result?.[0]) return resp.result[0];
+                        }, TRIAL_TIMEOUT);
+                        
+                        const found = resp?.result?.find((d: any) => (d._id === id || d.uuid?.endsWith(id)));
+                        if (found) return found;
                     } catch (e) {
-                         // Trial fallback
+                         // Fallback
                     }
 
-                    // Try 2: Modern getDocuments with options object
+                    // Strategy 2: Modern getDocuments (Backup)
                     try {
                         logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 2 (getDocuments): ${packId} ${t} ${id}`);
-                        const resp: any = await this.emitSocketEvent('getDocuments', t, { ids: [id], pack: packId }, 5000);
-                        if (resp?.result?.[0]) return resp.result[0];
+                        const resp: any = await this.emitSocketEvent('getDocuments', {
+                            type: t,
+                            operation: { pack: packId, ids: [id] }
+                        }, TRIAL_TIMEOUT);
+                        
+                        // Verify result
+                        const found = resp?.result?.find((d: any) => (d._id === id || d.uuid?.endsWith(id)));
+                        if (found) return found;
                     } catch (e) {
-                         // Trial fallback
+                         // Fallback
                     }
                 }
-            }
 
             logger.debug(`[CoreSocket] [TRACE] fetchByUuid FAILED: ${uuid}`);
             return null;

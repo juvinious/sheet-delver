@@ -84,15 +84,60 @@ async function runDiagnostic() {
             }
         }
 
-        // 6. Check Cache Naming
-        const cacheDir = path.join(process.cwd(), '.data', 'cache', 'shadowdark');
-        if (fs.existsSync(cacheDir)) {
-            const files = fs.readdirSync(cacheDir);
-            const systemDataFile = files.find(f => f.startsWith('system-data-v.'));
-            if (systemDataFile) {
-                logger.info(`  [VERIFIED] System data cache exists: ${systemDataFile}`);
-            } else {
-                logger.warn("  [WARNING] No system data cache found matching the new naming convention.");
+        // 7. Verify Base Class Traits (Enrichment Logic)
+        logger.info("--- Verifying Enrichment Logic (Class Base Traits) ---");
+        
+        // Find Fighter, Wizard, Warlock, and Orc
+        const classes = (data.classes || []) as any[];
+        const ancestries = (data.ancestries || []) as any[];
+        
+        const fighter = classes.find((c: any) => c.name === "Fighter");
+        const wizard = classes.find((c: any) => c.name === "Wizard");
+        const warlock = classes.find((c: any) => c.name === "Warlock");
+        const halfOrc = ancestries.find((a: any) => a.name === "Half-Orc");
+
+        const targets = [
+            { doc: fighter, expected: "Weapon Mastery" },
+            { doc: wizard, expected: "Spellcasting (Wizard)" },
+            { doc: warlock, expected: "Patron" },
+            { doc: halfOrc, expected: "Mighty" }
+        ];
+        
+        for (const target of targets) {
+            if (!target.doc) {
+                logger.warn(`Target document not found for: ${target.expected}`);
+                continue;
+            }
+            
+            logger.info(`Testing Document: ${target.doc.name} (${target.doc.uuid})`);
+            const fullDoc = await socket.fetchByUuid(target.doc.uuid);
+            if (fullDoc) {
+                const { resolveSubItems } = await import('../../modules/shadowdark/api/actor-enricher');
+                const enrichmentContext = {
+                    addedSourceIds: new Set<string>(),
+                    addedNames: new Set<string>(),
+                    targetLevel: 1,
+                    actor: { name: "Test Actor", system: { abilities: {} } }
+                };
+                
+                const resolveDoc = (uuid: string) => socket.fetchByUuid(uuid);
+                const baseTraits = await resolveSubItems(fullDoc, resolveDoc, enrichmentContext);
+                
+                logger.info(`${fullDoc.name} has ${baseTraits.length} base traits resolved.`);
+                baseTraits.forEach((t: any) => logger.info(`  - [FOUND] ${t.name}`));
+                
+                const found = baseTraits.some((t: any) => t.name.toLowerCase().includes(target.expected.toLowerCase()));
+                if (found) logger.info(`✅ SUCCESS: ${target.expected} found!`);
+                else {
+                    logger.error(`❌ FAILED: ${target.expected} missing!`);
+                    // Dump the system data to see what we missed
+                    logger.info(`  [DEBUG] system.talents: ${JSON.stringify(fullDoc.system?.talents || [])}`);
+                    logger.info(`  [DEBUG] system.features: ${JSON.stringify(fullDoc.system?.features || [])}`);
+                    logger.info(`  [DEBUG] system.abilities: ${JSON.stringify(fullDoc.system?.abilities || [])}`);
+                    if (fullDoc.system?.classAbilities) {
+                        logger.info(`  [DEBUG] system.classAbilities: ${JSON.stringify(fullDoc.system.classAbilities)}`);
+                    }
+                }
             }
         }
 

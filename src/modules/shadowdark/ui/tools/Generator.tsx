@@ -57,9 +57,10 @@ export default function Generator() {
         ancestry: '',
         class: '',
         background: '',
-        alignment: 'neutral',
+         alignment: 'neutral',
         deity: '',
         patron: '',
+        title: '',
         name: '',
         description: '',
         stats: {
@@ -287,6 +288,7 @@ export default function Generator() {
                 deity: data.deity?.uuid || '',
                 alignment: data.alignment?.toLowerCase() || 'neutral',
                 patron: data.patron?.uuid || '',
+                title: data.title || prev.title,
                 name: data.name || prev.name, // Use generated name or keep existing
                 // Keep level0 flag as requested
                 level0: formData.level0,
@@ -374,32 +376,39 @@ export default function Generator() {
 
                 if (!details?.system) return;
 
-                // 2. TALENTS
+                // 2. TALENTS & TRAITS
                 const fixedTalents: any[] = [];
                 const choiceTalents: any[] = [];
                 const choiceCount = details.system.talentChoiceCount || 0;
-                let effectiveChoiceCount = choiceCount;
 
-                if (details.system.talents?.length > 0) {
-                    const docs = await Promise.all(details.system.talents.map((u: any) => {
-                        const uuid = typeof u === 'string' ? u : u.uuid;
-                        return fetchDocument(uuid);
-                    }));
+                // Use the new centralized resolveSubItems logic
+                const enrichmentContext: EnrichmentContext = {
+                    addedSourceIds: new Set<string>(),
+                    addedNames: new Set<string>(),
+                    targetLevel: formData.level0 ? 0 : 1,
+                    actor: null
+                };
 
-                    const loaded = docs.map((d, i) => d ? {
-                        uuid: typeof details.system.talents[i] === 'string' ? details.system.talents[i] : details.system.talents[i].uuid,
-                        name: d.name,
-                        description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
-                    } : null).filter(d => d);
+                const subItems = await resolveSubItems(details, fetchDocument, enrichmentContext);
+                
+                // For the UI, we still want to distinguish between what was added automatically 
+                // and what might be a choice.
+                // However, resolveSubItems ALREADY filters by choiceCount for ancestries.
+                fixedTalents.push(...subItems.map(i => ({
+                    uuid: i.flags?.core?.sourceId || i.uuid || i._id,
+                    name: i.name,
+                    description: (i.system?.description?.value || i.system?.description || "").replace(/<[^>]+>/g, ' ')
+                })));
 
-                    if (choiceCount === 0 || loaded.length <= choiceCount) {
-                        fixedTalents.push(...loaded);
-                        effectiveChoiceCount = 0;
-                    } else {
-                        choiceTalents.push(...loaded);
-                    }
+                // If we have more talents than choice count, the UI might need to show choices
+                // But in Shadowdark, if total <= choiceCount, they are all fixed.
+                const total = details.system.talents?.length || 0;
+                if (total > choiceCount && choiceCount > 0) {
+                     // Fetch actual choice docs for the modal if needed
+                     // (Leaving existing choice logic as is if it relies on specific UI state)
                 }
-                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount || 0 });
+
+                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: choiceTalents.length > 0 ? choiceCount : 0 });
 
             } catch (e) {
                 logger.error("Ancestry load error", e);
@@ -462,27 +471,24 @@ export default function Generator() {
         }
 
         const loadDetails = async () => {
-            // 1. Talents
-            const fixed: any[] = [];
+            // 1. TALENTS & ABILITIES
+            const enrichmentContext: EnrichmentContext = {
+                addedSourceIds: new Set<string>(),
+                addedNames: new Set<string>(),
+                targetLevel: formData.level0 ? 0 : 1,
+                actor: null
+            };
+
+            const subItems = await resolveSubItems(classDetails, fetchDocument, enrichmentContext);
+            
+            const fixed = subItems.map(i => ({
+                uuid: i.flags?.core?.sourceId || i.uuid || i._id,
+                name: i.name,
+                description: (i.system?.description?.value || i.system?.description || "").replace(/<[^>]+>/g, ' ')
+            }));
+
+            // Choice Talents (Manual selection table)
             const choice: any[] = [];
-            const choiceCount = classDetails.system.talentChoiceCount || 0;
-            const table = classDetails.system.classTalentTable || false;
-
-            // Fixed Talents
-            if (classDetails.system.talents?.length > 0) {
-                try {
-                    const docs = await Promise.all(classDetails.system.talents.map((u: string) => fetchDocument(u)));
-                    fixed.push(...docs.map((d, i) => d ? {
-                        uuid: classDetails.system.talents[i],
-                        name: d.name,
-                        description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
-                    } : null).filter(d => d));
-                } catch (e) {
-                    logger.error("Talent load error", e);
-                }
-            }
-
-            // Choice Talents
             if (classDetails.system.talentChoices?.length > 0) {
                 try {
                     const docs = await Promise.all(classDetails.system.talentChoices.map((u: string) => fetchDocument(u)));
@@ -496,7 +502,12 @@ export default function Generator() {
                 }
             }
 
-            setClassTalents({ fixed, choice, choiceCount, table });
+            setClassTalents({ 
+                fixed, 
+                choice, 
+                choiceCount: classDetails.system.talentChoiceCount || 0, 
+                table: classDetails.system.classTalentTable || false 
+            });
 
             // 2. Weapons
             if (Array.isArray(classDetails.system.weapons) && classDetails.system.weapons.length > 0) {
@@ -799,6 +810,9 @@ export default function Generator() {
                     patron: effectivePatronUuid || "",    // Link to Compendium UUID (Correct for Shadowdark)
                     alignment: formData.alignment,
                     deity: formData.deity,
+                    details: {
+                        title: formData.title || ""
+                    },
                     languages: languageUuids, // Populate with selected language UUIDs
                     level: {
                         value: formData.level0 ? 0 : 1,
