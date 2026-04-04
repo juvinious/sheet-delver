@@ -587,22 +587,32 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
     computed.slotsUsed = Math.max(0, usedSlots);
     computed.gearSlots = computed.maxSlots; // Compatibility mapping
 
-    // 5. XP & Leveling
+    // 5. Find Key Items (Class, Ancestry, etc.) - Moved up for leveling logic
+    const lowerType = (i: any) => (i.type || "").toLowerCase();
+    computed.classDetails = items.find((i: any) => lowerType(i) === 'class');
+    computed.ancestryDetails = items.find((i: any) => lowerType(i) === 'ancestry');
+    computed.backgroundDetails = items.find((i: any) => lowerType(i) === 'background');
+    computed.patronDetails = items.find((i: any) => lowerType(i) === 'patron');
+
+    // 6. XP & Leveling
     const levelVal = Number(effectApplied.level?.value) || 0;
     const xpVal = Number(effectApplied.level?.xp) || 0;
     const nextXP = Number(effectApplied.level?.xp_max) || (Math.max(1, levelVal) * 10);
     computed.xpNextLevel = nextXP;
-    computed.levelUp = xpVal >= nextXP && nextXP > 0;
 
-    // 6. Character Status Flags
+    // Advanced Level 0 Check: Characters advance from 0 to 1 manually (no XP)
+    // We show the button if they are level 0 and haven't picked a class yet.
+    computed.levelUp = (xpVal >= nextXP && nextXP > 0) || (levelVal === 0 && !computed.classDetails);
+
+    // 7. Character Status Flags
     computed.isSpellcaster = isSpellcaster(actorProxy);
     computed.canUseMagicItems = canUseMagicItems(actorProxy);
     computed.showSpellsTab = shouldShowSpellsTab(actorProxy);
 
-    // 7. Attacks & Combat
+    // 8. Attacks & Combat
     computed.attacks = calculateAttacks(actorProxy, items);
 
-    // 8. Inventory Categorization (for UI components)
+    // 9. Inventory Categorization (for UI components)
     // Exclude non-physical items like Spells, Talents, etc.
     const physicalItems = items.filter(i => 
         !['Talent', 'Spell', 'Effect', 'Class', 'Ancestry', 'Background', 'Deity', 'Title', 'Language', 'Patron', 'Gem', 'Boon'].includes(i.type)
@@ -613,15 +623,8 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
     const cr = physicalItems.filter(i => !i.system?.equipped && !i.system?.stashed);
     computed.inventory = { equipped: eq, stashed: st, carried: cr };
 
-    // 9. Language Limits
+    // 10. Language Limits
     computed.languageLimits = getLanguageLimits(actorProxy, systemData);
-
-    // 9. Find Key Items (Class, Ancestry, etc.)
-    const lowerType = (i: any) => (i.type || "").toLowerCase();
-    computed.classDetails = items.find((i: any) => lowerType(i) === 'class');
-    computed.ancestryDetails = items.find((i: any) => lowerType(i) === 'ancestry');
-    computed.backgroundDetails = items.find((i: any) => lowerType(i) === 'background');
-    computed.patronDetails = items.find((i: any) => lowerType(i) === 'patron');
 
     return computed;
 };

@@ -53,6 +53,16 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         setXpVal(actor.system?.level?.xp || 0);
     }, [actor.system?.level?.xp]);
 
+    const getClassName = () => {
+        if (!actor.details?.class) {
+            return '';
+        }
+        if (actor.details?.class === 'Level 0') {
+            return 'Adventurer';
+        }
+        return actor.details?.class;
+    };
+
     const openSelection = (field: string, title: string, dataKey?: string, multiSelect = false) => {
         // Resolve options from systemData
         let options: any[] = [];
@@ -159,11 +169,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
                             {actor.computed?.levelUp ? (
-                                <i
-                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors"
+                                <button
+                                    onClick={triggerLevelUp}
+                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
                                 >
                                     LEVEL UP!
-                                </i>
+                                </button>
                             ) : (
                                 <span>{actor.system?.level?.value ?? 1}</span>
                             )}
@@ -189,7 +200,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         </div>
                         <div className="p-2 font-serif text-lg bg-white flex items-center gap-2 font-bold">
                             <span className="w-full">
-                                {actor.details?.class || '-'}
+                                {getClassName()}
                             </span>
                         </div>
                     </div>
@@ -335,7 +346,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 return (
                                     <>
                                         <div className="flex items-center gap-1.5 mr-1">
-                                            <div 
+                                            <div
                                                 title="Total Languages Limit"
                                                 className="bg-neutral-100 text-black text-[10px] px-1.5 py-0.5 border border-black font-bold uppercase tracking-tighter shadow-[1px_1px_0px_0px_rgba(255,255,255,0.3)]"
                                             >

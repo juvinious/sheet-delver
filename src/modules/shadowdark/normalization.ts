@@ -122,7 +122,7 @@ export class ShadowdarkNormalizer {
 
         const abilities = computed.abilities || actor.system?.abilities || {};
         const s = actor.system || {};
-        const level = s.level?.value || 1;
+        const level = s.level?.value ?? 0;
         const alignment = (s.alignment || 'neutral').toLowerCase();
 
         const resolvedItems = actorItems.map((item: any) => {

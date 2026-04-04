@@ -105,6 +105,16 @@ export default function ShadowdarkPaperSheet({
         return text.substring(0, maxLength).trim() + '...';
     };
 
+    const getClassName = () => {
+        if (!actor.details?.class) {
+            return '';
+        }
+        if (actor.details?.class === 'Level 0') {
+            return 'Adventurer';
+        }
+        return actor.details?.class;
+    };
+
 
     return (
         <div className="relative w-full h-full bg-black p-4 md:p-8 flex justify-center items-start font-serif text-sm overflow-y-auto">
@@ -277,7 +287,7 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Class</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <span className="text-lg font-bold w-full text-center truncate">
-                                    {actor.details?.class || ''}
+                                    {getClassName()}
                                 </span>
                             </div>
                         </div>

@@ -301,13 +301,13 @@ export class ShadowdarkImporter {
             const actorData: any = {
                 name: json.name || "Unnamed",
                 type: "Player",
-                img: "systems/shadowdark/assets/tokens/cowled_token_green.webp",
+                img: "icons/svg/mystery-man.svg",
                 prototypeToken: {
                     name: json.name || "Unnamed",
                     actorLink: true,
                     displayName: 0,
                     texture: {
-                        src: "systems/shadowdark/assets/tokens/cowled_token_green.webp",
+                        src: "icons/svg/mystery-man.svg",
                         scaleX: 1,
                         scaleY: 1
                     }
