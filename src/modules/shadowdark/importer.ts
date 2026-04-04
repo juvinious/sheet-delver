@@ -1,7 +1,11 @@
-import { FoundryClient } from '@/core/foundry';
+import { logger } from '../../core/logger';
+import { FoundryClient } from '../../core/foundry';
 import fs from 'fs';
 import path from 'path';
-import { SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
+import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from './data/talent-effects';
+import { shadowdarkAdapter } from './system';
+import { sanitizeItem, sanitizeItems, createEffect } from './utils/Sanitizer';
+import { enrichItem, resolveSubItems, EnrichmentContext } from './api/actor-enricher';
 
 export interface ImportResult {
     success: boolean;
@@ -33,253 +37,281 @@ export class ShadowdarkImporter {
     }
 
     public async importFromJSON(client: FoundryClient, json: any): Promise<ImportResult> {
-        await this.loadMapping();
-
-        // Ensure connected
-        // @ts-ignore
-        if (!client.isConnected) {
-            return { success: false, errors: ['Not connected to Foundry'] };
-        }
-
         const debugLog: string[] = [];
-        const log = (msg: string) => debugLog.push(msg);
-
-        log(`[Importer] Starting Import (Server-Side). Name: ${json.name}`);
-
-        const errors: any[] = [];
+        const log = (msg: string) => {
+            debugLog.push(msg);
+            logger.info(`[ShadowdarkImporter] ${msg}`);
+        };
+        const trace = (msg: string) => {
+            const timestamp = new Date().toISOString().split('T')[1].split('Z')[0];
+            logger.debug(`[ShadowdarkImporter] [TRACE] [${timestamp}] ${msg}`);
+        };
         const warnings: string[] = [];
-        const gear: any[] = [];
-        const spells: any[] = [];
-        const talents: any[] = [];
-        const classAbilities: any[] = [];
-
-        // Pre-fetch all compendium indices for lookup
-        log(`[Importer] Fetching compendium indices...`);
-        const packs = await client.getAllCompendiumIndices();
-        log(`[Importer] Loaded ${packs.length} packs.`);
-
-
-        // --- HELPER FUNCTIONS ---
-
-        const findItem = async (itemName: string, type: string, silent: boolean = false) => {
-            log(`[findItem] Searching for '${itemName}' in '${type}'`);
-
-            // 1. Check mapping
-            const mappingCategory = this.mapping?.[type.toLowerCase()];
-            let itemUuid = mappingCategory?.[itemName];
-
-            // Case-insensitive fallback for mapping
-            if (!itemUuid && mappingCategory) {
-                const key = Object.keys(mappingCategory).find(k => k.toLowerCase() === itemName.toLowerCase());
-                if (key) {
-                    itemUuid = mappingCategory[key];
-                    log(`[findItem] Fuzzy mapping match: '${itemName}' -> '${key}'`);
-                }
-            }
-
-            if (itemUuid) {
-                log(`[findItem] Found in mapping: ${itemUuid}`);
-                const item = await client.fetchByUuid(itemUuid);
-                if (item) return item;
-                log(`[findItem] WARN: Mapping UUID ${itemUuid} could not be resolved`);
-            }
-
-            // 2. Scan packs (Exact match)
-            for (const pack of packs) {
-                // Check metadata type if available, otherwise assume checks below handle it
-                // Foundry packs usually contain one type, but we can check index items
-                const itemIndex = pack.index.find((i: any) =>
-                    (i.name.toLowerCase() === itemName.toLowerCase()) &&
-                    (i.type.toLowerCase() === type.toLowerCase())
-                );
-
-                if (itemIndex) {
-                    const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
-                    log(`[findItem] Found in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                    return await client.fetchByUuid(uuid);
-                }
-            }
-
-            // 3. Fallback: parentheses cleanup
-            const cleanName = itemName.replace(/\s*\(.*?\)\s*/g, '').trim();
-            if (cleanName && cleanName !== itemName) {
-                log(`[findItem] Trying fallback search with: '${cleanName}'`);
-                for (const pack of packs) {
-                    const itemIndex = pack.index.find((i: any) =>
-                        (i.name.toLowerCase() === cleanName.toLowerCase()) &&
-                        (i.type.toLowerCase() === type.toLowerCase())
-                    );
-                    if (itemIndex) {
-                        const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
-                        log(`[findItem] Fallback Match in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                        return await client.fetchByUuid(uuid);
-                    }
-                }
-            }
-
-            if (!silent) {
-                log(`[findItem] FAILED to find '${itemName}'`);
-                errors.push({ type, name: itemName, error: 'Not found' });
-            }
-            return null;
-        };
-
-        const findSpell = async (spellData: any, classList: any[]) => {
-            log(`[findSpell] Searching for '${spellData.bonusName}' (Source: ${spellData.sourceName})`);
-
-            const classObj = classList.find(c => c.name.toLowerCase() === spellData.sourceName.toLowerCase());
-
-            // Strict Search (Class Match)
-            if (classObj) {
-                for (const pack of packs) {
-                    const itemIndex = pack.index.find((s: any) =>
-                        (s.name.toLowerCase() === spellData.bonusName.toLowerCase()) &&
-                        (s.type === 'Spell')
-                        // Note: Index might not have 'system.class', so this check might fail if index is shallow.
-                        // We might need to fetch if name matches to verify class, but that's expensive.
-                        // For now, let's assume if name matches in the index, we check it.
-                    );
-
-                    if (itemIndex) {
-                        const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
-                        const item = await client.fetchByUuid(uuid);
-                        if (item && item.system?.class && item.system.class.includes(classObj._id)) { // UUID check? 
-                            // Wait, classObj from findItem is the doc. system.class stores strings? likely UUIDs or names.
-                            // Shadowdark system stores Class UUIDs in spell.system.class array.
-                            // classObj is the fetched Item.
-                            // We should check if item.system.class includes classObj._id or classObj.uuid (if available)
-                            // Re-fetching confirms logic.
-                            log(`[findSpell] Found and verified class match: ${item.name}`);
-                            return item;
-                        }
-                    }
-                }
-            }
-
-            // Fallback: Loose Search (Name only)
-            log(`[findSpell] Strict class match failed for '${spellData.bonusName}', trying loose name search...`);
-            for (const pack of packs) {
-                const itemIndex = pack.index.find((s: any) =>
-                    (s.name.toLowerCase() === spellData.bonusName.toLowerCase()) &&
-                    (s.type === 'Spell')
-                );
-
-                if (itemIndex) {
-                    const uuid = itemIndex.uuid || `Compendium.${pack.id}.Item.${itemIndex._id}`;
-                    log(`[findSpell] Fallback Match in pack ${pack.metadata.label || pack.id}: ${uuid}`);
-                    return await client.fetchByUuid(uuid);
-                }
-            }
-
-            log(`[findSpell] FAILED to find '${spellData.bonusName}'`);
-            errors.push({ type: 'Spell', name: spellData.bonusName, error: 'Not found' });
-            return null;
-        };
-
-        const findTalent = async (bonus: any) => {
-            log(`[findTalent] Processing bonus '${bonus.name}' (Name: ${bonus.bonusName}, To: ${bonus.bonusTo})`);
-            let patternStr = "";
-            const mBonus = this.mapping?.bonus;
-
-            if (!mBonus) {
-                errors.push({ type: 'Talent', name: bonus.name, error: 'Mapping missing item' });
-                return null;
-            }
-
-            if (mBonus[`${bonus.bonusName}_${bonus.bonusTo}`]) patternStr = `${bonus.bonusName}_${bonus.bonusTo}`;
-            else if (mBonus[bonus.bonusName]) patternStr = bonus.bonusName;
-            else if (mBonus[`${bonus.bonusTo}_${bonus.bonusName}`]) patternStr = `${bonus.bonusTo}_${bonus.bonusName}`;
-            else if (mBonus[bonus.bonusTo]) patternStr = bonus.bonusTo;
-
-            let foundTalent = null;
-            if (patternStr) {
-                const uuid = mBonus[patternStr];
-                foundTalent = await client.fetchByUuid(uuid);
-            }
-
-            if (!foundTalent) {
-                let searchName = bonus.name;
-                // Special Handling: Kobold Knacks
-                if (searchName === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
-                    searchName = 'Knack (Luck)';
-                }
-
-                log(`[findTalent] Mapping failed, trying dynamic search for '${searchName}'...`);
-                foundTalent = await findItem(searchName, 'Talent', true) || await findItem(searchName, 'Feature', true);
-            }
-
-            if (foundTalent) {
-                // Clone to avoid mutating cached object if fetchByUuid returns cache reference
-                // CoreSocket usually returns fresh object from JSON parse, but valid to be safe.
-                foundTalent = JSON.parse(JSON.stringify(foundTalent));
-
-                if (foundTalent.system?.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
-
-                if (foundTalent.effects?.[0]?.changes?.[0]?.value === "REPLACEME") {
-                    let val = "";
-                    if (mBonus[bonus.bonusName]) val = bonus.bonusTo;
-                    else if (mBonus[bonus.bonusTo]) val = bonus.bonusName;
-
-                    if (val) {
-                        val = val.replace(/\b\w/g, (s: string) => s.toUpperCase());
-                        foundTalent.name += ` (${val})`;
-                        if (foundTalent.effects[0].changes) {
-                            foundTalent.effects[0].changes[0].value = val.replace(/\s+/g, "-").toLowerCase();
-                        }
-                    }
-                }
-
-                if (bonus.sourceCategory === "Boon") foundTalent.name += ` [${bonus.boonPatron}]`;
-                if (bonus.sourceCategory?.startsWith("BlackLotusTalent")) foundTalent.name += " [BlackLotus]";
-
-                return foundTalent;
-            } else {
-                log(`[findTalent] FAILED to find talent for '${bonus.name}'`);
-                errors.push({ type: 'Talent', name: bonus.name, error: 'Not found' });
-                return null;
-            }
-        };
-
-        const findGenericIcon = async (keyword: string, type: string = 'Basic'): Promise<string | null> => {
-            log(`[findGenericIcon] Searching for icon with keyword '${keyword}'`);
-
-            for (const pack of packs) {
-                const matchIndex = pack.index.find((i: any) =>
-                    i.name.toLowerCase().includes(keyword.toLowerCase()) &&
-                    (!type || i.type.toLowerCase() === type.toLowerCase())
-                );
-
-                if (matchIndex && matchIndex.img) {
-                    return matchIndex.img;
-                }
-                // If index doesn't have img, we might need to fetch. 
-                // Creating a custom item, we really just want an icon.
-                // CoreSocket index *should* have img if available.
-            }
-            return null;
-        };
-
-        const getClassList = async () => {
-            const classes = [];
-            for (const pack of packs) {
-                const classIndices = pack.index.filter((i: any) => i.type === 'Class');
-                for (const idx of classIndices) {
-                    const uuid = idx.uuid || `Compendium.${pack.id}.Item.${idx._id}`;
-                    const doc = await client.fetchByUuid(uuid);
-                    if (doc) classes.push(doc);
-                }
-            }
-            return classes;
-        };
-
-
-        // --- MAIN LOGIC ---
+        const errors: any[] = [];
 
         try {
-            // 1. Prepare Actor Data
+            log(`[Importer] Starting Import (Server-Side). Name: ${json.name}`);
+
+            await this.loadMapping();
+
+            // Ensure connected
+            // @ts-ignore
+            if (!client.isConnected) {
+                return { success: false, errors: ['Not connected to Foundry'] };
+            }
+
+            const gear: any[] = [];
+            const spells: any[] = [];
+            const talents: any[] = [];
+            const classAbilities: any[] = [];
+
+            // 1. Shallow Discovery (Fast Initial Handshake)
+            log(`[Importer] Ensuring system data is discovered (Shallow)...`);
+            const { ShadowdarkDiscovery } = await import('./discovery');
+            const systemData = await ShadowdarkDiscovery.getSystemData(client);
+            const { dataManager } = await import('./data/DataManager');
+
+            // --- HELPER FUNCTIONS ---
+
+            const findItem = async (itemName: string, type: string, silent: boolean = false) => {
+                trace(`[findItem] START: '${itemName}' in '${type}'`);
+
+                // 1. Check Index (Cache-First)
+                const indexDoc = dataManager.findDocumentByName(itemName, type);
+
+                // 2. Resolve/Hydrate by UUID (Always goes through DataManager for fulfillment)
+                if (indexDoc) {
+                    const uuid = indexDoc.uuid || indexDoc._id;
+                    trace(`[findItem] Found in index: ${uuid}. Hydrating...`);
+                    const fullDoc = await dataManager.getDocument(uuid, client);
+                    trace(`[findItem] Hydration complete for: ${uuid}`);
+                    if (fullDoc) return sanitizeItem(fullDoc);
+                }
+
+                // 3. Check mapping fallback
+                const mappingCategory = this.mapping?.[type.toLowerCase()];
+                let itemUuid = mappingCategory?.[itemName];
+
+                // Case-insensitive fallback for mapping
+                if (!itemUuid && mappingCategory) {
+                    const key = Object.keys(mappingCategory).find(k => k.toLowerCase() === itemName.toLowerCase());
+                    if (key) {
+                        itemUuid = mappingCategory[key];
+                        log(`[findItem] Fuzzy mapping match: '${itemName}' -> '${key}'`);
+                    }
+                }
+
+                if (itemUuid) {
+                    log(`[findItem] Found in mapping: ${itemUuid}. Fetching...`);
+                    const item = await dataManager.getDocument(itemUuid, client);
+                    trace(`[findItem] Mapping fetch complete: ${itemUuid}`);
+                    if (item) return sanitizeItem(item);
+                    log(`[findItem] WARN: Mapping UUID ${itemUuid} could not be resolved`);
+                }
+
+                // 4. Fallback: parentheses cleanup
+                const cleanName = itemName.replace(/\s*\(.*?\)\s*/g, '').trim();
+                if (cleanName && cleanName !== itemName) {
+                    log(`[findItem] Trying fallback search with: '${cleanName}'`);
+                    return findItem(cleanName, type, true);
+                }
+
+                if (!silent) {
+                    log(`[findItem] FAILED to find '${itemName}'`);
+                    errors.push({ type, name: itemName, error: 'Not found' });
+                }
+                return null;
+            };
+
+            const findSpell = async (spellData: any, classList: any[]) => {
+                trace(`[findSpell] START: '${spellData.bonusName}' (Source: ${spellData.sourceName})`);
+
+                // Use DataManager's efficient spell source lookup
+                const classObj = classList.find(c => c.name.toLowerCase() === spellData.sourceName.toLowerCase());
+                if (classObj) {
+                    const spellsInSource = await dataManager.getSpellsBySource(classObj.name);
+                    const match = spellsInSource.find(s => s.name?.toLowerCase() === spellData.bonusName?.toLowerCase());
+                    if (match) {
+                        log(`[findSpell] Found verified spell: ${match.name}`);
+                        // Fulfillment
+                        const fullDoc = await dataManager.getDocument(match.uuid || match._id, client);
+                        trace(`[findSpell] Fulfillment complete for spell: ${match.name}`);
+                        return sanitizeItem(fullDoc || match);
+                    }
+                }
+
+                // Fallback: Loose Search (Name only)
+                log(`[findSpell] Strict lookup failed for '${spellData.bonusName}', trying loose cache search...`);
+                return findItem(spellData.bonusName, 'Spell');
+            };
+
+            const findTalent = async (bonus: any) => {
+                log(`[findTalent] Processing bonus '${bonus.name}' (Name: ${bonus.bonusName}, To: ${bonus.bonusTo})`);
+                let patternStr = "";
+                const mBonus = this.mapping?.bonus;
+
+                if (!mBonus) {
+                    errors.push({ type: 'Talent', name: bonus.name, error: 'Mapping missing item' });
+                    return null;
+                }
+
+                if (mBonus[`${bonus.bonusName}_${bonus.bonusTo}`]) patternStr = `${bonus.bonusName}_${bonus.bonusTo}`;
+                else if (mBonus[bonus.bonusName]) patternStr = bonus.bonusName;
+                else if (mBonus[`${bonus.bonusTo}_${bonus.bonusName}`]) patternStr = `${bonus.bonusTo}_${bonus.bonusName}`;
+                else if (mBonus[bonus.bonusTo]) patternStr = bonus.bonusTo;
+
+                let foundTalent = null;
+                if (patternStr) {
+                    const uuid = mBonus[patternStr];
+                    foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
+                }
+
+                if (!foundTalent) {
+                    const uuid = findEffectUuid(bonus.bonusName || bonus.name);
+                    if (uuid) {
+                        log(`[findTalent] Found match in TALENT_EFFECTS_MAP: ${uuid}`);
+                        foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
+                    }
+                }
+
+                if (!foundTalent) {
+                    let searchName = bonus.bonusName || bonus.name;
+
+                    // Special Handling: Kobold Knacks
+                    if (bonus.name === 'Knack' && bonus.bonusName === 'LuckTokenAtStartOfSession') {
+                        searchName = 'Knack (Luck)';
+                    }
+
+                    log(`[findTalent] Mapping failed, trying dynamic search for '${searchName}' (Type: Talent/Feature)...`);
+                    foundTalent = await findItem(searchName, 'Talent', true) || await findItem(searchName, 'Feature', true);
+
+                    // Spellcasting Special Handling: Wizard / Priest / Seer / Witch
+                    if (!foundTalent && searchName.includes('Spellcasting')) {
+                        const classMatch = searchName.split(' ')[0]; // e.g. "Wizard" from "Wizard Spellcasting"
+                        const lookup = `${classMatch} Spellcasting`;
+                        const uuid = findEffectUuid(lookup);
+                        if (uuid) {
+                            log(`[findTalent] Resolved specific spellcasting: ${lookup}`);
+                            foundTalent = await shadowdarkAdapter.resolveDocument(client, uuid);
+                        }
+                    }
+
+                    // Warlock/Boon Fallback: Try searching in Spells
+                    if (!foundTalent && (bonus.sourceCategory === 'Boon' || bonus.sourceCategory === 'Patron')) {
+                        log(`[findTalent] Boon/Patron search fallback to Spells for '${searchName}'...`);
+                        foundTalent = await findItem(searchName, 'Spell', true);
+                    }
+
+                    // Final Fallback: try bonus.name if it differs from bonusName
+                    if (!foundTalent && bonus.name !== searchName) {
+                        log(`[findTalent] Final fallback search for '${bonus.name}'...`);
+                        foundTalent = await findItem(bonus.name, 'Talent', true) || await findItem(bonus.name, 'Feature', true);
+                    }
+                }
+
+                if (foundTalent) {
+                    const isBoon = bonus.sourceCategory === 'Boon' || bonus.sourceCategory === 'Patron' || bonus.name === 'LearnSpellFromPatron';
+                    const isSpell = foundTalent.type === 'Spell';
+
+                    // Boon Wrapping Logic: If we resolved a Boon to a Spell, wrap it in a Talent
+                    if (isBoon && isSpell) {
+                        log(`[findTalent] Wrapping Boon Spell '${foundTalent.name}' as a Talent...`);
+
+                        const spellDoc = sanitizeItem(foundTalent);
+                        // Ensure spell isn't already in library
+                        if (!spells.find(s => s.name?.toLowerCase() === spellDoc.name?.toLowerCase())) {
+                            spells.push(spellDoc);
+                        }
+
+                        // Create the Boon Talent
+                        foundTalent = {
+                            name: `Boon: ${spellDoc.name}`,
+                            type: 'Talent',
+                            img: spellDoc.img || 'icons/magic/symbols/rune-glitter-blue.webp',
+                            system: {
+                                description: `<p><strong>Boon of the Patron:</strong> You have gained the spell <em>${spellDoc.name}</em> from your patron (${bonus.boonPatron || "Unknown"}).</p>${spellDoc.system?.description || ""}`,
+                                talentClass: 'class',
+                                level: bonus.gainedAtLevel
+                            }
+                        };
+                    } else {
+                        foundTalent = sanitizeItem(foundTalent);
+                    }
+
+                    if (foundTalent.system?.talentClass === "level") foundTalent.system.level = bonus.gainedAtLevel;
+
+                    // Apply Enrichment patterns (Boon Name, Patron name, etc.)
+                    if (bonus.sourceCategory === "Boon" && !foundTalent.name.includes("[")) foundTalent.name += ` [${bonus.boonPatron}]`;
+                    if (bonus.sourceCategory?.startsWith("BlackLotusTalent")) foundTalent.name += " [BlackLotus]";
+
+                    return foundTalent;
+                } else {
+                    log(`[findTalent] FAILED to find talent for '${bonus.name}'`);
+                    errors.push({ type: 'Talent', name: bonus.name, error: 'Not found' });
+                    return null;
+                }
+            };
+
+            const findGenericIcon = async (keyword: string, type: string = 'Basic'): Promise<string | null> => {
+                log(`[findGenericIcon] Searching for icon with keyword '${keyword}'`);
+
+                const collections = ['items', 'spells', 'talents'];
+                for (const key of collections) {
+                    const match = systemData[key]?.find((i: any) =>
+                        i.name.toLowerCase().includes(keyword.toLowerCase()) &&
+                        (!type || (i.type || i.documentType || "").toLowerCase() === type.toLowerCase())
+                    );
+                    if (match && match.img) return match.img;
+                }
+                return null;
+            };
+
+            const resolveCompendiumUuid = (doc: any, fallbackName: string): string => {
+                if (!doc) return fallbackName || "";
+                return doc.uuid || doc._id || doc.id || doc.name || fallbackName || "";
+            };
+
+            const getClassList = async () => {
+                return systemData.classes || [];
+            };
+
+            // Patron Analysis
+            let patronName = json.patron;
+            if (!patronName && json.bonuses) {
+                const patronBonus = json.bonuses.find((b: any) => b.sourceCategory === 'Patron' && b.name === 'Patron');
+                if (patronBonus) patronName = patronBonus.bonusTo;
+            }
+
+            const enrichmentContext: EnrichmentContext = {
+                addedSourceIds: new Set<string>(),
+                addedNames: new Set<string>(),
+                targetLevel: json.level || 1,
+                actor: null, // Will be set after creation if needed
+                bonuses: json.bonuses || [],
+                mapping: this.mapping,
+                patronName: patronName || undefined
+            };
+
+            const resolveDoc = (uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid);
+
+
+            // --- MAIN LOGIC ---
+
+            // 2. Prepare Actor Data
             const actorData: any = {
                 name: json.name || "Unnamed",
                 type: "Player",
+                img: "icons/svg/mystery-man.svg",
+                prototypeToken: {
+                    name: json.name || "Unnamed",
+                    actorLink: true,
+                    displayName: 0,
+                    texture: {
+                        src: "icons/svg/mystery-man.svg",
+                        scaleX: 1,
+                        scaleY: 1
+                    }
+                },
                 system: {
                     abilities: {
                         str: { base: json.rolledStats.STR, bonus: 0 },
@@ -306,8 +338,11 @@ export class ShadowdarkImporter {
                         value: json.level || 1,
                         xp: json.XP || 0
                     },
+                    details: {
+                        title: json.title || ""
+                    },
                     slots: json.gearSlotsTotal || 10,
-                    languages: [] // Will populate UUIDs
+                    languages: []
                 }
             };
 
@@ -317,88 +352,92 @@ export class ShadowdarkImporter {
                 actorData.system.abilities[k].mod = Math.floor((base - 10) / 2);
             });
 
-            // 2. Fetch Core Items
-            const ancestry = await findItem(json.ancestry, "Ancestry");
-            if (ancestry) actorData.system.ancestry = ancestry._id; // Use ID or UUID? System expects UUID usually? 
-            // Wait, Shadowdark system fields for ancestry/class/etc differ. 
-            // In Generator it seemed we push Items embedded, but also link UUIDs?
-            // The logic in original importer: ancestry.uuid.
-            // Let's assume UUID is correct for system links.
-            if (ancestry) actorData.system.ancestry = ancestry.uuid || `Item.${ancestry._id}`; // We'll assume UUID. If imported, might be different.
+            // 3. Parallel Core Resolution
+            log(`[Importer] Resolving Core Attributes (Ancestry, Background, Deity, Patron)...`);
+            const coreResolvers = [
+                findItem(json.ancestry, "Ancestry"),
+                findItem(json.background, "Background"),
+                findItem(json.deity, "Deity"),
+                patronName ? findItem(patronName, "Patron") : Promise.resolve(null)
+            ];
 
-            const background = await findItem(json.background, "Background");
-            if (background) actorData.system.background = background.uuid || `Item.${background._id}`;
+            const [ancestry, background, deity, patron] = await Promise.all(coreResolvers);
 
-            const deity = await findItem(json.deity, "Deity");
-            if (deity) actorData.system.deity = deity.uuid || `Item.${deity._id}`;
-
-            // Patron
-            let patronName = json.patron;
-            if (!patronName && json.bonuses) {
-                const patronBonus = json.bonuses.find((b: any) => b.sourceCategory === 'Patron' && b.name === 'Patron');
-                if (patronBonus) patronName = patronBonus.bonusTo;
+            if (ancestry) {
+                actorData.system.ancestry = resolveCompendiumUuid(ancestry, json.ancestry);
+                const ancestryTalents = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
+                talents.push(...ancestryTalents);
             }
-            if (patronName) {
-                const patron = await findItem(patronName, "Patron");
-                if (patron) actorData.system.patron = patron.uuid || `Item.${patron._id}`;
+            if (background) {
+                actorData.system.background = resolveCompendiumUuid(background, json.background);
+                const bgTalents = await resolveSubItems(background, resolveDoc, enrichmentContext);
+                talents.push(...bgTalents);
+            }
+            if (deity) {
+                actorData.system.deity = resolveCompendiumUuid(deity, json.deity);
+                const deityTalents = await resolveSubItems(deity, resolveDoc, enrichmentContext);
+                talents.push(...deityTalents);
+            }
+            if (patron) {
+                actorData.system.patron = resolveCompendiumUuid(patron, patronName);
+                const patronTalents = await resolveSubItems(patron, resolveDoc, enrichmentContext);
+                talents.push(...patronTalents);
             }
 
             // Languages
             if (json.languages) {
-                for (const lang of json.languages.split(/\s*,\s*/)) {
-                    const found = await findItem(lang, "Language");
-                    if (found) actorData.system.languages.push(found.uuid || `Item.${found._id}`);
-                }
+                log(`[Importer] Resolving ${json.languages.split(',').length} languages in parallel...`);
+                const langPromises = json.languages.split(/\s*,\s*/).map((lang: string) => findItem(lang.trim(), "Language"));
+                const resolvedLangs = await Promise.all(langPromises);
+                const rawLangs = json.languages.split(/\s*,\s*/);
+                actorData.system.languages = resolvedLangs.map((l, i) => {
+                    return resolveCompendiumUuid(l, rawLangs[i].trim());
+                }).filter((l: string) => l && l.length > 0);
             }
 
-            // Class
+            // Class & Static Items
             const classList = await getClassList();
             const classObj = await findItem(json.class, "Class");
             if (classObj) {
-                actorData.system.class = classObj.uuid || `Item.${classObj._id}`;
+                actorData.system.class = resolveCompendiumUuid(classObj, json.class);
 
-                // Starting Spells
+                // Starting Spells (Fixed)
                 if (classObj.system?.startingSpells) {
-                    for (const uuid of classObj.system.startingSpells) {
-                        const item = await client.fetchByUuid(uuid);
-                        if (item) spells.push(item);
+                    const startSpells = await Promise.all(classObj.system.startingSpells.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
+                    for (const s of startSpells.filter(Boolean)) {
+                        const enriched = await enrichItem(s, enrichmentContext);
+                        if (enriched) spells.push(enriched);
                     }
                 }
 
-                // Fixed Class Talents
-                if (classObj.system?.talents) {
-                    for (const uuid of classObj.system.talents) {
-                        const item = await client.fetchByUuid(uuid);
-                        if (item) {
-                            const obj = JSON.parse(JSON.stringify(item));
-                            const exists = talents.find(t => t.name === obj.name);
-                            if (!exists) {
-                                if (obj.effects?.[0]?.changes?.[0]?.value !== "REPLACEME") {
-                                    talents.push(obj);
-                                }
-                            }
-                        }
-                    }
-                }
+                // Fixed Class Talents & Features
+                log(`[Importer] Hydrating class-defined talents and features...`);
+                const classAbilitiesResolved = await resolveSubItems(classObj, resolveDoc, enrichmentContext);
+                talents.push(...classAbilitiesResolved);
             }
 
-            // 3. Gear
+            // 4. Parallel Gear Resolution
             if (json.gear) {
-                for (const g of json.gear) {
+                log(`[Importer] Resolving ${json.gear.length} gear items in parallel...`);
+                const gearPromises = json.gear.map(async (g: any) => {
                     const type = g.type === 'sundry' ? 'basic' : g.type;
-                    if (g.name === "Coins") continue;
+                    if (g.name === "Coins") return null;
 
-                    log(`Processing Gear: ${g.name} (Type: ${type})`);
                     const item = await findItem(g.name, type);
                     if (item) {
-                        log(`Found: ${item.name}`);
-                        const itemData = JSON.parse(JSON.stringify(item));
-                        if (itemData.system) itemData.system.quantity = g.quantity;
-                        gear.push(itemData);
+                        const itemData = sanitizeItem(item);
+
+                        // Ammo quantity fix: If it's a stackable ammo type and quantity is 1 (Shadowdarkling representation), 
+                        // set it to 20 for standard Foundry behavior.
+                        let quantity = g.quantity;
+                        const isAmmo = itemData.name.toLowerCase().includes('arrow') || itemData.name.toLowerCase().includes('bolt');
+                        if (isAmmo && quantity === 1) quantity = 20;
+
+                        if (itemData.system) itemData.system.quantity = quantity;
+                        return itemData;
                     } else {
-                        // Fallback: Create Custom Item
+                        // Custom Handlers
                         if (type === 'basic' || type === 'sundry' || g.type === 'sundry') {
-                            log(`[Gear] Generating custom item: ${g.name}`);
                             const isScroll = g.name.toLowerCase().includes('scroll');
                             const isPotion = g.name.toLowerCase().includes('potion');
                             const isWand = g.name.toLowerCase().includes('wand');
@@ -416,7 +455,7 @@ export class ShadowdarkImporter {
                                 else if (isWand) img = "icons/tools/wands/wand-wood.webp";
                             }
 
-                            gear.push({
+                            return {
                                 name: g.name,
                                 type: "Basic",
                                 img: img,
@@ -430,14 +469,13 @@ export class ShadowdarkImporter {
                                     isPhysical: true,
                                     light: { isSource: false }
                                 }
-                            });
-                            warnings.push(`Created Custom Gear Item: '${g.name}'`);
-                        } else {
-                            log(`Failed to find: ${g.name}`);
-                            errors.push({ type, name: g.name, error: 'Not found' });
+                            };
                         }
+                        return null;
                     }
-                }
+                });
+                const resolvedGear = await Promise.all(gearPromises);
+                gear.push(...resolvedGear.filter(Boolean));
             }
 
             // Treasure
@@ -458,25 +496,24 @@ export class ShadowdarkImporter {
                 }
             }
 
-            // Magic Items
+            // 5. Parallel Magic Item Resolution
             if (json.magicItems) {
-                for (const m of json.magicItems) {
+                log(`[Importer] Resolving ${json.magicItems.length} magic items in parallel...`);
+                const magicPromises = json.magicItems.map(async (m: any) => {
                     let type = 'basic';
                     if (m.magicItemType === 'magicWeapon') type = 'weapon';
                     else if (m.magicItemType === 'magicArmor') type = 'armor';
 
-                    log(`Processing Magic Item: ${m.name} (Type: ${type})`);
                     let item = await findItem(m.name, type, true);
                     if (!item) {
                         const baseName = m.name.replace(/\s*\+\d+/, '').trim();
                         if (baseName !== m.name) {
                             item = await findItem(baseName, type, true);
-                            if (item) warnings.push(`Adapted Magic Item: '${m.name}' from '${item.name}'`);
                         }
                     }
 
                     if (item) {
-                        const itemData = JSON.parse(JSON.stringify(item));
+                        const itemData = sanitizeItem(item);
                         itemData.name = m.name;
                         if (itemData.system) {
                             if (m.bonus) {
@@ -485,14 +522,12 @@ export class ShadowdarkImporter {
                             }
                             if (m.slots) itemData.system.slots.slots_used = m.slots;
                         }
-                        gear.push(itemData);
+                        return itemData;
                     } else {
-                        // Fallback Custom
+                        // Custom Handlers
                         if (type === 'basic' || type === 'sundry' || m.itemType === 'sundry') {
-                            log(`[MagicItem] Generating custom item: ${m.name}`);
                             const isScroll = m.name.toLowerCase().includes('scroll');
                             let img = "icons/containers/beakers/jar-corked-brown.webp";
-
                             const dynamicIcon = isScroll ? await findGenericIcon('Scroll', 'Basic') : null;
                             if (dynamicIcon) img = dynamicIcon;
                             else if (isScroll) img = "icons/consumables/scrolls/scroll-runed-blue.webp";
@@ -503,7 +538,7 @@ export class ShadowdarkImporter {
                             if (m.benefits) desc += `<br><p><strong>Benefits:</strong> ${m.benefits}</p>`;
                             if (m.curses) desc += `<br><p><strong>Curse:</strong> ${m.curses}</p>`;
 
-                            gear.push({
+                            return {
                                 name: m.name,
                                 type: "Basic",
                                 img: img,
@@ -517,90 +552,88 @@ export class ShadowdarkImporter {
                                     isPhysical: true,
                                     light: { isSource: false }
                                 }
-                            });
-                            warnings.push(`Created Custom Magic Item: '${m.name}'`);
-                        } else {
-                            log(`Failed to find Magic Item: ${m.name}`);
-                            errors.push({ type, name: m.name, error: 'Not found' });
+                            };
                         }
+                        return null;
                     }
-                }
+                });
+                const resolvedMagic = await Promise.all(magicPromises);
+                gear.push(...resolvedMagic.filter(Boolean));
             }
 
 
-            // 4. Bonuses (Talents & Spells)
-            if (json.bonuses) {
-                for (const bonus of json.bonuses) {
-                    if (/^ExtraLanguage:/.test(bonus.name)) continue;
-                    if (/^ExtraLanguageManual:/.test(bonus.name)) continue;
-                    if (/^GrantSpecialTalent:/.test(bonus.name)) continue;
-                    if (bonus.sourceCategory === 'Patron' && bonus.name === 'Patron') continue;
-                    if (this.mapping.ignoreTalents?.includes(bonus.name)) continue;
+            // 6. Chunked Bonuses Resolution
+            if (json.bonuses && json.bonuses.length > 0) {
+                log(`[Importer] Resolving ${json.bonuses.length} dynamic bonuses in chunks...`);
+                const CHUNK_SIZE = 5; // Small chunks for maximum stability
+                const bonuses = json.bonuses;
 
-                    if (bonus.name === "SetWeaponTypeDamage") bonus.bonusTo = bonus.bonusTo.split(":")[0];
+                for (let i = 0; i < bonuses.length; i += CHUNK_SIZE) {
+                    const chunk = bonuses.slice(i, i + CHUNK_SIZE);
+                    trace(`[Importer] Processing bonus chunk ${Math.floor(i / CHUNK_SIZE) + 1}/${Math.ceil(bonuses.length / CHUNK_SIZE)}`);
 
-                    if (/^Spell:/.test(bonus.name)) {
-                        const spell = await findSpell(bonus, classList);
-                        if (spell) spells.push(spell);
-                        continue;
-                    }
+                    await Promise.all(chunk.map(async (bonus: any) => {
+                        if (/^ExtraLanguage:/.test(bonus.name)) return null;
+                        if (/^ExtraLanguageManual:/.test(bonus.name)) return null;
+                        if (/^GrantSpecialTalent:/.test(bonus.name)) return null;
+                        if (bonus.sourceCategory === 'Patron' && bonus.name === 'Patron') {
+                            trace(`[Importer] Skipping redundant Patron bonus: ${bonus.bonusTo}`);
+                            return null;
+                        }
+                        if (this.mapping.ignoreTalents?.includes(bonus.name)) {
+                            trace(`[Importer] Ignoring talent per mapping: ${bonus.name}`);
+                            return null;
+                        }
 
-                    const talent = await findTalent(bonus);
-                    if (talent) talents.push(talent);
+                        if (bonus.name === "SetWeaponTypeDamage") bonus.bonusTo = bonus.bonusTo.split(":")[0];
+
+                        if (/^Spell:/.test(bonus.name)) {
+                            const spell = await findSpell(bonus, classList);
+                            if (spell) {
+                                trace(`[Importer] Resolving spell bonus: ${spell.name}`);
+                                const enriched = await enrichItem(spell, enrichmentContext);
+                                if (enriched) {
+                                    spells.push(enriched);
+                                }
+                            }
+                            return null;
+                        }
+
+                        const talent = await findTalent(bonus);
+                        if (talent) {
+                            trace(`[Importer] Enriching talent: ${talent.name}`);
+                            const enriched = await enrichItem(talent, { ...enrichmentContext, bonusTo: bonus.bonusTo });
+                            if (enriched) {
+                                talents.push(enriched);
+                            }
+                        }
+                        return null;
+                    }));
                 }
             }
 
-            // 5. Create Actor
+            // 7. Create Actor and Items
             log(`[Importer] Creating Actor ${actorData.name}...`);
             const createdActor = await client.createActor(actorData);
             if (!createdActor) throw new Error("Failed to create Actor document");
 
             log(`[Importer] Actor Created: ${createdActor._id}`);
 
-            // Embed Items
-            const allItems = [...gear, ...classAbilities, ...spells, ...talents].filter(i => i.type !== 'Class');
+            //logger.debug("[Importer] actor: ", JSON.stringify(actorData, null, 2));
 
-            // SANITIZATION
-            if (SYSTEM_PREDEFINED_EFFECTS) {
-                for (const item of allItems) {
-                    if (item.effects && Array.isArray(item.effects) && item.effects.length > 0 && typeof item.effects[0] === 'string') {
-                        log(`[Sanitizer] Clearing invalid string effects for ${item.name}`);
-                        item.effects = [];
-
-                        const name = (item.name || "").toLowerCase();
-                        const predefinedMatch = Object.values(SYSTEM_PREDEFINED_EFFECTS).find((def: any) =>
-                            name.includes(def.label.toLowerCase()) ||
-                            def.label.toLowerCase().includes(name)
-                        );
-
-                        if (predefinedMatch) {
-                            log(`[Sanitizer] Polyfilling effect ${predefinedMatch.label} for ${item.name}`);
-                            item.effects.push({
-                                name: predefinedMatch.label,
-                                icon: predefinedMatch.icon || "icons/svg/aura.svg",
-                                changes: predefinedMatch.changes || [{
-                                    key: predefinedMatch.key,
-                                    mode: predefinedMatch.mode,
-                                    value: predefinedMatch.value
-                                }],
-                                transfer: true,
-                                disabled: false,
-                                _id: Math.random().toString(36).substring(2, 15)
-                            });
-                        }
-                    }
-                }
-            }
+            const allItems = sanitizeItems([...gear, ...classAbilities, ...spells, ...talents]);//.filter(i => i.type !== 'Class');
 
             if (allItems.length > 0) {
-                log(`[Importer] Creating ${allItems.length} embedded items...`);
+                log(`[Importer] Creating ${allItems.length} embedded items in parallel chunks...`);
                 await client.createActorItem(createdActor._id, allItems);
             }
 
+            log(`[Importer] Import Successful: ${createdActor._id}`);
             return { success: true, id: createdActor._id, errors: errors.length > 0 ? errors : undefined, warnings: warnings.length > 0 ? warnings : undefined, debug: debugLog };
 
         } catch (e: any) {
-            log(`[Importer] Critical Error: ${e.message}`);
+            log(`[Importer] CRITICAL ERROR: ${e.message}`);
+            logger.error('[ShadowdarkImporter] Critical Import Failure:', e);
             return { success: false, errors: [e.message, e.stack], warnings: warnings, debug: debugLog };
         }
     }

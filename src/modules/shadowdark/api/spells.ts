@@ -1,13 +1,8 @@
-
-import { NextResponse } from 'next/server';
 import { getClient } from '@/core/foundry/instance';
 import { dataManager } from '../data/DataManager';
 import { getConfig } from '@/core/config';
+import { shadowdarkAdapter } from '../system';
 
-/**
- * POST /api/modules/shadowdark/actors/[id]/spells/learn
- * Learn a spell by UUID
- */
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn
  * Learn a spell by UUID or ID
@@ -17,30 +12,20 @@ export async function handleLearnSpell(actorId: string, request: Request, client
         const foundryClient = client || getClient();
         if (!foundryClient || !foundryClient.isConnected) {
             console.warn(`[API] Learn Spell Failed: Client disconnected. Provided Client: ${!!client}, Global Client: ${!!getClient()}`);
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
         const { spellUuid } = await request.json();
 
         if (!spellUuid) {
-            return NextResponse.json({ error: 'Spell UUID is required' }, { status: 400 });
+            return Response.json({ error: 'Spell UUID is required' }, { status: 400 });
         }
 
-        // 1. Fetch Spell Data (Local or Remote)
-        let spellData: any = null;
-
-        // Try Local First
-        if (spellUuid.startsWith('Compendium.')) {
-            spellData = await dataManager.getDocument(spellUuid);
-        }
-
-        // Fallback to Remote
-        if (!spellData) {
-            spellData = await foundryClient.fetchByUuid(spellUuid);
-        }
+        // 1. Fetch Spell Data (Unified Resolver)
+        const spellData = await shadowdarkAdapter.resolveDocument(foundryClient, spellUuid);
 
         if (!spellData) {
-            return NextResponse.json({ error: 'Spell not found' }, { status: 404 });
+            return Response.json({ error: 'Spell not found' }, { status: 404 });
         }
 
         // 2. Create Item on Actor
@@ -56,11 +41,11 @@ export async function handleLearnSpell(actorId: string, request: Request, client
 
         const result = await foundryClient.createActorItem(actorId, creationData);
 
-        return NextResponse.json({ success: true, data: result });
+        return Response.json({ success: true, data: result });
 
     } catch (error: any) {
         console.error('[API] Learn Spell Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to learn spell' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to learn spell' }, { status: 500 });
     }
 }
 
@@ -74,7 +59,7 @@ export async function handleGetSpellsBySource(request: Request) {
         const source = searchParams.get('source'); // e.g. "Wizard", "Priest"
 
         if (!source) {
-            return NextResponse.json({ error: 'Source parameter is required (e.g. Wizard)' }, { status: 400 });
+            return Response.json({ error: 'Source parameter is required (e.g. Wizard)' }, { status: 400 });
         }
 
         const normalizedSource = source.toLowerCase();
@@ -199,35 +184,40 @@ export async function handleGetSpellsBySource(request: Request) {
             return a.name.localeCompare(b.name);
         });
 
-        return NextResponse.json({ success: true, spells: merged });
+        return Response.json({ success: true, spells: merged });
 
     } catch (error: any) {
         console.error('[API] Fetch Spells Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: error.message }, { status: 500 });
     }
 }
 import { isSpellcaster, canUseMagicItems } from '../rules';
 
 /**
  * GET /api/modules/shadowdark/actors/[id]/spellcaster
+ *
+ * Returns spellcaster info for an actor.
+ * Uses the normalized actor from the adapter (which already handles caching and
+ * name resolution internally) — no separate raw fetch is needed.
  */
 export async function handleGetSpellcasterInfo(actorId: string, clientOverride?: any) {
     try {
         const client = clientOverride || getClient();
         if (!client || !client.isConnected) {
-            return NextResponse.json({ error: 'Not connected to Foundry' }, { status: 503 });
+            return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
-        const actor = await client.getActor(actorId);
-        if (!actor) {
-            return NextResponse.json({ error: 'Actor not found' }, { status: 404 });
+        // getActor fetches, normalizes, resolves names, and caches — one operation.
+        const normalizedActor = await shadowdarkAdapter.getActor(client, actorId);
+        if (!normalizedActor || normalizedActor.error) {
+            return Response.json({ error: 'Actor not found' }, { status: 404 });
         }
 
-        // Unified check using rules.ts
-        const isCaster = isSpellcaster(actor);
-        const magicItemCaster = canUseMagicItems(actor);
+        // Unified spellcaster check using rules.ts (works on normalized actor).
+        const isCaster = isSpellcaster(normalizedActor);
+        const magicItemCaster = canUseMagicItems(normalizedActor);
 
-        return NextResponse.json({
+        return Response.json({
             isSpellcaster: isCaster,
             canUseMagicItems: magicItemCaster,
             showSpellsTab: isCaster || magicItemCaster
@@ -235,6 +225,6 @@ export async function handleGetSpellcasterInfo(actorId: string, clientOverride?:
 
     } catch (error: any) {
         console.error('[API] Spellcaster Info Error:', error);
-        return NextResponse.json({ error: error.message || 'Failed to get spellcaster info' }, { status: 500 });
+        return Response.json({ error: error.message || 'Failed to get spellcaster info' }, { status: 500 });
     }
 }

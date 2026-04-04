@@ -9,14 +9,9 @@ export async function handleGetDocument(request: Request, { params }: any) {
             return Response.json({ error: 'Missing UUID' }, { status: 400 });
         }
 
-        let document = await dataManager.getDocument(uuid);
-
-        if (!document) {
-            const client = (request as any).foundryClient;
-            if (client && client.isConnected) {
-                document = await client.fetchByUuid(uuid);
-            }
-        }
+        const { shadowdarkAdapter } = await import('../system');
+        const client = (request as any).foundryClient;
+        const document = await shadowdarkAdapter.resolveDocument(client, uuid);
 
         if (!document) {
             return Response.json({ error: `Document not found: ${uuid}` }, { status: 404 });

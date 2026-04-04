@@ -108,8 +108,21 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [step, token]);
 
+    const lastActorFetchTimeRef = useRef<number>(0);
+    const FETCH_THROTTLE_MS = 2000;
+
     const fetchActors = useCallback(async () => {
         if (!token) return;
+
+        // Simple throttle to prevent rapid-fire requests from multiple socket events
+        const now = Date.now();
+        if (now - lastActorFetchTimeRef.current < FETCH_THROTTLE_MS) {
+            logger.debug('FoundryProvider | Skipping fetchActors (throttled)');
+            return;
+        }
+
+        lastActorFetchTimeRef.current = now;
+
         try {
             const res = await fetch('/api/actors', {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -332,19 +345,16 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
 
-            if (status === 'setup') return 'setup';
-            if (!data.connected) {
+            // Wait until backend is fully initialized (Cache + Discovery)
+            if (!data.connected || data.initialized === false) {
                 // If the probe discovered a world (worldTitle present and status is startup),
                 // the world is running but the service account cannot log in.
-                // Show world info without login form rather than the generic booting spinner.
-                const hasWorldInfo = status === 'startup' &&
-                    !!data.system?.worldTitle &&
-                    data.system.worldTitle !== 'Reconnecting...';
-                return hasWorldInfo ? 'world-closed' : 'initializing';
+                return status === 'startup' && !!data.system?.worldTitle ? 'startup' : 'initializing';
             }
-            if (status === 'offline') return 'initializing'; // Still trying to connect
+
+            if (status === 'setup') return 'setup';
+            if (status === 'offline') return 'initializing';
             if (status === 'startup') return 'startup';
-            if (status !== 'active') return 'setup';
 
             if (currentStep === 'authenticating') {
                 return isAuthenticated ? 'dashboard' : 'authenticating';
@@ -395,7 +405,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
                     const targetStep = determineStep(data, step);
                     if (step !== targetStep) {
-                        if (targetStep === 'setup' && step !== 'setup') {
+                        // CRITICAL: Only clear token if we are explicitly in setup mode AND was in something else.
+                        // Or if we are in 'login' but previously thought we were authenticated.
+                        if (targetStep === 'setup' && step !== 'startup' && step !== 'initializing') {
                             logger.warn('FoundryProvider | World explicitly in Setup mode. Clearing session.');
                             if (token) setToken(null);
                             setLastWorldId(null);

@@ -89,7 +89,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
                         enabled: rateLimit.enabled ?? true,
                         windowMinutes: rateLimit['window-minutes'] ?? 15,
                         maxAttempts: rateLimit['max-attempts'] ?? 5,
-                    }
+                    },
+                    bodyLimit: security['body-limit'] ?? '10mb'
                 }
             };
             return _cachedConfig;

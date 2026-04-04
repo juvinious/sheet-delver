@@ -1,59 +1,52 @@
-
-import { NextResponse } from 'next/server';
-import { ShadowdarkAdapter } from '../system';
+import { shadowdarkAdapter, ShadowdarkAdapter } from '../system';
 import { logger } from '../../../core/logger';
 
 // --- Logic Helpers ---
 
 async function getRandomAncestry(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.ancestries || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomClass(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = (systemData.classes || []).filter((c: any) => c.name !== "Level 0");
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomBackground(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.backgrounds || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     // Backgrounds are often simple items, but we fetch full doc to be safe/consistent
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomDeity(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     const options = systemData.deities || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 async function getRandomPatron(client: any, systemData?: any) {
     if (!systemData) {
-        const adapter = new ShadowdarkAdapter();
-        systemData = await adapter.getSystemData(client);
+        systemData = await shadowdarkAdapter.getSystemData(client);
     }
     // Patrons might be in systemData or need ensuring.
     // Assuming they are in systemData.patrons (if added to adapter)
@@ -62,7 +55,7 @@ async function getRandomPatron(client: any, systemData?: any) {
     const options = systemData.patrons || [];
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
-    return await client.fetchByUuid(selection.uuid);
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
 function getRandomAlignment() {
@@ -84,9 +77,9 @@ async function getRandomName(client: any, ancestryUuid?: string) {
     if (!ancestryUuid) return "Unnamed";
 
     try {
-        const ancestry = await client.fetchByUuid(ancestryUuid);
+        const ancestry = await shadowdarkAdapter.resolveDocument(client, ancestryUuid);
         if (ancestry?.system?.nameTable) {
-            const table = await client.fetchByUuid(ancestry.system.nameTable);
+            const table = await shadowdarkAdapter.resolveDocument(client, ancestry.system.nameTable);
             if (table && table.results) {
                 const results = table.results;
                 const max = Math.max(...results.map((r: any) => (r.range?.[1] || 0)));
@@ -311,62 +304,62 @@ export async function handleRandomizeName(request: Request) {
         const client = (request as any).foundryClient;
         const body = await request.json().catch(() => ({}));
         const name = await getRandomName(client, body.ancestryUuid);
-        return NextResponse.json({ name });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ name });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeAncestry(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const ancestry = await getRandomAncestry(client);
-        return NextResponse.json({ ancestry });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ ancestry });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeClass(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const cls = await getRandomClass(client);
-        return NextResponse.json({ class: cls });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ class: cls });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeBackground(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const bg = await getRandomBackground(client);
-        return NextResponse.json({ background: bg });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ background: bg });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeAlignment(request: Request) {
     try {
         const alignment = getRandomAlignment();
-        return NextResponse.json({ alignment });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ alignment });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeDeity(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const deity = await getRandomDeity(client);
-        return NextResponse.json({ deity });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ deity });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizePatron(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const patron = await getRandomPatron(client);
-        return NextResponse.json({ patron });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ patron });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeStats(request: Request) {
     try {
         const stats = getRandomStats();
-        return NextResponse.json({ stats });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ stats });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeGear(request: Request) {
@@ -374,8 +367,8 @@ export async function handleRandomizeGear(request: Request) {
         const client = (request as any).foundryClient;
         const body = await request.json().catch(() => ({}));
         const gear = await getRandomGear(client, body.level0 === true);
-        return NextResponse.json({ gear });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ gear });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeTalents(request: Request) {
@@ -385,8 +378,8 @@ export async function handleRandomizeTalents(request: Request) {
         const ancestry = body.ancestryUuid ? await client.fetchByUuid(body.ancestryUuid) : null;
         const cls = body.classUuid ? await client.fetchByUuid(body.classUuid) : null;
         const talents = getRandomTalents(ancestry, cls);
-        return NextResponse.json({ talents });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ talents });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 export async function handleRandomizeLanguages(request: Request) {
@@ -402,8 +395,8 @@ export async function handleRandomizeLanguages(request: Request) {
         const intMod = body.intMod || 0;
 
         const languages = await getRandomLanguages(client, systemData, ancestry, cls, intMod);
-        return NextResponse.json({ languages });
-    } catch (e: any) { return NextResponse.json({ error: e.message }, { status: 500 }); }
+        return Response.json({ languages });
+    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
 
 
@@ -412,7 +405,7 @@ export async function handleRandomizeLanguages(request: Request) {
 export async function handleRandomizeCharacter(request: Request) {
     try {
         const client = (request as any).foundryClient;
-        if (!client) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        if (!client) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json().catch(() => ({}));
         const isLevel0 = body.level0 === true;
@@ -421,7 +414,7 @@ export async function handleRandomizeCharacter(request: Request) {
         const systemData = await adapter.getSystemData(client);
 
         if (!systemData.ancestries?.length || !systemData.classes?.length) {
-            return NextResponse.json({ error: 'System data incomplete' }, { status: 500 });
+            return Response.json({ error: 'System data incomplete' }, { status: 500 });
         }
 
         // Parallel fetch for basic randoms
@@ -476,10 +469,10 @@ export async function handleRandomizeCharacter(request: Request) {
             gold: 0 // Removed per request
         };
 
-        return NextResponse.json(result);
+        return Response.json(result);
 
     } catch (e: any) {
         logger.error(`Randomize Character Error: ${e.message}`);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return Response.json({ error: e.message }, { status: 500 });
     }
 }

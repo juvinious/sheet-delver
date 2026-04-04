@@ -3,10 +3,19 @@ import { dataManager } from '../data/DataManager';
 
 export async function handleGetGear(request: Request): Promise<Response> {
     try {
+        const client = (request as any).foundryClient;
+        if (client) {
+            const { shadowdarkAdapter } = await import('../system');
+            await shadowdarkAdapter.getSystemData(client);
+        }
+
         const allDocs = await dataManager.getAllDocuments();
 
-        // Filter out non-item internal docs if any (though DataManager mostly handles this)
-        // But we want to return everything so the client can filter by pack/folder
+        console.log(`[API] handleGetGear: Found ${allDocs.length} total documents.`);
+        if (allDocs.length > 0) {
+            const sample = allDocs.slice(0, 5).map(d => ({ name: d.name, type: d.type, pack: d.pack }));
+            console.log(`[API] handleGetGear: Sample items:`, JSON.stringify(sample));
+        }
 
         return Response.json(allDocs);
     } catch (e) {

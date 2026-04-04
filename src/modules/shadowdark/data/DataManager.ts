@@ -1,10 +1,15 @@
 import { logger } from '../../../core/logger';
+import { ShadowdarkCache } from '../caching';
 
-
+/**
+ * DataManager acts as a caching registry for Shadowdark system documents.
+ * It has been refactored to fetch data strictly from the Foundry VTT socket,
+ * eliminating all local filesystem dependencies.
+ */
 export class DataManager {
     private static instance: DataManager;
-    public index: Map<string, any> = new Map();
     private initialized = false;
+    private pendingFetches = new Map<string, Promise<any>>();
 
     private constructor() { }
 
@@ -17,225 +22,207 @@ export class DataManager {
 
     public async initialize() {
         if (this.initialized) return;
-        if (typeof window !== 'undefined') {
-            this.initialized = true; // Mark as "done" but empty in browser
-            return;
-        }
-
-        let path: any;
-        let fs: any;
-        try {
-            path = (await import('node:path')).default;
-            fs = (await import('node:fs')).default;
-        } catch (e) {
-            logger.error('[DataManager] Failed to load Node.js modules:', e);
-            return;
-        }
-
-        const packsDir = path.join(process.cwd(), 'src/modules/shadowdark/data/packs');
-
-        if (!fs.existsSync(packsDir)) {
-            logger.warn(`[DataManager] Packs directory not found: ${packsDir}`);
-            return;
-        }
-
-        const resultsMap: Map<string, any[]> = new Map();
-
-        const scanDirectory = (dir: string) => {
-            const files = fs.readdirSync(dir);
-            for (const file of files) {
-                const fullPath = path.join(dir, file);
-                const stat = fs.statSync(fullPath);
-
-                if (stat.isDirectory()) {
-                    scanDirectory(fullPath);
-                } else if (file.endsWith('.json')) {
-                    try {
-                        const content = fs.readFileSync(fullPath, 'utf-8');
-                        const data = JSON.parse(content);
-
-                        // Handle embedded documents (files starting with '!' or having certain _key patterns)
-                        const internalKey = data._key || '';
-                        const parentDir = path.basename(dir);
-                        const packName = parentDir.replace('.db', '');
-                        const system = 'shadowdark';
-
-                        if (file.startsWith('!') || internalKey.startsWith('!')) {
-                            // Example: !tables.results!RQ0vogfVtJGuT9oT.TlVUTCMj9MkYslL5.json
-                            // Example: !tables!yVogBTQYwjpWB7YI.json
-
-                            if ((file.startsWith('!tables.results!') || internalKey.startsWith('!tables.results!')) && data._id) {
-                                // Extract table ID from filename or key
-                                const keyToMatch = file.startsWith('!tables.results!') ? file : internalKey;
-                                const match = keyToMatch.match(/!tables\.results!([^.]+)\.([^.]+)/);
-
-                                if (match) {
-                                    const tableId = match[1];
-                                    const resultId = match[2];
-
-                                    // Index by result ID
-                                    this.index.set(resultId, data);
-
-                                    // Also index by full embedded UUID format
-                                    const embeddedUuid = `Compendium.${system}.${packName}.${tableId}.TableResult.${resultId}`;
-                                    this.index.set(embeddedUuid, data);
-
-                                    // Collect for hydration
-                                    if (!resultsMap.has(tableId)) resultsMap.set(tableId, []);
-                                    resultsMap.get(tableId)?.push(data);
-
-                                    continue; // Skip regular indexing
-                                }
-                            } else if ((file.startsWith('!tables!') || internalKey.startsWith('!tables!')) && data._id) {
-                                // This is an actual RollTable document
-                                const docType = 'RollTable';
-                                const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
-                                const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
-
-                                data.pack = packName;
-                                data.uuid = uuidLong;
-                                data.documentType = docType;
-
-                                this.index.set(uuidShort, data);
-                                this.index.set(uuidLong, data);
-
-                                continue; // Skip regular indexing
-                            }
-                        }
-
-                        // Regular Indexing
-                        if (data._id) {
-                            let docType = data.type === 'Actor' ? 'Actor' : 'Item';
-                            if (packName === 'rollable-tables') docType = 'RollTable';
-
-                            // If we missed a RollTable because of missing prefix/key (unlikely but safe)
-                            if (docType === 'RollTable' && data.results) {
-                                // Already handled in the hydration loop later
-                            }
-
-                            const uuidShort = `Compendium.${system}.${packName}.${data._id}`;
-                            const uuidLong = `Compendium.${system}.${packName}.${docType}.${data._id}`;
-
-                            data.pack = packName;
-                            data.uuid = uuidLong;
-                            data.documentType = docType;
-
-                            this.index.set(uuidShort, data);
-                            this.index.set(uuidLong, data);
-                        }
-
-                    } catch (e) {
-                        logger.error(`[DataManager] Failed to parse ${file}`, e);
-                    }
-                }
-            }
-        };
-
-        logger.time('[DataManager] Indexing');
-        scanDirectory(packsDir);
-
-        // Hydrate tables with their results
-        let hydratedCount = 0;
-        for (const [uuid, doc] of this.index.entries()) {
-            if (doc.documentType === 'RollTable' && doc._id) {
-                const hydratedResults = resultsMap.get(doc._id);
-                if (hydratedResults && hydratedResults.length > 0) {
-                    logger.debug(`[DataManager] Table ${doc.name} hydrated via resultsMap with ${hydratedResults.length} items`);
-                    // Sort by range start to be safe
-                    doc.results = hydratedResults.sort((a, b) => (a.range?.[0] || 0) - (b.range?.[0] || 0));
-                    hydratedCount++;
-                } else if (doc.results && Array.isArray(doc.results) && typeof doc.results[0] === 'string') {
-                    // FALLBACK: Synthetic Hydration for tables with string IDs but no external result docs found
-                    // Search for those IDs in the index
-                    const syntheticResults: any[] = [];
-                    logger.debug(`[DataManager] Attempting synthetic hydration for table ${doc.name} (${doc.results.length} IDs)`);
-                    doc.results.forEach((id: string, index: number) => {
-                        let resultDoc = this.index.get(id);
-
-                        // Try resolving as UUID if simple ID lookup fails
-                        if (!resultDoc && doc.pack) {
-                            resultDoc = this.index.get(`Compendium.shadowdark.${doc.pack}.${id}`);
-                        }
-
-                        if (resultDoc) {
-                            // If it's already a TableResult (has range), use it
-                            if (resultDoc.range) {
-                                syntheticResults.push(resultDoc);
-                            } else if (resultDoc.documentType === 'RollTable') {
-                                // Don't hydrate nested tables, just link them
-                                syntheticResults.push({
-                                    _id: id,
-                                    type: 2, // document
-                                    documentCollection: 'RollTable',
-                                    documentId: resultDoc._id,
-                                    text: resultDoc.name,
-                                    img: resultDoc.img,
-                                    range: [index + 1, index + 1],
-                                    weight: 1,
-                                    drawn: false
-                                });
-                            } else {
-                                // Create a synthetic TableResult wrapper
-                                syntheticResults.push({
-                                    _id: id,
-                                    type: 'document',
-                                    documentUuid: resultDoc.uuid || `Compendium.shadowdark.${doc.pack}.Item.${id}`,
-                                    name: resultDoc.name,
-                                    range: [index + 1, index + 1],
-                                    weight: 1
-                                });
-                            }
-                        } else {
-                            logger.warn(`[DataManager] Failed to resolve result ID ${id} for table ${doc.name}`);
-                        }
-                    });
-
-                    if (syntheticResults.length > 0) {
-                        doc.results = syntheticResults;
-                        hydratedCount++;
-                    }
-                }
-            }
-        }
-        if (hydratedCount > 0) {
-            logger.info(`DataManager | Hydrated ${hydratedCount} RollTables with results.`);
-        }
-        logger.timeEnd('[DataManager] Indexing');
-        logger.debug(`[DataManager] Indexed ${this.index.size} entries.`);
         this.initialized = true;
-    }
-
-    public async getDocument(uuid: string): Promise<any | null> {
-        // If not initialized yet, do it lazily
-        if (!this.initialized) await this.initialize();
-
-        return this.index.get(uuid) || null;
+        logger.info('[DataManager] Shadowdark Data Registry initialized (Socket-only mode).');
     }
 
     /**
-     * Look up a document by its name and optionally its type.
-     * This is useful when a UUID is not available.
-     * 
-     * @param name - The name of the document to find
-     * @param type - The document type (e.g. 'RollTable', 'Item')
-     * @returns The document object or null if not found
+     * Get a document by its UUID, fetching from Foundry if not cached or shallow.
      */
-    public findDocumentByName(name: string, type?: string): any | null {
-        const normalized = name.toLowerCase();
-        for (const doc of this.index.values()) {
-            if (doc.name?.toLowerCase() === normalized) {
-                if (!type || doc.type === type || doc.documentCollection === type || doc.documentType === type) {
+    public async getDocument(uuid: string, client?: any): Promise<any | null> {
+        if (!uuid) return null;
+        
+        // 1. Check Module Cache first
+        const cache = ShadowdarkCache.getInstance();
+        const systemData = cache.systemData;
+        let cachedDoc: any = null;
+        let collection: string | null = null;
+        
+        if (systemData) {
+            // Search through the discovered collections
+            const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+            
+            // PRIORITY 1: Find a non-shallow match
+            for (const key of collections) {
+                const doc = systemData[key]?.find((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                if (doc && (doc.system || doc.type === 'RollTable')) {
                     return doc;
+                }
+                if (doc && !cachedDoc) {
+                    cachedDoc = doc;
+                    collection = key;
                 }
             }
         }
+
+        // 2. Fulfillment / Lazy Hydration
+        // If we have a cached doc but it's shallow (index only), hydrate it from Foundry
+        const isShallow = cachedDoc && !cachedDoc.system && cachedDoc.type !== 'RollTable';
+
+        if (cachedDoc && !isShallow) return cachedDoc;
+
+        // 3. Fetch from Foundry if client is provided (Fulfillment)
+        if (client) {
+            // Deduplication: Check if this UUID is already being fetched
+            if (this.pendingFetches.has(uuid)) {
+                logger.debug(`[DataManager] Reusing in-flight fetch for ${uuid}`);
+                return this.pendingFetches.get(uuid);
+            }
+
+            const fetchPromise = (async () => {
+                try {
+                    logger.debug(`[DataManager] [TRACE] Hydrating ${uuid} from Foundry...`);
+                    const fullDoc = await client.fetchByUuid(uuid);
+                    if (fullDoc) {
+                        logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
+                        const cache = ShadowdarkCache.getInstance();
+                        const systemData = cache.systemData || {};
+                        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+
+                        const enrichedDoc = { 
+                            ...fullDoc, 
+                            uuid: uuid, 
+                            isShallow: false 
+                        };
+
+                        // Universal Caching: Update *all* collections that contain this UUID
+                        let foundInAny = false;
+                        for (const key of collections) {
+                            if (!systemData[key]) continue;
+                            const idx = systemData[key].findIndex((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                            if (idx !== -1) {
+                                logger.debug(`[DataManager] Hydrating existing entry in collection: ${key}`);
+                                systemData[key][idx] = { 
+                                    ...enrichedDoc,
+                                    pack: systemData[key][idx].pack
+                                };
+                                foundInAny = true;
+                            }
+                        }
+
+                        // If not found in any collection, add to a fallback collection based on type
+                        if (!foundInAny) {
+                            const type = (fullDoc.type || fullDoc.documentType || "").toLowerCase();
+                            const typeMap: Record<string, string> = {
+                                'ancestry': 'ancestries',
+                                'class': 'classes',
+                                'background': 'backgrounds',
+                                'deity': 'deities',
+                                'patron': 'patrons',
+                                'language': 'languages',
+                                'spell': 'spells',
+                                'talent': 'talents',
+                                'class-ability': 'talents', // Standardize to talents
+                                'feature': 'talents',       // Standardize to talents
+                                'rolltable': 'tables'
+                            };
+                            const target = typeMap[type] || 'items';
+                            if (!systemData[target]) systemData[target] = [];
+                            logger.debug(`[DataManager] Adding new hydrated doc to fallback collection: ${target}`);
+                            systemData[target].push(enrichedDoc);
+                        }
+                        return enrichedDoc;
+                    } else {
+                        logger.warn(`[DataManager] Hydration for ${uuid} returned no data.`);
+                        return null; 
+                    }
+                } catch (e) {
+                    logger.warn(`[DataManager] Failed to fetch document ${uuid} from Foundry:`, e);
+                    return cachedDoc; // Return index as fallback if socket fails
+                } finally {
+                    this.pendingFetches.delete(uuid);
+                }
+            })();
+
+            this.pendingFetches.set(uuid, fetchPromise);
+            return fetchPromise;
+        }
+
+        return cachedDoc; // Return index as fallback if socket fails
+    }
+
+    /**
+     * Look up a document by its name and optionally its type within the discovered system data.
+     */
+    public findDocumentByName(name: string, type?: string): any | null {
+        const cache = ShadowdarkCache.getInstance();
+        const systemData = cache.systemData;
+        if (!systemData) return null;
+
+        const normalized = name.toLowerCase();
+        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+        
+        for (const key of collections) {
+            const found = systemData[key]?.find((doc: any) => {
+                const docName = doc.name?.toLowerCase() || "";
+                
+                // 1. Check for Name Match
+                let nameMatches = (docName === normalized);
+                
+                // 2. Fuzzy prefix match as fallback
+                if (!nameMatches) {
+                    if (docName.includes(normalized) && (docName.startsWith('language:') || docName.startsWith('deity:') || docName.startsWith('patron:'))) {
+                        nameMatches = true;
+                    }
+                }
+
+                if (!nameMatches) return false;
+
+                // 3. Type Match (if provided)
+                if (type) {
+                    const docType = (doc.type || doc.documentType || "").toLowerCase();
+                    
+                    // Map common Shadowdarkling singular to Foundry plural collections
+                    const typeMap: Record<string, string> = {
+                        'ancestry': 'ancestries',
+                        'class': 'classes',
+                        'deity': 'deities',
+                        'patron': 'patrons',
+                        'language': 'languages',
+                        'spell': 'spells',
+                        'talent': 'talents',
+                        'item': 'items',
+                        'table': 'tables'
+                    };
+
+                    // Map common Shadowdarkling singular to Foundry plural collections
+                    const targetCollection = typeMap[type.toLowerCase()] || `${type.toLowerCase()}s`;
+                    if (key === targetCollection) return true;
+
+                    // Fallback to internal type check if collection doesn't match
+                    return docType === type.toLowerCase();
+                }
+
+                return true;
+            });
+
+            if (found) return found;
+        }
+        
+        // Final Global Fallback: Search all collections by name if type-specific search fails
+        for (const key of Object.keys(systemData)) {
+            if (Array.isArray(systemData[key])) {
+                const found = systemData[key].find((doc: any) => {
+                    const docName = (doc.name || "").toLowerCase();
+                    return docName === name.toLowerCase() || docName === normalized.toLowerCase();
+                });
+                if (found) {
+                    logger.debug(`[DataManager] Found '${name}' via global fallback in collection: ${key}`);
+                    return found;
+                }
+            }
+        }
+        
         return null;
     }
 
-    async draw(uuidOrName: string, rollOverride?: number): Promise<{ id: string, roll: number, total: number, formula: string, results: any[], items: any[], table: any } | null> {
-        let table = await this.getDocument(uuidOrName);
+    /**
+     * Performs a roll on a RollTable. Fetches the table from Foundry if needed.
+     */
+    async draw(uuidOrName: string, client: any, rollOverride?: number): Promise<{ id: string, roll: number, total: number, formula: string, results: any[], items: any[], table: any } | null> {
+        let table = await this.getDocument(uuidOrName, client);
 
-        if (!table) {
+        if (!table && !uuidOrName.includes('.')) {
             table = this.findDocumentByName(uuidOrName, 'RollTable');
         }
 
@@ -249,23 +236,33 @@ export class DataManager {
             return null;
         }
 
-        // Use Math.random 2-12 unless overridden
-        const roll = rollOverride ?? (Math.floor(Math.random() * (12 - 2 + 1)) + 2);
+        // Use formula from table or default to 1d20
+        const formula = table.system?.formula || "1d20";
+        let roll = rollOverride;
+        
+        if (roll === undefined) {
+            // Simple simulate for common SD formulas (1d20, 2d6, etc)
+            const match = formula.match(/^(\d+)d(\d+)$/i);
+            if (match) {
+                const count = parseInt(match[1]);
+                const die = parseInt(match[2]);
+                roll = 0;
+                for (let i = 0; i < count; i++) roll += Math.floor(Math.random() * die) + 1;
+            } else {
+                roll = Math.floor(Math.random() * 20) + 1;
+            }
+        }
 
         const matched = table.results.filter((r: any) => {
             const range = r.range || [1, 1];
-            return roll >= range[0] && roll <= range[1];
+            return roll! >= range[0] && roll! <= range[1];
         });
 
-        // Hydrate results with raw data if they are just IDs or partially hydrated
         const hydratedResults = [];
         for (const res of matched) {
-            // results are already mostly hydrated in initialize()'s resultsMap logic,
-            // but let's ensure we have the full document if it's a link.
             if (res.documentCollection && res.documentId) {
-                const collection = res.documentCollection.includes('.') ? res.documentCollection : `shadowdark.${res.documentCollection}`;
-                const uuid = `Compendium.${collection}.${res.documentId}`;
-                const itemDoc = await this.getDocument(uuid);
+                const uuid = `Compendium.${res.documentCollection}.${res.documentId}`;
+                const itemDoc = await this.getDocument(uuid, client);
                 if (itemDoc) {
                     hydratedResults.push({ ...res, document: itemDoc });
                 } else {
@@ -278,131 +275,72 @@ export class DataManager {
 
         return {
             id: table._id || table.id,
-            roll: roll,         // User requested field
-            total: roll,        // Engine compatibility
-            formula: table.system?.formula || "2d6",
+            roll: roll!,
+            total: roll!,
+            formula,
             results: hydratedResults,
             items: hydratedResults.map(r => r.document || r).filter(Boolean),
             table: table
         };
     }
 
-
+    /**
+     * Filters discovered spells by class source.
+     */
     public async getSpellsBySource(className: string): Promise<any[]> {
-        if (!this.initialized) await this.initialize();
+        const cache = ShadowdarkCache.getInstance();
+        const systemData = cache.systemData;
+        if (!systemData || !systemData.spells) return [];
 
-        // const spells: any[] = [];
         const normalizedClass = className.toLowerCase();
+        
+        return systemData.spells.filter((spell: any) => {
+            if (!spell.system?.class) return false;
+            const classes = Array.isArray(spell.system.class) ? spell.system.class : [spell.system.class];
+            
+            return classes.some((c: string) => {
+                const cLower = String(c).toLowerCase();
+                // 1. Direct name match
+                if (cLower === normalizedClass) return true;
+                // 2. UUID match (heuristic)
+                if (cLower.includes(`.${normalizedClass}.`) || cLower.includes(`/${normalizedClass}`)) return true;
+                
+                // 3. Resolve UUID if possible (from discovered classes)
+                const resolvedClass = systemData.classes?.find((cls: any) => (cls.uuid === c || cls._id === c || cls.id === c));
+                if (resolvedClass && resolvedClass.name?.toLowerCase() === normalizedClass) return true;
 
-
-        const uniqueDocs = new Set(this.index.values());
-
-        for (const doc of uniqueDocs) {
-            if (doc.type !== 'Spell') continue;
-
-            // Check sources
-            // System specific: doc.system.class is an array of Class UUIDs OR names?
-            // "system": { "class": [ "Compendium.shadowdark.classes.Item.035nuVkU9q2wtMPs" ] }
-            // So we need to match the UUID of the class name provided.
-
-            // This implies we need to know the UUID of "Wizard" to find spells for "Wizard".
-            // Implementation: Find Class UUID by Name first.
-        }
-
-        // Find Class UUID
-        // let classUuid: string | null = null;
-        for (const doc of uniqueDocs) {
-            if (doc.type === 'Class' && doc.name.toLowerCase() === normalizedClass) {
-                // heuristic: find the one that looks like a compendium item?
-                // actually we have the UUIDs in the map keys.
-                // But efficient reverse lookup is tricky.
-                // Let's just find the document matching the name.
-                // let classUuid = doc._id;
-                // The .json usually has _id: "16XuBF2xjUnoepyp"
-                // The spell has system.class: ["Compendium.shadowdark.classes.Item.035nuVkU9q2wtMPs"]
-                // We need to match that.
-                break;
-            }
-        }
-
-        // If we can't find the class by name in our data, we can't filter safely?
-        // Actually, we can return all spells and filter if we know the UUID.
-
-        // Resolve all promises concurrently for efficiency if getDocument call was needed (but we have index)
-        // Actually we don't need getDocument if we iterate internal index.
-        // But the filter lambda uses it.
-
-        const results: any[] = [];
-        for (const doc of Array.from(uniqueDocs)) {
-            if (doc.type !== 'Spell') continue;
-            if (!doc.system?.class) continue;
-
-            let match = false;
-            // Iterate classes safely
-            const classes = Array.isArray(doc.system.class) ? doc.system.class : [doc.system.class];
-
-            for (const classRef of classes) {
-                // We need to look up the classRef in our index
-                // We can access this.index directly since we are in the class.
-                const linkedClass = this.index.get(classRef);
-                if (linkedClass && linkedClass.name.toLowerCase() === normalizedClass) {
-                    match = true;
-                    break;
-                }
-            }
-            if (match) results.push(doc);
-        }
-        return results;
+                return false; 
+            });
+        });
     }
 
     public async getAllDocuments(): Promise<any[]> {
-        if (!this.initialized) await this.initialize();
-        return Array.from(new Set(this.index.values()));
+        const cache = ShadowdarkCache.getInstance();
+        const systemData = cache.systemData;
+        if (!systemData) return [];
+        
+        return [
+            ...(systemData.ancestries || []),
+            ...(systemData.classes || []),
+            ...(systemData.backgrounds || []),
+            ...(systemData.deities || []),
+            ...(systemData.patrons || []),
+            ...(systemData.languages || []),
+            ...(systemData.spells || []),
+            ...(systemData.talents || []),
+            ...(systemData.items || []),
+            ...(systemData.tables || [])
+        ];
     }
 
     public async getIndex(): Promise<Record<string, string>> {
-        if (!this.initialized) await this.initialize();
+        const docs = await this.getAllDocuments();
         const result: Record<string, string> = {};
-        for (const [_uuid, doc] of this.index.entries()) {
-            result[_uuid] = doc.name;
+        for (const doc of docs) {
+            const uuid = doc.uuid || doc._id || doc.id;
+            if (uuid) result[uuid] = doc.name;
         }
         return result;
-    }
-
-    /**
-     * Simple dice formula parser (e.g., "2d6", "1d20+2", etc.)
-     */
-    private _rollFormula(formula: string): number {
-        try {
-            // Trim and normalize
-            const f = formula.toLowerCase().replace(/\s+/g, '');
-
-            // Match standard [count]d[die][+|-][mod]
-            const match = f.match(/^(\d+)d(\d+)(?:([+-])(\d+))?$/);
-            if (!match) {
-                // If it's just a number, return it
-                const n = parseInt(f);
-                return isNaN(n) ? 0 : n;
-            }
-
-            const count = parseInt(match[1]);
-            const die = parseInt(match[2]);
-            const op = match[3];
-            const mod = match[4] ? parseInt(match[4]) : 0;
-
-            let total = 0;
-            for (let i = 0; i < count; i++) {
-                total += Math.floor(Math.random() * die) + 1;
-            }
-
-            if (op === '+') total += mod;
-            if (op === '-') total -= mod;
-
-            return total;
-        } catch (e) {
-            logger.error(`[DataManager] Error rolling formula "${formula}":`, e);
-            return 0;
-        }
     }
 }
 

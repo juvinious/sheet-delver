@@ -15,11 +15,24 @@ async function startServer() {
         process.exit(1);
     }
 
+    // Global Error Handlers (Diagnostic for silent kills/crashes)
+    if (config.debug.level >= 4) {
+        process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+            logger.error(`\x1b[31m[FATAL] Unhandled Rejection at: ${promise} reason: ${reason?.stack || reason}\x1b[0m`);
+            process.exit(1);
+        });
+
+        process.on('uncaughtException', (err: Error) => {
+            logger.error(`\x1b[31m[FATAL] Uncaught Exception: ${err.stack || err}\x1b[0m`);
+            process.exit(1);
+        });
+    }
+
     const { apiPort } = config.app;
     const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
 
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: config.security.bodyLimit }));
     app.use(cors());
 
     const httpServer = createServer(app);
@@ -89,6 +102,29 @@ async function startServer() {
     let lastKnownWorldId: string | null = null;
 
     // Service Initialization Hook
+    // --- Real-time Sync Listeners (Registered once) ---
+    // Broadcast sensitive data only to authenticated clients
+    systemClient.on('combatUpdate', (data: any) => {
+        logger.debug('Core Service | Syncing combat update to clients...');
+        io.to('authenticated').emit('combatUpdate', data);
+    });
+
+    systemClient.on('chatUpdate', (data: any) => {
+        logger.debug('Core Service | Syncing chat update to clients...');
+        io.to('authenticated').emit('chatUpdate', data);
+    });
+
+    systemClient.on('actorUpdate', (data: any) => {
+        logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
+        io.to('authenticated').emit('actorUpdate', data);
+    });
+
+    systemClient.on('sharedContentUpdate', (data: any) => {
+        logger.debug('Core Service | Syncing shared content update to clients...');
+        io.to('authenticated').emit('sharedContentUpdate', data);
+    });
+
+    // Service Initialization Hook
     systemClient.on('connect', () => {
         const currentWorldId = systemClient.getGameData()?.world?.id || null;
 
@@ -103,56 +139,50 @@ async function startServer() {
         if (lastKnownWorldId && currentWorldId && lastKnownWorldId !== currentWorldId) {
             logger.warn(`Core Service | World changed from "${lastKnownWorldId}" to "${currentWorldId}". Clearing all sessions.`);
             sessionManager.clearAllSessions();
+            
+            // Re-initialize services for the new world
+            (async () => {
+                try {
+                    const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+                    const cache = CompendiumCache.getInstance();
+                    await cache.initialize(systemClient);
+                    sessionManager.setCache(cache);
+
+                    const sysInfo = await systemClient.getSystem();
+                    if (sysInfo && sysInfo.id) {
+                        const { getAdapter } = await import('../modules/core/registry');
+                        const adapter = getAdapter(sysInfo.id);
+                        if (adapter && adapter.initialize) {
+                            logger.info(`Core Service | Re-initializing Adapter for ${sysInfo.id}...`);
+                            await adapter.initialize(systemClient);
+                        }
+                    }
+                } catch (e: any) {
+                    logger.error(`Core Service | World change re-initialization failed: ${e.message}`);
+                }
+            })();
         }
 
         lastKnownWorldId = currentWorldId;
 
         if (systemClient.worldState !== 'active') return;
 
-        // Implementation Plan: Real-time Sync
-        // Broadcast sensitive data only to authenticated clients
-        systemClient.on('combatUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing combat update to clients...');
-            io.to('authenticated').emit('combatUpdate', data);
-        });
-
-        systemClient.on('chatUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing chat update to clients...');
-            io.to('authenticated').emit('chatUpdate', data);
-        });
-
-        systemClient.on('actorUpdate', (data: any) => {
-            logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
-            io.to('authenticated').emit('actorUpdate', data);
-        });
-
-        systemClient.on('sharedContentUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing shared content update to clients...');
-            // In v13, shared content might need to reach specific users, but for now we broadcast to all authenticated
-            io.to('authenticated').emit('sharedContentUpdate', data);
-        });
-
-        logger.info('Core Service | Initializing Backend Services...');
+        logger.info('Core Service | System Client connected/reconnected. Ensuring Backend Services is running...');
+        
+        // Holistic bootstrap: Cache -> Adapter -> Discovery
+        // This is now an awaited, sequential block to ensure 'initialized' 
+        // only flips once everything is confirmed and safe.
         (async () => {
             try {
-                const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-                const cache = CompendiumCache.getInstance();
-                await cache.initialize(systemClient);
-                sessionManager.setCache(cache);
+                await sessionManager.bootstrap(systemClient);
             } catch (e: any) {
-                logger.error(`Core Service | Compendium Cache initialization failed: ${e.message}`);
+                logger.error(`Core Service | Bootstrap failed: ${e.message}`);
             }
         })();
     });
 
     systemClient.on('disconnect', () => {
-        logger.info('Core Service | System Client Disconnected. Clearing Backend Services...');
-        lastKnownWorldId = null; // Reset world tracking on disconnect
-        (async () => {
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-            CompendiumCache.getInstance().reset();
-            sessionManager.setCache(null);
-        })();
+        logger.info('Core Service | System Client Disconnected.');
     });
 
     // Initialize in background so Express can bind port immediately and answer /api/status 
@@ -392,6 +422,9 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    // --- Global Guard: Block API until bootstrap complete ---
+    appRouter.use(ensureInitialized);
+
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
@@ -406,7 +439,8 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/system/data', ensureInitialized, async (req: any, res: any) => {
+    // System Data (Already has ensureInitialized via router.use)
+    appRouter.get('/system/data', async (req: any, res: any) => {
         try {
             // Auth handled by middleware
             const systemClient = sessionManager.getSystemClient();

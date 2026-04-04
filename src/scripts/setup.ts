@@ -136,6 +136,14 @@ async function main() {
         debug: {
             enabled: answers.debugEnabled,
             level: answers.debugLevel || 1
+        },
+        security: {
+            "rate-limit": {
+                enabled: true,
+                "window-minutes": 15,
+                "max-attempts": 5
+            },
+            "body-limit": "10mb"
         }
     };
 

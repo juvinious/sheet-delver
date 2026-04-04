@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
+import { isRareLanguage } from '../../rules';
 
 interface Language {
     name: string;
@@ -38,18 +39,18 @@ export default function LanguageSelectionModal({
         return [...langs].sort((a, b) => a.name.localeCompare(b.name));
     }, [availableLanguages, search]);
 
-    const commonLanguages = filteredLanguages.filter(l => !l.rarity || l.rarity === 'common');
-    const rareLanguages = filteredLanguages.filter(l => l.rarity === 'rare');
+    const commonLanguages = filteredLanguages.filter(l => !isRareLanguage(l.name));
+    const rareLanguages = filteredLanguages.filter(l => isRareLanguage(l.name));
 
     // Count currently selected by category
     const selectedCommonCount = selected.filter(id => {
         const lang = availableLanguages.find(l => l.uuid === id || l.name === id);
-        return !lang?.rarity || lang.rarity === 'common';
+        return !isRareLanguage(lang?.name || (typeof id === 'string' && !id.startsWith('Compendium.') ? id : ''));
     }).length;
 
     const selectedRareCount = selected.filter(id => {
         const lang = availableLanguages.find(l => l.uuid === id || l.name === id);
-        return lang?.rarity === 'rare';
+        return isRareLanguage(lang?.name || (typeof id === 'string' && !id.startsWith('Compendium.') ? id : ''));
     }).length;
 
     const toggleLanguage = (uuid: string) => {
@@ -58,7 +59,7 @@ export default function LanguageSelectionModal({
         const isSelected = selected.includes(uuid) || (!!name && selected.includes(name));
 
         if (!isSelected) {
-            const isRare = lang?.rarity === 'rare';
+            const isRare = isRareLanguage(lang?.name || uuid);
             if (isRare && selectedRareCount >= maxRare) return;
             if (!isRare && selectedCommonCount >= maxCommon) return;
         }
@@ -134,13 +135,13 @@ export default function LanguageSelectionModal({
                             </div>
                         </div>
                     )}
-
+ 
                     {/* Rare Section */}
                     {rareLanguages.length > 0 && maxRare > 0 && (
-                        <div className="bg-purple-50 border-2 border-purple-900 p-4 shadow-[4px_4px_0px_0px_rgba(88,28,135,1)]">
-                            <div className="bg-purple-900 text-white px-4 py-1 -mx-4 -mt-4 mb-4 font-serif font-bold flex justify-between items-center uppercase tracking-wider">
+                        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="bg-black text-white px-4 py-1 -mx-4 -mt-4 mb-4 font-serif font-bold flex justify-between items-center uppercase tracking-wider">
                                 <span>Rare Languages</span>
-                                <span className={`text-[10px] px-2 border border-purple-300/50 ${selectedRareCount === maxRare ? 'text-white' : 'text-white/50'}`}>
+                                <span className={`text-[10px] px-2 border border-white/50 ${selectedRareCount === maxRare ? 'text-white' : 'text-white/50'}`}>
                                     {selectedRareCount} / {maxRare}
                                 </span>
                             </div>
@@ -154,8 +155,8 @@ export default function LanguageSelectionModal({
                                             onClick={() => toggleLanguage(lang.uuid)}
                                             disabled={disabled}
                                             className={`px-3 py-2 text-left text-[10px] font-black uppercase transition-all border-2 ${isSelected
-                                                ? 'bg-purple-900 text-white border-purple-900 shadow-[2px_2px_0px_0px_rgba(88,28,135,1)]'
-                                                : 'bg-white text-purple-900 border-purple-200 hover:border-purple-900'
+                                                ? 'bg-black text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
+                                                : 'bg-white text-black border-neutral-200 hover:border-black'
                                                 } ${disabled ? 'opacity-20 grayscale' : ''}`}
                                         >
                                             <span className="truncate">{lang.name}</span>

@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
 import { useFoundry } from '@/app/ui/context/FoundryContext';
 import { ActorCardBlock } from '@/shared/interfaces';
+import { getMatchingAdapter } from '@/modules/core/registry';
 
 interface ActorCardProps {
     actor: any;
@@ -20,13 +21,14 @@ export const ActorCard = ({
     onDelete
 }: ActorCardProps) => {
 
-    const { activeAdapter } = useFoundry();
+    const { activeAdapter: globalActiveAdapter } = useFoundry();
 
     const handleClick = () => {
         if (!clickable) return;
         window.location.href = `/actors/${actor.id}`;
     };
 
+    const activeAdapter = globalActiveAdapter || getMatchingAdapter(actor);
     const customData = activeAdapter?.getActorCardData?.(actor) || {};
 
     const displayName = customData.name || actor.name;

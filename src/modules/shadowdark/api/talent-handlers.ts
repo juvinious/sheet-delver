@@ -1,6 +1,7 @@
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { logger } from '../../../core/logger';
-import { dataManager } from '../data/DataManager';
+import { createEffect } from '../utils/Sanitizer';
+import { shadowdarkAdapter } from '../system';
 
 export interface TalentHandler {
     id: string;
@@ -11,7 +12,7 @@ export interface TalentHandler {
     config?: any;
     onInit?: (context: { actor: any, targetLevel: number }) => { requiredTalents?: number; choiceRolls?: number };
     isBlocked?: (state: any) => boolean;
-    resolveItems?: (state: any, targetLevel: number, client?: any) => Promise<any[]>;
+    resolveItems?: (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => Promise<any[]>;
     mutateItem?: (item: any, state: any) => void;
 }
 
@@ -51,18 +52,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                         const effectConfig = SYSTEM_PREDEFINED_EFFECTS[selectionMap[stat]];
 
                         if (effectConfig) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${effectConfig.label})`,
-                                icon: effectConfig.icon,
-                                changes: [
-                                    {
-                                        key: effectConfig.key,
-                                        mode: effectConfig.mode,
-                                        value: String(effectConfig.value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${effectConfig.label})`,
+                                effectConfig.icon,
+                                [{ key: effectConfig.key, value: effectConfig.value }],
+                                { sourceName: "Stat Improvement" }
+                            ));
                         }
                     });
                 }
@@ -101,18 +96,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                         const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
                         if (config) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${config.label})`,
-                                icon: config.icon,
-                                changes: [
-                                    {
-                                        key: config.key,
-                                        mode: config.mode,
-                                        value: String(value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${config.label})`,
+                                config.icon,
+                                [{ key: config.key, value: value }],
+                                { sourceName: "Stat Distribution" }
+                            ));
                         }
                     }
                 });
@@ -153,18 +142,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
                         const config = SYSTEM_PREDEFINED_EFFECTS[effectKey];
                         if (config) {
-                            item.effects.push({
-                                name: `Ability Score Improvement (${config.label})`,
-                                icon: config.icon,
-                                changes: [
-                                    {
-                                        key: config.key,
-                                        mode: config.mode,
-                                        value: String(value)
-                                    }
-                                ],
-                                transfer: true
-                            });
+                            item.effects.push(createEffect(
+                                `Ability Score Improvement (${config.label})`,
+                                config.icon,
+                                [{ key: config.key, value: value }],
+                                { sourceName: "Stat Distribution (Warlock)" }
+                            ));
                         }
                     }
                 });
@@ -185,17 +168,15 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         },
         action: 'weapon-mastery',
         config: { required: 1 },
-        resolveItems: async (state: any, targetLevel: number, client?: any) => {
+        resolveItems: async (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => {
             const items = [];
             if (state.weaponMasterySelection && state.weaponMasterySelection.selected.length > 0) {
                 const selection = state.weaponMasterySelection.selected[0];
                 const uuid = 'Compendium.shadowdark.talents.5bpWuaT0KTNzuzCu';
 
                 let doc = null;
-                if (client) {
-                    doc = await client.fetchByUuid(uuid);
-                } else {
-                    doc = await dataManager.getDocument(uuid);
+                if (resolveDocFn) {
+                    doc = await resolveDocFn(uuid);
                 }
 
                 if (doc) {
@@ -246,17 +227,15 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         },
         action: 'armor-mastery',
         config: { required: 1 },
-        resolveItems: async (state: any, targetLevel: number, client?: any) => {
+        resolveItems: async (state: any, targetLevel: number, resolveDocFn?: (uuid: string) => Promise<any>) => {
             const items = [];
             if (state.armorMasterySelection && state.armorMasterySelection.selected.length > 0) {
                 const selection = state.armorMasterySelection.selected[0];
                 const uuid = 'Compendium.shadowdark.talents.BsRPGhKXYwJBI9ex';
 
                 let doc = null;
-                if (client) {
-                    doc = await client.fetchByUuid(uuid);
-                } else {
-                    doc = await dataManager.getDocument(uuid);
+                if (resolveDocFn) {
+                    doc = await resolveDocFn(uuid);
                 }
 
                 if (doc) {
@@ -338,18 +317,12 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 );
 
                 if (!hasEffect) {
-                    item.effects.push({
-                        name: "Bonus Spellcasting Class",
-                        icon: effectConfig.icon,
-                        changes: [
-                            {
-                                key: effectConfig.key,
-                                mode: effectConfig.mode,
-                                value: foundCls
-                            }
-                        ],
-                        transfer: true
-                    });
+                    item.effects.push(createEffect(
+                        "Bonus Spellcasting Class",
+                        effectConfig.icon,
+                        [{ key: effectConfig.key, value: foundCls }],
+                        { sourceName: "Class Feature" }
+                    ));
                 }
             }
         }
@@ -372,13 +345,6 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             return isMissingEffects && hasDefinition;
         },
         mutateItem: (item: any) => {
-            // 1. Clean up invalid effects (strings)
-            if (item.effects && Array.isArray(item.effects) && item.effects.length > 0 && typeof item.effects[0] === 'string') {
-                logger.warn(`[TalentHandler] Clearing invalid string effects for ${item.name}`);
-                item.effects = [];
-            }
-
-            // 2. Try to polyfill from standard definitions
             const name = (item.name || "").toLowerCase();
             const predefinedMatch = Object.values(SYSTEM_PREDEFINED_EFFECTS).find((def: any) =>
                 name.includes(def.label.toLowerCase()) ||
@@ -387,27 +353,42 @@ export const TALENT_HANDLERS: TalentHandler[] = [
 
             if (predefinedMatch) {
                 if (!item.effects) item.effects = [];
-
-                // Deduplicate
                 const exists = item.effects.some((e: any) => e.name === predefinedMatch.label);
                 if (!exists) {
-                    item.effects.push({
-                        name: predefinedMatch.label,
-                        icon: predefinedMatch.icon || "icons/svg/aura.svg",
-                        changes: predefinedMatch.changes || [{
+                    item.effects.push(createEffect(
+                        predefinedMatch.label,
+                        predefinedMatch.icon || "icons/svg/aura.svg",
+                        predefinedMatch.changes || [{
                             key: predefinedMatch.key,
-                            mode: predefinedMatch.mode,
                             value: predefinedMatch.value
                         }],
-                        transfer: true,
-                        disabled: false,
-                        _id: Math.random().toString(36).substring(2, 15) // Generate valid ID
-                    });
+                        { sourceName: "Predefined Definition" }
+                    ));
                 }
             }
         }
-    }
-    ,
+    },
+    {
+        id: 'add-wis-to-rolls',
+        description: "Add Wisdom modifier to rolls (Warlock/Kytheros)",
+        matches: (item: any) => {
+            const name = (item.name || "").toLowerCase();
+            return name.includes("addwistorolls") || name.includes("wisdom to rolls");
+        },
+        mutateItem: (item: any) => {
+            if (!item.effects) item.effects = [];
+            // Kytheros Boon: Add Wisdom mod to Spellcasting checks
+            const effect = createEffect(
+                "Wisdom to Spellcasting",
+                "icons/magic/control/sihouette-hold-beam-green.webp",
+                [{ key: "system.bonuses.spellcastingCheckBonusAttribute", value: "wis" }],
+                { sourceName: "Kytheros Boon" }
+            );
+            if (!item.effects.some((e: any) => e.name === effect.name)) {
+                item.effects.push(effect);
+            }
+        }
+    },
     {
         id: 'generic-choice',
         description: "Parse 'Choose one' or 'X or Y' talents",

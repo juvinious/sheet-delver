@@ -1,34 +1,37 @@
 import { FoundryClient } from '@/core/foundry/interfaces';
 import { logger } from '@/core/logger';
+import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 
-// No longer exporting static list
+/**
+ * Build the normalized effects array that the UI expects.
+ * Derived from the static SYSTEM_PREDEFINED_EFFECTS map — no network call needed.
+ */
+const PREDEFINED_EFFECTS_LIST = Object.entries(SYSTEM_PREDEFINED_EFFECTS).map(([id, data]) => ({
+    id,
+    name: data.label,
+    label: data.label,
+    img: data.icon,
+    effectKey: (data as any).key || null,
+    defaultValue: (data as any).value ?? null,
+    mode: (data as any).mode ?? null,
+    changes: (data as any).changes || null,
+}));
 
+/**
+ * Handles all ActiveEffect operations for a given actor.
+ * Uses the static PREDEFINED_EFFECTS_LIST (built at module load) rather than
+ * fetching systemData on every call, which was previously triggering the entire
+ * discovery/cache pipeline for a list that never changes at runtime.
+ */
 export async function handleEffects(
     actorId: string,
     client: FoundryClient,
     action: 'list' | 'toggle' | 'create' | 'update' | 'delete',
     data?: any
 ) {
-    // IMPORTANT: Use getActorRaw to ensure we have un-normalized items/effects
+    // Use getActorRaw to get un-normalized items/effects for CRUD operations.
     const actor = await (client.getActorRaw ? client.getActorRaw(actorId) : client.getActor(actorId));
     if (!actor) throw new Error('Actor not found');
-
-    // Fetch dynamic config from adapter
-    const adapter = (client as any).getSystemAdapter ? (client as any).getSystemAdapter() : null;
-    if (!adapter) throw new Error('System adapter not found');
-    const systemData = await adapter.getSystemData(client);
-
-    // Normalize PREDEFINED_EFFECTS from Object to Array (UI expects array)
-    const rawPredefined = systemData.PREDEFINED_EFFECTS || {};
-    const PREDEFINED_EFFECTS_LIST = Object.entries(rawPredefined).map(([id, data]: [string, any]) => ({
-        id,
-        name: data.label || data.name,
-        label: data.label || data.name,
-        img: data.icon || data.img,
-        effectKey: data.key || data.effectKey,
-        defaultValue: data.value || data.defaultValue,
-        mode: data.mode
-    }));
 
     switch (action) {
         case 'list': {

@@ -1,12 +1,11 @@
-import { NextResponse } from 'next/server';
 import { dataManager } from '../data/DataManager';
 
 export async function handleIndex(request: Request) {
     try {
         const index = await dataManager.getIndex();
-        return NextResponse.json(index);
+        return Response.json(index);
     } catch (e: any) {
         console.error('Failed to get Shadowdark index', e);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return Response.json({ error: e.message }, { status: 500 });
     }
 }

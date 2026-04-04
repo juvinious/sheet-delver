@@ -115,9 +115,6 @@ export default function GenericActorPage({ actorId }: GenericActorPageProps) {
         };
     }, [actorId, fetchActor, addNotification, appSocket]);
 
-    useEffect(() => {
-        return () => setActiveAdapter(null);
-    }, [setActiveAdapter]);
 
     // Generic handlers (same as MorkBorg/Shadowdark strict subset)
     const handleRoll = async (type: string, key: string, options: any = {}) => {

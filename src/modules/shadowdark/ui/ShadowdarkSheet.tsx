@@ -22,6 +22,7 @@ import EffectsTab from './EffectsTab';
 import NotesTab from './NotesTab';
 import { LevelUpModal } from './components/LevelUpModal';
 import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
+import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 
 
 
@@ -51,10 +52,11 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const [systemData, setSystemData] = useState<any>(null);
     const [loadingSystem, setLoadingSystem] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
-    const [showLevelUpModal, setShowLevelUpModal] = useState(false);
-    const [levelUpData, setLevelUpData] = useState<any>(null);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
+
+    // Shadowdark Level-Up Logic (Consolidated)
+    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any);
 
     const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
 
@@ -62,32 +64,6 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     useEffect(() => {
         setViewMode('simple');
     }, [actor._id, actor.id]);
-
-    const [serverSideCasterInfo, setServerSideCasterInfo] = useState<{
-        isSpellcaster: boolean;
-        canUseMagicItems: boolean;
-        showSpellsTab: boolean;
-    } | null>(null);
-
-    useEffect(() => {
-        const fetchCasterInfo = async () => {
-            try {
-                const id = actor._id || actor.id;
-                const headers: any = {};
-                if (token) headers['Authorization'] = `Bearer ${token}`;
-
-                const res = await fetch(`/api/modules/shadowdark/actors/${id}/spellcaster`, { headers });
-                if (res.ok) {
-                    const data = await res.json();
-                    setServerSideCasterInfo(data);
-                }
-            } catch (err) {
-                console.error('Failed to fetch caster info:', err);
-            }
-        };
-
-        fetchCasterInfo();
-    }, [actor._id, actor.id, token]);
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -283,17 +259,17 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
     useEffect(() => {
         const handleResize = () => {
-            const width = window.innerWidth;
             let currentTabs = [...tabsOrder];
 
-            // Unified Spellcaster Logic from rules.ts
-            const showSpells = shouldShowSpellsTab(actor) || actor.computed?.showSpellsTab || serverSideCasterInfo?.showSpellsTab;
+            // Spellcaster check: prefer pre-computed value on actor, fall back to rules function.
+            // No extra API call needed — this is already determined during normalization.
+            const showSpells = actor.computed?.showSpellsTab || shouldShowSpellsTab(actor);
 
             if (!showSpells) {
                 currentTabs = currentTabs.filter(t => t.id !== 'spells');
             }
 
-            const count = getVisibleCount(width);
+            const count = getVisibleCount(window.innerWidth);
 
             setVisibleTabs(currentTabs.slice(0, count));
             setOverflowTabs(currentTabs.slice(count));
@@ -304,16 +280,9 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [tabsOrder, actor, getVisibleCount, serverSideCasterInfo]);
+    }, [tabsOrder, actor, getVisibleCount]);
 
-    // Auto-close Level Up Modal when level effectively changes
-    useEffect(() => {
-        if (showLevelUpModal && levelUpData && actor.system?.level?.value === levelUpData.targetLevel) {
-            setShowLevelUpModal(false);
-            setLevelUpData(null);
-            addNotification('Level Up Complete!', 'success');
-        }
-    }, [actor.system?.level?.value, showLevelUpModal, levelUpData, addNotification]);
+    // Level Up Modal is handled via hook
 
     const handleTabSelect = (tabId: string) => {
         setActiveTab(tabId);
@@ -398,7 +367,8 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                     <h1 className="text-2xl md:text-3xl font-serif font-bold leading-none tracking-tight">{actor.name}</h1>
                                     <div className="flex flex-col md:flex-row md:items-center gap-x-3 gap-y-1">
                                         <p className="text-xs text-neutral-400 font-sans tracking-widest uppercase mt-1">
-                                            {actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, systemData, 'ancestries')} {actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, systemData, 'classes')}
+                                            {actor.details?.title && <span className="text-amber-500 mr-2">{actor.details.title}</span>}
+                                            {actor.details?.ancestry || ''} {actor.details?.class || ''}
                                         </p>
                                         <button
                                             onClick={() => {
@@ -426,22 +396,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
                             {actor.computed?.levelUp && (
                                 <button
-                                    onClick={() => {
-                                        setLevelUpData({
-                                            currentLevel: actor.system?.level?.value || 0,
-                                            targetLevel: (actor.system?.level?.value || 0) + 1,
-                                            classObj: actor.computed?.classDetails,
-                                            ancestry: actor.system?.ancestry,
-                                            patron: actor.computed?.patronDetails,
-                                            abilities: actor.system?.abilities,
-                                            spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
-                                            // If Level 0, force empty classUuid so modal prompts for class selection
-                                            classUuid: (actor.system?.level?.value || 0) === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
-                                            // Pass explicit UUIDs for class/patron in case objects are missing
-                                            patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
-                                        });
-                                        setShowLevelUpModal(true);
-                                    }}
+                                    onClick={triggerLevelUp}
                                     className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
                                 >
                                     LEVEL UP!
@@ -558,6 +513,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 onUpdateItem={onUpdateItem}
                                 onDeleteItem={onDeleteItem}
                                 onToggleEffect={onToggleEffect}
+                                triggerLevelUp={triggerLevelUp}
                             />
                         )
                         }
@@ -725,30 +681,13 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         spells={levelUpData.spells}
                         availableClasses={systemData?.classes || []}
                         availableLanguages={systemData?.languages || []}
-                        onComplete={async (_data) => {
-                            try {
-                                // If this was a level 1 reroll (currentLevel 0), we might need to sync gold
-                                // manually if it was rolled on the frontend, but the backend finalize
-                                // already handled it if actorId was provided.
-
-                                // Show success message and wait for data to stabilize
-                                addNotification('Level Up Successful! Updating sheet...', 'success');
-
-                                // Wait for a moment to let the backend process and the UI to acknowledge
-                                // (Polling/Socket usually handles the actual data refresh)
-                                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                                setShowLevelUpModal(false);
-                                setLevelUpData(null);
-                            } catch (e: any) {
-                                console.error('Level-up completion error:', e);
-                                addNotification('Level-up failed to complete correctly', 'error');
-                            }
+                        onComplete={async (_data: any) => {
+                            // Backend finalize already handled data
+                            addNotification('Level Up Successful! Updating sheet...', 'success');
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                            closeLevelUp();
                         }}
-                        onCancel={() => {
-                            setShowLevelUpModal(false);
-                            setLevelUpData(null);
-                        }}
+                        onCancel={closeLevelUp}
                     />
                 )
             }

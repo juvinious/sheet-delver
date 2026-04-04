@@ -47,6 +47,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     // Core Socket maintains the singular connection
     private consecutiveFailures = 0;
     private lastLaunchActivity = 0;
+    private heartbeatPaused = false;
     private userMap = new Map<string, any>();
     private actorDataCache = new Map<string, any>();
 
@@ -101,6 +102,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 const ids = operation?.ids || docs.map((d: any) => d?._id || d?.id).filter(Boolean);
                 ids.forEach((id: string) => this.actorDataCache.delete(id));
             } else {
+                if (action === 'get' && docs.length > 5) {
+                    logger.debug(`CoreSocket | Caching batch of ${docs.length} actors (get)`);
+                }
+
                 docs.forEach((actor: any) => {
                     const id = actor?._id || actor?.id;
                     if (id) {
@@ -115,7 +120,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                             this.actorDataCache.delete(id);
                         } else {
                             // Create or get: Full object
-                            logger.debug(`CoreSocket | Setting new cached actor ${id} (${type} ${action})`);
+                            if (action !== 'get' || docs.length <= 5) {
+                                logger.debug(`CoreSocket | Setting new cached actor ${id} (${type} ${action})`);
+                            }
                             this.actorDataCache.set(id, actor);
                         }
                     }
@@ -350,6 +357,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                         this.sceneDataCache = null; // Clear scene cache
                         this.userMap.clear();
                         clearTimeout(timeout);
+                        // Still emit connect for setup mode to release the bootstrap lock
                         this.emit('connect');
                         resolve();
                         return;
@@ -358,13 +366,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     logger.info('CoreSocket | World is ACTIVE. Fetching game data via socket...');
                     this.worldState = 'active';
                     this.probeWorldData = null;  // Full connection established; probe cache no longer needed
-                    this.emit('connect');
-
-                    this.startHeartbeat();
 
                     // 6. Fetch Game Data via Socket (The canonical bootstrap way)
                     const gameData = await this.getWorldData();
                     const sceneData = await this.fetchSceneData();
+
+                    // 7. Start Heartbeat ONLY after bootstrapping is complete
+                    this.startHeartbeat();
+                    // DEFERRED: We no longer emit 'connect' here, as gameDataCache isn't set yet.
+                    // This prevents bootstrapping races.
                     if (gameData) {
                         this.gameDataCache = gameData;
                         if (sceneData) {
@@ -420,7 +430,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 });
 
                 this.socket.on('connect_error', (err) => {
-                    logger.error(`CoreSocket | Socket connection error: ${err.message}`);
+                    logger.error(`CoreSocket | Socket connection error: ${err.message}. State: connected=${this.socket?.connected}, active=${(this.socket as any).active}`);
                     clearTimeout(timeout);
                     reject(err);
                 });
@@ -523,8 +533,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
         // Required polling: Foundry does NOT emit a 'disconnect' socket event when dropping to setup
         // The websocket stays alive. We must poll /api/status to know the world shut down.
+        // Polling loop slowed to 15s to prevent saturation during intensive operations like discovery
+        // Polling loop slowed to 30s to prevent saturation during intensive operations like discovery
         this.heartbeatInterval = setInterval(async () => {
-            if (!this.isConnected) return;
+            if (!this.isConnected || this.isConnecting || this.worldState === 'startup' || this.heartbeatPaused) return;
             try {
                 const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
                 const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
@@ -538,7 +550,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             } catch (e) {
                 // Ignore transient network errors
             }
-        }, 5000);
+        }, 30000);
     }
 
     private stopHeartbeat() {
@@ -572,18 +584,31 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
 
     // Rename to avoid conflict with EventEmitter
-    public async emitSocketEvent<T>(event: string, payload: any, timeoutMs: number = 5000): Promise<T> {
+    public async emitSocketEvent<T>(event: string, ...payloads: any[]): Promise<T> {
         if (!this.socket || !this.isConnected) throw new Error(`Not connected to Foundry`);
 
+        // Default timeout to 10s for better reliability on compendium lookups
+        let timeoutMs = 10000;
+        const lastArg = payloads[payloads.length - 1];
+        if (typeof lastArg === 'number' && payloads.length > 1) {
+            timeoutMs = payloads.pop();
+        }
+
+        const sid = this.getSessionId()?.slice(0, 8) || 'none';
+        logger.debug(`[CoreSocket] [TRACE] emitSocketEvent: ${event} (SID: ${sid}...)`);
+
         return new Promise((resolve, reject) => {
-            this.socket!.emit(event, payload, (response: any) => {
+            this.socket!.emit(event, ...payloads, (response: any) => {
                 if (response?.error) {
                     reject(new Error(typeof response.error === 'string' ? response.error : JSON.stringify(response.error)));
                 } else {
                     resolve(response);
                 }
             });
-            setTimeout(() => reject(new Error(`Timeout waiting for event: ${event}`)), timeoutMs);
+            setTimeout(() => {
+                const state = `connected=${this.socket?.connected}, active=${(this.socket as any)?.active}`;
+                reject(new Error(`Timeout waiting for event: ${event}. Socket Context: ${state}, SID: ${sid}`));
+            }, timeoutMs);
         });
     }
 
@@ -620,6 +645,58 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         } catch (error: any) {
             if (failHard) this.consecutiveFailures++;
             throw error;
+        }
+    }
+
+    public async getPackEntries(packId: string, options: any = { index: true }): Promise<any[]> {
+        logger.debug(`CoreSocket | Fetching entries for pack ${packId} (options: ${JSON.stringify(options)})...`);
+        this.heartbeatPaused = true;
+        
+        try {
+            // Strategy 1: Unified modifyDocument API (The CRUD-master V13 approach - PROVEN WINNER)
+            try {
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 1 (modifyDocument): ${packId}`);
+                const response: any = await this.emitSocketEvent('modifyDocument', {
+                    type: packId.includes('tables') ? 'RollTable' : 'Item',
+                    action: 'get',
+                    operation: { 
+                        pack: packId, 
+                        index: true,
+                        fields: options.fields || []
+                    }
+                }, 5000);
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                // Trial fallback
+            }
+
+            // Strategy 2: Modern getDocuments with index flag (Canonical V13)
+            try {
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 2 (getDocuments): ${packId}`);
+                const response: any = await this.emitSocketEvent('getDocuments', packId.includes('tables') ? 'RollTable' : 'Item', { 
+                    index: true, 
+                    pack: packId,
+                    fields: options.fields || []
+                }, 5000);
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                // Trial fallback
+            }
+
+            // Strategy 3: Legacy getCompendiumIndex (V11/V12 Alias)
+            try {
+                logger.debug(`[CoreSocket] [TRACE] getPackEntries Strategy 3 (getCompendiumIndex): ${packId}`);
+                const response: any = await this.emitSocketEvent('getCompendiumIndex', packId, 5000);
+                if (Array.isArray(response)) return response;
+                if (response?.result && Array.isArray(response.result)) return response.result;
+            } catch (e) {
+                // Trial fallback
+            }
+
+            logger.error(`CoreSocket | All entry fetch strategies failed for pack ${packId}`);
+            return [];
+        } finally {
+            this.heartbeatPaused = false;
         }
     }
 
@@ -914,56 +991,94 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     public async fetchByUuid(uuid: string): Promise<any> {
         if (!uuid || typeof uuid !== 'string') return null;
 
-        // 1. World Document (e.g. Actor.ID, Item.ID)
-        if (!uuid.startsWith('Compendium.')) {
-            const [type, id] = uuid.split('.');
-            if (type && id) {
-                const response = await this.dispatchDocumentSocket(type, 'get', { query: { _id: id }, broadcast: false });
-                return response?.result?.[0];
+        try {
+            logger.debug(`[CoreSocket] [TRACE] fetchByUuid START: ${uuid}`);
+
+            // 1. World Document (e.g. Actor.ID, Item.ID)
+            if (!uuid.startsWith('Compendium.')) {
+                const [type, id] = uuid.split('.');
+                if (type && id) {
+                    logger.debug(`[CoreSocket] [TRACE] fetchByUuid World Document: ${type} ${id}`);
+                    const response = await this.dispatchDocumentSocket(type, 'get', { query: { _id: id }, broadcast: false });
+                    return response?.result?.[0];
+                }
+                return null;
             }
+
+            // 2. Compendium Document (Agnostically parse segments)
+            const parts = uuid.split('.');
+            if (parts.length < 4) return null;
+
+            // Anatomy: Compendium.[PACK_VENDOR].[PACK_NAME].[OPTIONAL_TYPE].[ID]
+            const id = parts.pop()!;
+            const lastSegment = parts[parts.length - 1];
+            
+            // Heuristic for type: If the segment before ID starts with a Capital letter, it's likely the Type
+            const hasTypeSegment = lastSegment.match(/^[A-Z]/);
+            const typeFromUuid = hasTypeSegment ? lastSegment : null;
+            
+            // Pack ID is everything after 'Compendium' and before the ID (and Type if present)
+            const packParts = hasTypeSegment ? parts.slice(1, -1) : parts.slice(1);
+            const packId = packParts.join('.');
+
+
+            // Extract type from UUID if possible (e.g., ...Item...)
+            // Since we popped the ID from 'parts', the new last item IS the type segment (if present).
+            const typeInUuid = (parts.length >= 2) ? parts[parts.length - 1] : null;
+            
+            // Core Foundry types that are valid roots for compendium lookups
+            const coreTypes = ['Item', 'Actor', 'JournalEntry', 'RollTable', 'Scene', 'Macro', 'Playlist'];
+            
+            let typesToTry: string[] = [];
+            if (typeInUuid && coreTypes.includes(typeInUuid)) {
+                typesToTry = [typeInUuid];
+            } else {
+                typesToTry = ['Item', 'Actor', 'JournalEntry', 'RollTable'];
+            }
+
+            // Trial timeout: Tighten to 500ms for local speed
+            const TRIAL_TIMEOUT = 500;
+
+            for (const t of typesToTry) {
+                    if (!this.isConnected) return null; // Bail fast if disconnected
+                    
+                    // Strategy 1: modifyDocument (The successful one in latest tests)
+                    try {
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 1 (modifyDocument): ${packId} ${t} ${id}`);
+                        const resp: any = await this.emitSocketEvent('modifyDocument', {
+                            type: t,
+                            action: 'get',
+                            operation: { pack: packId, ids: [id] }
+                        }, TRIAL_TIMEOUT);
+                        
+                        const found = resp?.result?.find((d: any) => (d._id === id || d.uuid?.endsWith(id)));
+                        if (found) return found;
+                    } catch (e) {
+                         // Fallback
+                    }
+
+                    // Strategy 2: Modern getDocuments (Backup)
+                    try {
+                        logger.debug(`[CoreSocket] [TRACE] fetchByUuid Strategy 2 (getDocuments): ${packId} ${t} ${id}`);
+                        const resp: any = await this.emitSocketEvent('getDocuments', {
+                            type: t,
+                            operation: { pack: packId, ids: [id] }
+                        }, TRIAL_TIMEOUT);
+                        
+                        // Verify result
+                        const found = resp?.result?.find((d: any) => (d._id === id || d.uuid?.endsWith(id)));
+                        if (found) return found;
+                    } catch (e) {
+                         // Fallback
+                    }
+                }
+
+            logger.debug(`[CoreSocket] [TRACE] fetchByUuid FAILED: ${uuid}`);
+            return null;
+        } catch (error) {
+            logger.error(`[CoreSocket] [TRACE] fetchByUuid CRITICAL ERROR: ${uuid}`, error);
             return null;
         }
-
-        // 2. Compendium Document (e.g. Compendium.pack.Type.ID)
-        const parts = uuid.split('.');
-        if (parts.length < 4) return null;
-
-        const packId = `${parts[1]}.${parts[2]}`;
-        const type = parts[3];
-        const id = parts[4];
-
-        // 2a. System Fallback (Try first for speed & reliability)
-        if (this.adapter?.resolveDocument) {
-            const resolved = await this.adapter.resolveDocument(this, uuid);
-            if (resolved) return resolved;
-        }
-
-        // 2b. Foundry Network Fetch
-        // 2b. Foundry Network Fetch
-        // Try both singular and plural collection names if needed
-        const typesToTry = [type];
-        if (type === 'Item') typesToTry.push('Items');
-        else if (type === 'JournalEntry') typesToTry.push('JournalEntries');
-        else if (type === 'Actor') typesToTry.push('Actors');
-
-        for (const t of typesToTry) {
-            try {
-                // Fetch using the standard 'ids' operation
-                const response: any = await this.emitSocketEvent('getDocuments', {
-                    type: t,
-                    operation: { pack: packId, ids: [id] }
-                }, 1500); // Shorter timeout for faster iteration
-
-                if (response?.result && Array.isArray(response.result) && response.result.length > 0) {
-                    return response.result[0];
-                }
-            } catch (e) {
-                // Try next type
-                continue;
-            }
-        }
-
-        return null;
     }
 
     async updateActor(id: string, data: any): Promise<any> {

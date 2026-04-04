@@ -310,8 +310,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                     if (typeof src === 'string') group = src;
                                     else if (typeof src === 'object') group = src.title || src.name || src.label || "General";
                                 }
-                                else if (item.system?.talentClass === 'class') group = resolveEntityName(actor.system?.class, actor, {}, 'classes') || "Class";
-                                else if (item.system?.talentClass === 'ancestry') group = resolveEntityName(actor.system?.ancestry, actor, {}, 'ancestries') || "Ancestry";
+                                else if (item.system?.talentClass === 'class') group = actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, {}, 'classes') || "Class";
+                                else if (item.system?.talentClass === 'ancestry') group = actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, {}, 'ancestries') || "Ancestry";
 
                                 if (!grouped[group]) grouped[group] = [];
                                 grouped[group].push(item);

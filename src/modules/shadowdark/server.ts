@@ -26,10 +26,12 @@ import {
     handleRandomizeTalents,
     handleRandomizeLanguages
 } from './api/randomize-character';
-import { ShadowdarkAdapter } from './system';
+import { ShadowdarkDiscovery } from './discovery';
+import { shadowdarkAdapter } from './system';
 
-// Initialize data cache
-dataManager.initialize();
+// Initialize system adapter
+shadowdarkAdapter.initialize();
+
 
 export const apiRoutes = {
     'index': handleIndex,
@@ -112,17 +114,10 @@ export const apiRoutes = {
 
         return Response.json({ error: 'Method not allowed' }, { status: 405 });
     },
-    'actors/level-up/roll-hp': async (request: Request) => {
-        return handleRollHP(undefined, request, (request as any).foundryClient, (request as any).userSession);
-    },
-    // /api/modules/shadowdark/actors/${actorId || 'new'}/level-up/roll-hp
     'actors/[id]/level-up/roll-hp': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
         return handleRollHP(actorId, request, (request as any).foundryClient, (request as any).userSession);
-    },
-    'actors/level-up/roll-gold': async (request: Request) => {
-        return handleRollGold(undefined, request, (request as any).foundryClient, (request as any).userSession);
     },
     'actors/[id]/level-up/roll-gold': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -134,24 +129,15 @@ export const apiRoutes = {
         const actorId = route[1];
         return handleFinalizeLevelUp(actorId, request, (request as any).foundryClient);
     },
-    'actors/level-up/roll-talent': async (request: Request) => {
-        return handleRollTalent(undefined, request, (request as any).foundryClient);
-    },
     'actors/[id]/level-up/roll-talent': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
         return handleRollTalent(actorId, request, (request as any).foundryClient);
     },
-    'actors/level-up/roll-boon': async (request: Request) => {
-        return handleRollBoon(undefined, request, (request as any).foundryClient);
-    },
     'actors/[id]/level-up/roll-boon': async (request: Request, { params }: any) => {
         const { route } = await params;
         const actorId = route[1];
         return handleRollBoon(actorId, request, (request as any).foundryClient);
-    },
-    'actors/level-up/resolve-choice': async (request: Request) => {
-        return handleResolveChoice(undefined, request, (request as any).foundryClient);
     },
     'actors/[id]/level-up/resolve-choice': async (request: Request, { params }: any) => {
         const { route } = await params;
@@ -172,8 +158,7 @@ export const apiRoutes = {
         const client = (request as any).foundryClient;
         if (!client) return Response.json({ error: 'Not authenticated' }, { status: 401 });
 
-        const shadowDarkAdapter = new ShadowdarkAdapter();
-        const systemData = await shadowDarkAdapter.getSystemData(client, { minimal: true });
+        const systemData = await shadowdarkAdapter.getSystemData(client, { minimal: true });
 
         const effects = Object.entries(systemData.PREDEFINED_EFFECTS || {}).map(([id, effect]: [string, any]) => ({
             id,
@@ -191,18 +176,18 @@ export const apiRoutes = {
     'roll-table/[id]': async (request: Request, { params }: any) => {
         const { route } = await params;
         const id = route[1];
-        return handleGetRollTable(request, id);
+        return handleGetRollTable(request, id, (request as any).foundryClient);
     },
     'roll-table/[id]/draw': async (request: Request, { params }: any) => {
         const { route } = await params;
         const id = route[1];
-        return handleDrawRollTable(request, id);
+        return handleDrawRollTable(request, id, (request as any).foundryClient);
     },
     'roll-table/[tableId]/draw/[resultId]': async (request: Request, { params }: any) => {
         const { route } = await params;
         const tableId = route[1];
         const resultId = route[3];
-        return handleGetResultPool(request, tableId, resultId);
+        return handleGetResultPool(request, tableId, resultId, (request as any).foundryClient);
     }
 };
 
