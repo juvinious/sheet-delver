@@ -286,14 +286,28 @@ export class SessionManager {
 
             const foundryUsername = sessionData.username || username;
 
-            // Check World State via Core Socket
-            const currentWorldId = this.systemClient.getGameData()?.world?.id;
+            // Check World State via Core Socket (Stabilized)
+            let currentWorldId = this.systemClient.getGameData()?.world?.id;
 
-            // Strict Validation: Must have an active world, and it must match the session's world
-            if (!currentWorldId || currentWorldId !== sessionData.worldId) {
-                logger.warn(`SessionManager | World mismatch or not active (Current: ${currentWorldId}). Purging key ${username}.`);
+            if (!currentWorldId && (this.systemClient.worldState === 'startup' || this.systemClient.worldState === 'active')) {
+                logger.debug(`SessionManager | World not yet stable. Waiting for ID to restore session ${username}...`);
+                for (let i = 0; i < 5; i++) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    currentWorldId = this.systemClient.getGameData()?.world?.id;
+                    if (currentWorldId) break;
+                }
+            }
+
+            // Strict Validation: ONLY purge if we are 100% sure we have an ACTUAL mismatch
+            if (currentWorldId && sessionData.worldId && currentWorldId !== sessionData.worldId) {
+                logger.warn(`SessionManager | World mismatch (Current: ${currentWorldId}, Session: ${sessionData.worldId}). Purging key ${username}.`);
                 await this.clearSession(username);
                 return null;
+            }
+
+            if (!currentWorldId) {
+                logger.debug(`SessionManager | Deferring restoration for ${username} - World ID still unknown. (State: ${this.systemClient.worldState})`);
+                return null; 
             }
 
             const client = new ClientSocket({

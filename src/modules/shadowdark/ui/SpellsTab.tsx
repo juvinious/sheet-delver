@@ -440,7 +440,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
                             return (
                                 <div key={spell.id || spell._id || `spell-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
-                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id)}>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(spell.id || spell._id)}>
 
                                         {/* Header / Name Section */}
                                         <div className="flex items-center gap-2 flex-1">
@@ -691,7 +691,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
                             return (
                                 <div key={item.id || item._id || `magic-item-${idx}`} className="bg-white border-black border-2 p-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] group">
-                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id)}>
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1" onClick={() => toggleItem(item.id || item._id)}>
 
                                         {/* Header / Name Section */}
                                         <div className="flex items-center gap-2 flex-1">

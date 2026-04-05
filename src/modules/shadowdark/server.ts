@@ -191,5 +191,5 @@ export const apiRoutes = {
     }
 };
 
-logger.info(`[DEBUG] shadowdark/server.ts loaded. keys: ${Object.keys(apiRoutes || {}).join(', ')}`);
+
 

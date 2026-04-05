@@ -32,7 +32,8 @@ export function sanitizeItem(item: any): any {
                 const whitelist = [
                     'class', 'languages', 'talents', 'talentChoices', 
                     'properties', 'ammoClass', 'armorClass', 'baseWeapon', 
-                    'baseArmor', 'range', 'bonus', 'ac'
+                    'baseArmor', 'range', 'bonus', 'ac', 'uses', 'limitedUses',
+                    'description', 'source'
                 ];
                 if (!whitelist.includes(key)) {
                     delete clean.system[key];

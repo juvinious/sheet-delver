@@ -399,7 +399,11 @@ export const getSpellcastingClass = (item: any): string => {
     const spellcasting = system.spellcasting || {};
     const explicitClass = (spellcasting.class || '').toLowerCase().trim();
 
-    if (explicitClass && explicitClass !== 'none' && explicitClass !== '__not_spellcaster__') {
+    if (explicitClass === 'none' || explicitClass === '__not_spellcaster__') {
+        return '';
+    }
+
+    if (explicitClass) {
         return explicitClass;
     }
 

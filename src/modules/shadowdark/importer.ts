@@ -289,7 +289,9 @@ export class ShadowdarkImporter {
                 actor: null, // Will be set after creation if needed
                 bonuses: json.bonuses || [],
                 mapping: this.mapping,
-                patronName: patronName || undefined
+                patronName: patronName || undefined,
+                discoveredItems: [],
+                resolveDoc: (uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)
             };
 
             const resolveDoc = (uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid);
@@ -365,23 +367,37 @@ export class ShadowdarkImporter {
 
             if (ancestry) {
                 actorData.system.ancestry = resolveCompendiumUuid(ancestry, json.ancestry);
-                const ancestryTalents = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
-                talents.push(...ancestryTalents);
+                const ancestrySubItems = await resolveSubItems(ancestry, resolveDoc, enrichmentContext);
+                
+                // Categorize sub-items
+                ancestrySubItems.forEach(i => {
+                    if (i.type === "Class Ability") classAbilities.push(i);
+                    else talents.push(i);
+                });
             }
             if (background) {
                 actorData.system.background = resolveCompendiumUuid(background, json.background);
-                const bgTalents = await resolveSubItems(background, resolveDoc, enrichmentContext);
-                talents.push(...bgTalents);
+                const bgSubItems = await resolveSubItems(background, resolveDoc, enrichmentContext);
+                bgSubItems.forEach(i => {
+                    if (i.type === "Class Ability") classAbilities.push(i);
+                    else talents.push(i);
+                });
             }
             if (deity) {
                 actorData.system.deity = resolveCompendiumUuid(deity, json.deity);
-                const deityTalents = await resolveSubItems(deity, resolveDoc, enrichmentContext);
-                talents.push(...deityTalents);
+                const deitySubItems = await resolveSubItems(deity, resolveDoc, enrichmentContext);
+                deitySubItems.forEach(i => {
+                    if (i.type === "Class Ability") classAbilities.push(i);
+                    else talents.push(i);
+                });
             }
             if (patron) {
                 actorData.system.patron = resolveCompendiumUuid(patron, patronName);
-                const patronTalents = await resolveSubItems(patron, resolveDoc, enrichmentContext);
-                talents.push(...patronTalents);
+                const patronSubItems = await resolveSubItems(patron, resolveDoc, enrichmentContext);
+                patronSubItems.forEach(i => {
+                    if (i.type === "Class Ability") classAbilities.push(i);
+                    else talents.push(i);
+                });
             }
 
             // Languages
@@ -400,21 +416,24 @@ export class ShadowdarkImporter {
             const classObj = await findItem(json.class, "Class");
             if (classObj) {
                 actorData.system.class = resolveCompendiumUuid(classObj, json.class);
-
-                // Starting Spells (Fixed)
-                if (classObj.system?.startingSpells) {
-                    const startSpells = await Promise.all(classObj.system.startingSpells.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
-                    for (const s of startSpells.filter(Boolean)) {
-                        const enriched = await enrichItem(s, enrichmentContext);
-                        if (enriched) spells.push(enriched);
-                    }
-                }
-
-                // Fixed Class Talents & Features
-                log(`[Importer] Hydrating class-defined talents and features...`);
-                const classAbilitiesResolved = await resolveSubItems(classObj, resolveDoc, enrichmentContext);
-                talents.push(...classAbilitiesResolved);
-            }
+ 
+                 // Starting Spells (Fixed)
+                 if (classObj.system?.startingSpells) {
+                     const startSpells = await Promise.all(classObj.system.startingSpells.map((uuid: string) => shadowdarkAdapter.resolveDocument(client, uuid)));
+                     for (const s of startSpells.filter(Boolean)) {
+                         const enriched = await enrichItem(s, enrichmentContext);
+                         if (enriched) spells.push(enriched);
+                     }
+                 }
+ 
+                 // Fixed Class Talents & Features
+                 log(`[Importer] Hydrating class-defined talents and features...`);
+                 const classSubItemsResolved = await resolveSubItems(classObj, resolveDoc, enrichmentContext);
+                 classSubItemsResolved.forEach(i => {
+                     if (i.type === "Class Ability") classAbilities.push(i);
+                     else talents.push(i);
+                 });
+             }
 
             // 4. Parallel Gear Resolution
             if (json.gear) {
@@ -601,10 +620,10 @@ export class ShadowdarkImporter {
 
                         const talent = await findTalent(bonus);
                         if (talent) {
-                            trace(`[Importer] Enriching talent: ${talent.name}`);
                             const enriched = await enrichItem(talent, { ...enrichmentContext, bonusTo: bonus.bonusTo });
                             if (enriched) {
-                                talents.push(enriched);
+                                if (enriched.type === "Class Ability") classAbilities.push(enriched);
+                                else talents.push(enriched);
                             }
                         }
                         return null;
@@ -621,7 +640,25 @@ export class ShadowdarkImporter {
 
             //logger.debug("[Importer] actor: ", JSON.stringify(actorData, null, 2));
 
-            const allItems = sanitizeItems([...gear, ...classAbilities, ...spells, ...talents]);//.filter(i => i.type !== 'Class');
+            const discovered = enrichmentContext.discoveredItems || [];
+            log(`[Importer] Discovered ${discovered.length} additional items via enrichment:`);
+            discovered.forEach(i => log(`  - [DISCOVERED] ${i.name} (${i.type})`));
+
+            const allItems = sanitizeItems([
+                ...gear, 
+                ...classAbilities, 
+                ...spells, 
+                ...talents, 
+                ...discovered
+            ]);
+
+            // Final debug trace of all items
+            log(`[Importer] Final item list (${allItems.length} items):`);
+            allItems.forEach(i => {
+                const src = i.system?.source || i.uuid || 'none';
+                const srcStr = typeof src === 'object' ? JSON.stringify(src) : src;
+                log(`  - [${i.type}] ${i.name} (UUID: ${srcStr})`);
+            });
 
             if (allItems.length > 0) {
                 log(`[Importer] Creating ${allItems.length} embedded items in parallel chunks...`);

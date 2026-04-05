@@ -43,7 +43,8 @@ export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
 
     // Filter Logic
     const allTalents = (actor.items?.filter((i: any) =>
-        ['Talent', 'Feature', 'Patron', 'Boon', 'Class Ability'].includes(i.type)
+        //['Talent', 'Feature', 'Patron', 'Boon', 'Class Ability'].includes(i.type)
+        ['Talent', 'Feature', 'Patron', 'Boon'].includes(i.type)
     ) || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     // Group: Ancestry & Class (talentClass === 'ancestry' || 'class') - Treat 'class' as catch-all if undefined for now
@@ -83,7 +84,7 @@ export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
                             {/* Header */}
                             <div
                                 className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 p-1 transition-colors"
-                                onClick={() => toggleItem(item.id)}
+                                onClick={() => toggleItem(item.id || item._id)}
                             >
                                 {/* Image / Fallback */}
                                 <div className="relative min-w-[40px] w-10 h-10 border border-black bg-black flex items-center justify-center overflow-hidden">

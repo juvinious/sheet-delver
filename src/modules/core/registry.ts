@@ -52,7 +52,7 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
     if (actor.systemId) {
         const exact = getAdapter(actor.systemId);
         if (exact && exact.systemId !== 'generic') {
-            logger.debug(`[Registry] Matched ${actorName} (${actorId}) via explicit systemId: ${actor.systemId}`);
+            // logger.debug(`[Registry] Matched ${actorName} (${actorId}) via explicit systemId: ${actor.systemId}`);
             return exact;
         }
     }
@@ -64,14 +64,13 @@ export const getMatchingAdapter = (actor: any): SystemAdapter => {
 
         const adapter = getAdapter(m.info.id);
         if (adapter && adapter.match(actor)) {
-            logger.debug(`[Registry] Matched ${actorName} (${actorId}) via heuristic: ${m.info.id}`);
+            // logger.debug(`[Registry] Matched ${actorName} (${actorId}) via heuristic: ${m.info.id}`);
             return adapter;
         }
     }
 
     // 3. Fallback to generic
-    const keys = actor.system ? Object.keys(actor.system) : 'no system';
-    logger.debug(`[Registry] No match for ${actorName} (${actorId}). Keys present: ${JSON.stringify(keys)}. Falling back to generic.`);
+    // logger.debug(`[Registry] No match for ${actorName} (${actorId}). Falling back to generic.`);
     return genericAdapter;
 };
 

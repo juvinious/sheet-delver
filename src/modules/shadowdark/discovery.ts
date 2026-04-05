@@ -54,17 +54,25 @@ export class ShadowdarkDiscovery {
 
                 // Fetch the actual Shadowdark system version from the world
                 // Implementation Note: client.getSystem() might be empty if called too early in the handshake
-                let system = await client.getSystem?.() || {};
-                let systemVersion = system.version || 'unknown';
+                const getIdentifiers = async () => {
+                    const system = await client.getSystem?.() || {};
+                    const version = system.version || 'unknown';
+                    const gameData = (typeof client.getGameData === 'function') ? client.getGameData() : null;
+                    const world = gameData?.world?.id || (typeof client.getWorldStatus === 'function' ? await client.getWorldStatus() : 'unknown');
+                    return { version, world };
+                };
 
-                if (systemVersion === 'unknown') {
-                    logger.debug('[ShadowdarkDiscovery] System version is unknown, waiting for client stabilization...');
+                let { version: systemVersion, world: worldId } = await getIdentifiers();
+
+                if (systemVersion === 'unknown' || worldId === 'unknown') {
+                    logger.info(`[ShadowdarkDiscovery] Identifiers unstable (Version: ${systemVersion}, World: ${worldId}). Stabilizing...`);
                     // Short retry loop for version discovery
                     for (let i = 0; i < 5; i++) {
                         await new Promise(r => setTimeout(r, 1000));
-                        system = await client.getSystem?.() || {};
-                        systemVersion = system.version || 'unknown';
-                        if (systemVersion !== 'unknown') break;
+                        const next = await getIdentifiers();
+                        systemVersion = next.version;
+                        worldId = next.world;
+                        if (systemVersion !== 'unknown' && worldId !== 'unknown') break;
                     }
                 }
 
@@ -101,6 +109,7 @@ export class ShadowdarkDiscovery {
                             fields: ["type", "system"] 
                         }) || [];
                         if (docs.length > 0) {
+                            logger.info(`[ShadowdarkDiscovery] Discovered ${docs.length} entries for pack '${packInfo.id}'`);
                             const mappedDocs = docs.map((d: any) => {
                                 const id = d._id || d.id;
                                 // MIRROR WORKING LOG FORMAT: Compendium.<scope>.<pack>.Item.<id>
@@ -204,8 +213,16 @@ export class ShadowdarkDiscovery {
             const packCount = this.DISCOVERY_PACKS.length;
 
             const sig = `${worldId}-${systemId}-${systemVersion}-${packCount}-${version}`;
+            logger.debug(`[ShadowdarkDiscovery] Computing signature: ${sig}`);
+            
+            if (worldId === 'unknown' || systemVersion === 'unknown') {
+                logger.warn(`[ShadowdarkDiscovery] Cannot compute signature - identifiers still 'unknown'`);
+                return null;
+            }
+
             return createHash('md5').update(sig).digest('hex');
         } catch (e) {
+            logger.error('[ShadowdarkDiscovery] Failed to compute signature:', e);
             return null;
         }
     }

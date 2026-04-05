@@ -12,6 +12,8 @@ export interface EnrichmentContext {
     bonuses?: any[]; // Shadowdarkling bonuses array
     mapping?: any;   // mapping object
     patronName?: string; // If applicable (Warlock)
+    discoveredItems?: any[]; // Collects items linked via @UUID
+    resolveDoc?: (uuid: string) => Promise<any>; // Function to resolve documents for linked items
 }
 
 /**
@@ -30,16 +32,25 @@ const RULE_DEFAULTS: Record<string, string[]> = {
  */
 export async function enrichItem(item: any, context: EnrichmentContext): Promise<any | null> {
     if (!item) return null;
-
+    
     const sourceId = item.uuid || item.flags?.core?.sourceId || item._id;
+    const itemType = item.type || "Unknown";
+    const itemName = item.name || "Unnamed";
+    const typeNameKey = `${itemType}:${itemName}`;
 
-    // 1. Prevent Duplicates
-    if (context.addedSourceIds.has(sourceId)) {
-        logger.debug(`[ActorEnricher] Skipping duplicate source: ${sourceId}`);
+    // 0. High-Visibility Trace Start
+    logger.debug(`[ActorEnricher] START enrichment: ${itemName} [${itemType}] (Source: ${sourceId || 'new'})`);
+
+    // 1. Prevent Duplicates (Refined: allow same name if different type)
+    if (sourceId && context.addedSourceIds.has(sourceId)) {
+        logger.debug(`[ActorEnricher] SKIP duplicate source: ${sourceId} (${itemName})`);
         return null;
     }
-    if (context.addedNames.has(item.name)) {
-        logger.debug(`[ActorEnricher] Skipping duplicate by name: ${item.name}`);
+    
+    // We only skip by name if the type is ALSO the same. 
+    // This allows a Talent and a Class Ability to share a name (e.g. Demonic Possession)
+    if (context.addedNames.has(typeNameKey)) {
+        logger.debug(`[ActorEnricher] SKIP duplicate ${itemType} by name: ${itemName}`);
         return null;
     }
 
@@ -125,10 +136,80 @@ export async function enrichItem(item: any, context: EnrichmentContext): Promise
     // 6. Sanitize
     const cleaned = sanitizeItem(enriched);
     
-    context.addedSourceIds.add(sourceId);
-    context.addedNames.add(cleaned.name);
+    if (sourceId) context.addedSourceIds.add(sourceId);
+    context.addedNames.add(`${cleaned.type}:${cleaned.name}`);
     
+    logger.debug(`[ActorEnricher] SUCCESS enriched: ${cleaned.name} [${cleaned.type}]`);
+    
+    // 7. Resolve Linked Items (@UUID in description)
+    if (context.resolveDoc && context.discoveredItems) {
+        await resolveLinkedItems(cleaned, context.resolveDoc, context);
+    }
+
     return cleaned;
+}
+
+/**
+ * Scans an item's description for @UUID[Compendium.shadowdark.*] links and resolves them.
+ * This ensures that talents that grant abilities (like Demonic Possession) import correctly.
+ */
+export async function resolveLinkedItems(
+    item: any,
+    resolveDocFn: (uuid: string) => Promise<any>,
+    context: EnrichmentContext
+): Promise<void> {
+    const rawDesc = item.system?.description?.value || item.system?.description || "";
+    const description = typeof rawDesc === 'string' ? rawDesc : "";
+    
+    logger.debug(`[ActorEnricher] SCAN description for '${item.name}' (Type: ${typeof rawDesc}, Length: ${description.length})`);
+    
+    if (description.length === 0) {
+        return;
+    }
+
+    // Matches @UUID[Compendium.shadowdark.collection.Item.ID] or @UUID[Compendium.shadowdark.collection.ID]
+    // Loosened to match any shadowdark compendium reference
+    const uuidPattern = /@UUID\[(Compendium\.shadowdark\.[^\]]+)\]/g;
+    let match;
+
+    const hasAnyMatch = /@UUID\[Compendium\.shadowdark/.test(description);
+    logger.info(`[ActorEnricher] Regex quick-test for '${item.name}': ${hasAnyMatch ? 'MATCHED' : 'NONE'}`);
+
+    while ((match = uuidPattern.exec(description)) !== null) {
+        const uuid = match[1];
+        
+        // Skip if already added to avoid infinite loops or duplicates
+        if (context.addedSourceIds && context.addedSourceIds.has(uuid)) {
+            logger.debug(`[ActorEnricher] Skipping already processed UUID: ${uuid}`);
+            continue;
+        }
+        
+        try {
+            logger.info(`[ActorEnricher] Found linked UUID ${uuid} in item '${item.name}'`);
+            const linkedDoc = await resolveDocFn(uuid);
+            
+            if (linkedDoc) {
+                logger.debug(`[ActorEnricher] Successfully fetched linked doc: ${linkedDoc.name} (${linkedDoc.type})`);
+                // Enrich the linked item (without recursion to avoid depth issues, as per user request)
+                // We create a shallow context for the linked item to prevent recursive scanning
+                const shallowContext: EnrichmentContext = {
+                    ...context,
+                    discoveredItems: undefined, // Disable further discovery for this specific resolution
+                    resolveDoc: undefined      // Disable further resolution
+                };
+                
+                const enrichedLinked = await enrichItem(linkedDoc, shallowContext);
+                if (enrichedLinked && context.discoveredItems) {
+                    logger.info(`[ActorEnricher] -> Discovered additional ability '${enrichedLinked.name}' via ${item.name}`);
+                    context.discoveredItems.push(enrichedLinked);
+                }
+            } else {
+                logger.warn(`[ActorEnricher] Could not resolve linked UUID ${uuid} found in ${item.name}`);
+            }
+        } catch (e) {
+            logger.error(`[ActorEnricher] Failed to resolve linked item ${uuid}:`, e);
+        }
+    }
 }
 
 /**

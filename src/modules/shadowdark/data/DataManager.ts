@@ -44,11 +44,18 @@ export class DataManager {
             
             // PRIORITY 1: Find a non-shallow match
             for (const key of collections) {
-                const doc = systemData[key]?.find((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                const doc = systemData[key]?.find((d: any) => {
+                    const matchId = d._id || d.id;
+                    return d.uuid === uuid || d._id === uuid || d.id === uuid || 
+                           (matchId && (uuid.endsWith(`.${matchId}`) || uuid.endsWith(`.Item.${matchId}`)));
+                });
+                
                 if (doc && (doc.system || doc.type === 'RollTable')) {
+                    logger.debug(`[DataManager] Deep cache hit for ${uuid} in '${key}'`);
                     return doc;
                 }
                 if (doc && !cachedDoc) {
+                    logger.debug(`[DataManager] Shallow cache match found for ${uuid} in '${key}'`);
                     cachedDoc = doc;
                     collection = key;
                 }
@@ -60,6 +67,8 @@ export class DataManager {
         const isShallow = cachedDoc && !cachedDoc.system && cachedDoc.type !== 'RollTable';
 
         if (cachedDoc && !isShallow) return cachedDoc;
+
+        logger.debug(`[DataManager] Resolution request (Fulfillment): ${uuid}`);
 
         // 3. Fetch from Foundry if client is provided (Fulfillment)
         if (client) {
@@ -89,9 +98,18 @@ export class DataManager {
                         let foundInAny = false;
                         for (const key of collections) {
                             if (!systemData[key]) continue;
-                            const idx = systemData[key].findIndex((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+                            const idx = systemData[key].findIndex((d: any) => {
+                                if (d.uuid === uuid || d._id === uuid || d.id === uuid) return true;
+                                
+                                // Resilient matching: If either ID or UUID ends with the document's ID segment, it's a match
+                                const dId = d._id || d.id;
+                                if (dId && (uuid.endsWith(`.${dId}`) || uuid.endsWith(`.Item.${dId}`))) return true;
+
+                                return false;
+                            });
+
                             if (idx !== -1) {
-                                logger.debug(`[DataManager] Hydrating existing entry in collection: ${key}`);
+                                logger.info(`[DataManager] Hydrating existing entry in collection '${key}': ${systemData[key][idx].name} (${uuid})`);
                                 systemData[key][idx] = { 
                                     ...enrichedDoc,
                                     pack: systemData[key][idx].pack

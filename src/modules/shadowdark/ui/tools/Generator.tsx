@@ -676,7 +676,9 @@ export default function Generator() {
                 addedNames: new Set<string>(),
                 targetLevel: formData.level0 ? 0 : 1,
                 actor: null,
-                patronName: patronDoc?.name || undefined
+                patronName: patronDoc?.name || undefined,
+                discoveredItems: [],
+                resolveDoc: fetchDocument
             };
 
             const addItem = async (uuid: string) => {
@@ -747,6 +749,11 @@ export default function Generator() {
                 if (enriched) {
                     items.push(enriched);
                 }
+            }
+
+            // Add any items discovered via description @UUID links
+            if (enrichmentContext.discoveredItems && enrichmentContext.discoveredItems.length > 0) {
+                items.push(...enrichmentContext.discoveredItems);
             }
 
 

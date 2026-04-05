@@ -41,7 +41,12 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
     const cachedName = cache.getName(val);
     if (cachedName) return cachedName;
 
-    return val.split('.').pop()?.replace(/^[a-z]/, (c: string) => c.toUpperCase()) || val;
+    // Only split by dots if it looks like a Compendium UUID
+    if (val.startsWith('Compendium.')) {
+        return val.split('.').pop()?.replace(/^[a-z]/, (c: string) => c.toUpperCase()) || val;
+    }
+
+    return val;
 }
 
 /**
@@ -140,10 +145,7 @@ export class ShadowdarkNormalizer {
                 item.system.description = formatDescription(item.system.description);
             }
             
-            // Debug weapon normalization
-            if (item.type === 'Weapon') {
-                // logger.debug(`[DEBUG] Normalized weapon ${item.name}: derived=`, JSON.stringify(item.derived));
-            }
+
 
             return item;
         });
@@ -200,19 +202,15 @@ export class ShadowdarkNormalizer {
                         }
 
                         titles = cachedSystemData?.titles?.[clsName];
-                        logger.debug(`[DEBUG] Title resolution for class '${clsName}': found ${titles?.length || 0} titles in cache`);
                     }
 
                     if (titles && Array.isArray(titles)) {
                         const match = titles.find((t: any) => level >= t.from && level <= t.to);
-                        logger.debug(`[DEBUG] Title match for level ${level}, alignment ${alignment}:`, match ? (match[alignment] || match.neutral) : 'NONE');
                         if (match) return match[alignment] || match.neutral || '';
                     }
 
                     // Fallback to imported title or system title
-                    const fallback = s.details?.title || s.title || '';
-                    logger.debug(`[DEBUG] Title fallback selected: ${fallback}`);
-                    return fallback;
+                    return s.details?.title || s.title || '';
                 })()
             },
             luck: s.luck || {},
