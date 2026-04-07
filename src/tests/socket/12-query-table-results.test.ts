@@ -5,8 +5,8 @@
  * using different socket API approaches.
  */
 
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket.js';
-import { loadConfig } from '../../core/config.js';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket.js';
+import { loadConfig } from '@core/config.js';
 
 const TALENT_TABLE_UUID = 'Compendium.shadowdark.rollable-tables.RQ0vogfVtJGuT9oT';
 

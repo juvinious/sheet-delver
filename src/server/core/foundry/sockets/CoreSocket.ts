@@ -36,6 +36,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     private heartbeatPaused = false;
     private userMap = new Map<string, any>();
     private actorDataCache = new Map<string, any>();
+    private retryCount = 0;
+    private activeBrowserCount = 0;
+    private lastUserActivityTimestamp = Date.now();
 
     private _deepMerge(target: any, source: any) {
         if (!source || typeof source !== 'object') return target;
@@ -222,6 +225,31 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     private isConnecting = false;
 
+    /**
+     * Update the count of active browser clients and reset the heartbeat/backoff.
+     */
+    public updateActiveBrowserCount(count: number) {
+        const previousCount = this.activeBrowserCount;
+        this.activeBrowserCount = count;
+        
+        if (count > 0) {
+            this.lastUserActivityTimestamp = Date.now();
+            // Reset backoff if someone just connected
+            this.retryCount = 0;
+            
+            // If we're transitioning from 0 to >0 users, wake up immediately
+            if (previousCount === 0) {
+                logger.debug('CoreSocket | User engagement detected. Waking up heartbeat.');
+                this.startHeartbeat(); // Restarts with faster interval
+                
+                // If we were offline/setup, try connecting right now
+                if (this.worldState !== 'active') {
+                    this.connect();
+                }
+            }
+        }
+    }
+
 
     async connect(): Promise<void> {
         // Only return if we are fully active. If we are in setup/offline, we should allow re-checks.
@@ -242,9 +270,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
 
             if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
-                logger.info(`CoreSocket | Detected Setup/Gray State (Title="${pageTitle}"). World is closed. Retrying in 5s...`);
                 this.worldState = 'setup';
-                setTimeout(() => this.connect(), 5000);
+                
+                // Exponential Backoff logic
+                const backoffMs = Math.min(60000, 5000 * Math.pow(2, Math.min(this.retryCount, 4)));
+                logger.info(`CoreSocket | Detected Setup/Gray State (Title="${pageTitle}"). World is closed. Retrying in ${backoffMs/1000}s... (Retry Count: ${this.retryCount})`);
+                
+                this.retryCount++;
+                setTimeout(() => this.connect(), backoffMs);
                 return;
             }
 
@@ -271,9 +304,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     joinData.users.forEach((u: any) => this.userMap.set(u._id, u));
                 }
             } else {
-                logger.warn('CoreSocket | Discovery failed completely. No world data or users found. Retrying in 5s...');
                 this.worldState = 'offline';
-                setTimeout(() => this.connect(), 5000);
+
+                // Exponential Backoff logic
+                const backoffMs = Math.min(60000, 5000 * Math.pow(2, Math.min(this.retryCount, 4)));
+                logger.warn(`CoreSocket | Discovery failed. Retrying in ${backoffMs/1000}s... (Retry Count: ${this.retryCount})`);
+                
+                this.retryCount++;
+                setTimeout(() => this.connect(), backoffMs);
                 return;
             }
 
@@ -517,12 +555,9 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     private startHeartbeat() {
         if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
 
-        // Required polling: Foundry does NOT emit a 'disconnect' socket event when dropping to setup
-        // The websocket stays alive. We must poll /api/status to know the world shut down.
-        // Polling loop slowed to 15s to prevent saturation during intensive operations like discovery
-        // Polling loop slowed to 30s to prevent saturation during intensive operations like discovery
-        this.heartbeatInterval = setInterval(async () => {
+        const runHeartbeat = async () => {
             if (!this.isConnected || this.isConnecting || this.worldState === 'startup' || this.heartbeatPaused) return;
+            
             try {
                 const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
                 const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
@@ -532,11 +567,36 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     this.worldState = 'setup';
                     this.disconnect();
                     this.connect();
+                    return;
                 }
             } catch (e) {
                 // Ignore transient network errors
             }
-        }, 30000);
+
+            // Schedule next heartbeat with adaptive timing
+            if (this.heartbeatInterval) {
+                clearTimeout(this.heartbeatInterval as any);
+                
+                let nextInterval = 30000; // Default 30s
+                
+                if (this.activeBrowserCount === 0) {
+                    const idleTime = Date.now() - this.lastUserActivityTimestamp;
+                    
+                    if (idleTime > 1800000) { // > 30m
+                        nextInterval = 300000; // 5m
+                    } else if (idleTime > 600000) { // > 10m
+                        nextInterval = 120000; // 2m
+                    } else {
+                        nextInterval = 60000; // 1m
+                    }
+                }
+                
+                this.heartbeatInterval = setTimeout(runHeartbeat, nextInterval) as any;
+            }
+        };
+
+        // Start the recursive timeout chain
+        this.heartbeatInterval = setTimeout(runHeartbeat, 30000) as any;
     }
 
     private stopHeartbeat() {

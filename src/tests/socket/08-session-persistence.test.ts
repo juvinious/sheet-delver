@@ -1,6 +1,6 @@
 
-import { SessionManager } from '../../core/session/SessionManager';
-import { loadConfig } from '../../core/config';
+import { SessionManager } from '@core/session/SessionManager';
+import { loadConfig } from '@core/config';
 import readline from 'readline';
 
 const rl = readline.createInterface({

@@ -1,5 +1,5 @@
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 
 /**
  * Test 5: Write Operations (Safe CRUD)

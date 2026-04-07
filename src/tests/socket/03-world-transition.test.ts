@@ -1,6 +1,6 @@
 
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 import * as readline from 'readline';
 
 const rl = readline.createInterface({

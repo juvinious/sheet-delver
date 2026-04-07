@@ -77,8 +77,12 @@ async function startServer() {
 
     // Handle App Socket Connections
     io.on('connection', async (socket) => {
-        logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
+        const clientCount = io.engine.clientsCount;
+        logger.debug(`App Socket | Client connected: ${socket.id} (Total: ${clientCount}, Auth: ${socket.rooms.has('authenticated')})`);
         
+        // Inform CoreSocket of engagement for adaptive heartbeat
+        systemClient.updateActiveBrowserCount(clientCount);
+
         // Initial setup for this specific socket connection
         const payload = await getSystemStatusPayload();
         socket.emit('systemStatus', payload);
@@ -99,7 +103,10 @@ async function startServer() {
             foundryClient.on('sharedContentUpdate', handleSharedUpdate);
 
             socket.on('disconnect', () => {
-                logger.debug(`App Socket | Client disconnected: ${socket.id}. Removing client listeners.`);
+                const remaining = io.engine.clientsCount;
+                logger.debug(`App Socket | Client disconnected: ${socket.id}. Remaining: ${remaining}`);
+                systemClient.updateActiveBrowserCount(remaining);
+
                 foundryClient.off('combatUpdate', handleCombatUpdate);
                 foundryClient.off('chatUpdate', handleChatUpdate);
                 foundryClient.off('actorUpdate', handleActorUpdate);
@@ -107,7 +114,9 @@ async function startServer() {
             });
         } else {
             socket.on('disconnect', () => {
-                logger.debug(`App Socket | Client disconnected: ${socket.id}`);
+                const remaining = io.engine.clientsCount;
+                logger.debug(`App Socket | Client disconnected: ${socket.id}. Remaining: ${remaining}`);
+                systemClient.updateActiveBrowserCount(remaining);
             });
         }
     });

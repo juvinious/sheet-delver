@@ -1,4 +1,4 @@
-import { logger } from '../shared/utils/logger';
+import { logger } from '@shared/utils/logger';
 import { dataManager } from '../modules/shadowdark/src/data/DataManager';
 
 async function verify() {

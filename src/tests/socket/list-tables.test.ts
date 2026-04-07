@@ -1,6 +1,6 @@
 
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 import { fileURLToPath } from 'url';
 
 export async function listTables() {

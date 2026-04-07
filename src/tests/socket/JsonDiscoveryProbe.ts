@@ -3,7 +3,7 @@
 // Location: src/test/socket/JsonDiscoveryProbe.ts
 // Usage: npx tsx src/test/socket/JsonDiscoveryProbe.ts
 
-import { loadConfig } from '../../core/config';
+import { loadConfig } from '@core/config';
 
 const config = await loadConfig();
 const BASE_URL = config?.foundry.url || 'http://localhost:30000';

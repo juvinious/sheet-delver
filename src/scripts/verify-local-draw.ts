@@ -1,5 +1,5 @@
 import { DataManager } from '../modules/shadowdark/data/DataManager';
-import { logger } from '../shared/utils/logger';
+import { logger } from '@shared/utils/logger';
 
 async function verifyDraw() {
     const dataManager = DataManager.getInstance();

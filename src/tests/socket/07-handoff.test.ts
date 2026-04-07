@@ -1,7 +1,7 @@
 
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { ClientSocket } from '@core/foundry/sockets/ClientSocket';
+import { loadConfig } from '@core/config';
 import * as readline from 'readline';
 
 async function prompt(question: string, mask: boolean = false): Promise<string> {

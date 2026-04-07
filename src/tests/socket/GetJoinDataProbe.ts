@@ -4,7 +4,7 @@
 
 import { io } from 'socket.io-client';
 
-import { loadConfig } from '../../core/config';
+import { loadConfig } from '@core/config';
 
 const config = await loadConfig();
 const BASE_URL = config?.foundry.url || 'http://localhost:30000';

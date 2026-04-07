@@ -1,10 +1,10 @@
 
-import { CoreSocket } from '../core/foundry/sockets/CoreSocket';
-import { ClientSocket } from '../core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { ClientSocket } from '@core/foundry/sockets/ClientSocket';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { logger } from '../shared/utils/logger';
+import { logger } from '@shared/utils/logger';
 
 // Set logger to info for visibility
 (logger as any).level = 'info';

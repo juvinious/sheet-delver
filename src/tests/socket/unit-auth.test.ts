@@ -1,7 +1,7 @@
 
-import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { FoundryConfig } from '../../core/foundry/types';
+import { ClientSocket } from '@core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { FoundryConfig } from '@core/foundry/types';
 import { EventEmitter } from 'events';
 
 // Mock Socket.io Client

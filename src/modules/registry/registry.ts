@@ -147,8 +147,14 @@ export const getLogic = getAdapter;
 /**
  * Returns the Server-side API module for a given system.
  * Loaded only when explicitly requested.
+ * Strictly gated by the Logic Firewall to prevent browser-side evaluation.
  */
 export async function getServerModule(systemId: string) {
+    if (typeof window !== 'undefined') {
+        logger.error(`Registry | Logic Firewall Breach: Attempted to load server module "${systemId}" from browser.`);
+        return null;
+    }
+
     const plugin = pluginMap.get(systemId.toLowerCase());
     if (!plugin || !plugin.getServer) return null;
     try {

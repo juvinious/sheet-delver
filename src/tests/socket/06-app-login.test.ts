@@ -1,7 +1,7 @@
 
-import { ClientSocket } from '../../core/foundry/sockets/ClientSocket';
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { ClientSocket } from '@core/foundry/sockets/ClientSocket';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 
 /**
  * Test 6: Application Login Flow

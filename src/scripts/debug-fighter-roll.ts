@@ -1,6 +1,6 @@
 
-import { CoreSocket } from '../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 import { processRollResult } from '../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
 

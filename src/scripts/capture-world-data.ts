@@ -1,7 +1,7 @@
 
-import { CoreSocket } from '../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../core/config';
-import { logger } from '../shared/utils/logger';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
 import fs from 'fs';
 import path from 'path';
 
