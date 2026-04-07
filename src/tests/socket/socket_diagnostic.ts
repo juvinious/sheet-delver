@@ -69,7 +69,7 @@ async function runDiagnostic() {
 
         // 5. Discover All Item Compendiums
         logger.info("--- Discovering Compendiums via ShadowdarkDiscovery ---");
-        const { ShadowdarkDiscovery } = await import('../../modules/shadowdark/discovery');
+        const { ShadowdarkDiscovery } = await import('../../modules/shadowdark/src/logic/discovery');
         const data = await ShadowdarkDiscovery.getSystemData(socket);
         
         logger.info(`Discovery complete. Found ${data.ancestries?.length || 0} ancestries and ${data.items?.length || 0} gear items.`);
@@ -112,7 +112,7 @@ async function runDiagnostic() {
             logger.info(`Testing Document: ${target.doc.name} (${target.doc.uuid})`);
             const fullDoc = await socket.fetchByUuid(target.doc.uuid);
             if (fullDoc) {
-                const { resolveSubItems } = await import('../../modules/shadowdark/api/actor-enricher');
+                const { resolveSubItems } = await import('../../modules/shadowdark/src/logic/actor-enricher');
                 const enrichmentContext = {
                     addedSourceIds: new Set<string>(),
                     addedNames: new Set<string>(),

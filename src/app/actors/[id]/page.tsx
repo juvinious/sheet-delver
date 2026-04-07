@@ -3,7 +3,7 @@
 import { use, useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFoundry } from '@/app/ui/context/FoundryContext';
-import { getModule } from '@/modules/core/registry';
+import { getUIModule } from '@/modules/registry';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 
 /**
@@ -46,7 +46,7 @@ export default function ActorPageRouter({ params }: { params: Promise<{ id: stri
                     return;
                 }
 
-                const manifest = getModule(systemId);
+                const manifest = getUIModule(systemId);
                 if (!manifest?.actorPage) {
                     setError(`No actor page registered for system: ${systemId}`);
                     return;

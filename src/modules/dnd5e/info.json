@@ -1,4 +1,8 @@
 {
     "id": "dnd5e",
-    "title": "D&D 5th Edition"
+    "title": "D&D 5th Edition",
+    "manifest": {
+        "ui": "module/ui",
+        "logic": "module/logic"
+    }
 }

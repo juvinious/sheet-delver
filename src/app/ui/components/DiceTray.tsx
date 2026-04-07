@@ -6,7 +6,6 @@ import { Globe, UserRoundSearch, EyeOff, User } from 'lucide-react';
 
 interface DiceTrayProps {
     onSend: (message: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
-    adapter?: SystemAdapter;
     hideHeader?: boolean;
     speaker?: string;
 }
@@ -32,7 +31,10 @@ const defaultStyles = {
     helpText: "text-[10px] text-white/20 text-center mt-2 uppercase tracking-widest font-medium"
 };
 
-export default function DiceTray({ onSend, adapter, hideHeader = false, speaker }: DiceTrayProps) {
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+
+export default function DiceTray({ onSend, hideHeader = false, speaker }: DiceTrayProps) {
+    const { system } = useFoundry();
     const [formula, setFormula] = useState('');
     const [advMode, setAdvMode] = useState<'normal' | 'adv' | 'dis'>('normal');
     const [rollMode, setRollMode] = useState<RollMode>('publicroll');
@@ -80,9 +82,9 @@ export default function DiceTray({ onSend, adapter, hideHeader = false, speaker 
         });
     }, [rollMode]);
 
-    const s = { ...defaultStyles, ...(adapter?.componentStyles?.diceTray || {}) };
+    const s = { ...defaultStyles, ...(system?.config?.componentStyles?.diceTray || {}) };
     // @ts-ignore - The theme might have this, but not in all adapters yet
-    const themeStyles = adapter?.componentStyles?.diceTray;
+    const themeStyles = system?.config?.componentStyles?.diceTray;
 
     // --- Reactive Formula Logic ---
 

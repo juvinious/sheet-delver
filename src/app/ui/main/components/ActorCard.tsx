@@ -3,7 +3,6 @@ import { Trash2 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
 import { useFoundry } from '@/app/ui/context/FoundryContext';
 import { ActorCardBlock } from '@/shared/interfaces';
-import { getMatchingAdapter } from '@/modules/core/registry';
 
 interface ActorCardProps {
     actor: any;
@@ -21,15 +20,15 @@ export const ActorCard = ({
     onDelete
 }: ActorCardProps) => {
 
-    const { activeAdapter: globalActiveAdapter } = useFoundry();
+    const { actorCards } = useFoundry();
+    const customData = actorCards[actor.id || actor._id] || {};
 
     const handleClick = () => {
         if (!clickable) return;
         window.location.href = `/actors/${actor.id}`;
     };
 
-    const activeAdapter = globalActiveAdapter || getMatchingAdapter(actor);
-    const customData = activeAdapter?.getActorCardData?.(actor) || {};
+    const activeAdapter = null; // No adapter in frontend per architectural goal
 
     const displayName = customData.name || actor.name;
     const displayImg = customData.img || actor.img || '/icons/svg/mystery-man.svg';

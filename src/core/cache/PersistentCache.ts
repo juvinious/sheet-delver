@@ -10,8 +10,8 @@ async function loadDeps() {
     if (fs && path) return true;
     try {
         // Use node: prefix and dynamic import to satisfy both ESM and Bundlers
-        const fsMod = await import('node:fs');
-        const pathMod = await import('node:path');
+        const fsMod = await import(/* webpackIgnore: true */ 'node:fs');
+        const pathMod = await import(/* webpackIgnore: true */ 'node:path');
         fs = fsMod.default || fsMod;
         path = pathMod.default || pathMod;
         return true;

@@ -1,6 +1,6 @@
 'use client';
 
-import { getSheet } from '@/modules/core/registry';
+import { getSheet } from '@/modules/registry';
 
 interface SheetRouterProps {
     systemId: string;

@@ -5,8 +5,8 @@ import { logger } from '../../logger';
 import { WorldData, CacheData, SetupManager } from '../SetupManager';
 import { FoundryConfig } from '../types';
 import { FoundryMetadataClient } from '../interfaces';
-import { getAdapter } from '../../../modules/core/registry';
-import { SystemAdapter } from '../../../modules/core/interfaces';
+import { getAdapter } from '@/modules/registry';
+import { SystemAdapter } from '@/modules/registry/interfaces';
 import { CompendiumCache } from '../compendium-cache';
 const isBrowser = typeof window !== 'undefined';
 let fs: any = null;
@@ -904,7 +904,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async loadSystemAdapter(systemId: string) {
         try {
-            const adapter = getAdapter(systemId);
+            const adapter = await getAdapter(systemId);
             if (adapter) {
                 this.adapter = adapter;
                 logger.info(`CoreSocket | Loaded System Adapter: ${systemId}`);

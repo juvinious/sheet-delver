@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { getTool } from '@/modules/core/registry';
+import { getUIModule } from '@/modules/registry';
 import LoadingModal from '@/app/ui/components/LoadingModal';
 
 /**
@@ -18,7 +18,9 @@ export default function ToolPageRouter({ params }: { params: Promise<{ systemId:
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const component = getTool(systemId, toolId);
+        const ui = getUIModule(systemId);
+        const component = ui?.tools?.[toolId];
+        
         if (component) {
             setToolComponent(component);
         } else {

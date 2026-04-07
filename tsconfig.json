@@ -41,6 +41,7 @@
     "node_modules",
     "scripts",
     "src/scripts",
-    "temp-shadowdark"
+    "temp-shadowdark",
+    "temp"
   ]
 }

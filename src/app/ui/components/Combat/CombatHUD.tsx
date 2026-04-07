@@ -3,12 +3,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useFoundry } from '@/app/ui/context/FoundryContext';
 import { Combat, Combatant } from '@/shared/interfaces';
-import { getModule } from '@/modules/core/registry';
+import { getUIModule } from '@/modules/registry';
 import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SkipForward, SkipBack } from 'lucide-react';
 import RollDialog from '../RollDialog';
 
 export default function CombatHUD() {
-    const { combats, step, currentUser, token, system, activeAdapter } = useFoundry();
+    const { combats, step, currentUser, token, system } = useFoundry();
     const [selectedCombatIndex, setSelectedCombatIndex] = useState(0);
     const [isMinimized, setIsMinimized] = useState(false);
 
@@ -423,10 +423,10 @@ export default function CombatHUD() {
                     systemId = activeCombat.combatants[0]?._stats?.systemId || systemId;
                 }
                 if (systemId === 'generic') {
-                    systemId = system?.id || activeAdapter?.systemId || 'generic';
+                    systemId = system?.id || 'generic';
                 }
 
-                const activeModule = getModule(systemId);
+                const activeModule = getUIModule(systemId);
                 const DynamicRollModal = activeModule?.rollModal || RollDialog;
 
                 return (

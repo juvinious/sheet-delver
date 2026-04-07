@@ -2,11 +2,11 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '../logger';
-import { SystemInfo, User, Combat, Combatant, ConnectionStep } from '@/shared/interfaces';
+import { SystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@/shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
-import { getModule } from '@/modules/core/registry';
+import { getUIModule } from '@/modules/registry';
+import { UIModuleManifest } from '@/shared/interfaces';
 import { io, Socket } from 'socket.io-client';
-import { SystemAdapter } from '@/modules/core/interfaces';
 import { useUI } from '@/app/ui/context/UIContext';
 
 interface FoundryContextType {
@@ -19,8 +19,9 @@ interface FoundryContextType {
     system: SystemInfo | null;
     messages: any[];
     appVersion: string | null;
-    activeAdapter: SystemAdapter | null;
-    setActiveAdapter: (adapter: SystemAdapter | null) => void;
+    activeUIModule: UIModuleManifest | null;
+    actorCards: Record<string, ActorCardData>;
+    fetchActorCards: () => Promise<void>;
 
     // Actions
     handleLogin: (username: string, password?: string) => Promise<void>;
@@ -61,13 +62,14 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const lastActorSyncTokenRef = useRef<number>(0);
     const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
-    const [activeAdapter, setActiveAdapter] = useState<SystemAdapter | null>(null);
+    const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
     const [ownedActors, setOwnedActors] = useState<any[]>([]);
     const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
     const [combats, setCombats] = useState<Combat[]>([]);
+    const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
@@ -135,10 +137,30 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             if (data.ownedActors || data.actors) {
                 setOwnedActors(data.ownedActors || data.actors || []);
                 setReadOnlyActors(data.readOnlyActors || []);
+                
+                // Fetch corresponding actor cards for the dashboard
+                fetchActorCards();
             }
             return data;
         } catch (error: any) {
             logger.error('FoundryProvider | Fetch actors failed:', error.message);
+        }
+    }, [token]);
+
+    const fetchActorCards = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('/api/actors/cards', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 401) {
+                setToken(null);
+                return;
+            }
+            const data = await res.json();
+            setActorCards(data || {});
+        } catch (e) {
+            logger.error('FoundryProvider | Failed to fetch actor cards:', e);
         }
     }, [token]);
 
@@ -344,26 +366,28 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         const determineStep = (data: any, currentStep: string) => {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
+            const worldTitle = data.system?.worldTitle;
 
-            // Wait until backend is fully initialized (Cache + Discovery)
-            if (!data.connected || data.initialized === false) {
-                // If the probe discovered a world (worldTitle present and status is startup),
-                // the world is running but the service account cannot log in.
-                return status === 'startup' && !!data.system?.worldTitle ? 'startup' : 'initializing';
-            }
-
+            // Priority 1: Explicit System States (Setup/Offline/Startup)
             if (status === 'setup') return 'setup';
-            if (status === 'offline') return 'initializing';
+            if (status === 'offline') {
+                // If we discovered a world title during the probe, we are in 'startup/gray state'
+                // rather than truly 'initializing' from scratch.
+                return worldTitle ? 'startup' : 'setup';
+            }
             if (status === 'startup') return 'startup';
+
+            // Priority 2: Backend Initialization (Wait until Cache + Discovery is ready)
+            if (!data.connected || data.initialized === false) {
+                // Return 'startup' if we have world information, otherwise indicate 'initialization'
+                return worldTitle ? 'startup' : 'initializing';
+            }
 
             if (currentStep === 'authenticating') {
                 return isAuthenticated ? 'dashboard' : 'authenticating';
             }
 
-            const worldTitle = data.system?.worldTitle;
-            const hasCompleteWorldData = worldTitle && worldTitle !== 'Reconnecting...';
-
-            if (!hasCompleteWorldData) return 'startup';
+            if (!worldTitle) return 'startup';
 
             // If connected and active, but no token, we must be at login
             return isAuthenticated ? 'dashboard' : 'login';
@@ -384,8 +408,18 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 if (data.system) {
                     const currentWorldId = data.worldId || null;
                     if (data.connected && lastWorldId && currentWorldId && lastWorldId !== currentWorldId) {
-                        logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Clearing token.`);
+                        logger.warn(`FoundryProvider | World changed from "${lastWorldId}" to "${currentWorldId}". Purging state.`);
+                        
+                        // Aggressive state purge to prevent cross-world contamination
                         if (token) setToken(null);
+                        setOwnedActors([]);
+                        setReadOnlyActors([]);
+                        setActorCards({});
+                        setUsers([]);
+                        setCombats([]);
+                        setMessages([]);
+                        setSharedContent(null);
+                        
                         setLastWorldId(currentWorldId);
                     } else if (data.connected && currentWorldId && !lastWorldId) {
                         setLastWorldId(currentWorldId);
@@ -434,17 +468,14 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         };
     }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, lastWorldId]);
 
-    // Hydrate activeAdapter when system changes
+    // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {
         if (system?.id) {
-            const moduleManifest = getModule(system.id);
-            if (moduleManifest?.adapter) {
-                setActiveAdapter(new moduleManifest.adapter());
-            } else {
-                setActiveAdapter(null);
-            }
+            // UI Manifest is always safe to fetch
+            const uiManifest = getUIModule(system.id);
+            setActiveUIModule(uiManifest || null);
         } else {
-            setActiveAdapter(null);
+            setActiveUIModule(null);
         }
     }, [system?.id]);
 
@@ -482,7 +513,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             users, currentUser,
             system, messages,
             appVersion,
-            activeAdapter, setActiveAdapter,
+            activeUIModule,
+            actorCards,
+            fetchActorCards,
             handleLogin, handleChatSend, handleLogout, fetchActors,
             ownedActors, readOnlyActors,
             sharedContent,

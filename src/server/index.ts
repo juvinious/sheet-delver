@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 
 import { loadConfig, getConfig } from '../core/config';
 import { logger } from '../core/logger';
-import { getAdapter } from '../modules/core/registry';
+import { getAdapter } from '@/modules/registry';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 
@@ -72,9 +72,9 @@ async function startServer() {
     logger.info('Core Service | Socket.io server initialized with secure middleware');
 
     // Handle App Socket Connections
-    io.on('connection', (socket) => {
+    io.on('connection', async (socket) => {
         logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
-        socket.emit('systemStatus', getSystemStatusPayload());
+        socket.emit('systemStatus', await getSystemStatusPayload());
 
         socket.on('disconnect', () => {
             logger.debug(`App Socket | Client disconnected: ${socket.id}`);
@@ -150,8 +150,8 @@ async function startServer() {
 
                     const sysInfo = await systemClient.getSystem();
                     if (sysInfo && sysInfo.id) {
-                        const { getAdapter } = await import('../modules/core/registry');
-                        const adapter = getAdapter(sysInfo.id);
+                        const { getAdapter } = await import('@/modules/registry');
+                        const adapter = await getAdapter(sysInfo.id);
                         if (adapter && adapter.initialize) {
                             logger.info(`Core Service | Re-initializing Adapter for ${sysInfo.id}...`);
                             await adapter.initialize(systemClient);
@@ -253,7 +253,7 @@ async function startServer() {
 
 
     // --- Global Status Payload Generator ---
-    const getSystemStatusPayload = () => {
+    const getSystemStatusPayload = async () => {
         const systemClient = sessionManager.getSystemClient();
         let system: any = {
             id: null,
@@ -304,7 +304,7 @@ async function startServer() {
 
             if (system.id) {
                 const sid = system.id.toLowerCase();
-                const adapter = getAdapter(sid);
+                const adapter = await getAdapter(sid);
                 if (adapter && typeof (adapter as any).getConfig === 'function') {
                     const cfg = (adapter as any).getConfig();
                     if (cfg) system.config = cfg;
@@ -339,8 +339,8 @@ async function startServer() {
     };
 
     // --- Backend Status Polling Loop ---
-    setInterval(() => {
-        const payload = getSystemStatusPayload();
+    setInterval(async () => {
+        const payload = await getSystemStatusPayload();
         io.emit('systemStatus', payload);
     }, 4000);
 
@@ -370,7 +370,7 @@ async function startServer() {
                 // logger.debug(`Status REST | Auth: ${isAuthenticated} | World: ${sysState.worldState}`);
             }
 
-            const basePayload = getSystemStatusPayload();
+            const basePayload = await getSystemStatusPayload();
 
             res.json({
                 ...basePayload,
@@ -481,7 +481,7 @@ async function startServer() {
             const client = (req as any).foundryClient;
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
             const rawActors = await client.getActors();
@@ -568,6 +568,51 @@ async function startServer() {
         }
     });
 
+    appRouter.get('/actors/cards', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const systemInfo = await client.getSystem();
+            const adapter = await getAdapter(systemInfo.id);
+            if (!adapter || !adapter.getActorCardData) {
+                return res.json({});
+            }
+
+            const rawActors = await client.getActors();
+            const cards: Record<string, any> = {};
+
+            for (const actor of rawActors) {
+                const id = actor._id || actor.id;
+                cards[id] = adapter.getActorCardData(actor);
+            }
+
+            res.json(cards);
+        } catch (error: any) {
+            logger.error(`Core Service | Actor cards bulk fetch failed: ${error.message}`);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/actors/:id/card', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const actor = await client.getActor(req.params.id);
+            if (!actor || actor.error) {
+                return res.status(actor?.error ? 503 : 404).json({ error: actor?.error || 'Actor not found' });
+            }
+
+            const systemInfo = await client.getSystem();
+            const adapter = await getAdapter(systemInfo.id);
+            if (!adapter || !adapter.getActorCardData) {
+                return res.json({});
+            }
+
+            res.json(adapter.getActorCardData(actor));
+        } catch (error: any) {
+            logger.error(`Core Service | Actor card fetch failed: ${error.message}`);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     appRouter.get('/actors/:id', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -599,8 +644,17 @@ async function startServer() {
             };
 
             const resolvedActor = resolveUUIDs(actor);
-            const { getMatchingAdapter } = await import('../modules/core/registry');
-            const adapter = getMatchingAdapter(resolvedActor);
+
+            // Priority: Use the current world's system adapter to avoid cross-system contamination
+            const systemInfo = await client.getSystem();
+            let adapter = await getAdapter(systemInfo.id);
+
+            // Fallback: If world adapter doesn't match this specific actor, try heuristic matching
+            const { getMatchingAdapter } = await import('@/modules/registry');
+            if (!adapter || (adapter.match && !adapter.match(resolvedActor))) {
+                adapter = await getMatchingAdapter(resolvedActor);
+            }
+
             const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
 
             // Call adapter.computeActorData if available (module-specific derived stats)
@@ -709,7 +763,7 @@ async function startServer() {
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             if (type === 'use-item') {
@@ -1125,7 +1179,7 @@ async function startServer() {
             const { formula, advantageMode } = req.body;
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             const combats = await client.getCombats();
@@ -1365,18 +1419,24 @@ async function startServer() {
 
             if (!systemId) return res.status(404).json({ error: 'No system specified' });
 
-            const { serverModules } = await import('../modules/core/server-modules');
-            const sysModule = (serverModules as any)[systemId];
+            // Hard Wall: Dynamically import the server module directly from its folder.
+            // Since this is in server/index.ts (run via ts-node), it is never bundled for the browser.
+            let sysModule: any;
+            try {
+                sysModule = await import(`../modules/${systemId}/server`);
+            } catch (e) {
+                logger.warn(`Module Routing | Module ${systemId} not found or missing server entry point.`);
+                return res.status(404).json({ error: `Module ${systemId} not found` });
+            }
 
             if (!sysModule || !sysModule.apiRoutes) {
-                logger.warn(`Module Routing | Module ${systemId} not found or missing apiRoutes. Registered modules: ${Object.keys(serverModules).join(', ')}`);
-                console.error(`[DEBUG] sysModule for ${systemId}:`, sysModule ? 'exists but missing routes' : 'not found');
-                return res.status(404).json({ error: `Module ${systemId} not found` });
+                logger.warn(`Module Routing | Module ${systemId} missing apiRoutes.`);
+                return res.status(404).json({ error: `Module ${systemId} API not available` });
             }
 
             let matchedPattern: string | undefined;
             // console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
-            const routes = Object.keys(sysModule.apiRoutes || {});
+            const routes = Object.keys(sysModule.apiRoutes);
 
             for (const pattern of routes) {
                 const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
@@ -1434,8 +1494,10 @@ async function startServer() {
 
     adminRouter.get('/status', async (req, res) => {
         // Use system client for admin status
+        const systemStatus = await getSystemStatusPayload();
         const client = sessionManager.getSystemClient();
         res.json({
+            ...systemStatus,
             socket: client.isConnected,
             worldState: (client as any).worldState,
             userId: client.userId,

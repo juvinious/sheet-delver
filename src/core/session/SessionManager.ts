@@ -118,8 +118,8 @@ export class SessionManager {
                 // 2. Module-Specific Adapter Initialization (Targeted Discovery/Cache)
                 const sysInfo = await client.getSystem();
                 if (sysInfo?.id) {
-                    const { getAdapter } = await import('../../modules/core/registry');
-                    const adapter = getAdapter(sysInfo.id.toLowerCase());
+                    const { getAdapter } = await import('@/modules/registry');
+                    const adapter = await getAdapter(sysInfo.id.toLowerCase());
                     if (adapter?.initialize) {
                         logger.info(`SessionManager | Bootstrapping adapter for ${sysInfo.id}...`);
                         await adapter.initialize(client);

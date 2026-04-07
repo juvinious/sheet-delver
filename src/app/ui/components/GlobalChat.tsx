@@ -20,14 +20,14 @@ interface GlobalChatProps {
 
 export default function GlobalChat(props: GlobalChatProps) {
     const { hideDice, speaker } = props;
-    const { messages, handleChatSend: onSend, activeAdapter: adapter, system } = useFoundry();
+    const { messages, handleChatSend: onSend, system } = useFoundry();
     const { isChatOpen, setChatOpen, isDiceTrayOpen, setDiceTrayOpen } = useUI();
     const { foundryUrl } = useConfig();
 
     const onToggleDiceTray = () => setDiceTrayOpen(!isDiceTrayOpen);
     const setIsChatOpen = (open: boolean) => setChatOpen(open);
 
-    const s = adapter?.componentStyles?.globalChat || {
+    const s = system?.config?.componentStyles?.globalChat || {
         window: "bg-neutral-900/95 backdrop-blur-xl border border-white/20 shadow-2xl rounded-xl",
         header: "flex justify-between items-center bg-white/10 p-3 border-b border-white/10",
         title: "text-[10px] font-bold uppercase text-white/60 pl-2 tracking-widest",
@@ -100,7 +100,6 @@ export default function GlobalChat(props: GlobalChatProps) {
                                 <div className="p-0">
                                     <DiceTray
                                         onSend={(msg, options) => { onSend(msg, { ...options, speaker: options?.speaker || props.speaker }); toggleDice(); }}
-                                        adapter={adapter || undefined}
                                         hideHeader={true}
                                         speaker={props.speaker}
                                     />
@@ -132,7 +131,6 @@ export default function GlobalChat(props: GlobalChatProps) {
                             messages={messages || []}
                             onSend={onSend}
                             foundryUrl={foundryUrl}
-                            adapter={adapter || undefined}
                             hideDiceTray={true}
                             hideHeader={true}
                             speaker={props.speaker}

@@ -3,17 +3,18 @@
 
 import { useEffect, useRef } from 'react';
 import DiceTray from './DiceTray';
-import { SystemAdapter, RollMode } from '@/shared/interfaces';
+import { RollMode } from '@/shared/interfaces';
+import { useFoundry } from '@/app/ui/context/FoundryContext';
 
 interface DiceTrayDialogProps {
     isOpen: boolean;
     onClose: () => void;
     onSend?: (msg: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
-    adapter?: SystemAdapter;
     speaker?: string;
 }
 
-export default function DiceTrayDialog({ isOpen, onClose, onSend, adapter, speaker }: DiceTrayDialogProps) {
+export default function DiceTrayDialog({ isOpen, onClose, onSend, speaker }: DiceTrayDialogProps) {
+    const { system: adapter } = useFoundry();
     const popupRef = useRef<HTMLDivElement>(null);
 
     // Close on click outside
@@ -59,7 +60,7 @@ export default function DiceTrayDialog({ isOpen, onClose, onSend, adapter, speak
                     </button>
                 </div>
                 <div className="p-0">
-                    <DiceTray onSend={(msg, options) => { if (onSend) onSend(msg, { ...options, speaker: options?.speaker || speaker }); onClose(); }} adapter={adapter} hideHeader={true} speaker={speaker} />
+                    <DiceTray onSend={(msg, options) => { if (onSend) onSend(msg, { ...options, speaker: options?.speaker || speaker }); onClose(); }} hideHeader={true} speaker={speaker} />
                 </div>
             </div>
         </div>

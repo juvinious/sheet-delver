@@ -289,25 +289,26 @@ export interface SystemAdapter {
 }
 
 /**
- * Manifest for pluggable system modules.
+ * Browser-safe manifest for system UI components.
+ * This should NEVER import Adapter classes.
  */
-export interface ModuleManifest {
+export interface UIModuleManifest {
     info: {
         id: string;
         title: string;
     };
-    adapter: new () => SystemAdapter;
     sheet: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
-    tools?: Record<string, LazyExoticComponent<ComponentType<any>> | ComponentType<any>>;
-    /**
-     * Optional: Module-specific actor page component.
-     * When registered, the core /actors/[id] route will delegate rendering to this component.
-     * Props: { actorId: string; token?: string | null }
-     */
-    actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
-    /**
-     * Optional: Module-specific roll modal component.
-     * Overrides the generic `RollDialog` in universal interfaces like the Combat Tracker.
-     */
     rollModal?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
+    actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
+    tools?: Record<string, LazyExoticComponent<ComponentType<any>> | ComponentType<any>>;
+    dashboardTools?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
+    dashboardLoading?: ComponentType<any>;
+}
+
+/**
+ * Full manifest for pluggable system modules.
+ * Includes the Adapter class for server-side logic.
+ */
+export interface ModuleManifest extends UIModuleManifest {
+    adapter: new () => SystemAdapter;
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { SystemAdapter, RollMode } from '@/shared/interfaces';
+import { RollMode } from '@/shared/interfaces';
 import DiceTray from './DiceTray';
 
 interface ChatTabProps {
@@ -9,7 +9,6 @@ interface ChatTabProps {
     foundryUrl?: string;
     hideDiceTray?: boolean;
     hideHeader?: boolean;
-    adapter?: SystemAdapter;
     speaker?: string;
 }
 
@@ -33,8 +32,11 @@ const defaultStyles = {
     sendBtn: "bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:hover:bg-amber-600 text-black px-4 py-1.5 rounded-md text-xs font-black transition-colors"
 };
 
-export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, adapter, speaker }: ChatTabProps) {
-    const s = adapter?.componentStyles?.chat || defaultStyles;
+import { useFoundry } from '@/app/ui/context/FoundryContext';
+
+export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDiceTray = false, hideHeader = false, speaker }: ChatTabProps) {
+    const { system } = useFoundry();
+    const s = system?.config?.componentStyles?.chat || defaultStyles;
     const scrollRef = useRef<HTMLDivElement>(null);
     const [isAtTop, setIsAtTop] = useState(true);
     // We no longer auto-scroll to bottom. In fact, we might want to stay at top.
@@ -252,7 +254,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
             {/* Dice Tray / Chat Input (Bottom) */}
             {!hideDiceTray && (
                 <div className="flex-none">
-                    <DiceTray onSend={onSend} adapter={adapter} speaker={speaker} />
+                    <DiceTray onSend={onSend} speaker={speaker} />
                 </div>
             )}
         </div>

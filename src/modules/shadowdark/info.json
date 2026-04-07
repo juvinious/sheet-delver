@@ -1,4 +1,9 @@
 {
     "id": "shadowdark",
-    "title": "Shadowdark RPG"
+    "title": "Shadowdark RPG",
+    "manifest": {
+        "ui": "module/ui",
+        "logic": "module/logic",
+        "server": "module/server"
+    }
 }

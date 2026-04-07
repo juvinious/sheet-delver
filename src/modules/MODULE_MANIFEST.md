@@ -1,0 +1,52 @@
+# Module Manifest & Directory Structure
+
+All system-specific modules in `src/modules/` MUST adhere to this standardized architecture to ensure clean domain separation, build-time safety, and registry compatibility.
+
+## 1. Directory Blueprint
+
+```text
+module-dir/
+├── info.json          # Module metadata & manifest pointers
+├── module/            # PUBLIC entry points (Thin re-exports)
+│   ├── ui.tsx         # Browser-safe UI manifest
+│   ├── logic.ts       # Server-side logic/adapter re-export
+│   └── server.ts      # Server-side API/handler re-export
+└── src/               # PRIVATE implementation
+    ├── ui/            # React components & themes
+    ├── logic/         # System Adapter & rule evaluations
+    ├── server/        # Specialized API handlers & importers
+    └── data/          # In-memory caches & managers
+```
+
+## 2. Entry Point Definitions
+
+### `module/ui.tsx` (Frontend)
+Must export a `UIModuleManifest` as the **default export**. This file must be **browser-safe** and uses `React.lazy` for component imports to ensure small bundle sizes.
+- **Path in info.json**: `manifest.ui`
+
+### `module/logic.ts` (Shared/Server Logic)
+Must export the `SystemAdapter` implementation as a named export `Adapter`. This is used by the `registry` to resolve character sheet logic and calculations.
+- **Path in info.json**: `manifest.logic`
+
+### `module/server.ts` (Server-Only Handlers)
+Optional. Re-exports API initialization or specialized server-only logic (e.g., importers). Explicitly gated by the core registry to prevent Node.js leaks into the browser.
+- **Path in info.json**: `manifest.server`
+
+## 3. Manifest Configuration (`info.json`)
+
+```json
+{
+    "id": "my-system-id",
+    "title": "My Awesome RPG",
+    "manifest": {
+        "ui": "module/ui",
+        "logic": "module/logic",
+        "server": "module/server"
+    }
+}
+```
+
+## 4. Key Rules
+1. **No Root Logic**: Do not place logic, adapters, or components in the module root.
+2. **Import Hygiene**: The `module/` directory acts as a firewall. Internal `src/` files should use relative paths to other `src/` subdirectories.
+3. **Core Registry Hub**: The registry in `src/modules/registry/` is the central hub that consumes these entry points. New systems must be registered there.

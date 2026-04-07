@@ -1,6 +1,7 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import yaml from 'js-yaml';
+// Server-only dynamic imports to prevent client-side build crashes while remaining ESM-compliant
+const getFs = async () => (typeof window === 'undefined' ? (await import('node:fs')).promises : null);
+const getPath = async () => (typeof window === 'undefined' ? await import('node:path') : null);
+const getYaml = async () => (typeof window === 'undefined' ? await import('js-yaml') : null);
 
 import { AppConfig } from '@/shared/interfaces';
 
@@ -8,6 +9,19 @@ let _cachedConfig: AppConfig | null = null;
 
 export async function loadConfig(): Promise<AppConfig | null> {
     if (_cachedConfig) return _cachedConfig;
+
+    // Browser Fallback (Config is typically injected or fetched via API on client)
+    if (typeof window !== 'undefined') {
+        return null; 
+    }
+
+    const fs = await getFs();
+    const path = await getPath();
+    const yaml = await getYaml();
+
+    if (!fs || !path || !yaml) {
+        throw new Error('Server-side modules failed to load in non-browser context');
+    }
 
     try {
         const configPath = path.resolve(process.cwd(), 'settings.yaml');
@@ -97,8 +111,9 @@ export async function loadConfig(): Promise<AppConfig | null> {
         }
     } catch (e) {
         console.error('\n\x1b[31m[Config] Error: settings.yaml not found or invalid.\x1b[0m');
-        console.error('Please run \x1b[33mnpm run setup\x1b[0m to configure the application.\n');
-        process.exit(1);
+        if (typeof process !== 'undefined' && process.exit) {
+            process.exit(1);
+        }
     }
     return null;
 }
