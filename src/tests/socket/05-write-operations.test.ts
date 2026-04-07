@@ -6,7 +6,7 @@ import { loadConfig } from '../../core/config';
  * Tests creating, updating, and deleting a temporary actor to verify write capabilities.
  */
 export async function testWriteOperations() {
-    console.log('🧪 Test 5: Write Operations (Safe CRUD)\n');
+    logger.info('🧪 Test 5: Write Operations (Safe CRUD)\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -20,10 +20,10 @@ export async function testWriteOperations() {
 
     try {
         await client.connect();
-        console.log('✅ Connected\n');
+        logger.info('✅ Connected\n');
 
         // Test 5a: Create Temporary Actor
-        console.log('5a. Creating temporary actor...');
+        logger.info('5a. Creating temporary actor...');
         try {
             const actorData = {
                 name: "TEMP_TEST_ACTOR_" + Date.now(),
@@ -32,10 +32,10 @@ export async function testWriteOperations() {
             };
             const createdActor = await client.createActor(actorData);
             tempActorId = createdActor._id;
-            console.log(`   ✅ Created actor: ${createdActor.name} (${tempActorId})`);
+            logger.info(`   ✅ Created actor: ${createdActor.name} (${tempActorId})`);
             results.tests.push({ name: 'createActor', success: true, data: { id: tempActorId } });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'createActor', success: false, error: error.message });
             // Cannot proceed if creation failed
             throw new Error("Generic CRUD test aborted due to creation failure");
@@ -43,7 +43,7 @@ export async function testWriteOperations() {
 
         // Test 5b: Update Actor
         if (tempActorId) {
-            console.log('\n5b. Updating temporary actor...');
+            logger.info('\n5b. Updating temporary actor...');
             try {
                 const updateData = {
                     name: "UPDATED_TEST_ACTOR_" + Date.now(),
@@ -54,20 +54,20 @@ export async function testWriteOperations() {
                 // Verify update
                 const updatedActor = await client.getActor(tempActorId);
                 if (updatedActor.name.startsWith("UPDATED_TEST_ACTOR")) {
-                    console.log(`   ✅ Updated actor name to: ${updatedActor.name}`);
+                    logger.info(`   ✅ Updated actor name to: ${updatedActor.name}`);
                     results.tests.push({ name: 'updateActor', success: true });
                 } else {
                     throw new Error("Update checks failed - name did not change");
                 }
             } catch (error: any) {
-                console.log(`   ❌ Failed: ${error.message}`);
+                logger.info(`   ❌ Failed: ${error.message}`);
                 results.tests.push({ name: 'updateActor', success: false, error: error.message });
             }
         }
 
         // Test 5c: Create Item on Actor
         if (tempActorId) {
-            console.log('\n5c. Creating item on actor...');
+            logger.info('\n5c. Creating item on actor...');
             try {
                 const itemData = {
                     name: "Test Item",
@@ -79,49 +79,49 @@ export async function testWriteOperations() {
                 // Let's try to be generic.
 
                 tempItemId = await client.createActorItem(tempActorId, itemData);
-                console.log(`   ✅ Created item: ${tempItemId}`);
+                logger.info(`   ✅ Created item: ${tempItemId}`);
                 results.tests.push({ name: 'createActorItem', success: true, data: { id: tempItemId } });
             } catch (error: any) {
                 // Some systems are strict about Item Types. 
                 // If this fails, it might be due to invalid type 'Item'.
-                console.log(`   ❌ Failed (Type might be invalid for system): ${error.message}`);
+                logger.info(`   ❌ Failed (Type might be invalid for system): ${error.message}`);
                 results.tests.push({ name: 'createActorItem', success: false, error: error.message });
             }
         }
 
         // Test 5d: Chat Message
-        console.log('\n5d. Sending test chat message...');
+        logger.info('\n5d. Sending test chat message...');
         try {
             await client.sendMessage("🧪 Socket Test: Write Operations Verified");
-            console.log(`   ✅ Sent chat message`);
+            logger.info(`   ✅ Sent chat message`);
             results.tests.push({ name: 'sendMessage', success: true });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'sendMessage', success: false, error: error.message });
         }
 
         const successCount = results.tests.filter((t: any) => t.success).length;
         results.success = successCount === results.tests.length;
 
-        console.log(`\n📊 ${successCount}/${results.tests.length} tests passed`);
+        logger.info(`\n📊 ${successCount}/${results.tests.length} tests passed`);
         return results;
 
     } catch (error: any) {
-        console.error('❌ Test suite failed:', error.message);
+        logger.error('❌ Test suite failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         // CLEANUP: Always delete the temporary actor
         if (tempActorId) {
-            console.log('\n🧹 Cleaning up: Deleting temporary actor...');
+            logger.info('\n🧹 Cleaning up: Deleting temporary actor...');
             try {
                 await client.deleteActor(tempActorId);
-                console.log('   ✅ cleanup successful');
+                logger.info('   ✅ cleanup successful');
             } catch (cleanupError: any) {
-                console.error(`   ⚠️ Cleanup failed: ${cleanupError.message}. Please manually delete actor ${tempActorId}`);
+                logger.error(`   ⚠️ Cleanup failed: ${cleanupError.message}. Please manually delete actor ${tempActorId}`);
             }
         }
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 

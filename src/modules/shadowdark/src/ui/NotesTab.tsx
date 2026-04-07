@@ -1,7 +1,7 @@
 'use client';
 
-import RichTextEditor from '@/app/ui/components/RichTextEditor';
-import { shadowdarkTheme } from '@/modules/shadowdark/src/ui/themes/shadowdark';
+import RichTextEditor from '@client/ui/components/RichTextEditor';
+import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
 
 interface NotesTabProps {
     actor: any;
@@ -32,7 +32,7 @@ export default function NotesTab({ actor, onUpdate, token }: NotesTabProps) {
             // Update local state to reflect the change
             onUpdate('details.notes', html);
         } catch (error) {
-            console.error('Error saving notes:', error);
+            logger.error('Error saving notes:', error);
             throw error;
         }
     };

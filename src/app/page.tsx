@@ -1,7 +1,7 @@
-import { loadConfig } from '@/core/config';
-import MainPage from '@/app/ui/main/MainPage';
-import { SetupManager } from '@/core/foundry/SetupManager';
-// import { SetupToken } from '@/core/security/SetupToken';
+import { loadConfig } from '@core/config';
+import MainPage from '@client/ui/main/MainPage';
+import { SetupManager } from '@core/foundry/SetupManager';
+// import { SetupToken } from '@core/security/SetupToken';
 // import { redirect } from 'next/navigation';
 
 export default async function Page() {

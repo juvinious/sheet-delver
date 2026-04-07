@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 interface Props {
     pendingChoices: {

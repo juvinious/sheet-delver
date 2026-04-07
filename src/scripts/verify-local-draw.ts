@@ -1,5 +1,5 @@
 import { DataManager } from '../modules/shadowdark/data/DataManager';
-import { logger } from '../core/logger';
+import { logger } from '../shared/utils/logger';
 
 async function verifyDraw() {
     const dataManager = DataManager.getInstance();
@@ -11,28 +11,28 @@ async function verifyDraw() {
     ];
 
     for (const tableUuid of testTables) {
-        console.log(`\nTesting Table: ${tableUuid}`);
+        logger.info(`\nTesting Table: ${tableUuid}`);
         const result = await dataManager.draw(tableUuid);
 
         if (result) {
-            console.log(`Draw Result:`);
-            console.log(`- ID: ${result.id}`);
-            console.log(`- Roll (2-12): ${result.roll}`);
-            console.log(`- Total: ${result.total}`);
-            console.log(`- Matched Results: ${result.results.length}`);
+            logger.info(`Draw Result:`);
+            logger.info(`- ID: ${result.id}`);
+            logger.info(`- Roll (2-12): ${result.roll}`);
+            logger.info(`- Total: ${result.total}`);
+            logger.info(`- Matched Results: ${result.results.length}`);
 
             result.results.forEach((r: any, i: number) => {
-                console.log(`  [${i}] Range: [${r.range[0]}, ${r.range[1]}], Text: ${r.text || r.description || r.name}`);
+                logger.info(`  [${i}] Range: [${r.range[0]}, ${r.range[1]}], Text: ${r.text || r.description || r.name}`);
                 if (r.document) {
-                    console.log(`      Hydrated Document: ${r.document.name} (${r.document.type})`);
+                    logger.info(`      Hydrated Document: ${r.document.name} (${r.document.type})`);
                 }
             });
 
-            console.log(`- Items: ${result.items.length}`);
+            logger.info(`- Items: ${result.items.length}`);
         } else {
-            console.error(`Failed to draw from ${tableUuid}`);
+            logger.error(`Failed to draw from ${tableUuid}`);
         }
     }
 }
 
-verifyDraw().catch(console.error);
+verifyDraw().catch(logger.error);

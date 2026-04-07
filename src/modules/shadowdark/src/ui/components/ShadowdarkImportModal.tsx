@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { logger } from '@/app/ui/logger';
+import { logger } from '@shared/utils/logger';
 
 interface ShadowdarkImportModalProps {
     onClose: () => void;

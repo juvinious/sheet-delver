@@ -1,5 +1,5 @@
-import { logger } from '@/core/logger';
-import { FoundryClient } from '@/core/foundry';
+import { logger } from '@shared/utils/logger';
+import { FoundryClient } from '@core/foundry';
 import fs from 'fs';
 import path from 'path';
 import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
@@ -31,7 +31,7 @@ export class ShadowdarkImporter {
             const fileContent = await fs.promises.readFile(mappingPath, 'utf-8');
             this.mapping = JSON.parse(fileContent);
         } catch (error) {
-            console.error('[ShadowdarkImporter] Failed to load mapping file', error);
+            logger.error('[ShadowdarkImporter] Failed to load mapping file', error);
             throw new Error('Failed to load import mappings');
         }
     }

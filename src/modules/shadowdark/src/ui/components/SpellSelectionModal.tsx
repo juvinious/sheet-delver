@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Search, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { resolveImage, formatDescription, getSafeDescription } from '../sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 interface SpellOption {
     name: string;
@@ -83,7 +83,7 @@ export default function SpellSelectionModal({
                 }));
             }
         } catch (e) {
-            console.error("Failed to fetch description", e);
+            logger.error("Failed to fetch description", e);
         } finally {
             setLoadingUuids(prev => {
                 const next = new Set(prev);

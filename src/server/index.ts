@@ -2,18 +2,22 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 
-import { loadConfig, getConfig } from '../core/config';
-import { logger } from '../core/logger';
-import { getAdapter } from '@/modules/registry';
+import { loadConfig, getConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
+import { getAdapter } from '@modules/registry';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 
 async function startServer() {
     const config = await loadConfig();
     if (!config) {
-        console.error('Core Service | Could not load configuration. Exiting.');
+        logger.error('Core Service | Could not load configuration. Exiting.');
         process.exit(1);
     }
+
+    // Initialize Universal Logger with configured level
+    logger.setLevel(config.debug.level);
+    logger.info(`Core Service | Logger initialized at level: ${config.debug.level}`);
 
     // Global Error Handlers (Diagnostic for silent kills/crashes)
     if (config.debug.level >= 4) {
@@ -74,55 +78,75 @@ async function startServer() {
     // Handle App Socket Connections
     io.on('connection', async (socket) => {
         logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
-        socket.emit('systemStatus', await getSystemStatusPayload());
+        
+        // Initial setup for this specific socket connection
+        const payload = await getSystemStatusPayload();
+        socket.emit('systemStatus', payload);
 
-        socket.on('disconnect', () => {
-            logger.debug(`App Socket | Client disconnected: ${socket.id}`);
-        });
+        // Attach listeners to individual foundry client for sensitive/per-user data
+        const foundryClient = (socket as any).foundryClient;
+        if (foundryClient) {
+            logger.info(`App Socket | Attaching per-user listeners for ${foundryClient.username} (${socket.id})`);
+            
+            const handleCombatUpdate = (data: any) => socket.emit('combatUpdate', data);
+            const handleChatUpdate = (data: any) => socket.emit('chatUpdate', data);
+            const handleActorUpdate = (data: any) => socket.emit('actorUpdate', data);
+            const handleSharedUpdate = (data: any) => socket.emit('sharedContentUpdate', data);
+
+            foundryClient.on('combatUpdate', handleCombatUpdate);
+            foundryClient.on('chatUpdate', handleChatUpdate);
+            foundryClient.on('actorUpdate', handleActorUpdate);
+            foundryClient.on('sharedContentUpdate', handleSharedUpdate);
+
+            socket.on('disconnect', () => {
+                logger.debug(`App Socket | Client disconnected: ${socket.id}. Removing client listeners.`);
+                foundryClient.off('combatUpdate', handleCombatUpdate);
+                foundryClient.off('chatUpdate', handleChatUpdate);
+                foundryClient.off('actorUpdate', handleActorUpdate);
+                foundryClient.off('sharedContentUpdate', handleSharedUpdate);
+            });
+        } else {
+            socket.on('disconnect', () => {
+                logger.debug(`App Socket | Client disconnected: ${socket.id}`);
+            });
+        }
     });
 
     // DEBUG: Global Request Logger
     app.use((req, res, next) => {
-        console.error(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
+        logger.debug(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
         next();
     });
 
     // Initialize Session Manager with Service Account
-    const { SessionManager } = await import('../core/session/SessionManager');
-    const { UserRole } = await import('../shared/constants');
+    const { SessionManager } = await import('@core/session/SessionManager');
+    const { UserRole } = await import('@shared/constants');
     const sessionManager = new SessionManager({
         ...config.foundry
         // Service account credentials from settings.yaml are used for system client
     });
 
+    // --- Sanitized Config for Frontend ---
+    const getSanitizedConfig = () => {
+        const cfg = getConfig();
+        return {
+            app: cfg.app,
+            foundry: {
+                host: cfg.foundry.host,
+                port: cfg.foundry.port,
+                protocol: cfg.foundry.protocol,
+                url: cfg.foundry.url,
+            },
+            debug: cfg.debug
+        };
+    };
+
     // Start Service Account Client for World Verification
     const systemClient = sessionManager.getSystemClient();
-
     // Track world ID to detect world changes
     let lastKnownWorldId: string | null = null;
 
     // Service Initialization Hook
-    // --- Real-time Sync Listeners (Registered once) ---
-    // Broadcast sensitive data only to authenticated clients
-    systemClient.on('combatUpdate', (data: any) => {
-        logger.debug('Core Service | Syncing combat update to clients...');
-        io.to('authenticated').emit('combatUpdate', data);
-    });
-
-    systemClient.on('chatUpdate', (data: any) => {
-        logger.debug('Core Service | Syncing chat update to clients...');
-        io.to('authenticated').emit('chatUpdate', data);
-    });
-
-    systemClient.on('actorUpdate', (data: any) => {
-        logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
-        io.to('authenticated').emit('actorUpdate', data);
-    });
-
-    systemClient.on('sharedContentUpdate', (data: any) => {
-        logger.debug('Core Service | Syncing shared content update to clients...');
-        io.to('authenticated').emit('sharedContentUpdate', data);
-    });
 
     // Service Initialization Hook
     systemClient.on('connect', () => {
@@ -143,14 +167,14 @@ async function startServer() {
             // Re-initialize services for the new world
             (async () => {
                 try {
-                    const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+                    const { CompendiumCache } = await import('@core/foundry/compendium-cache');
                     const cache = CompendiumCache.getInstance();
                     await cache.initialize(systemClient);
                     sessionManager.setCache(cache);
 
                     const sysInfo = await systemClient.getSystem();
                     if (sysInfo && sysInfo.id) {
-                        const { getAdapter } = await import('@/modules/registry');
+                        const { getAdapter } = await import('@modules/registry');
                         const adapter = await getAdapter(sysInfo.id);
                         if (adapter && adapter.initialize) {
                             logger.info(`Core Service | Re-initializing Adapter for ${sysInfo.id}...`);
@@ -397,6 +421,9 @@ async function startServer() {
 
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
+    appRouter.get('/config', (req, res) => {
+        res.json(getSanitizedConfig());
+    });
 
     // --- System API (moved after middleware to avoid duplicate auth) ---
 
@@ -490,7 +517,7 @@ async function startServer() {
             // Yes, standard User can only see what they own/observe.
             // Client.getActors() returns what the socket gives.
 
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+            const { CompendiumCache } = await import('@core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
             // Note: CompendiumCache is now initialized by SessionManager on startup.
 
@@ -621,7 +648,7 @@ async function startServer() {
                 return res.status(actor?.error ? 503 : 404).json({ error: actor?.error || 'Actor not found' });
             }
 
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+            const { CompendiumCache } = await import('@core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
             // Note: CompendiumCache is now initialized by SessionManager on startup.
 
@@ -650,7 +677,7 @@ async function startServer() {
             let adapter = await getAdapter(systemInfo.id);
 
             // Fallback: If world adapter doesn't match this specific actor, try heuristic matching
-            const { getMatchingAdapter } = await import('@/modules/registry');
+            const { getMatchingAdapter } = await import('@modules/registry');
             if (!adapter || (adapter.match && !adapter.match(resolvedActor))) {
                 adapter = await getMatchingAdapter(resolvedActor);
             }
@@ -1026,7 +1053,7 @@ async function startServer() {
                         const actor = await client.getActor(id);
                         if (actor) actorsMap[id] = actor;
                     } catch (e) {
-                        console.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
+                        logger.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
                     }
                 }));
 
@@ -1399,7 +1426,7 @@ async function startServer() {
 
             res.json(content || { type: null });
         } catch (error: any) {
-            console.error('Error fetching shared content:', error);
+            logger.error('Error fetching shared content:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     });
@@ -1435,7 +1462,7 @@ async function startServer() {
             }
 
             let matchedPattern: string | undefined;
-            // console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
+            // logger.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
             const routes = Object.keys(sysModule.apiRoutes);
 
             for (const pattern of routes) {
@@ -1449,7 +1476,7 @@ async function startServer() {
 
             if (!matchedPattern) {
                 logger.warn(`Module Routing | No handler found for ${systemId}/${routePath}. Available routes: ${routes.join(', ')}`);
-                console.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
+                logger.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
                 return res.status(404).json({ error: `Route ${routePath} not found` });
             }
 
@@ -1511,7 +1538,7 @@ async function startServer() {
             // Use system client
             const client = sessionManager.getSystemClient();
             // Try live system info first
-            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const { SetupManager } = await import('@core/foundry/SetupManager');
             let worlds: any[] = [];
 
             // If we have a URL, try to scrape available worlds
@@ -1539,7 +1566,7 @@ async function startServer() {
 
     adminRouter.get('/cache', async (req, res) => {
         try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const { SetupManager } = await import('@core/foundry/SetupManager');
             const cache = await SetupManager.loadCache();
             res.json(cache);
         } catch (error: any) {
@@ -1552,7 +1579,7 @@ async function startServer() {
         if (!sessionCookie) return res.status(400).json({ error: 'Session cookie required' });
 
         try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const { SetupManager } = await import('@core/foundry/SetupManager');
             const client = sessionManager.getSystemClient();
             logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
 
@@ -1606,6 +1633,6 @@ async function startServer() {
 }
 
 startServer().catch(err => {
-    console.error('Core Service | Unhandled startup error:', err);
+    logger.error('Core Service | Unhandled startup error:', err);
     process.exit(1);
 });

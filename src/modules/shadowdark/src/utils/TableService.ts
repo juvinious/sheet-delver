@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { shadowdarkAdapter } from '../logic/system';
 import { ROLL_TABLE_FILTER, ROLL_TABLE_TALENT_MAP, ROLL_TABLE_PATRON_BOONS } from '../data/roll-table-patterns';
 import { TALENT_HANDLERS } from '../logic/talent-handlers';

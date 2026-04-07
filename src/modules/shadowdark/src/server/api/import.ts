@@ -14,15 +14,15 @@ export async function handleImport(request: Request) {
         const result = await importer.importFromJSON(client, json);
 
         if (!result.success) {
-            console.error('[API] Import Failed:', result.errors);
+            logger.error('[API] Import Failed:', result.errors);
             return Response.json({ success: false, errors: result.errors, debug: result.debug }, { status: 400 });
         }
 
         return Response.json({ success: true, id: result.id, errors: result.errors, debug: result.debug });
 
     } catch (error: any) {
-        console.error('[Shadowdark API] Import Error:', error);
-        if (error.stack) console.error(error.stack);
+        logger.error('[Shadowdark API] Import Error:', error);
+        if (error.stack) logger.error(error.stack);
         return Response.json({ 
             error: error.message || 'Import failed',
             details: error.stack

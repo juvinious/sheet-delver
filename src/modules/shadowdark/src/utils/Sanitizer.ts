@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 /**
  * Common sanitization for Shadowdark items to ensure they are compatible

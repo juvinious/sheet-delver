@@ -9,8 +9,8 @@ import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import NotesModal from './components/NotesModal';
 import { LevelUpModal } from './components/LevelUpModal';
-import { useNotifications } from '@/app/ui/components/NotificationSystem';
-import { logger } from '@/core/logger';
+import { useNotifications } from '@client/ui/components/NotificationSystem';
+import { logger } from '@shared/utils/logger';
 import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 
 

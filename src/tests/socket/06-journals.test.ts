@@ -8,11 +8,11 @@ import 'dotenv/config';
 process.env.NODE_ENV = 'test';
 
 async function testJournals() {
-    console.log('🧪 Test 6: Journals Endpoint Verification');
+    logger.info('🧪 Test 6: Journals Endpoint Verification');
 
     const config = await loadConfig();
     if (!config) {
-        console.error('❌ Could not load config');
+        logger.error('❌ Could not load config');
         process.exit(1);
     }
 
@@ -21,7 +21,7 @@ async function testJournals() {
     const client = new ClientSocket(config.foundry, core);
 
     try {
-        console.log('📡 Connecting...');
+        logger.info('📡 Connecting...');
         // Connect Core Socket (Actual connection)
         await core.connect();
 
@@ -29,72 +29,72 @@ async function testJournals() {
 
         // Login as player (doratheexplorer) to test permissions
         // or GM? Let's use the config default (which was doratheexplorer in previous tests)
-        console.log(`👤 Identifying as: ${(client as any).config.username}`);
+        logger.info(`👤 Identifying as: ${(client as any).config.username}`);
 
         // 1. List
-        console.log('📚 Fetching Journals...');
+        logger.info('📚 Fetching Journals...');
         const journals = await client.getJournals();
-        console.log(`✅ Fetched ${journals.length} Journal Entries`);
+        logger.info(`✅ Fetched ${journals.length} Journal Entries`);
 
-        console.log('📁 Fetching Folders...');
+        logger.info('📁 Fetching Folders...');
         const folders = await client.getFolders('JournalEntry');
-        console.log(`✅ Fetched ${folders.length} Journal Folders`);
+        logger.info(`✅ Fetched ${folders.length} Journal Folders`);
 
-        console.log('👥 Fetching Users...');
+        logger.info('👥 Fetching Users...');
         const users = await client.getUsers();
-        console.log(`✅ Fetched ${users.length} Users`);
+        logger.info(`✅ Fetched ${users.length} Users`);
 
         // 2. Create Journal
-        console.log('📝 Creating Test Journal...');
+        logger.info('📝 Creating Test Journal...');
         const createResult = await core.dispatchDocumentSocket('JournalEntry', 'create', {
             data: [{ name: 'Test Journal from Script', folder: null }],
             broadcast: true
         });
         const newJournal = createResult?.result?.[0];
         if (!newJournal) throw new Error('Failed to create journal');
-        console.log(`✅ Created: ${newJournal.name} (${newJournal._id})`);
+        logger.info(`✅ Created: ${newJournal.name} (${newJournal._id})`);
 
         // 3. Update Journal
-        console.log('✍️ Updating Test Journal...');
+        logger.info('✍️ Updating Test Journal...');
         const updateResult = await core.dispatchDocumentSocket('JournalEntry', 'update', {
             updates: [{ _id: newJournal._id, name: 'Test Journal Updated' }],
             broadcast: true
         });
         const updatedJournal = updateResult?.result?.[0];
-        console.log(`✅ Updated: ${updatedJournal?.name}`);
+        logger.info(`✅ Updated: ${updatedJournal?.name}`);
 
         // 4. Create Folder
-        console.log('📂 Creating Test Folder...');
+        logger.info('📂 Creating Test Folder...');
         const folderResult = await core.dispatchDocumentSocket('Folder', 'create', {
             data: [{ name: 'Test Test Folder', type: 'JournalEntry', folder: null }],
             broadcast: true
         });
         const newFolder = folderResult?.result?.[0];
         if (!newFolder) throw new Error('Failed to create folder');
-        console.log(`✅ Created Folder: ${newFolder.name} (${newFolder._id})`);
+        logger.info(`✅ Created Folder: ${newFolder.name} (${newFolder._id})`);
 
         // 5. Delete Journal
-        console.log('🗑️ Deleting Test Journal...');
+        logger.info('🗑️ Deleting Test Journal...');
         await core.dispatchDocumentSocket('JournalEntry', 'delete', {
             ids: [newJournal._id],
             broadcast: true
         });
-        console.log('✅ Deleted Journal');
+        logger.info('✅ Deleted Journal');
 
         // 6. Delete Folder
-        console.log('🗑️ Deleting Test Folder...');
+        logger.info('🗑️ Deleting Test Folder...');
         await core.dispatchDocumentSocket('Folder', 'delete', {
             ids: [newFolder._id],
             broadcast: true
         });
-        console.log('✅ Deleted Folder');
+        logger.info('✅ Deleted Folder');
 
         client.disconnect();
         core.disconnect();
         process.exit(0);
 
     } catch (e) {
-        console.error('❌ Test Failed:', e);
+        logger.error('❌ Test Failed:', e);
         client.disconnect();
         core.disconnect();
         process.exit(1);

@@ -5,7 +5,7 @@ import {
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 interface TalentsTabProps {
     actor: any;

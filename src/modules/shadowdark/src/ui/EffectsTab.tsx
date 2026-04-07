@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import { Plus, Edit2 } from 'lucide-react';
 import AddEffectsModal from './components/AddEffectsModal';
 

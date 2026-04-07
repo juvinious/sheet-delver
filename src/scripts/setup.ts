@@ -7,7 +7,7 @@ import yaml from 'js-yaml';
 const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
 
 async function main() {
-    console.log('\x1b[36m%s\x1b[0m', '--- SheetDelver Configuration Setup ---');
+    logger.info('\x1b[36m%s\x1b[0m', '--- SheetDelver Configuration Setup ---');
 
     if (fs.existsSync(SETTINGS_PATH)) {
         const { overwrite } = await inquirer.prompt([
@@ -20,7 +20,7 @@ async function main() {
         ]);
 
         if (!overwrite) {
-            console.log('Setup cancelled. Existing configuration preserved.');
+            logger.info('Setup cancelled. Existing configuration preserved.');
             process.exit(0);
         }
     }
@@ -150,13 +150,13 @@ async function main() {
     const yamlStr = yaml.dump(config);
     fs.writeFileSync(SETTINGS_PATH, yamlStr, 'utf8');
 
-    console.log('\n\x1b[32mConfiguration saved to settings.yaml\x1b[0m');
-    console.log('You can now run:');
-    console.log('  npm run dev      (Development)');
-    console.log('  npm run build && npm start (Production)');
+    logger.info('\n\x1b[32mConfiguration saved to settings.yaml\x1b[0m');
+    logger.info('You can now run:');
+    logger.info('  npm run dev      (Development)');
+    logger.info('  npm run build && npm start (Production)');
 }
 
 main().catch(err => {
-    console.error('Setup failed:', err);
+    logger.error('Setup failed:', err);
     process.exit(1);
 });

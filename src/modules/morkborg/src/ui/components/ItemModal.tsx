@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import RichTextEditor from '@/app/ui/components/RichTextEditor';
+import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { morkborgTheme } from '../themes/morkborg';
 
 import grunge from '../assets/grunge.png';
 import { randomRotation } from './utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 
 

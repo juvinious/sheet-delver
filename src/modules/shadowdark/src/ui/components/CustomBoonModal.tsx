@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Power, Search } from 'lucide-react';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import { BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 
 interface CustomBoonModalProps {
@@ -206,7 +206,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
             }
             onClose();
         } catch (error) {
-            console.error(error);
+            logger.error(error);
         } finally {
             setLoading(false);
         }

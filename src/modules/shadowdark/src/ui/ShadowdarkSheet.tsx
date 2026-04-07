@@ -1,16 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import RollDialog from '@/app/ui/components/RollDialog';
+import RollDialog from '@client/ui/components/RollDialog';
 import ErrorBoundary from './components/ErrorBoundary';
-import LoadingModal from '@/app/ui/components/LoadingModal';
+import LoadingModal from '@client/ui/components/LoadingModal';
 import { shadowdarkTheme } from './themes/shadowdark';
-import { useNotifications, NotificationContainer } from '@/app/ui/components/NotificationSystem';
+import { useNotifications, NotificationContainer } from '@client/ui/components/NotificationSystem';
 
 import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
 import { shouldShowSpellsTab } from '../logic/rules';
 import { Menu, X, Check } from 'lucide-react';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import dynamic from 'next/dynamic';
 
 // Sub-components
@@ -221,7 +221,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             try {
                 const res = await fetch('/api/system/data', { headers });
                 if (res.status === 503 && retries > 0) {
-                    console.warn(`System initializing (503), retrying in ${delay / 1000}s...`);
+                    logger.warn(`System initializing (503), retrying in ${delay / 1000}s...`);
                     setTimeout(() => fetchData(retries - 1, delay * 2), delay);
                     return;
                 }
@@ -230,7 +230,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                 setSystemData(data);
                 setLoadingSystem(false);
             } catch (err) {
-                console.error('Failed to fetch system data:', err);
+                logger.error('Failed to fetch system data:', err);
                 if (retries > 0) {
                     setTimeout(() => fetchData(retries - 1, delay * 2), delay);
                 } else {
@@ -612,7 +612,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
                                             addNotification('Effect created successfully', 'success');
                                         } catch (error: any) {
-                                            console.error('Failed to create effect:', error);
+                                            logger.error('Failed to create effect:', error);
                                             addNotification(`Failed to create effect: ${error.message}`, 'error');
                                         }
                                     }}
@@ -636,7 +636,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
                                             addNotification('Effect updated successfully', 'success');
                                         } catch (error: any) {
-                                            console.error('Failed to update effect:', error);
+                                            logger.error('Failed to update effect:', error);
                                             addNotification(`Failed to update effect: ${error.message}`, 'error');
                                         }
                                     }}

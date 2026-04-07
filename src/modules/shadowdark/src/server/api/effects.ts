@@ -1,5 +1,5 @@
-import { FoundryClient } from '@/core/foundry/interfaces';
-import { logger } from '@/core/logger';
+import { FoundryClient } from '@core/foundry/interfaces';
+import { logger } from '@shared/utils/logger';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../../data/talent-effects';
 
 /**

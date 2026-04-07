@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 
 import { Search, Plus, Package, ChevronDown, ChevronRight } from 'lucide-react';
 import { mbDataManager } from '../../data/DataManager';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 
 

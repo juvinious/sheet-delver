@@ -2,9 +2,9 @@
 
 import { use, useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFoundry } from '@/app/ui/context/FoundryContext';
-import { getUIModule } from '@/modules/registry';
-import LoadingModal from '@/app/ui/components/LoadingModal';
+import { useFoundry } from '@client/ui/context/FoundryContext';
+import { getUIModule } from '@modules/registry';
+import LoadingModal from '@client/ui/components/LoadingModal';
 
 /**
  * Core actor page router.

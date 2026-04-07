@@ -8,7 +8,7 @@
  */
 
 import { MorkBorgAdapter } from '../logic/adapter';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 export async function handleBrewDecoctions(actorId: string, request: Request, client: any): Promise<Response> {
     try {

@@ -11,15 +11,15 @@ export async function handleGetGear(request: Request): Promise<Response> {
 
         const allDocs = await dataManager.getAllDocuments();
 
-        console.log(`[API] handleGetGear: Found ${allDocs.length} total documents.`);
+        logger.info(`[API] handleGetGear: Found ${allDocs.length} total documents.`);
         if (allDocs.length > 0) {
             const sample = allDocs.slice(0, 5).map(d => ({ name: d.name, type: d.type, pack: d.pack }));
-            console.log(`[API] handleGetGear: Sample items:`, JSON.stringify(sample));
+            logger.info(`[API] handleGetGear: Sample items:`, JSON.stringify(sample));
         }
 
         return Response.json(allDocs);
     } catch (e) {
-        console.error('[API] Failed to get gear:', e);
+        logger.error('[API] Failed to get gear:', e);
         return Response.json({ error: 'Failed to fetch gear' }, { status: 500 });
     }
 }

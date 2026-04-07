@@ -16,7 +16,7 @@ import { SelectionOverlay } from './levelup/sections/SelectionOverlay';
 import { LoadingOverlay } from './levelup/sections/LoadingOverlay';
 import { LevelUpFooter } from './levelup/sections/LevelUpFooter';
 import { ExtraSpellSelectionSection } from './levelup/sections/ExtraSpellSelectionSection';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 // ... (imports)
 

@@ -262,7 +262,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                                 className="block object-cover border-4 border-black shadow-lg w-24 h-24 sm:w-32 sm:h-32 min-w-[96px] sm:min-w-[128px]"
                                                 alt="Character Portrait"
                                                 onError={(e) => {
-                                                    console.error('Image failed to load:', sheetActor.img);
+                                                    logger.error('Image failed to load:', sheetActor.img);
                                                     e.currentTarget.style.display = 'none';
                                                 }}
                                             />

@@ -29,7 +29,7 @@ export const resolveBaggage = async (doc: any, fetchDocument: (uuid: string) => 
                     baggage.push(sanitized);
                 }
             } catch (e) {
-                console.error(`BaggageResolver: Failed to fetch ${uuid}`, e);
+                logger.error(`BaggageResolver: Failed to fetch ${uuid}`, e);
             }
         }
     }

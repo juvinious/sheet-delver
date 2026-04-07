@@ -15,7 +15,7 @@ const USERNAME = config?.foundry.username || 'Gamemaster';
 const PASSWORD = config?.foundry.password || 'password';
 
 async function probeLogin() {
-    console.log(`[PROBE] Starting Final Login Probe for user "${USERNAME}"...`);
+    logger.info(`[PROBE] Starting Final Login Probe for user "${USERNAME}"...`);
 
     const joinRes = await fetch(`${BASE_URL}/join`);
     const html = await joinRes.text();
@@ -38,7 +38,7 @@ async function probeLogin() {
     ];
 
     for (const p of permutations) {
-        console.log(`\n--- Testing: ${p.name} (Form URL Encoded) ---`);
+        logger.info(`\n--- Testing: ${p.name} (Form URL Encoded) ---`);
 
         const params = new URLSearchParams();
         Object.entries(p.body).forEach(([k, v]) => {
@@ -63,19 +63,19 @@ async function probeLogin() {
                 redirect: 'manual'
             });
 
-            console.log(`Status: ${res.status}`);
+            logger.info(`Status: ${res.status}`);
             const text = await res.text();
             if (res.status === 401 && text.includes("ErrorUserDoesNotExist")) {
-                console.log("RESULT: FAILED (User Lookup Failed)");
+                logger.info("RESULT: FAILED (User Lookup Failed)");
             } else if (res.status === 401 && text.includes("ErrorInvalidPassword")) {
-                console.log("RESULT: SUCCESS!! (User Found, Password Wrong)");
+                logger.info("RESULT: SUCCESS!! (User Found, Password Wrong)");
             } else {
-                console.log(`RESULT: Other (${res.status})`);
-                console.log(text.substring(0, 100));
+                logger.info(`RESULT: Other (${res.status})`);
+                logger.info(text.substring(0, 100));
             }
 
         } catch (e: any) {
-            console.error("Exception:", e.message);
+            logger.error("Exception:", e.message);
         }
     }
 }

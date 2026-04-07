@@ -1,6 +1,6 @@
-import { SystemAdapter, ActorSheetData } from '@/modules/registry';
+import { SystemAdapter, ActorSheetData } from '@modules/registry';
 import { normalizeItemData } from './rules';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { isClassSpellcaster } from './rules';
 import { shadowdarkTheme } from '../ui/themes/shadowdark';
 

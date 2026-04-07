@@ -1,6 +1,6 @@
 import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
 import { loadConfig } from '../../core/config';
-import { logger } from '../../core/logger';
+import { logger } from '@shared/utils/logger';
 import fs from 'fs';
 import path from 'path';
 
@@ -149,4 +149,4 @@ async function runDiagnostic() {
     }
 }
 
-runDiagnostic().catch(console.error);
+runDiagnostic().catch(logger.error);

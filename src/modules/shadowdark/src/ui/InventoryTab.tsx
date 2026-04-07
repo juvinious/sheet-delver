@@ -7,10 +7,10 @@ import {
     calculateCoinSlots,
     calculateGemSlots,
 } from './sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
-import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { useConfig } from '@client/ui/context/ConfigContext';
+import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from './themes/shadowdark';
-import { useOptimisticOverrides } from '@/app/ui/hooks/useOptimisticOverrides';
+import { useOptimisticOverrides } from '@client/ui/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
 import GemBagModal from './components/GemBagModal';
 import CreateTreasureModal from './components/CreateTreasureModal';

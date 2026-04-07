@@ -1,5 +1,5 @@
-import { FoundryClient } from '@/core/foundry/interfaces';
-import { logger } from '@/core/logger';
+import { FoundryClient } from '@core/foundry/interfaces';
+import { logger } from '@shared/utils/logger';
 
 /**
  * Handle GET request for actor notes

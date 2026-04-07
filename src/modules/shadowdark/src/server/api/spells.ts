@@ -1,6 +1,6 @@
-import { getClient } from '@/core/foundry/instance';
+import { getClient } from '@core/foundry/instance';
 import { dataManager } from '../../data/DataManager';
-import { getConfig } from '@/core/config';
+import { getConfig } from '@core/config';
 import { shadowdarkAdapter } from '../../logic/system';
 
 /**
@@ -11,7 +11,7 @@ export async function handleLearnSpell(actorId: string, request: Request, client
     try {
         const foundryClient = client || getClient();
         if (!foundryClient || !foundryClient.isConnected) {
-            console.warn(`[API] Learn Spell Failed: Client disconnected. Provided Client: ${!!client}, Global Client: ${!!getClient()}`);
+            logger.warn(`[API] Learn Spell Failed: Client disconnected. Provided Client: ${!!client}, Global Client: ${!!getClient()}`);
             return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
         }
 
@@ -44,7 +44,7 @@ export async function handleLearnSpell(actorId: string, request: Request, client
         return Response.json({ success: true, data: result });
 
     } catch (error: any) {
-        console.error('[API] Learn Spell Error:', error);
+        logger.error('[API] Learn Spell Error:', error);
         return Response.json({ error: error.message || 'Failed to learn spell' }, { status: 500 });
     }
 }
@@ -148,7 +148,7 @@ export async function handleGetSpellsBySource(request: Request) {
                 }
 
             } catch (err) {
-                console.warn('[API] Failed to fetch remote spells:', err);
+                logger.warn('[API] Failed to fetch remote spells:', err);
             }
         }
 
@@ -187,7 +187,7 @@ export async function handleGetSpellsBySource(request: Request) {
         return Response.json({ success: true, spells: merged });
 
     } catch (error: any) {
-        console.error('[API] Fetch Spells Error:', error);
+        logger.error('[API] Fetch Spells Error:', error);
         return Response.json({ error: error.message }, { status: 500 });
     }
 }
@@ -224,7 +224,7 @@ export async function handleGetSpellcasterInfo(actorId: string, clientOverride?:
         });
 
     } catch (error: any) {
-        console.error('[API] Spellcaster Info Error:', error);
+        logger.error('[API] Spellcaster Info Error:', error);
         return Response.json({ error: error.message || 'Failed to get spellcaster info' }, { status: 500 });
     }
 }

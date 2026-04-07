@@ -1,4 +1,4 @@
-import { SystemAdapter, ActorSheetData } from '@/shared/interfaces';
+import { SystemAdapter, ActorSheetData } from '@shared/interfaces';
 
 export class GenericSystemAdapter implements SystemAdapter {
     systemId = 'generic';

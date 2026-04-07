@@ -49,7 +49,7 @@ const mockRollResult = {
 };
 
 export async function testTitania() {
-    console.log('🧪 Test: Titania 12 Logic\n');
+    logger.info('🧪 Test: Titania 12 Logic\n');
 
     try {
         const { choiceOptions } = await processRollResult({
@@ -57,7 +57,7 @@ export async function testTitania() {
             table: mockTitaniaTable
         });
 
-        console.log("Options:", choiceOptions.map(o => o.name || o.text));
+        logger.info("Options:", choiceOptions.map(o => o.name || o.text));
 
         // Assertions
         const hasHeader = choiceOptions.some(o => (o.text || "").includes("Choose one"));
@@ -66,20 +66,20 @@ export async function testTitania() {
         const hasBoon = choiceOptions.some(o => o.name === "Patron Boon"); // Should be TRUE
         const hasMelee = choiceOptions.some(o => (o.text || "").includes("+1 to Melee Attacks")); // Should be TRUE (distinct)
 
-        if (hasHeader) console.error("❌ FAILED: Header 'Choose one' was not stripped");
-        if (hasStat1) console.error("❌ FAILED: '+1 to Strength' was not consolidated");
-        if (!hasDistribute) console.error("❌ FAILED: 'Distribute to Stats' missing");
-        if (!hasBoon) console.error("❌ FAILED: 'Patron Boon' missing");
-        if (!hasMelee) console.error("❌ FAILED: '+1 to Melee Attacks' was wrongly consolidated/lost");
+        if (hasHeader) logger.error("❌ FAILED: Header 'Choose one' was not stripped");
+        if (hasStat1) logger.error("❌ FAILED: '+1 to Strength' was not consolidated");
+        if (!hasDistribute) logger.error("❌ FAILED: 'Distribute to Stats' missing");
+        if (!hasBoon) logger.error("❌ FAILED: 'Patron Boon' missing");
+        if (!hasMelee) logger.error("❌ FAILED: '+1 to Melee Attacks' was wrongly consolidated/lost");
 
         if (!hasHeader && !hasStat1 && hasDistribute && hasBoon && hasMelee) {
-            console.log('✅ Titania Logic Verified');
+            logger.info('✅ Titania Logic Verified');
             return { success: true };
         }
         return { success: false };
 
     } catch (e: any) {
-        console.error('❌ Error:', e.message);
+        logger.error('❌ Error:', e.message);
         return { success: false, error: e.message };
     }
 }

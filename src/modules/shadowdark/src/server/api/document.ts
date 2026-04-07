@@ -19,7 +19,7 @@ export async function handleGetDocument(request: Request, { params }: any) {
 
         return Response.json(document);
     } catch (e: any) {
-        console.error('Failed to get Shadowdark document', e);
+        logger.error('Failed to get Shadowdark document', e);
         return Response.json({ error: e.message }, { status: 500 });
     }
 }

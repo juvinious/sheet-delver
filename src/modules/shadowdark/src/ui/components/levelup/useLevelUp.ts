@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isClassSpellcaster } from '../../../logic/rules';
-import { logger } from '@/core/logger';
-import { TALENT_HANDLERS } from '@/modules/shadowdark/src/logic/talent-handlers';
+import { logger } from '@shared/utils/logger';
+import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
 
 export interface LevelUpProps {
     actorId: string;

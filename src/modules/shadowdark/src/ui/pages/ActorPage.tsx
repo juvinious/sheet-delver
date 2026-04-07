@@ -3,14 +3,14 @@
 import { useState, useEffect, use, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
-import SheetRouter from '@/app/ui/components/SheetRouter';
-import { useFoundry } from '@/app/ui/context/FoundryContext';
-import { useUI } from '@/app/ui/context/UIContext';
-import { useConfig } from '@/app/ui/context/ConfigContext';
-import { processHtmlContent } from '@/modules/registry';
-import { useNotifications } from '@/app/ui/components/NotificationSystem';
-import LoadingModal from '@/app/ui/components/LoadingModal';
-import { SharedContentModal } from '@/app/ui/components/SharedContentModal';
+import SheetRouter from '@client/ui/components/SheetRouter';
+import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useUI } from '@client/ui/context/UIContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
+import { processHtmlContent } from '@modules/registry';
+import { useNotifications } from '@client/ui/components/NotificationSystem';
+import LoadingModal from '@client/ui/components/LoadingModal';
+import { SharedContentModal } from '@client/ui/components/SharedContentModal';
 
 export interface ShadowdarkActorPageProps {
     actorId: string;

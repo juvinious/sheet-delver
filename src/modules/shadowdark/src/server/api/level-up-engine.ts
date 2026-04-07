@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { dataManager } from '../../data/DataManager';
 import { TALENT_HANDLERS } from '../../logic/talent-handlers';
 import { resolveBaggage, resolveGear } from './gear-resolver';

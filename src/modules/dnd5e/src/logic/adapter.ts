@@ -1,4 +1,4 @@
-import { SystemAdapter, ActorSheetData } from '@/shared/interfaces';
+import { SystemAdapter, ActorSheetData } from '@shared/interfaces';
 
 export class DnD5eAdapter implements SystemAdapter {
     systemId = 'dnd5e';

@@ -1,5 +1,5 @@
-import { ModuleManifest, SystemAdapter, UIModuleManifest } from '@/modules/registry';
-import { logger } from '@/core/logger';
+import { ModuleManifest, SystemAdapter, UIModuleManifest } from '@modules/registry';
+import { logger } from '@shared/utils/logger';
 
 // Static Module Metadata Imports (Safe for all environments)
 import shadowdarkInfo from '../shadowdark/info.json';

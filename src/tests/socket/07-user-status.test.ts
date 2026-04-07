@@ -6,7 +6,7 @@ import { loadConfig } from '../../core/config';
  * Tests if we can retrieve User documents and trust their 'active' status
  */
 export async function testUserStatus() {
-    console.log('🧪 Test 7: Exploratory - User Status\n');
+    logger.info('🧪 Test 7: Exploratory - User Status\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -16,41 +16,41 @@ export async function testUserStatus() {
     const client = new CoreSocket(config.foundry);
 
     try {
-        console.log('📡 Connecting...');
+        logger.info('📡 Connecting...');
         await client.connect();
 
         // Wait for async User Sync (getUsers) to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        console.log('🔍 Fetching Users...');
+        logger.info('🔍 Fetching Users...');
 
         // Use getUsersDetails() to check the internal state map which should be identifying active users
         const users = await client.getUsers();
 
-        console.log(`✅ Fetched ${users.length} Users`);
+        logger.info(`✅ Fetched ${users.length} Users`);
 
-        console.log('\n--- User Status Report ---');
+        logger.info('\n--- User Status Report ---');
         users.forEach((u: any) => {
-            console.log(`User: ${u.name.padEnd(15)} | Active: ${u.active ? '🟢 YES' : '🔴 NO '} | Full: ${JSON.stringify(u)}`);
+            logger.info(`User: ${u.name.padEnd(15)} | Active: ${u.active ? '🟢 YES' : '🔴 NO '} | Full: ${JSON.stringify(u)}`);
         });
-        console.log('--------------------------\n');
+        logger.info('--------------------------\n');
 
         // Check if our own user is reported as active
         const myUser = users.find((u: any) => u._id === client.userId || u.id === client.userId);
         if (myUser) {
-            console.log(`👤 Current User (${client.userId}) Active Status: ${myUser.active}`);
+            logger.info(`👤 Current User (${client.userId}) Active Status: ${myUser.active}`);
         } else {
-            console.warn(`⚠️ Current user ${client.userId} not found in user list!`);
+            logger.warn(`⚠️ Current user ${client.userId} not found in user list!`);
         }
 
         return { success: true };
 
     } catch (error: any) {
-        console.error('❌ User status test failed:', error.message);
+        logger.error('❌ User status test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 

@@ -4,7 +4,7 @@ import React, { useState, useCallback } from 'react';
 
 import grunge from '../assets/grunge.png';
 import { mbDataManager } from '../../data/DataManager';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { randomRotation } from '../components/utils';
 import { AlignCenterHorizontal, AlignCenterVertical, Skull, Bone } from 'lucide-react';
 
@@ -491,7 +491,7 @@ export default function MorkBorgCharacterGenerator() {
                             className={`w-full mt-4 p-4 text-2xl md:text-4xl ${theme.colors.tailwind.backgroundAccent} ${theme.colors.tailwind.text} border-4 border-[${theme.colors.accent}] cursor-pointer ${randomRotation()}`}
                             style={{ boxShadow: `15px 15px 0 0 ${theme.colors.rgba}` }}
                             onClick={() => {
-                                //console.log(character);
+                                //logger.info(character);
                                 createCharacter(character);
                             }}
                         >

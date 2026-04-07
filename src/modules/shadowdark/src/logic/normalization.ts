@@ -1,4 +1,4 @@
-import { ActorSheetData } from '@/shared/interfaces';
+import { ActorSheetData } from '@shared/interfaces';
 import { 
     calculateItemSlots, 
     calculateMaxSlots, 
@@ -11,8 +11,8 @@ import {
     normalizeActorData as rulesNormalizeActorData, 
     normalizeItemData 
 } from './rules';
-import { logger } from '@/core/logger';
-import { CompendiumCache } from '@/core/foundry/compendium-cache';
+import { logger } from '@shared/utils/logger';
+import { CompendiumCache } from '@core/foundry/compendium-cache';
 
 /**
  * Standalone utility to resolve a document name from a UUID or ID using the system data.

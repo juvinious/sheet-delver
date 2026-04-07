@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { X } from 'lucide-react';
-import RichTextEditor from '@/app/ui/components/RichTextEditor';
-import { shadowdarkTheme } from '@/modules/shadowdark/src/ui/themes/shadowdark';
+import RichTextEditor from '@client/ui/components/RichTextEditor';
+import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
 
 interface NotesModalProps {
     isOpen: boolean;
@@ -42,7 +42,7 @@ export default function NotesModal({
             // Update local state to reflect the change
             onUpdate('details.notes', html);
         } catch (error) {
-            console.error('Error saving notes:', error);
+            logger.error('Error saving notes:', error);
             throw error;
         }
     };

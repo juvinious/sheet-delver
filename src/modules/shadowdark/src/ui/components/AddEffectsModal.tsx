@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Power, Search } from 'lucide-react';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import { EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 
 interface AddEffectsModalProps {
@@ -157,7 +157,7 @@ export default function AddEffectsModal({
             }
             onClose();
         } catch (error) {
-            console.error(error);
+            logger.error(error);
         } finally {
             setLoading(false);
         }

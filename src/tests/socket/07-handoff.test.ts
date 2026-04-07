@@ -59,7 +59,7 @@ async function prompt(question: string, mask: boolean = false): Promise<string> 
  * Simulates the background polling vs foreground login race condition.
  */
 export async function testConnectionHandoff() {
-    console.log('🧪 Test 7: Connection Handoff Flow\n');
+    logger.info('🧪 Test 7: Connection Handoff Flow\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -67,50 +67,50 @@ export async function testConnectionHandoff() {
     }
 
     // Step 1: Gather credentials first to avoid terminal noise
-    console.log('--- Action Required ---');
-    console.log('Foundry URL:', config.foundry.url);
+    logger.info('--- Action Required ---');
+    logger.info('Foundry URL:', config.foundry.url);
     const username = await prompt('Enter Player Username: ');
     const password = await prompt('Enter Player Password: ', true);
 
     // Instance 1: The "Background Poller" (System User)
-    console.log('\n1. Starting Background Client (System User)...');
+    logger.info('\n1. Starting Background Client (System User)...');
     const core = new CoreSocket(config.foundry);
 
     // Instance 2: The "Interactive Login" (Player)
-    console.log('2. Starting Player Client (Interactive)...');
+    logger.info('2. Starting Player Client (Interactive)...');
     const client = new ClientSocket(config.foundry, core);
 
     try {
         // Step A: Background client connects
-        console.log('   [Background] Connecting...');
+        logger.info('   [Background] Connecting...');
         await core.connect();
-        console.log('   [Background] ✅ Connected');
+        logger.info('   [Background] ✅ Connected');
 
         // Step B: Simulate background polling while player tries to login
-        console.log('\n3. Simulating concurrent activity...');
+        logger.info('\n3. Simulating concurrent activity...');
 
         const backgroundPoll = setInterval(async () => {
             try {
                 const sys = await core;
-                console.log(`   [Background] Polling status | worldState: ${sys.worldState}`);
+                logger.info(`   [Background] Polling status | worldState: ${sys.worldState}`);
             } catch (e: any) {
-                console.log(`   [Background] ⚠️ Poll failed: ${e.message}`);
+                logger.info(`   [Background] ⚠️ Poll failed: ${e.message}`);
             }
         }, 2000);
 
-        console.log(`\n4. [Player] Logging in as "${username}"...`);
-        console.log('   (Background poll should continue without killing the player session)');
+        logger.info(`\n4. [Player] Logging in as "${username}"...`);
+        logger.info('   (Background poll should continue without killing the player session)');
 
         await client.login(username, password);
 
         if (client.isExplicitSession) {
-            console.log(`   [Player] ✅ Successfully logged in as ${client.userId}`);
+            logger.info(`   [Player] ✅ Successfully logged in as ${client.userId}`);
 
-            console.log('\n5. Verifying Stability (Waiting 10 seconds)...');
+            logger.info('\n5. Verifying Stability (Waiting 10 seconds)...');
             await new Promise(r => setTimeout(r, 10000));
 
             if (client.isConnected && client.isExplicitSession) {
-                console.log('   ✅ Player session is still stable after 10 seconds of background polling.');
+                logger.info('   ✅ Player session is still stable after 10 seconds of background polling.');
             } else {
                 throw new Error('Player session was lost during background polling!');
             }
@@ -122,12 +122,12 @@ export async function testConnectionHandoff() {
         return { success: true };
 
     } catch (error: any) {
-        console.error('\n❌ Test failed:', error.message);
+        logger.error('\n❌ Test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await core.disconnect();
         await client.disconnect();
-        console.log('\n📡 All clients disconnected\n');
+        logger.info('\n📡 All clients disconnected\n');
     }
 }
 

@@ -4,7 +4,7 @@ import { loadConfig } from '../../core/config';
 import { fileURLToPath } from 'url';
 
 export async function testRolling() {
-    console.log('🧪 Test 9: Rolling Functionality\n');
+    logger.info('🧪 Test 9: Rolling Functionality\n');
 
     // Setup - mimics behavior in 01-connection.test.ts
     const configLine = await loadConfig(); // Note: loadConfig likely returns { foundry: ... } or similar based on usage
@@ -18,7 +18,7 @@ export async function testRolling() {
     const client = new CoreSocket(config);
 
     try {
-        console.log('📡 Connecting...');
+        logger.info('📡 Connecting...');
         await client.connect();
 
         // Wait for ready state if needed, though connect() usually handles it
@@ -36,18 +36,18 @@ export async function testRolling() {
             }
         });
         */
-        //console.log('Result: ' + JSON.stringify(result, null, 2));
+        //logger.info('Result: ' + JSON.stringify(result, null, 2));
 
-        console.log('✅ Execute Macro Tests Passed');
+        logger.info('✅ Execute Macro Tests Passed');
         return { success: true };
 
     } catch (error: any) {
-        console.error('❌ Test failed:', error.message);
+        logger.error('❌ Test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         if (client.isConnected) {
             await client.disconnect();
-            console.log('📡 Disconnected\n');
+            logger.info('📡 Disconnected\n');
         }
     }
 }

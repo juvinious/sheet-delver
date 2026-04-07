@@ -38,21 +38,21 @@ async function run() {
     const core = new CoreSocket(config);
     const client = new TestClient(config, core);
 
-    console.log('--- Auth Logic Test (ClientSocket) ---');
+    logger.info('--- Auth Logic Test (ClientSocket) ---');
 
     // 1. Initial State
-    console.log(`Initial userId: ${client.userId} (Expected: null)`);
+    logger.info(`Initial userId: ${client.userId} (Expected: null)`);
     if (client.userId !== null) throw new Error('Initial state wrong');
 
     // 2. Simulate Logged In
     client.setUserId('user-123');
-    console.log(`Logged In userId: ${client.userId} (Expected: user-123)`);
+    logger.info(`Logged In userId: ${client.userId} (Expected: user-123)`);
     if (client.userId !== 'user-123') throw new Error('Logged in state wrong');
 
-    console.log('\n✅ All Auth Logic Tests Passed');
+    logger.info('\n✅ All Auth Logic Tests Passed');
 }
 
 run().catch(e => {
-    console.error(e);
+    logger.error(e);
     process.exit(1);
 });

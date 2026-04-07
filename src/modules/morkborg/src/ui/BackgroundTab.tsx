@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import RichTextEditor from '@/app/ui/components/RichTextEditor';
+import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { morkborgTheme } from './themes/morkborg';
 
 interface BackgroundTabProps {

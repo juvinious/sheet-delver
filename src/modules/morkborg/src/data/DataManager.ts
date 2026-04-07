@@ -22,7 +22,7 @@ export class MorkBorgDataManager {
             this.tablesCache = tablesData as any[];
             this.itemsCache = itemsData as any[];
         } catch (error) {
-            console.error('Failed to load Mork Borg compendium data:', error);
+            logger.error('Failed to load Mork Borg compendium data:', error);
             this.tablesCache = [];
             this.itemsCache = [];
         }

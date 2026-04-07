@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 /**
  * Service to handle in-memory and persistent caching for Shadowdark.

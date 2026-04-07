@@ -22,7 +22,7 @@ const mockRollResult7 = {
 };
 
 export async function testFighterRoll7() {
-    console.log('🧪 Test: Fighter 7 Logic (Choose 1)\n');
+    logger.info('🧪 Test: Fighter 7 Logic (Choose 1)\n');
 
     try {
         const { choiceOptions } = await processRollResult({
@@ -31,7 +31,7 @@ export async function testFighterRoll7() {
         });
 
         const optionNames = choiceOptions.map(o => o.name || o.text || "[NO NAME]");
-        console.log("Options:", optionNames);
+        logger.info("Options:", optionNames);
 
         // Assertions
         const hasHeader = choiceOptions.some(o => (o.text || "").includes("Choose one"));
@@ -40,29 +40,29 @@ export async function testFighterRoll7() {
         let passed = true;
 
         if (hasHeader) {
-            console.error("❌ FAILED: Header retained");
+            logger.error("❌ FAILED: Header retained");
             passed = false;
         } else {
             // If header is NOT retained, does it exist as an empty item?
             if (hasNoName) {
-                console.error("❌ FAILED: Header item exists but text is stripped/empty");
+                logger.error("❌ FAILED: Header item exists but text is stripped/empty");
                 passed = false;
             }
         }
 
         if (choiceOptions.length !== 2) {
-            console.error(`❌ FAILED: Expected 2 options, got ${choiceOptions.length}`);
+            logger.error(`❌ FAILED: Expected 2 options, got ${choiceOptions.length}`);
             passed = false;
         }
 
         if (passed) {
-            console.log('✅ Fighter 7 Logic Verified');
+            logger.info('✅ Fighter 7 Logic Verified');
             return { success: true };
         }
         return { success: false };
 
     } catch (e: any) {
-        console.error('❌ Error:', e.message);
+        logger.error('❌ Error:', e.message);
         return { success: false, error: e.message };
     }
 }

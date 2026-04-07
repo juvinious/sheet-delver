@@ -1,5 +1,5 @@
 import React from 'react';
-import RollDialog from '@/app/ui/components/RollDialog';
+import RollDialog from '@client/ui/components/RollDialog';
 import { ShadowdarkAdapter } from '../../logic/system';
 import { shadowdarkTheme } from '../themes/shadowdark';
 

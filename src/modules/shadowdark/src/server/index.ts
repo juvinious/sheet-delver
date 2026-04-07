@@ -10,8 +10,8 @@ import { handleIndex } from './api/index';
 import { handleListRollTables, handleGetRollTable, handleDrawRollTable, handleGetResultPool } from './api/tables';
 import { handleGetNotes, handleUpdateNotes } from './api/notes';
 import { dataManager } from '../data/DataManager';
-import { getConfig } from '@/core/config';
-import { logger } from '@/core/logger';
+import { getConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
 import {
     handleRandomizeCharacter,
     handleRandomizeName,

@@ -6,7 +6,7 @@ import { loadConfig } from '../../core/config';
  * Tests that we can connect and authenticate without breaking the server
  */
 export async function testConnection() {
-    console.log('🧪 Test 1: Connection & Authentication\n');
+    logger.info('🧪 Test 1: Connection & Authentication\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -16,17 +16,17 @@ export async function testConnection() {
     const client = new CoreSocket(config.foundry);
 
     try {
-        console.log('📡 Connecting...');
+        logger.info('📡 Connecting...');
         await client.connect();
-        console.log('✅ Connected successfully!');
-        console.log('✅ Authentication successful (userId present in session)');
+        logger.info('✅ Connected successfully!');
+        logger.info('✅ Authentication successful (userId present in session)');
         return { success: true };
     } catch (error: any) {
-        console.error('❌ Connection failed:', error.message);
+        logger.error('❌ Connection failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 

@@ -1,5 +1,5 @@
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../../logic/system';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 // --- Logic Helpers ---
 

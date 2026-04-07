@@ -10,7 +10,7 @@ import path from 'path';
  * and reports which ones fail due to invalid effects (e.g. string IDs).
  */
 export async function verifyEffects() {
-    console.log('🧪 Test 6: Verify Effects (Exhaustive Item Check)\n');
+    logger.info('🧪 Test 6: Verify Effects (Exhaustive Item Check)\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -32,18 +32,18 @@ export async function verifyEffects() {
 
     try {
         await client.connect();
-        console.log('✅ Connected\n');
+        logger.info('✅ Connected\n');
 
         // 1. Load Data
-        console.log('⏳ Loading all documents...');
+        logger.info('⏳ Loading all documents...');
         const allDocs = await dataManager.getAllDocuments();
-        console.log(`   Loaded ${allDocs.length} documents.`);
+        logger.info(`   Loaded ${allDocs.length} documents.`);
 
         // 2. Filter Items
         // Relevant types: Talent, Spell, Class Ability, Ancestry, Background, Class, Boon
         const relevantTypes = ['Talent', 'Spell', 'Class Ability', 'Ancestry', 'Background', 'Class', 'Boon'];
         const itemsToTest = allDocs.filter(d => relevantTypes.includes(d.type));
-        console.log(`   Found ${itemsToTest.length} items to test.\n`);
+        logger.info(`   Found ${itemsToTest.length} items to test.\n`);
 
         // 3. Iterate & Test
         let count = 0;
@@ -113,26 +113,26 @@ export async function verifyEffects() {
             }
         }
 
-        console.log('\n\n📊 Verification Complete');
-        console.log(`   ✅ Valid: ${validItems.length}`);
-        console.log(`   ❌ Invalid: ${invalidItems.length}`);
-        console.log(`   ⏭️ No Effects: ${noEffectItems.length}`);
+        logger.info('\n\n📊 Verification Complete');
+        logger.info(`   ✅ Valid: ${validItems.length}`);
+        logger.info(`   ❌ Invalid: ${invalidItems.length}`);
+        logger.info(`   ⏭️ No Effects: ${noEffectItems.length}`);
 
         // 7. Write Reports
         fs.writeFileSync(path.join(tempDir, 'items-valid-effects.json'), JSON.stringify(validItems, null, 2));
         fs.writeFileSync(path.join(tempDir, 'items-invalid-effects.json'), JSON.stringify(invalidItems, null, 2));
         fs.writeFileSync(path.join(tempDir, 'items-no-effects.json'), JSON.stringify(noEffectItems, null, 2));
 
-        console.log(`\n📝 Reports written to ${tempDir}`);
+        logger.info(`\n📝 Reports written to ${tempDir}`);
 
         return { success: invalidItems.length === 0, invalidCount: invalidItems.length };
 
     } catch (error: any) {
-        console.error('\n❌ Test suite failed:', error.message);
+        logger.error('\n❌ Test suite failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 

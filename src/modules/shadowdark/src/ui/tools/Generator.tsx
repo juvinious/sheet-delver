@@ -3,11 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { LevelUpModal } from '../components/LevelUpModal';
-import { logger } from '@/core/logger';
-import { useConfig } from '@/app/ui/context/ConfigContext';
-import { TALENT_HANDLERS } from '@/modules/shadowdark/src/logic/talent-handlers';
-import LoadingModal from '@/app/ui/components/LoadingModal';
-import { enrichItem, resolveSubItems, EnrichmentContext } from '@/modules/shadowdark/src/logic/actor-enricher';
+import { logger } from '@shared/utils/logger';
+import { useConfig } from '@client/ui/context/ConfigContext';
+import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
+import LoadingModal from '@client/ui/components/LoadingModal';
+import { enrichItem, resolveSubItems, EnrichmentContext } from '@modules/shadowdark/src/logic/actor-enricher';
 
 
 

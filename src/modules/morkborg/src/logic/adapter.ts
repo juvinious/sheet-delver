@@ -1,7 +1,7 @@
-import { GenericSystemAdapter } from '@/modules/generic/src/logic/adapter';
+import { GenericSystemAdapter } from '@modules/generic/src/logic/adapter';
 import { ChatCards } from '../ui/components/chat/ChatCards';
 import { mbDataManager } from '../data/DataManager';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 interface ClassItem {
     name: string;
@@ -97,11 +97,11 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         };
     }
 
-    getActorCardData(actor: any): import('@/shared/interfaces').ActorCardData {
+    getActorCardData(actor: any): import('@shared/interfaces').ActorCardData {
         const charClass = this.getClass(actor).name || actor.type;
         const subtext = charClass;
 
-        const blocks: import('@/shared/interfaces').ActorCardBlock[] = [];
+        const blocks: import('@shared/interfaces').ActorCardBlock[] = [];
 
         if (actor.derived?.maxHp || actor.system?.hp?.max) {
             blocks.push({
@@ -1200,7 +1200,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
                 await client.createActorItem(actor._id || actor.id, itemsToCreate);
                 results.outcomes.push('<br><i>Items added to inventory.</i>');
             } catch (e: any) {
-                console.error("Failed to create decoction items:", e.message);
+                logger.error("Failed to create decoction items:", e.message);
                 results.outcomes.push('<br><i>Failed to add items to inventory.</i>');
             }
         }

@@ -4,7 +4,7 @@ import { loadConfig } from '../../core/config';
 import { fileURLToPath } from 'url';
 
 export async function testRolling() {
-    console.log('🧪 Test 9: Rolling Functionality\n');
+    logger.info('🧪 Test 9: Rolling Functionality\n');
 
     // Setup - mimics behavior in 01-connection.test.ts
     const configLine = await loadConfig(); // Note: loadConfig likely returns { foundry: ... } or similar based on usage
@@ -18,16 +18,16 @@ export async function testRolling() {
     const client = new CoreSocket(config);
 
     try {
-        console.log('📡 Connecting...');
+        logger.info('📡 Connecting...');
         await client.connect();
 
         // Wait for ready state if needed, though connect() usually handles it
         if (!client.isConnected) throw new Error('Failed to connect');
 
         // 1. Roll Basic Dice
-        console.log('\n--- Part 1: Basic Roll (1d6) ---');
+        logger.info('\n--- Part 1: Basic Roll (1d6) ---');
         const roll1 = await client.roll('1d6', 'Test Roll 1');
-        console.log('Result:', JSON.stringify(roll1, null, 2));
+        logger.info('Result:', JSON.stringify(roll1, null, 2));
 
         if (!roll1 || !roll1._id) {
             throw new Error('Roll 1 failed - no ChatMessage created');
@@ -37,29 +37,29 @@ export async function testRolling() {
         }
 
         // 3. Manual / Pre-determined Roll
-        console.log('\n--- Part 3: Manual Roll (Forced Result) ---');
+        logger.info('\n--- Part 3: Manual Roll (Forced Result) ---');
         // We want to test if we can send a roll that has been pre-determined
         // e.g. entering '2' in the dialog should result in '2 + bonuses'
         // For this test, let's see if we can pass a 'manual' flag or if it needs to be the formula
         const roll3 = await client.roll('2', 'Manual Test (Result 2)', {
             displayChat: true
         });
-        console.log('Result:', JSON.stringify(roll3, null, 2));
+        logger.info('Result:', JSON.stringify(roll3, null, 2));
 
         if (!roll3 || roll3.content !== '2') {
             throw new Error(`Manual roll failed. Expected '2', got ${roll3?.content}`);
         }
 
-        console.log('✅ Rolling Tests Passed');
+        logger.info('✅ Rolling Tests Passed');
         return { success: true };
 
     } catch (error: any) {
-        console.error('❌ Test failed:', error.message);
+        logger.error('❌ Test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         if (client.isConnected) {
             await client.disconnect();
-            console.log('📡 Disconnected\n');
+            logger.info('📡 Disconnected\n');
         }
     }
 }

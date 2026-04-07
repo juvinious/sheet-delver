@@ -6,7 +6,7 @@ import { ShadowdarkAdapter } from '../../modules/shadowdark/system';
 import { fileURLToPath } from 'url';
 
 export async function testCompendiumResolution() {
-    console.log('🧪 Test 5 (Alt): Compendium Resolution & Pulse Verification\n');
+    logger.info('🧪 Test 5 (Alt): Compendium Resolution & Pulse Verification\n');
 
     const configLine = await loadConfig();
     if (!configLine) throw new Error("Config not found");
@@ -37,51 +37,51 @@ export async function testCompendiumResolution() {
         const adapter = new ShadowdarkAdapter();
 
         // 1. Check Standardized UUIDs
-        console.log('--- Part 1: Standardized UUIDs ---');
+        logger.info('--- Part 1: Standardized UUIDs ---');
         const keys = cache.getKeys();
         if (keys.length === 0) throw new Error('Cache is empty');
 
         const itemUuid = keys.find(k => k.includes('.Item.'));
-        console.log('Sample Cache Keys:', keys.slice(0, 5));
+        logger.info('Sample Cache Keys:', keys.slice(0, 5));
 
         if (!itemUuid) throw new Error('No standardized Item UUIDs found in cache');
         if (!itemUuid.match(/^Compendium\.[^.]+\.[^.]+\.Item\.[^.]+$/)) {
             throw new Error(`UUID ${itemUuid} does not match expected pattern`);
         }
-        console.log('✅ Standardized UUIDs Verified');
+        logger.info('✅ Standardized UUIDs Verified');
 
         // 2. Fetch By UUID
-        console.log('\n--- Part 2: Fetch By UUID ---');
+        logger.info('\n--- Part 2: Fetch By UUID ---');
         const validUuid = keys.find(k => k.includes('shadowdark.ancestries') || k.includes('shadowdark.classes'));
         if (!validUuid) {
-            console.warn("Skipping fetchByUuid test - no suitable UUID found in cache");
+            logger.warn("Skipping fetchByUuid test - no suitable UUID found in cache");
         } else {
-            console.log(`Testing fetchByUuid with: ${validUuid}`);
+            logger.info(`Testing fetchByUuid with: ${validUuid}`);
             const doc = await socket.fetchByUuid(validUuid);
             if (!doc || !doc.name || !doc._id) {
                 throw new Error(`fetchByUuid failed for ${validUuid}`);
             }
-            console.log(`✅ Fetch Verified: ${doc.name}`);
+            logger.info(`✅ Fetch Verified: ${doc.name}`);
         }
 
         // 3. System Data Resolution
-        console.log('\n--- Part 3: System Data Resolution ---');
+        logger.info('\n--- Part 3: System Data Resolution ---');
         const systemData = await adapter.getSystemData(socket);
         if (!systemData || !systemData.classes || !systemData.ancestries) {
             throw new Error('System data resolution failed - missing fields');
         }
 
         if (systemData.classes.length > 0) {
-            console.log('Resolved Class:', systemData.classes[0].name);
+            logger.info('Resolved Class:', systemData.classes[0].name);
             if (!systemData.classes[0].system?.languages && !systemData.classes[0].languages) {
                 throw new Error('Class languages field missing');
             }
         }
-        console.log('✅ System Data Resolution Verified');
+        logger.info('✅ System Data Resolution Verified');
 
         return { success: true };
     } catch (error: any) {
-        console.error('❌ Test failed:', error.message);
+        logger.error('❌ Test failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         socket.disconnect();

@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { isRareLanguage } from './rules';
 import { ShadowdarkCache } from './caching';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
@@ -48,7 +48,7 @@ export class ShadowdarkDiscovery {
 
         this.pendingFetch = (async () => {
             try {
-                const { PersistentCache } = await import('@/core/cache/PersistentCache');
+                const { PersistentCache } = await import('@core/cache/PersistentCache');
                 const persistentCache = PersistentCache.getInstance();
 
                 // Fetch the actual Shadowdark system version from the world

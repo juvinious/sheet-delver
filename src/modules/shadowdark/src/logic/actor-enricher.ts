@@ -1,7 +1,7 @@
 import { TALENT_HANDLERS } from '../logic/talent-handlers';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { createEffect, sanitizeItem } from '../utils/Sanitizer';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 
 export interface EnrichmentContext {
     addedSourceIds: Set<string>;

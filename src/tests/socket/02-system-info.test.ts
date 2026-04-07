@@ -6,7 +6,7 @@ import { loadConfig } from '../../core/config';
  * Tests read-only system data access
  */
 export async function testSystemInfo() {
-    console.log('🧪 Test 2: System Information\n');
+    logger.info('🧪 Test 2: System Information\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -18,56 +18,56 @@ export async function testSystemInfo() {
 
     try {
         await client.connect();
-        console.log('✅ Connected\n');
+        logger.info('✅ Connected\n');
 
         // Test 2a: getSystem()
-        console.log('2a. Testing getSystem()...');
+        logger.info('2a. Testing getSystem()...');
         try {
             const system = await client.getSystem();
-            console.log(`   ✅ System: ${system.id} v${system.version}`);
+            logger.info(`   ✅ System: ${system.id} v${system.version}`);
             results.tests.push({ name: 'getSystem', success: true, data: system });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'getSystem', success: false, error: error.message });
         }
 
         // Test 2b: getSystemData()
-        console.log('\n2b. Testing getSystemData()...');
+        logger.info('\n2b. Testing getSystemData()...');
         try {
             await client.getGameData();
-            console.log('   ✅ Retrieved system data\n');
+            logger.info('   ✅ Retrieved system data\n');
             results.tests.push({ name: 'getSystemData', success: true });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'getSystemData', success: false, error: error.message });
         }
 
         // Test 2c: evaluate() for world info
-        console.log('\n2c. Testing evaluate() for world info...');
+        logger.info('\n2c. Testing evaluate() for world info...');
         try {
             // @ts-ignore
             const worldId = await client.evaluate(() => (world as any).id);
             // @ts-ignore
             const worldTitle = await client.evaluate(() => (world as any).title);
-            console.log(`   ✅ World: ${worldTitle} (${worldId})`);
+            logger.info(`   ✅ World: ${worldTitle} (${worldId})`);
             results.tests.push({ name: 'evaluate-world', success: true, data: { worldId, worldTitle } });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'evaluate-world', success: false, error: error.message });
         }
 
         const successCount = results.tests.filter((t: any) => t.success).length;
         results.success = successCount === results.tests.length;
 
-        console.log(`\n📊 ${successCount}/${results.tests.length} tests passed`);
+        logger.info(`\n📊 ${successCount}/${results.tests.length} tests passed`);
         return results;
 
     } catch (error: any) {
-        console.error('❌ Test suite failed:', error.message);
+        logger.error('❌ Test suite failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 

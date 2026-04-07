@@ -5,7 +5,7 @@ import {
     formatDescription,
     getSafeDescription
 } from './sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
@@ -139,7 +139,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             }, 5000);
 
         } catch (e) {
-            console.error("Failed to manage spells", e);
+            logger.error("Failed to manage spells", e);
             addNotification?.("Failed to update spells. Check console.", "error");
             setIsSaving(false);
         }
@@ -156,7 +156,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 body: JSON.stringify({ spellUuid: spell.uuid })
             });
         } catch (e) {
-            console.error(e);
+            logger.error(e);
             throw e;
         }
     };
@@ -200,10 +200,10 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     bonusSpells: 0
                 });
             } else {
-                console.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!spellcasting?.ability}`);
+                logger.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!spellcasting?.ability}`);
             }
         } else {
-            console.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
+            logger.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
         }
 
         // 2. Talents/Boons that grant spellcasting (Formal field OR Name heuristic)

@@ -2,7 +2,7 @@
 import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots } from '../logic/rules';
 export { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots };
 
-import { resolveImage, processHtmlContent, getSafeDescription } from '@/modules/registry';
+import { resolveImage, processHtmlContent, getSafeDescription } from '@modules/registry';
 export { resolveImage, processHtmlContent, getSafeDescription };
 
 import { resolveDocumentName, formatDescription } from '../logic/normalization';

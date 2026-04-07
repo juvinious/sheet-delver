@@ -1,5 +1,5 @@
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { createEffect } from '../utils/Sanitizer';
 import { shadowdarkAdapter } from '../logic/system';
 

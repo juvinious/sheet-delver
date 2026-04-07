@@ -12,7 +12,7 @@ class ErrorBoundary extends React.Component<{ fallback: React.ReactNode, childre
     }
 
     componentDidCatch(error: any, errorInfo: any) {
-        console.error("ErrorBoundary caught error:", error, errorInfo);
+        logger.error("ErrorBoundary caught error:", error, errorInfo);
     }
 
     render() {

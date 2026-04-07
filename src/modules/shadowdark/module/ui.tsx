@@ -1,7 +1,7 @@
 import React from 'react';
-import { UIModuleManifest } from '@/modules/registry';
+import { UIModuleManifest } from '@modules/registry';
 import info from '../info.json';
-import LoadingModal from '@/app/ui/components/LoadingModal';
+import LoadingModal from '@client/ui/components/LoadingModal';
 
 const ShadowdarkLoading = () => (
     <LoadingModal

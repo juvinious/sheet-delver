@@ -12,11 +12,22 @@ SheetDelver is designed as a **Headless Client Proxy** for Foundry VTT. It follo
 
 ---
 
-## 2. Decoupled Core/Shell Model
+## 2. Hardened Environment Model (4-Folder Root)
+
+To ensure stability and prevent environment pollution (e.g., Node.js leaks in the browser), SheetDelver enforces a strict **Logic Firewall** via its directory structure:
+
+- **`src/client` (`@client`)**: Pure frontend code. Contains UI components, React hooks, and browser-safe services. Strictly forbidden from importing Node.js globals (`fs`, `path`, `process`).
+- **`src/server` (`@server`, `@core`)**: Pure backend code. Contains the Express API, Session Manager, and direct Foundry socket implementations.
+- **`src/shared` (`@shared`)**: Environment-agnostic logic. Contains interfaces, constants, and pure utilities (math, string parsing) safe for both environments.
+- **`src/modules` (`@modules`)**: Pluggable system adapters. Each module carries its own internal firewall (`src/server` vs `src/ui`).
+
+---
+
+## 3. Decoupled Core/Shell Model
 
 ```mermaid
 graph TD
-    subgraph "Backend Core Service"
+    subgraph "@server/core (Backend)"
         API["Express API (Proxy Interface)"]
         SM["Session Manager"]
         CACHE["Compendium Cache"]
@@ -28,13 +39,13 @@ graph TD
         SYS --> CACHE
     end
 
-    subgraph "Frontend Shell (Contexts)"
+    subgraph "@client (Frontend Shell)"
         FC["FoundryContext (Auth & Sync)"]
         JC["JournalContext (Navigation)"]
         UC["UIContext (Global Modals)"]
         
-        FC -. WebSockets .-> API
-        JC -. WebSockets .-> API
+        FC -. WebSockets/Proxy .-> API
+        JC -. WebSockets/Proxy .-> API
     end
     
     subgraph "Foundry VTT"
@@ -46,19 +57,19 @@ graph TD
     POOL <-- Socket.io --> FVTT
 ```
 
-### 2.1 The Core Description
-- **Session Manager (`src/core/session`)**:
+### 3.1 The Core Description (Server-Only)
+- **Session Manager (`@core/session`)**:
     - Manages the lifecycle of user sessions and maps API Tokens to `ClientSocket` instances.
     - Maintains the **System Client** (`CoreSocket`) for unauthenticated status checks and world monitoring.
-- **Foundry Sockets (`src/core/foundry/sockets`)**:
+- **Foundry Sockets (`@core/foundry/sockets`)**:
     - **CoreSocket**: A singleton connection acting as a service account. Tracks player lists, world status, and system metadata.
     - **ClientSocket**: A per-user connection. Receives personal notifications (Item sharing, whispered chat) and performs user-authorized writes.
 - **Compendium Cache**: A centralized service that pre-processes and caches compendium indices for rapid name resolution and data retrieval.
 
-### 2.2 The Delivery Layers
+### 3.2 The Delivery Layers
 - **Server (`src/server`)**:
     - **Status Handler**: Aggregates data from both the System Client and the specific User Client to provide a complete view of the world state.
-    - **Status Handler**: Aggregates data from both the System Client and the specific User Client to provide a complete view of the world state.
+    - **Smart Proxy Socket**: Multiplexes individual Foundry connections to the frontend via a unified Socket.io interface.
     - **Module Routing**:
         - **API**: RegEx-based routing allows system-specific packages to mount their own API logic dynamically.
         - **UI**: The core actor page delegates rendering to the module's registered `ActorPage`, ensuring full UI autonomy.

@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { resolveEntityName } from './sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
 import LanguageSelectionModal from './components/LanguageSelectionModal';
-import { ConfirmationModal } from '@/app/ui/components/ConfirmationModal';
+import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from './themes/shadowdark';
 import { isRareLanguage } from '../logic/rules';
 

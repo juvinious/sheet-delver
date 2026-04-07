@@ -1,6 +1,6 @@
-import { getClient } from '@/core/foundry/instance';
-import { logger } from '@/core/logger';
-import { getConfig } from '@/core/config';
+import { getClient } from '@core/foundry/instance';
+import { logger } from '@shared/utils/logger';
+import { getConfig } from '@core/config';
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../../logic/system';
 import { dataManager } from '../../data/DataManager';
 import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
@@ -8,7 +8,7 @@ import * as levelUpEngine from './level-up-engine';
 import { TALENT_HANDLERS } from '../../logic/talent-handlers';
 import { resolveBaggage } from './gear-resolver';
 
-import { Roll } from '@/core/foundry/classes/Roll';
+import { Roll } from '@core/foundry/classes/Roll';
 
 /**
  * GET /api/shadowdark/actors/[id]/level-up/data

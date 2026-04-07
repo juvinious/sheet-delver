@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { resolveEntityName } from './sheet-utils';
-import { useConfig } from '@/app/ui/context/ConfigContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 interface AbilitiesTabProps {
     actor: any;

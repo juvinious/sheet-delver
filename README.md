@@ -55,12 +55,14 @@ SheetDelver provides dedicated support for the Mörk Borg RPG system:
 - **PF2E**: Planned...
 
 ## Architecture
-SheetDelver follows a **Decoupled Core/Shell** architecture with a centralized **Context Driven State**:
-1.  **Core Service** (`src/core`, `src/server`): A standalone Express API server that manages multiple persistent socket connections to Foundry VTT.
-2.  **Frontend Shell** (`src/app`): A Next.js application. State is managed via React Context (`FoundryContext`, `JournalProvider`, `UIContext`), providing a reactive experience across all components.
-3.  **Shared Layer** (`src/shared`): Common TypeScript interfaces and constants used by both Core and Shell.
-4.  **System Modules** (`src/modules`): Pluggable RPG system logic (Adapters and UI).
-5.  **Admin CLI** (`src/cli`): Command-line tool for world management and setup.
+SheetDelver follows a **Hardened 4-Folder Root** architecture with a strict **Logic Firewall**:
+
+1.  **Client Shell** (`src/client` | `@client`): A pure frontend environment (Next.js/React). Strictly forbidden from importing Node.js globals.
+2.  **Server Core** (`src/server` | `@server`, `@core`): A dedicated Express API and Foundry socket bridge. Manages per-user session proxying.
+3.  **Shared Layer** (`src/shared` | `@shared`): Environment-agnostic interfaces, constants, and pure utilities safe for both browser and server.
+4.  **System Modules** (`src/modules` | `@modules`): Pluggable RPG system logic. Each module enforces its own internal client/server isolation.
+5.  **Execution App** (`src/app` | `@app`): The Next.js App Router entry point.
+6.  **Admin CLI** (`src/cli`): Command-line tool for world management and setup.
 
 ---
 

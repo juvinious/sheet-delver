@@ -8,8 +8,8 @@ import { handleGetActorData } from './actor-data';
 import { handleGetItems, handleDeleteItem } from './items';
 import { handleUpdateActor } from './update';
 import { handleBrewDecoctions } from './brew-decoctions';
-import { logger } from '@/core/logger';
-import { getConfig } from '@/core/config';
+import { logger } from '@shared/utils/logger';
+import { getConfig } from '@core/config';
 
 export const apiRoutes = {
     'index': handleIndex,

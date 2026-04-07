@@ -9,13 +9,13 @@ const config = await loadConfig();
 const BASE_URL = config?.foundry.url || 'http://localhost:30000';
 
 async function probe() {
-    console.log(`[PROBE] Fetching ${BASE_URL}/join ...`);
+    logger.info(`[PROBE] Fetching ${BASE_URL}/join ...`);
     const res = await fetch(`${BASE_URL}/join`);
     const html = await res.text();
 
-    console.log(`[PROBE] HTML Length: ${html.length}`);
+    logger.info(`[PROBE] HTML Length: ${html.length}`);
 
-    console.log(`[PROBE] Dumping HTML:\n${html}`);
+    logger.info(`[PROBE] Dumping HTML:\n${html}`);
 
 }
 

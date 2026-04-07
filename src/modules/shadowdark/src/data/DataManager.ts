@@ -1,4 +1,4 @@
-import { logger } from '@/core/logger';
+import { logger } from '@shared/utils/logger';
 import { ShadowdarkCache } from '../logic/caching';
 
 /**
