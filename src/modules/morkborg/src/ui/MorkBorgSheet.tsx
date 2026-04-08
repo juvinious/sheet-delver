@@ -13,6 +13,7 @@ import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/M
 import MorkBorgEditScvmModal from './components/MorkBorgEditScvmModal';
 import MorkBorgChatStyles from './components/chat/MorkBorgChatStyles';
 import { MorkBorgAdapter } from '../logic/adapter';
+import { logger } from '@shared/utils/logger';
 
 
 

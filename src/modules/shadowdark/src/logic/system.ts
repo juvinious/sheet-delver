@@ -1,4 +1,5 @@
-import { SystemAdapter, ActorSheetData } from '@modules/registry';
+import { SystemAdapter } from '@modules/registry/types';
+import { ActorSheetData } from '@shared/interfaces';
 import { normalizeItemData } from './rules';
 import { logger } from '@shared/utils/logger';
 import { isClassSpellcaster } from './rules';

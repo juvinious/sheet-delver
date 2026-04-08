@@ -1,5 +1,6 @@
 import { FoundryClient } from '../lib/foundry/client';
 import { loadConfig } from '../lib/config';
+import { logger } from '@shared/utils/logger';
 
 async function monitor() {
     logger.info('Loading config...');

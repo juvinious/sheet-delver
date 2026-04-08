@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useFoundry } from '@client/ui/context/FoundryContext';
 import { Combat, Combatant } from '@shared/interfaces';
-import { getUIModule } from '@modules/registry';
+import { resolveImage, getUIModule } from '@modules/registry/client';
+import { logger } from '@shared/utils/logger';
 import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SkipForward, SkipBack } from 'lucide-react';
 import RollDialog from '../RollDialog';
 
@@ -180,6 +181,37 @@ export default function CombatHUD() {
         ...acted
     ];
 
+    const [DynamicRollModal, setDynamicRollModal] = useState<React.ComponentType<any> | null>(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function resolveRollModal() {
+            // Determine system ID: best source is a combatant's stats, then global system object, then active adapter
+            let sId = 'generic';
+            if (activeCombat?.combatants?.length > 0) {
+                sId = activeCombat.combatants[0]?._stats?.systemId || sId;
+            }
+            if (sId === 'generic') {
+                sId = system?.id || 'generic';
+            }
+
+            const manifest = await getUIModule(sId);
+            if (!isMounted) return;
+
+            if (manifest?.rollModal) {
+                const modalEntry = manifest.rollModal;
+                const Component = typeof modalEntry === 'function'
+                    ? React.lazy(modalEntry as any)
+                    : modalEntry;
+                setDynamicRollModal(() => Component as any);
+            } else {
+                setDynamicRollModal(() => RollDialog as any);
+            }
+        }
+        resolveRollModal();
+        return () => { isMounted = false; };
+    }, [activeCombat, system?.id]);
+
     return (
         <>
             <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[150] pointer-events-auto flex flex-col items-center gap-2">
@@ -250,19 +282,6 @@ export default function CombatHUD() {
                                     const hasActed = originalIndex < currentTurnIndex;
                                     const isDefeated = combatant.defeated;
 
-                                    /*
-                                    if (visualIdx === 0) {
-                                        logger.info('Combatant Eval:', {
-                                            round: activeCombat?.round,
-                                            actor: !!combatant.actor,
-                                            initiative: combatant.initiative,
-                                            isGM: currentUser?.isGM,
-                                            myId: currentUser?._id || currentUser?.id,
-                                            ownership: combatant.actor?.ownership
-                                        });
-                                    }
-                                    */
-
                                     return (
                                         <div
                                             key={combatant._id || visualIdx}
@@ -284,20 +303,6 @@ export default function CombatHUD() {
                                             ${isCurrentTurn ? 'border-rose-800 shadow-[0_0_20px_rgba(159,18,57,0.7)] ring-2 ring-rose-900/50' : 'border-neutral-700 hover:border-neutral-500'}
                                             ${isDefeated ? 'border-red-950/50 grayscale opacity-60' : ''}
                                         `}>
-                                                {/*
-                                            {!combatant.hidden && (
-                                                <div className="absolute top-0 w-full bg-gradient-to-b from-black/90 to-transparent pt-1 pb-3 px-1 z-10 flex justify-center">
-                                                    <span className={`truncate text-[9px] sm:text-[10px] font-bold drop-shadow-md
-                                                        ${isCurrentTurn ? 'text-white' : 'text-white/80'}
-                                                        ${isDefeated ? 'line-through decoration-red-600 decoration-2 text-white/50' : ''}
-                                                    `}>
-                                                        {combatant.actor?.name?.split(' ')[0] || 'Unknown'}
-                                                    </span>
-                                                </div>
-                                            )}
-                                                */}
-
-                                                {/*{combatant.actor?.img && combatant.actor.img !== 'icons/svg/mystery-man.svg' ? (*/}
                                                 {!combatant.hidden && combatant.actor?.img && combatant.actor.img !== 'icons/svg/mystery-man.svg' ? (
                                                     <img
                                                         src={combatant.actor?.img}
@@ -318,16 +323,6 @@ export default function CombatHUD() {
                                                     </>
                                                 )}
 
-                                                {/* Initiative Badge */}
-                                                {/*}
-                                            <div className={`
-                                                absolute -bottom-1 left-1/2 -translate-x-1/2
-                                                px-3 py-[2px] rounded-md text-[11px] font-black font-mono shadow-md border
-                                                ${isCurrentTurn ? 'bg-rose-800 text-white border-rose-600' : 'bg-neutral-800 text-white border-neutral-600'}
-                                            `}>
-                                                {typeof combatant.initiative === 'number' && !isNaN(combatant.initiative) ? combatant.initiative : '?'}
-                                            </div>
-                                            */}
                                                 <div className={
                                                     `absolute bottom-0 flex items-center justify-center w-full h-auto
                                                 ${isCurrentTurn ? 'bg-rose-800 text-white border-rose-600' : 'bg-neutral-800 text-white border-neutral-600'}
@@ -415,36 +410,23 @@ export default function CombatHUD() {
                 )}
             </div>
 
-            {/* Initiative Roll Dialog */}
-            {(() => {
-                // Determine system ID: best source is a combatant's stats, then global system object, then active adapter
-                let systemId = 'generic';
-                if (activeCombat?.combatants?.length > 0) {
-                    systemId = activeCombat.combatants[0]?._stats?.systemId || systemId;
-                }
-                if (systemId === 'generic') {
-                    systemId = system?.id || 'generic';
-                }
-
-                const activeModule = getUIModule(systemId);
-                const DynamicRollModal = activeModule?.rollModal || RollDialog;
-
-                return (
+            {DynamicRollModal && (
+                <Suspense fallback={null}>
                     <DynamicRollModal
                         isOpen={isRollDialogOpen}
                         title={rollCommand?.title || 'Roll Initiative'}
-                        type="ability" // Using ability to trigger standard bonus inputs without Weapon/Spell specific fields
+                        type="ability"
                         actor={rollCommand?.actor}
                         defaults={{
-                            abilityBonus: rollCommand?.actor?.system?.abilities?.dex?.mod || 0, // Broad fallback guess for dex
+                            abilityBonus: rollCommand?.actor?.system?.abilities?.dex?.mod || 0,
                             showItemBonus: false
                         }}
                         theme={system?.config?.componentStyles?.rollDialog}
                         onConfirm={handleConfirmRoll}
                         onClose={() => setIsRollDialogOpen(false)}
                     />
-                );
-            })()}
+                </Suspense>
+            )}
         </>
     );
 }

@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { logger } from '@shared/utils/logger';
 
 class ErrorBoundary extends React.Component<{ fallback: React.ReactNode, children: React.ReactNode }, { hasError: boolean }> {
     constructor(props: any) {

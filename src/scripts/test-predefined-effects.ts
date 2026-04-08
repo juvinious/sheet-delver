@@ -1,5 +1,6 @@
 import { getAdapter } from '../modules/core/registry.js';
 import { ShadowdarkAdapter } from '../modules/shadowdark/system.js';
+import { logger } from '@shared/utils/logger';
 
 async function test() {
     logger.info("--- Integrated Adapter Test ---");

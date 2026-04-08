@@ -1,3 +1,4 @@
+import { logger } from '@shared/utils/logger';
 
 export const resolveBaggage = async (doc: any, fetchDocument: (uuid: string) => Promise<any>): Promise<any[]> => {
     if (!doc || !doc.system) return [];

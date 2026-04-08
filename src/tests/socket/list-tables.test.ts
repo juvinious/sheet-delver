@@ -2,6 +2,7 @@
 import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
 import { loadConfig } from '@core/config';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 export async function listTables() {
     logger.info('🧪 Debug: Listing All Tables in shadowdark.rollable-tables\n');

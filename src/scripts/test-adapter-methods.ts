@@ -1,5 +1,6 @@
 // import { getAdapter } from '../modules/core/registry.ts';
 import { ShadowdarkAdapter } from '../modules/shadowdark/system.ts';
+import { logger } from '@shared/utils/logger';
 
 logger.info("--- DEBUGGING SHADOWDARK ADAPTER DIRECTLY ---");
 

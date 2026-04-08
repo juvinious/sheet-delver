@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Patron Boon Table (Mugdulblub)
 // UUID matches value in roll-table-patterns.ts

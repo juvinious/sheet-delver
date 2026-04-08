@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Fighter Table Result (No blanks, as user insisted)
 const mockFighterTable = {

@@ -1,5 +1,6 @@
 import { DataManager } from '../../modules/shadowdark/data/DataManager';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 export async function testRollTables() {
     logger.info('🧪 Test 11: Roll Table Operations (via DataManager)\n');

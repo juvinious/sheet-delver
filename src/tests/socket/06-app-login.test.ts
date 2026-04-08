@@ -65,6 +65,7 @@ export async function testAppLogin() {
 }
 
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     testAppLogin().then(result => {

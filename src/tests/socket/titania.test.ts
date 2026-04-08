@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Titania Table Result (based on user report/screenshots)
 const mockTitaniaTable = {

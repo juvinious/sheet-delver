@@ -1,5 +1,5 @@
 import React, { Suspense } from 'react';
-import { getUIModule } from '@modules/registry';
+import { getUIModule } from '@modules/registry/client';
 
 interface SystemToolsProps {
     systemId: string;
@@ -10,14 +10,36 @@ interface SystemToolsProps {
 }
 
 export default function SystemTools({ systemId, setLoading, setLoginMessage, theme, token }: SystemToolsProps) {
-    const ui = getUIModule(systemId);
-    const ToolsComponent = ui?.dashboardTools;
-    const LoadingComponent = ui?.dashboardLoading;
+    const [ResolvedTools, setResolvedTools] = React.useState<React.ComponentType<any> | null>(null);
+    const [LoadingComponent, setLoadingComponent] = React.useState<React.ComponentType<any> | null>(null);
 
-    if (ToolsComponent) {
+    React.useEffect(() => {
+        let isMounted = true;
+        async function resolveTools() {
+            const manifest = await getUIModule(systemId);
+            if (!isMounted || !manifest) return;
+
+            if (manifest.dashboardLoading) {
+                setLoadingComponent(() => manifest.dashboardLoading as React.ComponentType<any>);
+            }
+
+            if (manifest.dashboardTools) {
+                const toolsEntry = manifest.dashboardTools;
+                const Component = typeof toolsEntry === 'function'
+                    ? React.lazy(toolsEntry as any)
+                    : toolsEntry;
+                
+                setResolvedTools(() => Component as any);
+            }
+        }
+        resolveTools();
+        return () => { isMounted = false; };
+    }, [systemId]);
+
+    if (ResolvedTools) {
         return (
             <Suspense fallback={LoadingComponent ? <LoadingComponent /> : null}>
-                <ToolsComponent
+                <ResolvedTools
                     setLoading={setLoading}
                     setLoginMessage={setLoginMessage}
                     theme={theme}

@@ -5,8 +5,8 @@ import { logger } from '@shared/utils/logger';
 import { WorldData, CacheData, SetupManager } from '../SetupManager';
 import { FoundryConfig } from '../types';
 import { FoundryMetadataClient } from '../interfaces';
-import { getAdapter } from '@modules/registry';
-import { SystemAdapter } from '@modules/registry/interfaces';
+import { getAdapter } from '@modules/registry/server';
+import { SystemAdapter } from '@modules/registry/types';
 import { CompendiumCache } from '../compendium-cache';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -950,7 +950,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     public async loadSystemAdapter(systemId: string) {
         try {
-            const adapter = await getAdapter(systemId);
+            const { getMatchingAdapter } = await import('@modules/registry/server');
+            const adapter = await getMatchingAdapter(systemId);
             if (adapter) {
                 this.adapter = adapter;
                 logger.info(`CoreSocket | Loaded System Adapter: ${systemId}`);

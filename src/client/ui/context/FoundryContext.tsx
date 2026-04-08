@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { logger, LOG_LEVEL } from '@shared/utils/logger';
 import { SystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
-import { getUIModule } from '@modules/registry';
+import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useUI } from '@client/ui/context/UIContext';
@@ -73,7 +73,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
-    const setToken = (newToken: string | null) => {
+    const setToken = useCallback((newToken: string | null) => {
         setTokenState(newToken);
         if (typeof window !== 'undefined') {
             if (newToken) {
@@ -82,7 +82,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 localStorage.removeItem('sheet-delver-token');
             }
         }
-    };
+    }, []);
 
     const setStep = useCallback((newStep: ConnectionStep, origin: string = 'unknown', reason?: string) => {
         if (step === newStep) return;
@@ -224,7 +224,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [token]);
 
-    const handleLogin = async (username: string, password?: string) => {
+    const handleLogin = useCallback(async (username: string, password?: string) => {
         try {
             const res = await fetch('/api/login', {
                 method: 'POST',
@@ -244,9 +244,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             addNotification('Error: ' + e.message, 'error');
             throw e;
         }
-    };
+    }, [setToken, setStep, addNotification]);
 
-    const handleChatSend = async (message: string, options?: { rollMode?: string, speaker?: string }) => {
+    const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string, speaker?: string }) => {
         try {
             const res = await fetch('/api/chat/send', {
                 method: 'POST',
@@ -269,9 +269,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         } catch (e: any) {
             addNotification('Error: ' + e.message, 'error');
         }
-    };
+    }, [token, fetchChat, addNotification]);
 
-    const handleLogout = async () => {
+    const handleLogout = useCallback(async () => {
         try {
             resetUI();
             setStep('login', 'handleLogout', 'User logged out');
@@ -299,7 +299,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             setMessages([]);
             setToken(null);
         }
-    };
+    }, [token, resetUI, setStep, setToken]);
 
     // --- App Socket & State Initialization ---
     useEffect(() => {
@@ -470,13 +470,21 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {
-        if (system?.id) {
-            // UI Manifest is always safe to fetch
-            const uiManifest = getUIModule(system.id);
-            setActiveUIModule(uiManifest || null);
-        } else {
-            setActiveUIModule(null);
+        let isMounted = true;
+        async function hydrateUI() {
+            if (system?.id) {
+                const uiManifest = await getUIModule(system.id);
+                if (isMounted) {
+                    setActiveUIModule(uiManifest || null);
+                }
+            } else {
+                if (isMounted) {
+                    setActiveUIModule(null);
+                }
+            }
         }
+        hydrateUI();
+        return () => { isMounted = false; };
     }, [system?.id]);
 
     // Chat and Combat Real-time Sync
@@ -506,22 +514,29 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [step, token, fetchChat, fetchCombats, appSocket]);
 
+    const contextValue = React.useMemo(() => ({
+        step, setStep,
+        token, setToken,
+        users, currentUser,
+        system, messages,
+        appVersion,
+        activeUIModule,
+        actorCards,
+        fetchActorCards,
+        handleLogin, handleChatSend, handleLogout, fetchActors,
+        ownedActors, readOnlyActors,
+        sharedContent,
+        combats, fetchCombats,
+        appSocket
+    }), [
+        step, setStep, token, users, currentUser, system, messages,
+        appVersion, activeUIModule, actorCards, ownedActors, readOnlyActors,
+        sharedContent, combats, appSocket,
+        fetchActorCards, handleLogin, handleChatSend, handleLogout, fetchActors, fetchCombats
+    ]);
+
     return (
-        <FoundryContext.Provider value={{
-            step, setStep,
-            token, setToken,
-            users, currentUser,
-            system, messages,
-            appVersion,
-            activeUIModule,
-            actorCards,
-            fetchActorCards,
-            handleLogin, handleChatSend, handleLogout, fetchActors,
-            ownedActors, readOnlyActors,
-            sharedContent,
-            combats, fetchCombats,
-            appSocket
-        }}>
+        <FoundryContext.Provider value={contextValue}>
             {children}
         </FoundryContext.Provider>
     );

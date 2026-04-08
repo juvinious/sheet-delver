@@ -1,5 +1,6 @@
 import tablesData from './packs/morkborg.mork-borg-tables.json';
 import itemsData from './packs/morkborg.mork-borg-items.json';
+import { logger } from '@shared/utils/logger';
 
 export class MorkBorgDataManager {
     private static instance: MorkBorgDataManager;

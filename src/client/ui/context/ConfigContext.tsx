@@ -45,8 +45,15 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
         return path;
     }, [config.foundryUrl]);
 
+    const contextValue = React.useMemo(() => ({
+        config,
+        setFoundryUrl,
+        foundryUrl: config.foundryUrl,
+        resolveImageUrl
+    }), [config, setFoundryUrl, resolveImageUrl]);
+
     return (
-        <ConfigContext.Provider value={{ config, setFoundryUrl, foundryUrl: config.foundryUrl, resolveImageUrl }}>
+        <ConfigContext.Provider value={contextValue}>
             {children}
         </ConfigContext.Provider>
     );

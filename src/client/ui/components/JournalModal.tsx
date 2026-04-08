@@ -7,6 +7,7 @@ import { X, Edit, Book, ChevronLeft, ChevronRight, Share2, Loader2 } from 'lucid
 import RichTextEditor from './RichTextEditor';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { useFoundry } from '@client/ui/context/FoundryContext';
+import { logger } from '@shared/utils/logger';
 
 export default function JournalModal() {
     const { activeJournalId, setActiveJournalId, sharedJournalId, setSharedJournalId } = useUI();

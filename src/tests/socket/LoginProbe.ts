@@ -8,6 +8,7 @@ export { };
 const fetch = global.fetch;
 
 import { loadConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
 
 const config = await loadConfig();
 const BASE_URL = config?.foundry.url || 'http://localhost:30000';

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import MorkBorgCharacterGenerator from './MorkBorgCharacterGenerator';
 import { Skull } from 'lucide-react';
+import { logger } from '@shared/utils/logger';
 
 
 interface MorkBorgDashboardToolsProps {

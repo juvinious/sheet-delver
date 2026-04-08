@@ -2,6 +2,7 @@
 import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
 import { loadConfig } from '@core/config';
 import * as readline from 'readline';
+import { logger } from '@shared/utils/logger';
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -65,12 +66,6 @@ export async function testWorldTransition() {
     if (client.worldState === 'active') {
         logger.info(`✅  Detected Active World: "${client.cachedWorldData?.worldTitle || 'Unknown'}"`);
     } else {
-        const logger = {
-            info: (msg: string) => logger.info(msg),
-            warn: (msg: string) => logger.warn(msg),
-            error: (msg: string) => logger.error(msg),
-            debug: (msg: string) => { /* logger.debug(msg) */ } // Muted debug for standard run
-        };
         logger.error(`❌  Failed to detect active world. State: ${client.worldState}`);
     }
 
@@ -104,6 +99,6 @@ export async function testWorldTransition() {
 
 // Run immediately
 testWorldTransition().catch(e => {
-    logger.error(e);
+    logger.error('World transition test failed:', e);
     process.exit(1);
 });

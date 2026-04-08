@@ -1,3 +1,4 @@
+import { logger } from '@shared/utils/logger';
 // Basic Roll implementation for client-side evaluation
 export class Roll {
     private _formula: string;

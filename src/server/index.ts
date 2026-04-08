@@ -2,9 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 
+import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
-import { getAdapter } from '@modules/registry';
+import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModules } from '@modules/registry/server';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 
@@ -18,6 +19,9 @@ async function startServer() {
     // Initialize Universal Logger with configured level
     logger.setLevel(config.debug.level);
     logger.info(`Core Service | Logger initialized at level: ${config.debug.level}`);
+
+    // Boot-Time System Discovery
+    initializeRegistry();
 
     // Global Error Handlers (Diagnostic for silent kills/crashes)
     if (config.debug.level >= 4) {
@@ -79,7 +83,7 @@ async function startServer() {
     io.on('connection', async (socket) => {
         const clientCount = io.engine.clientsCount;
         logger.debug(`App Socket | Client connected: ${socket.id} (Total: ${clientCount}, Auth: ${socket.rooms.has('authenticated')})`);
-        
+
         // Inform CoreSocket of engagement for adaptive heartbeat
         systemClient.updateActiveBrowserCount(clientCount);
 
@@ -91,7 +95,7 @@ async function startServer() {
         const foundryClient = (socket as any).foundryClient;
         if (foundryClient) {
             logger.info(`App Socket | Attaching per-user listeners for ${foundryClient.username} (${socket.id})`);
-            
+
             const handleCombatUpdate = (data: any) => socket.emit('combatUpdate', data);
             const handleChatUpdate = (data: any) => socket.emit('chatUpdate', data);
             const handleActorUpdate = (data: any) => socket.emit('actorUpdate', data);
@@ -162,8 +166,9 @@ async function startServer() {
         const currentWorldId = systemClient.getGameData()?.world?.id || null;
 
         if (systemClient.worldState === 'setup') {
-            logger.warn('Core Service | World in Setup Mode. Clearing all sessions.');
+            logger.warn('Core Service | World in Setup Mode. Clearing all sessions and unloading modules.');
             sessionManager.clearAllSessions();
+            unloadSystemModules();
             lastKnownWorldId = null;
             return;
         }
@@ -172,7 +177,7 @@ async function startServer() {
         if (lastKnownWorldId && currentWorldId && lastKnownWorldId !== currentWorldId) {
             logger.warn(`Core Service | World changed from "${lastKnownWorldId}" to "${currentWorldId}". Clearing all sessions.`);
             sessionManager.clearAllSessions();
-            
+
             // Re-initialize services for the new world
             (async () => {
                 try {
@@ -183,7 +188,7 @@ async function startServer() {
 
                     const sysInfo = await systemClient.getSystem();
                     if (sysInfo && sysInfo.id) {
-                        const { getAdapter } = await import('@modules/registry');
+                        const { getAdapter } = await import('@modules/registry/server');
                         const adapter = await getAdapter(sysInfo.id);
                         if (adapter && adapter.initialize) {
                             logger.info(`Core Service | Re-initializing Adapter for ${sysInfo.id}...`);
@@ -201,7 +206,7 @@ async function startServer() {
         if (systemClient.worldState !== 'active') return;
 
         logger.info('Core Service | System Client connected/reconnected. Ensuring Backend Services is running...');
-        
+
         // Holistic bootstrap: Cache -> Adapter -> Discovery
         // This is now an awaited, sequential block to ensure 'initialized' 
         // only flips once everything is confirmed and safe.
@@ -432,6 +437,9 @@ async function startServer() {
     appRouter.get('/session/connect', statusHandler);
     appRouter.get('/config', (req, res) => {
         res.json(getSanitizedConfig());
+    });
+    appRouter.get('/registry/modules', (req, res) => {
+        res.json(getRegisteredModules());
     });
 
     // --- System API (moved after middleware to avoid duplicate auth) ---
@@ -686,7 +694,7 @@ async function startServer() {
             let adapter = await getAdapter(systemInfo.id);
 
             // Fallback: If world adapter doesn't match this specific actor, try heuristic matching
-            const { getMatchingAdapter } = await import('@modules/registry');
+            const { getMatchingAdapter } = await import('@modules/registry/server');
             if (!adapter || (adapter.match && !adapter.match(resolvedActor))) {
                 adapter = await getMatchingAdapter(resolvedActor);
             }

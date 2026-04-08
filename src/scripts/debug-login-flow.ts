@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
 import { io } from 'socket.io-client';
+import { logger } from '@shared/utils/logger';
 
 // Helper to load settings
 const loadSettings = () => {

@@ -11,6 +11,7 @@ import { testUsersAndCompendia } from './04-users-compendia.test';
 import { testWriteOperations } from './05-write-operations.test';
 import { testAppLogin } from './06-app-login.test';
 import { testRolling } from './09-rolling.test'; // Added rolling test import
+import { logger } from '@shared/utils/logger';
 
 async function runAllTests() {
     logger.info('🚀 Socket Client Test Suite\n');

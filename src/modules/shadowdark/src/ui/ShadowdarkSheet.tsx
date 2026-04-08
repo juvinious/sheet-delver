@@ -29,6 +29,7 @@ const LevelUpModal = dynamic(() => import('./components/LevelUpModal').then(mod 
 
 import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
 import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
+import { logger } from '@shared/utils/logger';
 
 
 

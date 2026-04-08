@@ -31,6 +31,7 @@ export async function testConnection() {
 }
 
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     testConnection().then(result => {

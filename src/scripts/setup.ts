@@ -3,6 +3,7 @@ import inquirer from 'inquirer';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
+import { logger } from '@shared/utils/logger';
 
 const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
 

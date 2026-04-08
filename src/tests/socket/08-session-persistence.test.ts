@@ -2,6 +2,7 @@
 import { SessionManager } from '@core/session/SessionManager';
 import { loadConfig } from '@core/config';
 import readline from 'readline';
+import { logger } from '@shared/utils/logger';
 
 const rl = readline.createInterface({
     input: process.stdin,

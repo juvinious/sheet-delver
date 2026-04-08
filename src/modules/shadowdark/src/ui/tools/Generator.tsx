@@ -870,7 +870,7 @@ export default function Generator() {
                 setLoading(false);
             }
         } catch (e: any) {
-            logger.error(e);
+            logger.error('Character creation error:', e);
             setCreationError('Error: ' + e.message);
             setLoading(false);
         }

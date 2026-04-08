@@ -6,6 +6,8 @@ import { logger } from '@shared/utils/logger';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { getAdapter } from '@modules/registry/server';
+import { SystemAdapter } from '@modules/registry/types';
 import { persistentCache } from '../cache/PersistentCache';
 
 interface Session {
@@ -96,7 +98,6 @@ export class SessionManager {
                 // 2. Module-Specific Adapter Initialization (Targeted Discovery/Cache)
                 const sysInfo = await client.getSystem();
                 if (sysInfo?.id) {
-                    const { getAdapter } = await import('@modules/registry');
                     const adapter = await getAdapter(sysInfo.id.toLowerCase());
                     if (adapter?.initialize) {
                         logger.info(`SessionManager | Bootstrapping adapter for ${sysInfo.id}...`);

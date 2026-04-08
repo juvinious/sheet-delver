@@ -5,6 +5,7 @@ import { DirectScraper } from '@core/foundry/DirectScraper';
 import { SetupManager, WorldData } from '@core/foundry/SetupManager';
 import path from 'path';
 import fs from 'fs';
+import { logger } from '@shared/utils/logger';
 
 /**
  * Command Definition

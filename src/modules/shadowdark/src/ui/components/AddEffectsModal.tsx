@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Power, Search } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
+import { logger } from '@shared/utils/logger';
 
 interface AddEffectsModalProps {
     isOpen: boolean;
@@ -157,7 +158,7 @@ export default function AddEffectsModal({
             }
             onClose();
         } catch (error) {
-            logger.error(error);
+            logger.error('Failed to save effect:', error);
         } finally {
             setLoading(false);
         }

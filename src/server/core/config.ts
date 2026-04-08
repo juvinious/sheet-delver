@@ -4,6 +4,7 @@ const getPath = async () => (typeof window === 'undefined' ? await import('node:
 const getYaml = async () => (typeof window === 'undefined' ? await import('js-yaml') : null);
 
 import { AppConfig } from '@shared/interfaces';
+import { logger } from '@shared/utils/logger';
 
 let _cachedConfig: AppConfig | null = null;
 

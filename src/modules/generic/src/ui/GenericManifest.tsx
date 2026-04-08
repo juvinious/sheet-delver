@@ -1,5 +1,5 @@
 import React from 'react';
-import { UIModuleManifest } from '@modules/registry';
+import { UIModuleManifest } from '@modules/registry/types';
 import info from '../../info.json';
 
 const uiManifest: UIModuleManifest = {

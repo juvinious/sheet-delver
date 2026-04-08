@@ -4,6 +4,7 @@ import { CompendiumCache } from '@core/foundry/compendium-cache';
 import { loadConfig } from '@core/config';
 import { ShadowdarkAdapter } from '../../modules/shadowdark/system';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 export async function testCompendiumResolution() {
     logger.info('🧪 Test 5 (Alt): Compendium Resolution & Pulse Verification\n');

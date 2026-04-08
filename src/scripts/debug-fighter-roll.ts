@@ -3,6 +3,7 @@ import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
 import { loadConfig } from '@core/config';
 import { processRollResult } from '../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 const FIGHTER_TABLE_UUID = "Compendium.shadowdark.rollable-tables.RollTable.dExHo4P85MgpwHd9";
 

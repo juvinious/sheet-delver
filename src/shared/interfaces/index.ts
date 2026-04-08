@@ -1,5 +1,5 @@
 import { ComponentType, LazyExoticComponent } from 'react';
-import { ServerConnectionStatus } from './connection';
+import { ServerConnectionStatus } from '../types/connection';
 
 export type { ServerConnectionStatus };
 
@@ -297,11 +297,11 @@ export interface UIModuleManifest {
         id: string;
         title: string;
     };
-    sheet: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
-    rollModal?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
-    actorPage?: LazyExoticComponent<ComponentType<{ actorId: string; token?: string | null }>> | ComponentType<{ actorId: string; token?: string | null }>;
-    tools?: Record<string, LazyExoticComponent<ComponentType<any>> | ComponentType<any>>;
-    dashboardTools?: LazyExoticComponent<ComponentType<any>> | ComponentType<any>;
+    sheet: (() => Promise<any>) | ComponentType<any>;
+    rollModal?: (() => Promise<any>) | ComponentType<any>;
+    actorPage?: (() => Promise<any>) | ComponentType<any>;
+    tools?: Record<string, (() => Promise<any>) | ComponentType<any>>;
+    dashboardTools?: (() => Promise<any>) | ComponentType<any>;
     dashboardLoading?: ComponentType<any>;
 }
 

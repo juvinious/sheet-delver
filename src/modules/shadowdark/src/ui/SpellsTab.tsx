@@ -9,6 +9,7 @@ import { useConfig } from '@client/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
+import { logger } from '@shared/utils/logger';
 
 interface SpellsTabProps {
     actor: any;
@@ -156,7 +157,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 body: JSON.stringify({ spellUuid: spell.uuid })
             });
         } catch (e) {
-            logger.error(e);
+            logger.error('Failed to learn spell:', e);
             throw e;
         }
     };

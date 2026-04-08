@@ -78,6 +78,7 @@ export async function testBatchOperations() {
 }
 
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     testBatchOperations().then(_res => process.exit(_res.success ? 0 : 1));
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useEffect, useState } from 'react';
-import { getUIModule } from '@modules/registry';
+import React, { use, useEffect, useState, Suspense } from 'react';
+import { getUIModule } from '@modules/registry/client';
 import LoadingModal from '@client/ui/components/LoadingModal';
 
 /**
@@ -18,14 +18,32 @@ export default function ToolPageRouter({ params }: { params: Promise<{ systemId:
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const ui = getUIModule(systemId);
-        const component = ui?.tools?.[toolId];
-        
-        if (component) {
-            setToolComponent(component);
-        } else {
-            setError(`Tool '${toolId}' for system '${systemId}' not found.`);
+        let isMounted = true;
+        async function resolveTool() {
+            try {
+                const manifest = await getUIModule(systemId);
+                if (!isMounted) return;
+
+                if (!manifest) {
+                    setError(`System context for '${systemId}' not found.`);
+                    return;
+                }
+
+                const toolEntry = manifest.tools?.[toolId];
+                if (toolEntry) {
+                    const Component = typeof toolEntry === 'function'
+                        ? React.lazy(toolEntry as any)
+                        : toolEntry;
+                    setToolComponent(() => Component as any);
+                } else {
+                    setError(`Tool '${toolId}' for system '${systemId}' not found.`);
+                }
+            } catch (e: any) {
+                setError(`Failed to load tool: ${e.message}`);
+            }
         }
+        resolveTool();
+        return () => { isMounted = false; };
     }, [systemId, toolId]);
 
     if (error) {
@@ -45,8 +63,8 @@ export default function ToolPageRouter({ params }: { params: Promise<{ systemId:
         );
     }
 
-    if (!ToolComponent) {
-        return <LoadingModal
+    const Loading = (
+        <LoadingModal
             message="Loading Tool..."
             theme={{
                 overlay: "absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity",
@@ -54,8 +72,14 @@ export default function ToolPageRouter({ params }: { params: Promise<{ systemId:
                 spinner: "w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto",
                 text: "text-xl font-bold text-white font-sans"
             }}
-        />;
-    }
+        />
+    );
 
-    return <ToolComponent />;
+    if (!ToolComponent) return Loading;
+
+    return (
+        <Suspense fallback={Loading}>
+            <ToolComponent />
+        </Suspense>
+    );
 }

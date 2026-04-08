@@ -1,4 +1,5 @@
 import { dataManager } from '../../data/DataManager';
+import { logger } from '@shared/utils/logger';
 
 export async function handleGetDocument(request: Request, { params }: any) {
     try {

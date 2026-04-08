@@ -44,16 +44,21 @@ export function UIProvider({ children }: { children: ReactNode }) {
         setSharedJournalId(null);
     };
 
+    const contextValue = React.useMemo(() => ({
+        isChatOpen, setChatOpen,
+        isDiceTrayOpen, setDiceTrayOpen, toggleDiceTray,
+        isJournalOpen, setJournalOpen, toggleJournal,
+        isPlayerListOpen, setPlayerListOpen, togglePlayerList,
+        activeJournalId, setActiveJournalId,
+        sharedJournalId, setSharedJournalId,
+        resetUI
+    }), [
+        isChatOpen, isDiceTrayOpen, isJournalOpen, isPlayerListOpen,
+        activeJournalId, sharedJournalId
+    ]);
+
     return (
-        <UIContext.Provider value={{
-            isChatOpen, setChatOpen,
-            isDiceTrayOpen, setDiceTrayOpen, toggleDiceTray,
-            isJournalOpen, setJournalOpen, toggleJournal,
-            isPlayerListOpen, setPlayerListOpen, togglePlayerList,
-            activeJournalId, setActiveJournalId,
-            sharedJournalId, setSharedJournalId,
-            resetUI
-        }}>
+        <UIContext.Provider value={contextValue}>
             {children}
         </UIContext.Provider>
     );

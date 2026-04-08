@@ -1,5 +1,6 @@
 
 import { dataManager } from '../../data/DataManager';
+import { logger } from '@shared/utils/logger';
 
 export async function handleGetGear(request: Request): Promise<Response> {
     try {

@@ -2,6 +2,7 @@
 
 import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
+import { logger } from '@shared/utils/logger';
 
 interface NotesTabProps {
     actor: any;

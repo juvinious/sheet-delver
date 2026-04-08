@@ -1,6 +1,7 @@
 'use client';
 
-import { getSheet } from '@modules/registry';
+import React, { useState, useEffect } from 'react';
+import { getUIModule } from '@modules/registry/client';
 
 interface SheetRouterProps {
     systemId: string;
@@ -27,9 +28,30 @@ interface SheetRouterProps {
 
 export default function SheetRouter(props: SheetRouterProps) {
     const { systemId, ...sheetProps } = props;
+    const [SheetComponent, setSheetComponent] = useState<React.ComponentType<any> | null>(null);
+    const [loading, setLoading] = useState(true);
 
-    // Dynamic Lookup with Fallback
-    const SheetComponent = getSheet(systemId);
+    useEffect(() => {
+        let isMounted = true;
+        async function resolveSheet() {
+            setLoading(true);
+            const manifest = await getUIModule(systemId);
+            if (!isMounted) return;
+
+            if (manifest?.sheet) {
+                const sheetEntry = manifest.sheet;
+                const ResolvedComponent = typeof sheetEntry === 'function'
+                    ? React.lazy(sheetEntry as any)
+                    : sheetEntry;
+                setSheetComponent(() => ResolvedComponent as any);
+            }
+            setLoading(false);
+        }
+        resolveSheet();
+        return () => { isMounted = false; };
+    }, [systemId]);
+
+    if (loading) return null; // Or a smaller spinner
 
     if (!SheetComponent) {
         return (
@@ -40,6 +62,9 @@ export default function SheetRouter(props: SheetRouterProps) {
         );
     }
 
-    // eslint-disable-next-line
-    return <SheetComponent {...sheetProps} />;
+    return (
+        <React.Suspense fallback={null}>
+            <SheetComponent {...sheetProps} />
+        </React.Suspense>
+    );
 }

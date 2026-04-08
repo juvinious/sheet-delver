@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Power, Search } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
+import { logger } from '@shared/utils/logger';
 
 interface CustomBoonModalProps {
     isOpen: boolean;
@@ -206,7 +207,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
             }
             onClose();
         } catch (error) {
-            logger.error(error);
+            logger.error('Failed to save custom boon:', error);
         } finally {
             setLoading(false);
         }

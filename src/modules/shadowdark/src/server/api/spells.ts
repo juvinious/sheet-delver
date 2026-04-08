@@ -192,6 +192,7 @@ export async function handleGetSpellsBySource(request: Request) {
     }
 }
 import { isSpellcaster, canUseMagicItems } from '../../logic/rules';
+import { logger } from '@shared/utils/logger';
 
 /**
  * GET /api/modules/shadowdark/actors/[id]/spellcaster

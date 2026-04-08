@@ -1,4 +1,4 @@
-import { ServerConnectionStatus } from '@shared/connection';
+import { ServerConnectionStatus } from '@shared/types/connection';
 import { SystemInfo } from '@shared/interfaces';
 
 export type { SystemInfo };

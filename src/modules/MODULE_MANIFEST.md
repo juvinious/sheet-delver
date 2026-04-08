@@ -49,4 +49,8 @@ Optional. Re-exports API initialization or specialized server-only logic (e.g., 
 ## 4. Key Rules
 1. **No Root Logic**: Do not place logic, adapters, or components in the module root.
 2. **Import Hygiene**: The `module/` directory acts as a firewall. Internal `src/` files should use relative paths to other `src/` subdirectories.
-3. **Core Registry Hub**: The registry in `src/modules/registry/` is the central hub that consumes these entry points. New systems must be registered there.
+3. **Automated Discovery**: New systems are **automatically discovered** on server boot if they follow this manifest structure.
+4. **Registry Architecture**: Strictly follow the "Zero `index.ts`" policy for the registry.
+   - Server: `@modules/registry/server`
+   - Client: `@modules/registry/client`
+   - Shared Types: `@modules/registry/types`

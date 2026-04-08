@@ -1,3 +1,4 @@
+import { logger } from '@shared/utils/logger';
 const isBrowser = typeof window !== 'undefined';
 let fs: any = null;
 let path: any = null;

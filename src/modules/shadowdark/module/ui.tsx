@@ -1,5 +1,5 @@
 import React from 'react';
-import { UIModuleManifest } from '@modules/registry';
+import { UIModuleManifest } from '@modules/registry/types';
 import info from '../info.json';
 import LoadingModal from '@client/ui/components/LoadingModal';
 
@@ -17,14 +17,14 @@ const ShadowdarkLoading = () => (
 
 const uiManifest: UIModuleManifest = {
     info,
-    sheet: React.lazy(() => import('../src/ui/ShadowdarkSheet')),
-    rollModal: React.lazy(() => import('../src/ui/components/ShadowdarkInitiativeModal')),
+    sheet: () => import('../src/ui/ShadowdarkSheet'),
+    rollModal: () => import('../src/ui/components/ShadowdarkInitiativeModal'),
     tools: {
-        'generator': React.lazy(() => import('../src/ui/tools/Generator'))
+        'generator': () => import('../src/ui/tools/Generator')
     },
-    dashboardTools: React.lazy(() => import('../src/ui/ShadowdarkDashboardTools')),
+    dashboardTools: () => import('../src/ui/ShadowdarkDashboardTools'),
     dashboardLoading: ShadowdarkLoading,
-    actorPage: React.lazy(() => import('../src/ui/pages/ActorPage'))
+    actorPage: () => import('../src/ui/pages/ActorPage')
 };
 
 export default uiManifest;

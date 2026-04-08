@@ -3,6 +3,7 @@ import { ClientSocket } from '@core/foundry/sockets/ClientSocket';
 import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
 import { FoundryConfig } from '@core/foundry/types';
 import { EventEmitter } from 'events';
+import { logger } from '@shared/utils/logger';
 
 // Mock Socket.io Client
 class MockSocket extends EventEmitter {
@@ -53,6 +54,6 @@ async function run() {
 }
 
 run().catch(e => {
-    logger.error(e);
+    logger.error('Auth logic test failed:', e);
     process.exit(1);
 });
