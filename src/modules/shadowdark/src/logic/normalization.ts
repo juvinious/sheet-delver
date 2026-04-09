@@ -12,7 +12,6 @@ import {
     normalizeItemData
 } from './rules';
 import { logger } from '@shared/utils/logger';
-import { CompendiumCache } from '@core/foundry/compendium-cache';
 
 /**
  * Standalone utility to resolve a document name from a UUID or ID using the system data.
@@ -36,11 +35,6 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
         }
     }
 
-    // Last resort fallback: Compendium cache or humanized UUID segment
-    const cache = CompendiumCache.getInstance();
-    const cachedName = cache.getName(val);
-    if (cachedName) return cachedName;
-
     // Only split by dots if it looks like a Compendium UUID
     if (val.startsWith('Compendium.')) {
         return val.split('.').pop()?.replace(/^[a-z]/, (c: string) => c.toUpperCase()) || val;
@@ -52,7 +46,7 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
 /**
  * Common sanitization for item descriptions (UUID links, inline rolls).
  */
-export const formatDescription = (desc: any) => {
+export const formatDescription = (desc: any, theme?: any) => {
     if (!desc || typeof desc !== 'string') return '';
 
     let fixed = desc;
@@ -65,14 +59,16 @@ export const formatDescription = (desc: any) => {
         const cleanContent = content.replace(/<[^>]*>?/gm, '').replace(/&amp;/g, '&').replace(/<[^>]*>/g, '');
         const lower = cleanContent.toLowerCase().trim();
 
+        const rollClasses = theme?.inlineRolls || "inline-flex items-center gap-1 border border-black bg-white hover:bg-black hover:text-white px-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors mx-1 cursor-pointer";
+
         const checkMatch = lower.match(/^check\s+(\d+)\s+(\w+)$/);
         if (checkMatch) {
-            return `<button data-action="roll-check" data-dc="${checkMatch[1]}" data-stat="${checkMatch[2]}" class="inline-flex items-center gap-1 border border-black bg-white hover:bg-black hover:text-white px-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors mx-1 cursor-pointer">check ${checkMatch[2].toUpperCase()} (DC ${checkMatch[1]})</button>`;
+            return `<button data-action="roll-check" data-dc="${checkMatch[1]}" data-stat="${checkMatch[2]}" class="${rollClasses}">check ${checkMatch[2].toUpperCase()} (DC ${checkMatch[1]})</button>`;
         }
 
         if (lower.startsWith('/r') || lower.startsWith('/roll')) {
             const formula = cleanContent.replace(/^\/(r|roll)\s*/i, '').trim();
-            return `<button type="button" data-action="roll-formula" data-formula="${formula}" class="inline-flex items-center gap-1 border border-black bg-white hover:bg-black hover:text-white px-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors mx-1 cursor-pointer"><span class="font-serif italic">roll</span> ${formula}</button>`;
+            return `<button type="button" data-action="roll-formula" data-formula="${formula}" class="${rollClasses}"><span class="font-serif italic">roll</span> ${formula}</button>`;
         }
 
         return match;
@@ -140,12 +136,14 @@ export class ShadowdarkNormalizer {
                 }
             }
 
-            // Centralized Sanitization
+            // Centralized Sanitization 
+            // Note: baseUrl/theme are passed via options object in future refactor, 
+            // but for now we look up from global if needed or pass directly.
             if (item.system?.description) {
-                item.system.description = formatDescription(item.system.description);
+                // To keep this pure, the caller (Adapter) should ideally provide the theme.
+                // We'll add it as an optional arg to normalizeActorData.
+                item.system.description = formatDescription(item.system.description, (actor as any)._theme);
             }
-
-
 
             return item;
         });

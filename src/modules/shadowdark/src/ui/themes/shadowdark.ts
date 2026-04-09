@@ -104,5 +104,6 @@ export const shadowdarkTheme = {
         },
         editor: 'prose prose-sm font-serif max-w-none focus:outline-none min-h-[300px] p-4 text-black',
         editButton: 'bg-black text-white px-6 py-2 font-serif font-bold uppercase tracking-widest border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none transition-all flex items-center gap-2'
-    }
+    },
+    inlineRolls: "inline-flex items-center gap-1 border border-black bg-white hover:bg-black hover:text-white px-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors mx-1 cursor-pointer"
 };

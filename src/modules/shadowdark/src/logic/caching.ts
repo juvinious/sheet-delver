@@ -1,5 +1,4 @@
 import { logger } from '@shared/utils/logger';
-import { persistentCache } from '@core/cache/PersistentCache';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { isRareLanguage } from './rules';
 
@@ -66,24 +65,29 @@ export class ShadowdarkCache {
     }
 
     /**
-     * Loads system data by aggregating shards from the disk cache and building indexes.
+     * Loads system data by aggregating shards from a storage provider.
      * This follows the 'Load-time Aggregation' strategy.
      */
-    async loadSystemData(): Promise<any> {
+    async loadSystemData(store?: any): Promise<any> {
         if (this.isSystemDataFresh()) return this.systemData;
+
+        // If no store is provided, we can't load new data from disk
+        if (!store) {
+            return this.systemData;
+        }
 
         logger.info('ShadowdarkCache | Loading sharded system data...');
         const systemId = 'shadowdark';
         const manifestKey = `manifest-${systemId}`;
 
-        const manifest = await persistentCache.get<SystemDiscoveryManifest>(systemId, manifestKey);
+        const manifest = await store.get(systemId, manifestKey);
         if (!manifest) {
             logger.warn('ShadowdarkCache | No discovery manifest found. Shards may not be synced.');
             return null;
         }
 
         const aggregated: any = {
-            _instanceId: manifest._instanceId,
+            _instanceId: (manifest as any)._instanceId,
             ancestries: [],
             backgrounds: [],
             classes: [],
@@ -98,10 +102,10 @@ export class ShadowdarkCache {
             PREDEFINED_EFFECTS: { ...SYSTEM_PREDEFINED_EFFECTS }
         };
 
-        const packs = Object.keys(manifest.packs);
+        const packs = Object.keys((manifest as any).packs);
         for (const packId of packs) {
             const shardKey = `pack-${packId.replace('.', '-')}`;
-            const documents = await persistentCache.get<any[]>(systemId, shardKey);
+            const documents = await store.get(systemId, shardKey);
 
             if (!documents || !Array.isArray(documents)) {
                 logger.warn(`ShadowdarkCache | Shard ${shardKey} missing or invalid.`);

@@ -1,4 +1,3 @@
-import { ComponentType, LazyExoticComponent } from 'react';
 import { ServerConnectionStatus } from '../types/connection';
 
 export type { ServerConnectionStatus };
@@ -85,7 +84,11 @@ export interface ActorCardData {
     img?: string;
     subtext?: string;
     blocks?: ActorCardBlock[];
-    footer?: React.ReactNode | string;
+    /**
+     * UI-specific footer content. 
+     * Refined as ReactNode in the client layer.
+     */
+    footer?: any | string;
 }
 
 export interface ActorSheetData {
@@ -308,18 +311,19 @@ export interface SystemAdapter {
 /**
  * Browser-safe manifest for system UI components.
  * This should NEVER import Adapter classes.
+ * Refined with specific React types in the client layer.
  */
 export interface UIModuleManifest {
     info: {
         id: string;
         title: string;
     };
-    sheet: (() => Promise<any>) | ComponentType<any>;
-    rollModal?: (() => Promise<any>) | ComponentType<any>;
-    actorPage?: (() => Promise<any>) | ComponentType<any>;
-    tools?: Record<string, (() => Promise<any>) | ComponentType<any>>;
-    dashboardTools?: (() => Promise<any>) | ComponentType<any>;
-    dashboardLoading?: ComponentType<any>;
+    sheet: (() => Promise<any>) | any;
+    rollModal?: (() => Promise<any>) | any;
+    actorPage?: (() => Promise<any>) | any;
+    tools?: Record<string, (() => Promise<any>) | any>;
+    dashboardTools?: (() => Promise<any>) | any;
+    dashboardLoading?: any;
 }
 
 /**

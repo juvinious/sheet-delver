@@ -9,6 +9,7 @@ import { shadowdarkTheme } from '../ui/themes/shadowdark';
 import { ShadowdarkCache } from './caching';
 import { ShadowdarkNormalizer, resolveDocumentName } from './normalization';
 import { dataManager } from '../data/DataManager';
+import { persistentCache } from '@core/cache/PersistentCache';
 
 /**
  * ShadowdarkAdapter is the primary entry point for the Shadowdark module.
@@ -120,6 +121,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
         const actor = {
             ...actorData,
+            _theme: this.theme, // Inject theme for normalization
             items: (actorData.items || []).map((item: any) => normalizeItemData(item))
         };
 
@@ -134,13 +136,15 @@ export class ShadowdarkAdapter implements SystemAdapter {
      * Fetches and caches system-wide data (Classes, Spells, etc.)
      */
     async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
-        return this._cache.loadSystemData();
+        return this._cache.loadSystemData(persistentCache);
     }
 
     /**
      * Delegated normalization logic.
      */
     normalizeActorData(actor: any, _client?: any): ActorSheetData {
+        // Ensure theme is available during normalization
+        if (actor && !actor._theme) actor._theme = this.theme;
         return ShadowdarkNormalizer.normalizeActorData(actor, this._cache.systemData);
     }
 
