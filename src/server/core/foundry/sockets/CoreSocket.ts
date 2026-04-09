@@ -234,16 +234,15 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         
         if (count > 0) {
             this.lastUserActivityTimestamp = Date.now();
-            // Reset backoff if someone just connected
-            this.retryCount = 0;
             
             // If we're transitioning from 0 to >0 users, wake up immediately
             if (previousCount === 0) {
                 logger.debug('CoreSocket | User engagement detected. Waking up heartbeat.');
-                this.startHeartbeat(); // Restarts with faster interval
+                this.retryCount = 0; // Reset backoff
+                this.startHeartbeat(true); // Immediate trigger
                 
                 // If we were offline/setup, try connecting right now
-                if (this.worldState !== 'active') {
+                if (this.worldState !== 'active' && !this.isConnecting) {
                     this.connect();
                 }
             }
@@ -272,9 +271,18 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
                 this.worldState = 'setup';
                 
-                // Exponential Backoff logic
-                const backoffMs = Math.min(60000, 5000 * Math.pow(2, Math.min(this.retryCount, 4)));
-                logger.info(`CoreSocket | Detected Setup/Gray State (Title="${pageTitle}"). World is closed. Retrying in ${backoffMs/1000}s... (Retry Count: ${this.retryCount})`);
+                // Fast-Retry logic: Steady 1s detection for the first 30 seconds, then decay
+                let backoffMs = 5000 * Math.pow(2, Math.min(this.retryCount - 30, 4));
+                if (this.retryCount < 30) {
+                    backoffMs = 1000;
+                    if (this.retryCount % 5 === 0 || this.retryCount < 5) {
+                        logger.info(`CoreSocket | World in Setup/Gray State. Fast-Retrying in 1s... (${this.retryCount + 1}/30)`);
+                    }
+                } else {
+                    logger.info(`CoreSocket | World in Setup/Gray State. Backing off for ${backoffMs/1000}s... (Retry: ${this.retryCount})`);
+                }
+                
+                backoffMs = Math.min(60000, backoffMs);
                 
                 this.retryCount++;
                 setTimeout(() => this.connect(), backoffMs);
@@ -306,9 +314,16 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             } else {
                 this.worldState = 'offline';
 
-                // Exponential Backoff logic
-                const backoffMs = Math.min(60000, 5000 * Math.pow(2, Math.min(this.retryCount, 4)));
-                logger.warn(`CoreSocket | Discovery failed. Retrying in ${backoffMs/1000}s... (Retry Count: ${this.retryCount})`);
+                // Fast-Retry logic: If we just disconnected, try 3 times 1s apart
+                let backoffMs = 5000 * Math.pow(2, Math.min(this.retryCount, 4));
+                if (this.retryCount < 3) {
+                    backoffMs = 1000;
+                    logger.warn(`CoreSocket | Discovery failed. Fast-Retrying in 1s... (${this.retryCount + 1}/3)`);
+                } else {
+                    logger.warn(`CoreSocket | Discovery failed. Backing off for ${backoffMs/1000}s... (Retry Count: ${this.retryCount})`);
+                }
+                
+                backoffMs = Math.min(60000, backoffMs);
                 
                 this.retryCount++;
                 setTimeout(() => this.connect(), backoffMs);
@@ -370,6 +385,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 this.socket.on('connect', async () => {
                     logger.info(`CoreSocket | Main Socket Transport Connected. socket.id: ${this.socket?.id}`);
                     this.isSocketConnected = true;
+                    this.retryCount = 0; // Reset backoff on successful transport connection
                     this.setupSharedContentListeners(this.socket!);
 
                     // 5. Verify World Status
@@ -443,6 +459,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     logger.info(`CoreSocket | Socket Disconnected: ${reason}`);
                     this.isSocketConnected = false;
                     this.stopHeartbeat();
+                    this.retryCount = 0; // CRITICAL: Reset backoff to ensure immediate re-probe on world launch/transition
+                    
                     // Don't overwrite setup state if we manually triggered it via heartbeat
                     if (this.worldState !== 'setup') {
                         this.worldState = 'offline';
@@ -451,6 +469,33 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     this.sceneDataCache = null; // Clear scene cache
                     this.userMap.clear();
                     this.emit('disconnect', reason);
+
+                    // Immediate verification handshake if disconnect was unexpected
+                    if (reason !== 'io client disconnect' && this.activeBrowserCount > 0) {
+                        this.connect();
+                    }
+                });
+
+                this.socket.on('shutdown', () => {
+                    logger.warn('CoreSocket | Native Shutdown signal received from Foundry. World is closing.');
+                    this.worldState = 'setup';
+                    this.disconnect();
+                    // Don't immediately reconnect if shutdown was graceful, wait for heartbeat to see when setup is live
+                    this.startHeartbeat(true); 
+                });
+
+                this.socket.on('reload', () => {
+                    logger.info('CoreSocket | Native Reload signal received from Foundry. State transition detected.');
+                    this.retryCount = 0;
+                    this.connect();
+                });
+
+                this.socket.on('progress', (data: any) => {
+                    if (data?.action === 'launchWorld' && data?.step === 'complete') {
+                        logger.warn('CoreSocket | Native Progress signal: World Launch Complete. Reconnecting immediately...');
+                        this.retryCount = 0;
+                        this.connect();
+                    }
                 });
 
                 this.socket.on('connect_error', (err) => {
@@ -552,42 +597,53 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
 
     private heartbeatInterval: NodeJS.Timeout | null = null;
 
-    private startHeartbeat() {
-        if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+    private startHeartbeat(immediate: boolean = false) {
+        if (this.heartbeatInterval) clearTimeout(this.heartbeatInterval as any);
 
         const runHeartbeat = async () => {
-            if (!this.isConnected || this.isConnecting || this.worldState === 'startup' || this.heartbeatPaused) return;
+            // Heartbeat can run while disconnected IF we are in setup or offline (acting as a Probe)
+            const canProbe = this.worldState === 'setup' || this.worldState === 'offline';
+            if ((!this.isConnected && !canProbe) || this.isConnecting || this.worldState === 'startup' || this.heartbeatPaused) return;
             
             try {
                 const { isSetupMatch, csrfToken, pageTitle } = await this.performHandshake(this.getBaseUrl());
                 const isGenericOrErrorTitle = !pageTitle || pageTitle === 'Foundry Virtual Tabletop' || pageTitle.includes('Critical Failure');
 
-                if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
-                    logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
-                    this.worldState = 'setup';
-                    this.disconnect();
+                // If we were in setup/offline but now see a real world title, trigger connect immediately
+                if (canProbe && pageTitle && !isGenericOrErrorTitle) {
+                    logger.info(`CoreSocket | Heartbeat detected world lifecycle change (Title="${pageTitle}"). waking up...`);
+                    this.retryCount = 0;
                     this.connect();
                     return;
+                }
+
+                if (isSetupMatch || (!csrfToken && isGenericOrErrorTitle)) {
+                    // Only log transition if we weren't already aware we were in Setup
+                    if (this.worldState !== 'setup') {
+                        logger.warn(`CoreSocket | Heartbeat detected transition to Setup/Gray State (Title="${pageTitle}"). Restarting connection flow...`);
+                        this.worldState = 'setup';
+                        this.disconnect();
+                        this.connect();
+                        return;
+                    }
                 }
             } catch (e) {
                 // Ignore transient network errors
             }
 
             // Schedule next heartbeat with adaptive timing
-            if (this.heartbeatInterval) {
-                clearTimeout(this.heartbeatInterval as any);
-                
-                let nextInterval = 30000; // Default 30s
+            if (this.heartbeatInterval !== null) {
+                let nextInterval = 5000; // High frequency default: 5s
                 
                 if (this.activeBrowserCount === 0) {
                     const idleTime = Date.now() - this.lastUserActivityTimestamp;
                     
                     if (idleTime > 1800000) { // > 30m
-                        nextInterval = 300000; // 5m
-                    } else if (idleTime > 600000) { // > 10m
                         nextInterval = 120000; // 2m
-                    } else {
+                    } else if (idleTime > 600000) { // > 10m
                         nextInterval = 60000; // 1m
+                    } else {
+                        nextInterval = 30000; // 30s
                     }
                 }
                 
@@ -596,12 +652,12 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
         };
 
         // Start the recursive timeout chain
-        this.heartbeatInterval = setTimeout(runHeartbeat, 30000) as any;
+        this.heartbeatInterval = setTimeout(runHeartbeat, immediate ? 0 : 5000) as any;
     }
 
     private stopHeartbeat() {
         if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
+            clearTimeout(this.heartbeatInterval);
             this.heartbeatInterval = null;
         }
     }

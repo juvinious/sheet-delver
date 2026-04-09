@@ -1,18 +1,16 @@
 import { io } from 'socket.io-client';
-import { CoreSocket } from './CoreSocket';
 import { SocketBase } from './SocketBase';
 import { logger } from '@shared/utils/logger';
+import { systemService } from '../../system/SystemService';
 import { FoundryConfig } from '../types';
 
 export class ClientSocket extends SocketBase {
     public userId: string | null = null;
     public isExplicitSession: boolean = false;
     private isRestored: boolean = false;
-    private coreSocket: CoreSocket;
 
-    constructor(config: FoundryConfig, coreSocket: CoreSocket) {
+    constructor(config: FoundryConfig) {
         super(config);
-        this.coreSocket = coreSocket;
     }
 
     async connect(): Promise<void> {
@@ -39,7 +37,7 @@ export class ClientSocket extends SocketBase {
             if (!this.userId) {
                 logger.info('ClientSocket | Identifying user ID...');
                 // Prefer user map from CoreSocket if available
-                const coreData = this.coreSocket.getGameData();
+                const coreData = systemService.getSystemClient().getGameData();
                 const users = coreData?.users || (await this.probeWorldState(baseUrl))?.users;
 
                 const user = users?.find((u: any) => u.name === this.config.username);
@@ -146,14 +144,14 @@ export class ClientSocket extends SocketBase {
     public async validateSession(expectedWorldId: string): Promise<boolean> {
         if (!this.isConnected || !this.userId) return false;
         // Check core for world ID match
-        const currentWorldId = this.coreSocket.getGameData()?.world?.id;
+        const currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
         return currentWorldId === expectedWorldId;
     }
 
     // --- Data Operations (Proxied to CoreSocket with userId filtering) ---
 
     public async getJournals(): Promise<any[]> {
-        return this.coreSocket.getJournals(this.userId || undefined);
+        return systemService.getSystemClient().getJournals(this.userId || undefined);
     }
 
     public async getChatLog(limit = 100): Promise<any[]> {
@@ -170,7 +168,7 @@ export class ClientSocket extends SocketBase {
                 const sorted = [...raw].sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
 
                 // 2. Filter based on visibility (replicate Foundry's ChatMessage.visible)
-                const user = this.coreSocket.getUser(this.userId || '');
+                const user = systemService.getSystemClient().getUser(this.userId || '');
                 const isGM = (user?.role || 0) >= 3;
 
                 const visible = sorted.filter((msg: any) => {
@@ -203,7 +201,7 @@ export class ClientSocket extends SocketBase {
                     const shouldMask = isBlind && !isGM;
 
                     // Resolve Name: Prioritize User Name from author ID map
-                    const author = this.coreSocket.getUser(msg.author);
+                    const author = systemService.getSystemClient().getUser(msg.author);
                     const userName = author?.name || msg.alias || 'Unknown';
 
                     return {
@@ -222,17 +220,17 @@ export class ClientSocket extends SocketBase {
             }
         }
 
-        return this.coreSocket.getChatLog(limit, this.userId || undefined);
+        return systemService.getSystemClient().getChatLog(limit, this.userId || undefined);
     }
 
 
     public async sendMessage(content: string | any, options?: { rollMode?: string, speaker?: any }): Promise<any> {
         if (!this.userId) throw new Error("User ID not set on ClientSocket");
-        return this.coreSocket.sendMessage(content, this.userId, options);
+        return systemService.getSystemClient().sendMessage(content, this.userId, options);
     }
 
     public async roll(formula: string, flavor?: string, options?: { userId?: string, rollMode?: string, speaker?: any, displayChat?: boolean, flags?: any }): Promise<any> {
-        return this.coreSocket.roll(formula, flavor, {
+        return systemService.getSystemClient().roll(formula, flavor, {
             userId: this.userId || options?.userId,
             rollMode: options?.rollMode,
             speaker: options?.speaker,
@@ -242,27 +240,27 @@ export class ClientSocket extends SocketBase {
     }
 
     public async getActors(): Promise<any[]> {
-        return this.coreSocket.getActors(this.userId || undefined);
+        return systemService.getSystemClient().getActors(this.userId || undefined);
     }
 
     public async getActor(id: string): Promise<any> {
-        return this.coreSocket.getActor(id);
+        return systemService.getSystemClient().getActor(id);
     }
 
     public async getSystem(): Promise<any> {
-        return this.coreSocket.getSystem();
+        return systemService.getSystemClient().getSystem();
     }
 
     public async getUsers(): Promise<any[]> {
-        return this.coreSocket.getUsers();
+        return systemService.getSystemClient().getUsers();
     }
 
     public async getCombats(): Promise<any[]> {
-        return this.coreSocket.getCombats();
+        return systemService.getSystemClient().getCombats();
     }
 
     public async getFolders(type?: string): Promise<any[]> {
-        return this.coreSocket.getFolders(type);
+        return systemService.getSystemClient().getFolders(type);
     }
 
     public async updateActor(id: string, data: any): Promise<any> {
@@ -300,15 +298,15 @@ export class ClientSocket extends SocketBase {
         // Return first document if single creation, otherwise full result array
         return Array.isArray(data) ? response?.result : response?.result?.[0];
 
-        //return this.coreSocket.createActor(data);
+        //return systemService.getSystemClient().createActor(data);
     }
 
     public async deleteActor(id: string): Promise<any> {
-        return this.coreSocket.deleteActor(id);
+        return systemService.getSystemClient().deleteActor(id);
     }
 
     public async createActorItem(actorId: string, itemData: any): Promise<any> {
-        return this.coreSocket.createActorItem(actorId, itemData);
+        return systemService.getSystemClient().createActorItem(actorId, itemData);
     }
 
     public async updateActorItem(actorId: string, itemData: any): Promise<any> {
@@ -322,15 +320,15 @@ export class ClientSocket extends SocketBase {
     }
 
     public async fetchByUuid(uuid: string): Promise<any> {
-        return this.coreSocket.fetchByUuid(uuid);
+        return systemService.getSystemClient().fetchByUuid(uuid);
     }
 
     public async useItem(actorId: string, itemId: string): Promise<any> {
-        return this.coreSocket.useItem(actorId, itemId);
+        return systemService.getSystemClient().useItem(actorId, itemId);
     }
 
     public async getAllCompendiumIndices(): Promise<any[]> {
-        return this.coreSocket.getAllCompendiumIndices();
+        return systemService.getSystemClient().getAllCompendiumIndices();
     }
 
     public async emitSocketEvent<T>(event: string, payload: any, timeoutMs: number = 5000): Promise<T> {
@@ -367,7 +365,7 @@ export class ClientSocket extends SocketBase {
             }
         }
 
-        return this.coreSocket.dispatchDocument(type, action, operation, parent);
+        return systemService.getSystemClient().dispatchDocument(type, action, operation, parent);
     }
 
     public async dispatchDocumentSocket(type: string, action: string, data?: any, parent?: any): Promise<any> {
@@ -375,14 +373,14 @@ export class ClientSocket extends SocketBase {
     }
 
     public async getActorRaw(id: string): Promise<any> {
-        return this.coreSocket.getActorRaw(id);
+        return systemService.getSystemClient().getActorRaw(id);
     }
 
     public getSystemAdapter() {
-        return this.coreSocket.getSystemAdapter();
+        return systemService.getSystemClient().getSystemAdapter();
     }
 
     public async getSystemConfig(): Promise<any> {
-        return this.coreSocket.getSystemConfig();
+        return systemService.getSystemClient().getSystemConfig();
     }
 }

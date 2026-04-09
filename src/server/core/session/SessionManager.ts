@@ -6,10 +6,8 @@ import { logger } from '@shared/utils/logger';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { getAdapter, getRegisteredModules } from '@modules/registry/server';
-import { SystemAdapter, SystemPlugin } from '@modules/registry/types';
 import { persistentCache } from '../cache/PersistentCache';
-import { discoveryService } from '../foundry/DiscoveryService';
+import { systemService } from '../system/SystemService';
 
 interface Session {
     id: string;
@@ -23,7 +21,6 @@ interface Session {
 
 export class SessionManager {
     private config: FoundryConfig;
-    private systemClient: CoreSocket; // Singleton Service Socket
     private sessions: Map<string, Session> = new Map();
     private readonly SESSION_TIMEOUT_MS = 1000 * 60 * 60 * 24; // 24 Hours
     private readonly CACHE_NS = 'core';
@@ -31,21 +28,22 @@ export class SessionManager {
     private LEGACY_SESSIONS_FILE = '';
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
-    private cacheInstance: any = null;
-    private systemInitialized: boolean = false; // Holistic initialization flag
-    private bootstrapPromise: Promise<void> | null = null; // Idempotency guard
 
     constructor(config: FoundryConfig) {
         this.config = config;
 
-        // Initialize Core/System Socket
-        this.systemClient = new CoreSocket(config);
+        // Listen for world level changes to invalidate sessions
+        systemService.on('world:connected', (data) => {
+            if (data.state === 'setup') {
+                this.clearAllSessions();
+            }
+        });
     }
 
     public async initialize() {
         this.LEGACY_SESSIONS_FILE = path.join(process.cwd(), '.foundry-session.json');
 
-        logger.info('SessionManager | Initializing Core System Socket...');
+        logger.info('SessionManager | Initializing Session storage...');
 
         // 1. Check for legacy migration
         if (fs.existsSync(this.LEGACY_SESSIONS_FILE)) {
@@ -54,95 +52,15 @@ export class SessionManager {
                 const raw = fs.readFileSync(this.LEGACY_SESSIONS_FILE, 'utf-8');
                 const legacyData = JSON.parse(raw);
                 await persistentCache.set(this.CACHE_NS, this.CACHE_KEY, legacyData);
-                // We keep the file for now, will delete in cleanup step
                 logger.info('SessionManager | Legacy session migration complete.');
             } catch (e) {
                 logger.error('SessionManager | Legacy migration failed:', e);
             }
         }
-
-        try {
-            // Wait for connection AND world discovery
-            await new Promise<void>((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error("CoreSocket connection timeout")), 15000);
-                this.systemClient.once('connect', () => {
-                    clearTimeout(timeout);
-                    resolve();
-                });
-                this.systemClient.connect().catch(reject);
-            });
-            logger.info('SessionManager | Core System Socket Connected.');
-
-        } catch (e: any) {
-            logger.error(`SessionManager | Core Socket failed to connect: ${e.message}`);
-        }
-    }
-
-    /**
-     * Holistic bootstrap sequence to ensure all systems are ready before releasing clients.
-     */
-    public async bootstrap(client: CoreSocket): Promise<void> {
-        if (this.systemInitialized) return;
-        if (this.bootstrapPromise) return this.bootstrapPromise;
-
-        return this.bootstrapPromise = (async () => {
-            logger.info('SessionManager | Bootstrapping systems...');
-            this.systemInitialized = false;
-
-            try {
-                // 1. Core Compendium Cache Warmup (Global indices)
-                const { CompendiumCache } = await import('../foundry/compendium-cache');
-                const cache = CompendiumCache.getInstance();
-                await cache.initialize(client);
-                this.setCache(cache);
-
-                // 2. Module-Specific Adapter Initialization (Targeted Discovery/Cache)
-                const sysInfo = await client.getSystem();
-                if (sysInfo?.id) {
-                    const adapter = await getAdapter(sysInfo.id.toLowerCase());
-                    if (adapter?.initialize) {
-                        logger.info(`SessionManager | Bootstrapping adapter for ${sysInfo.id}...`);
-                        await adapter.initialize(client);
-                    }
-
-                    // 3. Declarative Discovery Sync (Hashing/Sharding)
-                    // Priority 1: From info.json manifest
-                    const registered = getRegisteredModules();
-                    const moduleInfo = registered.find(m => m.id.toLowerCase() === sysInfo.id.toLowerCase());
-                    
-                    let discoveryConfig = (moduleInfo as any)?.discovery;
-                    
-                    // Priority 2: Fallback to adapter hook
-                    if (!discoveryConfig && adapter?.getDiscoveryConfig) {
-                        discoveryConfig = adapter.getDiscoveryConfig();
-                    }
-
-                    if (discoveryConfig) {
-                        logger.info(`SessionManager | Running discovery sync for ${sysInfo.id}...`);
-                        await discoveryService.sync(client, sysInfo.id.toLowerCase(), discoveryConfig);
-                    }
-                }
-
-                this.systemInitialized = true;
-                logger.info('SessionManager | System bootstrap complete.');
-            } catch (err: any) {
-                logger.error(`SessionManager | Bootstrap failed: ${err.message}`);
-                this.bootstrapPromise = null; // Allow retry if failed
-                throw err;
-            }
-        })();
-    }
-
-    public getSystemClient(): CoreSocket {
-        return this.systemClient;
     }
 
     public isCacheReady(): boolean {
-        return this.systemInitialized && (this.cacheInstance?.hasLoaded() || false);
-    }
-
-    public setCache(cache: any) {
-        this.cacheInstance = cache;
+        return systemService.isReady();
     }
 
     public async createSession(username: string, password?: string): Promise<{ sessionId: string, userId: string }> {
@@ -160,7 +78,7 @@ export class SessionManager {
             }
         }
 
-        const client = new ClientSocket({ ...this.config, username, password }, this.systemClient);
+        const client = new ClientSocket({ ...this.config, username, password });
 
         try {
             // ClientSocket connects individually to act as an Auth Anchor
@@ -175,7 +93,7 @@ export class SessionManager {
                 userId: userId,
                 username,
                 lastActive: Date.now(),
-                worldId: this.systemClient.getGameData()?.world?.id, // Get from Core
+                worldId: systemService.getSystemClient().getGameData()?.world?.id, // Get from System Provider
                 cookie: (client as any).sessionCookie
             };
             this.sessions.set(sessionId, session);
@@ -196,7 +114,8 @@ export class SessionManager {
         const session = this.sessions.get(sessionId);
 
         // Defer validation if world is not yet active/discovered
-        if (this.systemClient.worldState === 'setup' || this.systemClient.worldState === 'offline') {
+        const worldState = systemService.getSystemClient().worldState;
+        if (worldState === 'setup' || worldState === 'offline') {
             if (session) {
                 // Return existing session from memory, but avoid world ID checks
                 session.lastActive = Date.now();
@@ -211,11 +130,11 @@ export class SessionManager {
         // Check for active session in memory
         if (session) {
             // Validate world ID for active sessions if world info is available
-            const currentWorldId = this.systemClient.getGameData()?.world?.id;
+            const currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
 
-            if (!currentWorldId || this.systemClient.worldState !== 'active') {
+            if (!currentWorldId || systemService.getSystemClient().worldState !== 'active') {
                 // No world data available or world still starting up - defer validation
-                logger.debug(`SessionManager | World not fully active (${this.systemClient.worldState}). Deferring validation for session ${sessionId}.`);
+                logger.debug(`SessionManager | World not fully active (${systemService.getSystemClient().worldState}). Deferring validation for session ${sessionId}.`);
                 session.lastActive = Date.now();
                 return session;
             }
@@ -283,14 +202,14 @@ export class SessionManager {
 
             const foundryUsername = sessionData.username || username;
 
-            // Check World State via Core Socket (Stabilized)
-            let currentWorldId = this.systemClient.getGameData()?.world?.id;
+            // Check World State via System Provider
+            let currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
 
-            if (!currentWorldId && (this.systemClient.worldState === 'startup' || this.systemClient.worldState === 'active')) {
+            if (!currentWorldId && (systemService.getSystemClient().worldState === 'startup' || systemService.getSystemClient().worldState === 'active')) {
                 logger.debug(`SessionManager | World not yet stable. Waiting for ID to restore session ${username}...`);
                 for (let i = 0; i < 5; i++) {
                     await new Promise(r => setTimeout(r, 1000));
-                    currentWorldId = this.systemClient.getGameData()?.world?.id;
+                    currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
                     if (currentWorldId) break;
                 }
             }
@@ -303,14 +222,14 @@ export class SessionManager {
             }
 
             if (!currentWorldId) {
-                logger.debug(`SessionManager | Deferring restoration for ${username} - World ID still unknown. (State: ${this.systemClient.worldState})`);
+                logger.debug(`SessionManager | Deferring restoration for ${username} - World ID still unknown. (State: ${systemService.getSystemClient().worldState})`);
                 return null; 
             }
 
             const client = new ClientSocket({
                 ...this.config,
                 username: foundryUsername,
-            }, this.systemClient);
+            });
 
             await client.restoreSession(sessionData.cookie, sessionData.userId);
 
@@ -339,7 +258,7 @@ export class SessionManager {
                 username: foundryUsername || key,
                 userId: client.userId,
                 cookie: (client as any).sessionCookie,
-                worldId: this.systemClient.getGameData()?.world?.id,
+                worldId: systemService.getSystemClient().getGameData()?.world?.id,
                 lastSaved: Date.now()
             };
 

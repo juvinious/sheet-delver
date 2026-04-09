@@ -9,8 +9,10 @@
     },
     "discovery": {
         "packs": [
-            { "id": "morkborg.items", "type": "Item", "hydrate": false },
-            { "id": "morkborg.spells", "type": "Item", "hydrate": true }
+            { "id": "morkborg.mork-borg-items", "type": "Item", "hydrate": true },
+            { "id": "morkborg.mork-borg-actors", "type": "Actor", "hydrate": true },
+            { "id": "morkborg.mork-borg-tables", "type": "RollTable", "hydrate": false },
+            { "id": "morkborg.mork-borg-macros", "type": "Macro", "hydrate": false }
         ]
     }
 }
