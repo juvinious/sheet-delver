@@ -42,11 +42,32 @@ Optional. Re-exports API initialization or specialized server-only logic (e.g., 
         "ui": "module/ui",
         "logic": "module/logic",
         "server": "module/server"
+    },
+    "discovery": {
+        "packs": [
+            { "id": "system.items", "type": "Item", "hydrate": true },
+            { "id": "system.tables", "type": "RollTable", "hydrate": false }
+        ]
     }
 }
 ```
 
-## 4. Key Rules
+## 4. Discovery & Data Persistence
+
+The Core Discovery Service automatically synchronizes, hashes, and shards compendium data based on the `discovery` block in `info.json`.
+
+### `PackDiscoveryConfig`
+- **`id`**: The Foundry compendium ID (e.g., `shadowdark.classes`).
+- **`type`**: The document type (`Item`, `Actor`, `JournalEntry`, `Scene`, `Macro`, or `RollTable`).
+- **`hydrate`**: 
+    - `true`: Performs a deep fetch of every document in the pack using the "Index-then-Hydrate" strategy. Use this for character-building data (Classes, Backgrounds) to ensure full descriptions are available.
+    - `false`: Performs a lightweight indexed fetch. Ideal for large item or spell libraries where you only need names and basic metadata.
+- **`fields`**: (Optional) Specific fields to index when `hydrate` is `false`.
+
+### Sharded Caching
+Data is stored at `.data/cache/[systemId]/pack-[id].json`. A `manifest-[systemId].json` tracks MD5 signatures for each shard, ensuring that data is only re-synchronized when it actually changes on the Foundry server.
+
+## 5. Key Rules
 1. **No Root Logic**: Do not place logic, adapters, or components in the module root.
 2. **Import Hygiene**: The `module/` directory acts as a firewall. Internal `src/` files should use relative paths to other `src/` subdirectories.
 3. **Automated Discovery**: New systems are **automatically discovered** on server boot if they follow this manifest structure.

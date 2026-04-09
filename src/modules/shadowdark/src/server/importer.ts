@@ -65,10 +65,9 @@ export class ShadowdarkImporter {
             const talents: any[] = [];
             const classAbilities: any[] = [];
 
-            // 1. Shallow Discovery (Fast Initial Handshake)
-            log(`[Importer] Ensuring system data is discovered (Shallow)...`);
-            const { ShadowdarkDiscovery } = await import('../logic/discovery');
-            const systemData = await ShadowdarkDiscovery.getSystemData(client);
+            // 1. Sharded Discovery (Core Managed Cache)
+            log(`[Importer] Ensuring system data is discovered (Sharded)...`);
+            const systemData = await shadowdarkAdapter.getSystemData(client);
             const { dataManager } = await import('../data/DataManager');
 
             // --- HELPER FUNCTIONS ---

@@ -149,6 +149,17 @@ export interface AppConfig {
 
 export type RollMode = 'publicroll' | 'gmroll' | 'blindroll' | 'selfroll';
 
+export interface PackDiscoveryConfig {
+    id: string;
+    type: 'Item' | 'Actor' | 'JournalEntry' | 'Scene' | 'Macro';
+    hydrate: boolean;
+    fields?: string[];
+}
+
+export interface DiscoveryConfig {
+    packs: PackDiscoveryConfig[];
+}
+
 /**
  * Interface that all RPG system adapters must implement.
  */
@@ -159,6 +170,12 @@ export interface SystemAdapter {
     match(actor: any): boolean;
     renderNavigation?: boolean;
     getSystemData(client: any, options?: { minimal?: boolean }): Promise<any>;
+    /**
+     * Optional: Provide data requirements for the Core Discovery Service.
+     * The service will use this to sync and hydrate compendium packs.
+     */
+    getDiscoveryConfig?(): DiscoveryConfig;
+
     /**
      * Optional: Perform asynchronous initialization for the adapter.
      * Use this for tasks like cache warming, pre-fetching data, or setup.

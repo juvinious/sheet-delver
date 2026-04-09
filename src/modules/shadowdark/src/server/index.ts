@@ -26,7 +26,6 @@ import {
     handleRandomizeTalents,
     handleRandomizeLanguages
 } from './api/randomize-character';
-import { ShadowdarkDiscovery } from '../logic/discovery';
 import { shadowdarkAdapter } from '../logic/system';
 
 // Initialize system adapter

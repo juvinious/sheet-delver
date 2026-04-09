@@ -13,7 +13,8 @@ export interface SystemPlugin {
             ui: string;
             logic: string;
             server?: string;
-        }
+        },
+        discovery?: import('@shared/interfaces').DiscoveryConfig
     };
     directory: string;
     getLogic: () => Promise<any>;

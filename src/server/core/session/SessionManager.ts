@@ -6,9 +6,10 @@ import { logger } from '@shared/utils/logger';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { getAdapter } from '@modules/registry/server';
-import { SystemAdapter } from '@modules/registry/types';
+import { getAdapter, getRegisteredModules } from '@modules/registry/server';
+import { SystemAdapter, SystemPlugin } from '@modules/registry/types';
 import { persistentCache } from '../cache/PersistentCache';
+import { discoveryService } from '../foundry/DiscoveryService';
 
 interface Session {
     id: string;
@@ -102,6 +103,23 @@ export class SessionManager {
                     if (adapter?.initialize) {
                         logger.info(`SessionManager | Bootstrapping adapter for ${sysInfo.id}...`);
                         await adapter.initialize(client);
+                    }
+
+                    // 3. Declarative Discovery Sync (Hashing/Sharding)
+                    // Priority 1: From info.json manifest
+                    const registered = getRegisteredModules();
+                    const moduleInfo = registered.find(m => m.id.toLowerCase() === sysInfo.id.toLowerCase());
+                    
+                    let discoveryConfig = (moduleInfo as any)?.discovery;
+                    
+                    // Priority 2: Fallback to adapter hook
+                    if (!discoveryConfig && adapter?.getDiscoveryConfig) {
+                        discoveryConfig = adapter.getDiscoveryConfig();
+                    }
+
+                    if (discoveryConfig) {
+                        logger.info(`SessionManager | Running discovery sync for ${sysInfo.id}...`);
+                        await discoveryService.sync(client, sysInfo.id.toLowerCase(), discoveryConfig);
                     }
                 }
 

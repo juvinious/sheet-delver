@@ -8,7 +8,6 @@ import { shadowdarkTheme } from '../ui/themes/shadowdark';
 // Unified Service Layer Static Imports
 import { ShadowdarkCache } from './caching';
 import { ShadowdarkNormalizer, resolveDocumentName } from './normalization';
-import { ShadowdarkDiscovery } from './discovery';
 import { dataManager } from '../data/DataManager';
 
 /**
@@ -135,7 +134,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
      * Fetches and caches system-wide data (Classes, Spells, etc.)
      */
     async getSystemData(client: any, options?: { minimal?: boolean }): Promise<any> {
-        return ShadowdarkDiscovery.getSystemData(client, options);
+        return this._cache.loadSystemData();
     }
 
     /**
