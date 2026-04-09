@@ -85,11 +85,31 @@ export class ShadowdarkDiscovery {
                 if (!this.FORCE_DISCOVERY && currentSig && cachedSig === currentSig) {
                     const cachedData = await persistentCache.get<any>(this.CACHE_NS, dataKey);
                     if (cachedData && Array.isArray(cachedData.items) && (cachedData.items.length > 0 || cachedData.ancestries?.length > 0)) {
-                        logger.debug(`[ShadowdarkDiscovery] Loading system data (v${systemVersion}) from disk cache`);
-                        // Restore effects which aren't cached
-                        cachedData.PREDEFINED_EFFECTS = { ...SYSTEM_PREDEFINED_EFFECTS };
-                        cache.setSystemData(cachedData);
-                        return cachedData;
+                        // Scrubbing: Ensure disk-data is tagged for tracing
+                        if (!cachedData._instanceId) {
+                            cachedData._instanceId = `disk-${Math.random().toString(36).substring(7)}`;
+                        }
+
+                        // Integrity Check: If classes are missing, the cache is a 'zombie'
+                        if (!Array.isArray(cachedData.classes) || cachedData.classes.length === 0) {
+                            logger.warn(`[ShadowdarkDiscovery] Stale disk cache [${cachedData._instanceId}] (no classes). Forcing fresh discovery.`);
+                        } else {
+                            // Restore effects which aren't cached
+                            cachedData.PREDEFINED_EFFECTS = { ...SYSTEM_PREDEFINED_EFFECTS };
+
+                            // Self-healing: Ensure titles map is populated even when loading from cache
+                            if (!cachedData.titles || Object.keys(cachedData.titles).length === 0) {
+                                cachedData.titles = {};
+                                cachedData.classes.forEach((clr: any) => {
+                                    if (clr.name && clr.system?.titles) {
+                                        cachedData.titles[clr.name] = clr.system.titles;
+                                    }
+                                });
+                            }
+                            logger.debug(`[ShadowdarkDiscovery] Loading system data [${cachedData._instanceId}] (v${systemVersion}) from disk cache`);
+                            cache.setSystemData(cachedData);
+                            return cachedData;
+                        }
                     }
                 } else {
                     logger.debug(`[ShadowdarkDiscovery] Cache signature mismatch or missing. Current: ${currentSig}, Cached: ${cachedSig}`);
@@ -102,13 +122,38 @@ export class ShadowdarkDiscovery {
                 // Fetch all packs sequentially to prevent socket saturation
                 for (const packInfo of this.DISCOVERY_PACKS) {
                     try {
-                        // Request type and system fields so we don't have a "Blind Discovery"
-                        const docs = await client.getPackEntries?.(packInfo.id, { 
-                            index: true, 
-                            fields: ["type", "system"] 
-                        }) || [];
+                        const isCorePack = packInfo.id.includes('classes') || 
+                                           packInfo.id.includes('ancestries') || 
+                                           packInfo.id.includes('deities');
+
+                        let docs: any[] = [];
+
+                        if (isCorePack) {
+                            // Manual Full Hydration: Bypass getPackEntries wrapper to get deep system data
+                            // Using the "Proven Winner" strategy (modifyDocument action: get)
+                            try {
+                                const response: any = await client.emitSocketEvent?.('modifyDocument', { 
+                                    type: 'Item',
+                                    action: 'get',
+                                    operation: {
+                                        pack: packInfo.id,
+                                        index: false 
+                                    }
+                                }, 5000);
+                                docs = response?.result || [];
+                            } catch (e) {
+                                logger.error(`[ShadowdarkDiscovery] Manual hydration failed for ${packInfo.id}:`, e);
+                            }
+                        } else {
+                            // Lightweight Indexing for larger packs (Spells/Items)
+                            docs = await client.getPackEntries?.(packInfo.id, { 
+                                index: true, 
+                                fields: ["type", "system.titles", "system.hitPoints", "system.rarity"] 
+                            }) || [];
+                        }
+
                         if (docs.length > 0) {
-                            logger.info(`[ShadowdarkDiscovery] Discovered ${docs.length} entries for pack '${packInfo.id}'`);
+                            logger.info(`[ShadowdarkDiscovery] Discovered ${docs.length} entries for pack '${packInfo.id}' (${isCorePack ? 'FULL' : 'INDEX'})`);
                             const mappedDocs = docs.map((d: any) => {
                                 const id = d._id || d.id;
                                 // MIRROR WORKING LOG FORMAT: Compendium.<scope>.<pack>.Item.<id>
@@ -183,6 +228,7 @@ export class ShadowdarkDiscovery {
 
     private static _initializeResults(sysInfo: any) {
         return {
+            _instanceId: Math.random().toString(36).substring(7),
             system: sysInfo,
             ancestries: [],
             classes: [],

@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
-import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModules } from '@modules/registry/server';
+import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModules, getServerModule } from '@modules/registry/server';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 
@@ -1465,10 +1465,9 @@ async function startServer() {
 
             // Hard Wall: Dynamically import the server module directly from its folder.
             // Since this is in server/index.ts (run via ts-node), it is never bundled for the browser.
-            let sysModule: any;
-            try {
-                sysModule = await import(`../modules/${systemId}/server`);
-            } catch (e) {
+            // Correctly resolve the server module via the registry manifest
+            const sysModule = await getServerModule(systemId);
+            if (!sysModule) {
                 logger.warn(`Module Routing | Module ${systemId} not found or missing server entry point.`);
                 return res.status(404).json({ error: `Module ${systemId} not found` });
             }
