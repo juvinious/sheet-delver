@@ -1,4 +1,3 @@
-import { CoreSocket } from '../foundry/sockets/CoreSocket';
 import { ClientSocket } from '../foundry/sockets/ClientSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '@shared/utils/logger';
@@ -122,7 +121,7 @@ export class SessionManager {
                 return session;
             }
             // If not in memory, try to restore from disk without strict world verification
-            return this.tryRestoreSession(sessionId, true).then(restored => 
+            return this.tryRestoreSession(sessionId).then(restored => 
                 restored ? this.sessions.get(sessionId) : undefined
             );
         }
@@ -151,7 +150,7 @@ export class SessionManager {
 
         // Try to restore from disk with minor retries (for transient startup/world discovery issues)
         for (let i = 0; i < 3; i++) {
-            const restored = await this.tryRestoreSession(sessionId, false);
+            const restored = await this.tryRestoreSession(sessionId);
             if (restored && restored.sessionId === sessionId) {
                 return this.sessions.get(sessionId);
             }
@@ -185,10 +184,7 @@ export class SessionManager {
         return this.sessions.has(sessionId);
     }
 
-    public async tryRestoreSession(username: string, isSystem: boolean = false): Promise<{ client: CoreSocket | ClientSocket, userId: string, sessionId: string } | null> {
-        // We only restore USER sessions here since System is handled in initialize()
-        if (isSystem) return null;
-
+    public async tryRestoreSession(username: string): Promise<{ client: ClientSocket, userId: string, sessionId: string } | null> {
         try {
             const cached = await this.loadSessions();
             if (!cached) return null;
@@ -240,7 +236,7 @@ export class SessionManager {
                 worldId: sessionData.worldId, cookie: sessionData.cookie
             });
 
-            return { client, userId: sessionData.userId, sessionId } as any;
+            return { client, userId: sessionData.userId, sessionId };
 
         } catch (e) {
             logger.error(`SessionManager | Error during session restoration: ${e}`);

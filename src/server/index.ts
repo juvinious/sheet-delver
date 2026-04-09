@@ -272,16 +272,24 @@ async function startServer() {
             return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
         }
 
-        const sessionId = authHeader.split(' ')[1];
+        const token = authHeader.split(' ')[1];
 
-        sessionManager.getOrRestoreSession(sessionId).then(session => {
+        // 1. Check for System Service Account (Point-of-Presence)
+        if (token === config.foundry.password) {
+            (req as any).foundryClient = systemService.getSystemClient();
+            (req as any).isSystem = true;
+            return next();
+        }
+
+        // 2. Fallback to Standard User Session
+        sessionManager.getOrRestoreSession(token).then(session => {
             if (!session || !session.client.userId) {
                 return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
             }
 
-            // Attach client to request
             (req as any).foundryClient = session.client;
             (req as any).userSession = session;
+            (req as any).isSystem = false;
             next();
         }).catch(err => {
             logger.error(`Authentication Error: ${err.message}`);
@@ -296,12 +304,21 @@ async function startServer() {
             return next();
         }
 
-        const sessionId = authHeader.split(' ')[1];
+        const token = authHeader.split(' ')[1];
 
-        sessionManager.getOrRestoreSession(sessionId).then(session => {
+        // 1. Check for System Service Account
+        if (token === config.foundry.password) {
+            (req as any).foundryClient = systemService.getSystemClient();
+            (req as any).isSystem = true;
+            return next();
+        }
+
+        // 2. Fallback to User Session
+        sessionManager.getOrRestoreSession(token).then(session => {
             if (session && session.client.userId) {
                 (req as any).foundryClient = session.client;
                 (req as any).userSession = session;
+                (req as any).isSystem = false;
             }
             next();
         }).catch(() => next());
@@ -364,6 +381,13 @@ async function startServer() {
         }
         next();
     };
+
+    const getSanitizedConfig = () => ({
+        app: { version: config.app.version },
+        foundry: {
+            url: config.foundry.url
+        }
+    });
 
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
