@@ -25,8 +25,9 @@ Must export a `UIModuleManifest` as the **default export**. This file must be **
 - **Path in info.json**: `manifest.ui`
 
 ### `module/logic.ts` (Shared/Server Logic)
-Must export the `SystemAdapter` implementation as a named export `Adapter`. This is used by the `registry` to resolve character sheet logic and calculations.
+Must export the `SystemAdapter` implementation as a named export `Adapter`. This is a strict requirement for the `registry` to resolve character sheet logic and calculations.
 - **Path in info.json**: `manifest.logic`
+- **Note**: If you point `manifest.logic` directly to a class file (e.g., `src/server/MyAdapter.ts`), that file must include `export { MyAdapter as Adapter };` at the bottom to maintain compatibility.
 
 ### `module/server.ts` (Server-Only Handlers)
 Optional. Re-exports API initialization or specialized server-only logic (e.g., importers). Explicitly gated by the core registry to prevent Node.js leaks into the browser.

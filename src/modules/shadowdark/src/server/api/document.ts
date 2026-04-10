@@ -10,7 +10,7 @@ export async function handleGetDocument(request: Request, { params }: any) {
             return Response.json({ error: 'Missing UUID' }, { status: 400 });
         }
 
-        const { shadowdarkAdapter } = await import('../../logic/system');
+        const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
         const client = (request as any).foundryClient;
         const document = await shadowdarkAdapter.resolveDocument(client, uuid);
 

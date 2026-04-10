@@ -26,7 +26,7 @@ import {
     handleRandomizeTalents,
     handleRandomizeLanguages
 } from './api/randomize-character';
-import { shadowdarkAdapter } from '../logic/system';
+import { shadowdarkAdapter } from '../server/ShadowdarkAdapter';
 
 // Initialize system adapter
 shadowdarkAdapter.initialize();

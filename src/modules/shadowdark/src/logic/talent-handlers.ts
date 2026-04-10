@@ -1,7 +1,7 @@
 import { SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
 import { logger } from '@shared/utils/logger';
 import { createEffect } from '../utils/Sanitizer';
-import { shadowdarkAdapter } from '../logic/system';
+import { shadowdarkAdapter } from '../server/ShadowdarkAdapter';
 
 export interface TalentHandler {
     id: string;

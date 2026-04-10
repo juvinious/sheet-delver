@@ -7,7 +7,7 @@ export function createFoundryClient(config: FoundryConfig): FoundryClient {
     // Default to User Client, but requires Core
     const core = new CoreSocket(config);
     // Note: CoreSocket needs connect() to be useful, but factory just returns instance
-    return new ClientSocket(config, core) as any;
+    return new ClientSocket(config) as any;
 }
 
 // Export individual clients and interface for flexibility

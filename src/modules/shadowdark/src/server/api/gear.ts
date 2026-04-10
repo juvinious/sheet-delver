@@ -6,7 +6,7 @@ export async function handleGetGear(request: Request): Promise<Response> {
     try {
         const client = (request as any).foundryClient;
         if (client) {
-            const { shadowdarkAdapter } = await import('../../logic/system');
+            const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
             await shadowdarkAdapter.getSystemData(client);
         }
 

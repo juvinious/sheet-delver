@@ -6,22 +6,7 @@ import { Dices, Pencil } from 'lucide-react';
 
 
 
-export interface MorkBorgRollConfig {
-    title: string;
-    rollLabel: string;
-    formula: string;          // resolved formula e.g. "1d20+4"
-    humanFormula: string;     // human-readable e.g. "1d20 + 4 (Strength)"
-    dr?: number;              // optional default DR
-    type: string;
-    key: string;
-    options?: any;
-    rollData?: any;
-    // Attack/defend specific
-    rollType?: 'attack' | 'defend';
-    damageDie?: string;       // e.g. "1d6" for weapon damage
-    encumbered?: boolean;
-    incomingAttackDefault?: string;
-}
+import { type MorkBorgRollConfig, type MorkBorgConfirmConfig } from '../types';
 
 const ROLL_MODES = [
     { value: 'publicroll', label: 'Public' },
@@ -72,6 +57,7 @@ export default function MorkBorgRollModal({
     const [baseDR, setBaseDR] = useState(config.dr ?? 12);
     const [targetArmor, setTargetArmor] = useState('0');
     const [incomingAttack, setIncomingAttack] = useState(config.incomingAttackDefault || '1d4');
+    const [rollAdvantageMode, setRollAdvantageMode] = useState<'normal' | 'adv' | 'dis'>('normal');
     const modifiedDR = baseDR + encumbranceMod;
 
     // Simple roll manual state
@@ -169,7 +155,7 @@ export default function MorkBorgRollModal({
     };
 
     const handleAutoAttackDefendRoll = () => {
-        onConfirmWithOptions({ baseDR, modifiedDR, targetArmor, incomingAttack });
+        onConfirmWithOptions({ baseDR, modifiedDR, targetArmor, incomingAttack, rollAdvantageMode });
     };
 
     const renderDRSection = () => (
@@ -256,6 +242,25 @@ export default function MorkBorgRollModal({
                     {/* ── AUTO MODE ── */}
                     {!manual && (
                         <>
+                            {/* Advantage / Disadvantage / Normal selection */}
+                            <div className="mb-5">
+                                <FormLabel>Roll Advantage</FormLabel>
+                                <div className="flex gap-2">
+                                    {(['normal', 'adv', 'dis'] as const).map((m) => (
+                                        <button
+                                            key={m}
+                                            onClick={() => setRollAdvantageMode(m)}
+                                            className="flex-1 py-1.5 text-[10px] uppercase font-bold border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none font-serif tracking-wider rounded-none cursor-pointer"
+                                            style={{
+                                                backgroundColor: rollAdvantageMode === m ? (m === 'normal' ? 'black' : m === 'adv' ? '#16a34a' : '#dc2626') : 'white',
+                                                color: rollAdvantageMode === m ? 'white' : 'black'
+                                            }}
+                                        >
+                                            {m === 'normal' ? 'Normal' : m === 'adv' ? 'Advantage' : 'Disadvantage'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                             {isAttackDefend ? (
                                 <>
                                     {renderDRSection()}
@@ -296,7 +301,7 @@ export default function MorkBorgRollModal({
                                     </div>
                                     {renderRollModeSelector()}
                                     <div className="flex gap-3">
-                                        <button onClick={onConfirm}
+                                        <button onClick={() => onConfirmWithOptions({ rollAdvantageMode })}
                                             className={`$"font-imfell" flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer`}>
                                             Roll
                                         </button>

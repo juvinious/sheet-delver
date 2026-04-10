@@ -2,8 +2,8 @@
     "id": "shadowdark",
     "title": "Shadowdark RPG",
     "manifest": {
-        "ui": "module/ui",
-        "logic": "module/logic",
+        "ui": "src/ui/index.tsx",
+        "logic": "src/server/ShadowdarkAdapter.ts",
         "server": "module/server"
     },
     "discovery": {

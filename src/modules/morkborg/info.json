@@ -4,7 +4,7 @@
     "aliases": ["mork-borg"],
     "manifest": {
         "ui": "module/ui",
-        "logic": "module/logic",
+        "logic": "src/server/MorkBorgAdapter.ts",
         "server": "module/server"
     },
     "discovery": {

@@ -1,4 +1,23 @@
 
+/**
+ * Get the standardized initiative formula for an actor
+ */
+export function getInitiativeFormula(actor: any): string {
+    let dexMod = 0;
+    const s = actor?.system || {};
+    const c = actor?.computed || {};
+
+    if (s.abilities?.dex?.mod !== undefined) dexMod = Number(s.abilities.dex.mod);
+    else if (c.abilities?.dex?.mod !== undefined) dexMod = Number(c.abilities.dex.mod);
+    else if (s.abilities?.dex?.value !== undefined) dexMod = Math.floor((Number(s.abilities.dex.value) - 10) / 2);
+
+    if (isNaN(dexMod)) dexMod = 0;
+    const hasAdvantage = Array.isArray(s.bonuses?.advantage) && s.bonuses.advantage.includes('initiative');
+    const baseDie = hasAdvantage ? '2d20kh1' : '1d20';
+    const sign = dexMod >= 0 ? '+' : '';
+
+    return dexMod !== 0 ? `${baseDie}${sign}${dexMod}` : baseDie;
+}
 
 /**
  * Standard Shadowdark language classification

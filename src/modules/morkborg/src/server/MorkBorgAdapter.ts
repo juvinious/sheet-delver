@@ -2,6 +2,23 @@ import { GenericSystemAdapter } from '@modules/generic/src/logic/adapter';
 import { ChatCards } from '../ui/components/chat/ChatCards';
 import { mbDataManager } from '../data/DataManager';
 import { logger } from '@shared/utils/logger';
+import { 
+    getRollData, 
+    calculateMaxSlots, 
+    calculateSlotsUsed, 
+    getInitiativeFormula, 
+    categorizeItems, 
+    normalizeItem 
+} from '../logic/rules';
+import { 
+    MorkBorgRollType, 
+    MorkBorgRollOptions 
+} from '../logic/types';
+import { morkborgTheme } from '../ui/themes/morkborg';
+
+/**
+ * Adapter for the Mork Borg game system.
+ */
 
 interface ClassItem {
     name: string;
@@ -41,14 +58,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 
     getInitiativeFormula(actor: any): string {
-        const agiVal = actor.system?.abilities?.agility?.value ?? 0;
-        let modifierString = '';
-        if (agiVal > 0) {
-            modifierString = `+${agiVal}`;
-        } else if (agiVal < 0) {
-            modifierString = `${agiVal}`;
-        }
-        return `1d6${modifierString}`;
+        return getInitiativeFormula(actor);
     }
 
 
@@ -60,7 +70,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         const system = actor.system || {};
         const abilities = system.abilities || {};
         const classData = this.getClass(actor);
-        const slotsUsed = this.calculateSlotsUsed(actor);
+        const slotsUsed = this.calculateSlotsUsed(actor.items || []);
         const maxSlots = this.calculateMaxSlots(actor);
 
         return {
@@ -146,30 +156,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
 
     getConfig() {
         return {
-            componentStyles: {
-                rollDialog: {
-                    overlay: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50",
-                    container: "bg-neutral-950 border-2 border-pink-900 shadow-[8px_8px_0_0_#831843] max-w-sm w-full p-6 relative -rotate-1 text-left inline-block transform transition-all z-[51]",
-                    header: "mb-4 font-['IM_Fell_Double_Pica']",
-                    title: "text-2xl text-yellow-400 uppercase tracking-wide mb-1 leading-tight",
-                    closeBtn: "absolute -top-3 -right-3 text-2xl select-none hover:rotate-12 transition-transform",
-                    section: "bg-black border border-pink-900/40 p-3 mb-4 font-mono rotate-[0.5deg]",
-                    label: "text-neutral-500 text-[10px] uppercase tracking-widest mb-1 block",
-                    input: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500",
-                    select: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500 appearance-none",
-                    buttonGroup: "flex border border-neutral-800",
-                    buttonActive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-pink-900 text-white",
-                    buttonInactive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-black text-neutral-500 hover:text-neutral-300",
-                    confirmBtn: "font-['IM_Fell_Double_Pica'] flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer",
-                    cancelBtn: "font-['IM_Fell_Double_Pica'] bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer",
-                    formulaResult: "text-white text-lg font-mono",
-                    formulaBreakdown: "text-neutral-400 text-xs mt-1 font-mono",
-                    advantageGroup: "flex flex-col gap-2 mt-2",
-                    advantageBtn: "font-mono text-xs uppercase tracking-widest py-2 px-3 border transition-all text-left flex justify-between items-center cursor-pointer",
-                    advantageBtnActive: "bg-pink-900 border-pink-500 text-white",
-                    advantageBtnInactive: "bg-black border-neutral-800 text-neutral-500 hover:border-pink-900 text-neutral-400",
-                }
-            }
+            componentStyles: morkborgTheme
         };
     }
 
@@ -187,375 +174,32 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
       "weapon"
      */
     categorizeItems(actor: any): any {
-        const items = (actor.items || []).map((i: any) => this.normalizeItem(i));
-        // logger.debug('Items:', items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type)));
-        return {
-            weapons: items.filter((i: any) => i.type === 'weapon'),
-            shields: items.filter((i: any) => i.type === 'shield'),
-            ammo: items.filter((i: any) => i.type === 'ammo'),
-            container: items.filter((i: any) => i.type === 'container'),
-            armor: items.filter((i: any) => i.type === 'armor'),
-            equipment: items.filter((i: any) => ['misc', 'container', 'ammo'].includes(i.type)),
-            scrolls: items.filter((i: any) => ['scroll', 'tablet'].includes(i.type)),
-            feats: items.filter((i: any) => i.type === 'feat'),
-            uncategorized: items.filter((i: any) => !['class', 'weapon', 'armor', 'shield', 'misc', 'container', 'scroll', 'tablet', 'ammo', 'feat'].includes(i.type))
-        };
+        return categorizeItems(actor);
     }
 
     /**
      * Calculate slots used based on item weights
      */
-    private calculateSlotsUsed(actor: any): number {
-        const items = actor.items || [];
-
-        // Map items for quick lookup
-        const itemMap = new Map<string, any>();
-        for (const i of items) {
-            itemMap.set(i._id || i.id, i);
-        }
-
-        // Identify items that are nested inside ANY container (they have a container)
-        const itemsInContainers = new Set<string>();
-        for (const i of items) {
-            if (i.type === 'container' && Array.isArray(i.system?.items)) {
-                i.system.items.forEach((childId: string) => itemsInContainers.add(childId));
-            }
-        }
-
-        let totalWeight = 0;
-        const weightCountingTypes = ['ammo', 'armor', 'container', 'misc', 'scroll', 'shield', 'weapon', 'tablet'];
-
-        for (const item of items) {
-            const system = item.system || {};
-            const type = item.type?.toLowerCase();
-
-            // Must be equipment
-            if (!weightCountingTypes.includes(type)) continue;
-
-            // Must NOT have a container (meaning it must be at the root layer to start the weight tree)
-            if (itemsInContainers.has(item._id || item.id)) continue;
-
-            // Must be 'carried'
-            // In original Mork Borg module, an item with carryWeight === 0 is NEVER carried
-            const baseCarryWeight = Number(system.carryWeight ?? system.weight ?? 0);
-            let isCarried = system.carried ?? true; // carried defaults to true if undefined
-            if (baseCarryWeight === 0) {
-                isCarried = false;
-            }
-
-            if (!isCarried) continue;
-
-            // Calculate totalCarryWeight for this item
-            const quantity = Number(system.quantity) || 1;
-
-            if (type === 'container') {
-                // For a container, total weight = container's own base weight + sum of children weights
-                // Note: quantity doesn't multiply the container's contents, only the children
-                let childrenWeight = 0;
-                if (Array.isArray(system.items)) {
-                    for (const childId of system.items) {
-                        const child = itemMap.get(childId);
-                        if (child) {
-                            const childBaseWeight = Number(child.system?.carryWeight ?? child.system?.weight ?? 0);
-                            const childQuantity = Number(child.system?.quantity ?? 1);
-                            childrenWeight += Math.ceil(childBaseWeight * childQuantity);
-                        }
-                    }
-                }
-                totalWeight += baseCarryWeight + childrenWeight;
-            } else {
-                // Non-container weight = ceil(baseWeight * quantity)
-                totalWeight += Math.ceil(baseCarryWeight * quantity);
-            }
-        }
-
-        return totalWeight;
+    calculateSlotsUsed(items: any[]): number {
+        return calculateSlotsUsed(items);
     }
 
-    /**
-     * Calculate maximum slots (base 8 + strength modifier)
-     */
-    private calculateMaxSlots(actor: any): number {
-        const strengthMod = actor.system?.abilities?.strength?.value ?? 0;
-        return 8 + strengthMod;
+    calculateMaxSlots(actor: any): number {
+        return calculateMaxSlots(actor);
     }
 
     /**
      * Normalize item data for UI display
      */
     normalizeItem(item: any): any {
-        const system = item.system || {};
-        const type = item.type?.toLowerCase();
-
-        return {
-            id: item._id || item.id,
-            name: item.name,
-            type: type,
-            img: item.img,
-            system: system, // Keep system for sub-components
-            description: system.description || '',
-            weight: system.weight || 0,
-            quantity: system.quantity || 1,
-            // Roll specific data
-            damageDie: system.damageDie || '',
-            damageReductionDie: system.damageReductionDie || '',
-            fumbleOn: system.fumbleOn || 1,
-            critOn: system.critOn || 20,
-            weaponType: system.weaponType || 'melee',
-            equipped: system.equipped || false,
-            tier: system.tier || { value: 0, max: 0 },
-            rollLabel: system.rollLabel || '',
-            rollFormula: system.rollFormula || '',
-            rollMacro: system.rollMacro || ''
-        };
+        return normalizeItem(item);
     }
 
     /**
      * Get roll data or pre-evaluated card content
      */
-    getRollData(actor: any, type: string, key: string, options: any = {}): any {
-        const system = actor.system || {};
-        const abilities = system.abilities || {};
-
-        if (type === 'dice') {
-            return {
-                formula: key,
-                type: 'dice',
-                label: options.flavor || 'Roll'
-            };
-        }
-
-        if (type === 'ability') {
-            const statLabel = key.charAt(0).toUpperCase() + key.slice(1);
-            const value = abilities[key]?.value ?? 0;
-            const sign = value >= 0 ? '+' : '-';
-            return {
-                type: 'ability',
-                statKey: key,
-                isAutomated: true,
-                options: options,
-                label: `Test ${statLabel}`,
-                // For the roll modal display
-                rawFormula: `1d20@abilities.${key}.value`,
-                resolvedFormula: `1d20${sign}${Math.abs(value)}`,
-                humanFormula: `1d20 ${sign} ${Math.abs(value)} (${statLabel})`,
-                rollLabel: `${statLabel} Test`,
-            };
-        }
-
-        if (type === 'item') {
-            let item;
-            if (Array.isArray(actor.items)) {
-                item = actor.items.find((i: any) => i.uuid === key || i._id === key || i.id === key);
-            } else if (actor.items && typeof actor.items === 'object') {
-                // Search across all categories in the categorized object
-                item = Object.values(actor.items)
-                    .flat()
-                    .find((i: any) => (i as any).uuid === key || (i as any)._id === key || (i as any).id === key);
-            }
-
-            const itemData = this.normalizeItem(item || {});
-
-            if (options.rollType === 'attack' || options.rollType === 'defend') {
-                const isRanged = itemData.type === 'weapon' && itemData.weaponType === 'ranged';
-                const attackStat = isRanged ? 'presence' : 'strength';
-                const attackLabel = isRanged ? 'Presence' : 'Strength';
-                const abilityVal = actor.system?.abilities?.[attackStat]?.value ?? 0;
-                const sign = abilityVal >= 0 ? '+' : '-';
-                const absMod = Math.abs(abilityVal);
-                const agiVal = actor.system?.abilities?.agility?.value ?? 0;
-                const agiSign = agiVal >= 0 ? '+' : '-';
-                const encumbered = actor.derived?.encumbered || false;
-
-                if (options.rollType === 'attack') {
-                    return {
-                        type: 'attack',
-                        itemId: itemData.id,
-                        isAutomated: true,
-                        options,
-                        label: `Attack: ${itemData.name}`,
-                        rollLabel: `Attack — ${itemData.name}`,
-                        resolvedFormula: `1d20${sign}${absMod}`,
-                        humanFormula: `1d20 ${sign} ${absMod} (${attackLabel})`,
-                        damageDie: itemData.damageDie || '1d4',
-                        encumbered,
-                        dr: 12,
-                    };
-                } else {
-                    return {
-                        type: 'defend',
-                        itemId: itemData.id,
-                        isAutomated: true,
-                        options,
-                        label: `Defense: ${itemData.name}`,
-                        rollLabel: `Defend — ${itemData.name}`,
-                        resolvedFormula: `1d20${agiSign}${Math.abs(agiVal)}`,
-                        humanFormula: `1d20 ${agiSign} ${Math.abs(agiVal)} (Agility)`,
-                        encumbered,
-                        dr: 12,
-                    };
-                }
-            }
-
-            if (itemData.type === 'feat') {
-                // Passive feat (no rollLabel): no action
-                if (!itemData.rollLabel) return null;
-                // Macro feat (rollLabel but no formula): handled by featActionMap
-                // Formula feat: return formula for server-side roll
-                const abilities = actor.system?.abilities || {};
-                const rawFeatFormula = itemData.rollFormula || '';
-                const resolvedFeatFormula = rawFeatFormula.replace(/@abilities\.(\w+)\.value/g, (_: string, s: string) => String(abilities[s]?.value ?? 0));
-                const humanFeatFormula = rawFeatFormula.replace(/([+-]?)@abilities\.(\w+)\.value/g, (_: string, op: string, s: string) => {
-                    const v = abilities[s]?.value ?? 0; const lbl = s.charAt(0).toUpperCase() + s.slice(1);
-                    const eff = op === '-' ? -v : v; return ` ${eff >= 0 ? '+' : '-'} ${Math.abs(eff)} (${lbl})`;
-                });
-                return {
-                    type: 'feat-roll',
-                    itemId: itemData.id,
-                    itemName: itemData.name,
-                    isAutomated: false,
-                    label: itemData.rollLabel || itemData.name,
-                    rollLabel: itemData.rollLabel,
-                    rawFormula: itemData.rollFormula,
-                    resolvedFormula: resolvedFeatFormula || itemData.rollFormula,
-                    humanFormula: humanFeatFormula || itemData.rollFormula,
-                    formula: itemData.rollFormula,
-                };
-            }
-
-            if (itemData.type === 'scroll' || itemData.type === 'power') {
-                const scrollFormula = itemData.rollFormula || '1d20';
-                return {
-                    type: 'power',
-                    itemId: itemData.id,
-                    isAutomated: true,
-                    label: `Power: ${itemData.name}`,
-                    rollLabel: `Wield — ${itemData.name}`,
-                    resolvedFormula: scrollFormula,
-                    humanFormula: scrollFormula,
-                    dr: itemData.system?.castingThreshold || undefined,
-                };
-            }
-        }
-
-        if (type === 'initiative') {
-            const agiVal = actor.system?.abilities?.agility?.value ?? 0;
-            const sign = agiVal >= 0 ? '+' : '-';
-            return {
-                type: 'initiative',
-                subType: key,
-                isAutomated: true,
-                options,
-                label: key === 'party' ? 'Party Initiative' : 'Initiative',
-                rollLabel: key === 'party' ? 'Party Initiative' : 'Initiative',
-                resolvedFormula: `1d6${sign}${Math.abs(agiVal)}`,
-                humanFormula: `1d6 ${sign} ${Math.abs(agiVal)} (Agility)`,
-            };
-        }
-
-        if (type === 'rest') {
-            return {
-                type: 'rest',
-                isAutomated: true,
-                label: 'Rest'
-            };
-        }
-
-        if (type === 'broken') {
-            return {
-                type: 'broken',
-                isAutomated: true,
-                label: 'Broken',
-                rollLabel: 'Broken',
-                itemName: 'Broken'
-            };
-        }
-
-        // Feat action routing — all feat logic stays in the adapter.
-        // Macro feats: isAutomated, handled by performAutomatedSequence.
-        // Formula feats: isAutomated: false, formula rolled server-side via client.roll().
-        // Passive feats: no button rendered in UI (null returned).
-        if (type === 'feat') {
-            // Look up the feat item on the actor
-            const allItems: any[] = Array.isArray(actor.items)
-                ? actor.items
-                : Object.values(actor.items || {}).flat();
-            const featItem = allItems.find((i: any) => i.name === key);
-            const rollLabel = featItem?.system?.rollLabel || '';
-            const rawFormula = featItem?.system?.rollFormula || '';
-
-            // Passive feat — no rollLabel means no action
-            if (!rollLabel) return null;
-
-            // Macro feats: known automated sequences (no rollFormula)
-            const macroFeats: Record<string, any> = {
-                'Create Decoctions': {
-                    type: 'decoctions',
-                    isAutomated: true,
-                    label: 'Create Decoctions',
-                    rolls: []
-                }
-                // Add future macro feats here
-            };
-            if (macroFeats[key]) return macroFeats[key];
-
-            // Formula feat: resolve @-vars server-side, roll via client.roll()
-            const abilities = actor.system?.abilities || {};
-            const resolvedFormula = rawFormula.replace(/@abilities\.([\w]+)\.value/g, (_: string, stat: string) => {
-                return String(abilities[stat]?.value ?? 0);
-            });
-            const humanFormula = rawFormula.replace(/([+-]?)@abilities\.([\w]+)\.value/g, (_: string, op: string, stat: string) => {
-                const val = abilities[stat]?.value ?? 0;
-                const label = stat.charAt(0).toUpperCase() + stat.slice(1);
-                // op is the sign already in the formula ('+' or '-' or '')
-                // if op is '-', flip val sign
-                const effective = op === '-' ? -val : val;
-                const displaySign = effective >= 0 ? '+' : '-';
-                return ` ${displaySign} ${Math.abs(effective)} (${label})`;
-            });
-
-            return {
-                type: 'feat-roll',
-                isAutomated: true,
-                label: rollLabel,
-                rollLabel,
-                itemName: key,
-                rawFormula,
-                formula: resolvedFormula,
-                humanFormula,
-            };
-        }
-
-        if (type === 'decoctions') {
-            return {
-                type: 'decoctions',
-                isAutomated: true,
-                label: 'Create Decoctions',
-                rolls: []
-            };
-        }
-
-        if (type === 'getBetter') {
-            return {
-                type: 'getBetter',
-                isAutomated: true,
-                label: 'Get Better'
-            };
-        }
-
-        if (type === 'spendOmen') {
-            return {
-                type: 'spendOmen',
-                isAutomated: true,
-                label: 'Spend Omen'
-            };
-        }
-
-        return {
-            formula: '1d20',
-            type: 'default',
-            label: 'Roll'
-        };
+    getRollData(actor: any, type: MorkBorgRollType, key: string, options: MorkBorgRollOptions = {}): any {
+        return getRollData(actor, type, key, options);
     }
 
     /**
@@ -787,7 +431,7 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
         } else if (rollData.type === 'ability') {
             const key = rollData.statKey;
             const statMod = actor.system?.abilities?.[key]?.value ?? 0;
-            const slotsUsed = this.calculateSlotsUsed(actor);
+            const slotsUsed = this.calculateSlotsUsed(actor.items || []);
             const maxSlots = this.calculateMaxSlots(actor);
             const isEncumbered = slotsUsed > maxSlots;
 
@@ -1276,3 +920,5 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
     }
 }
 
+
+export { MorkBorgAdapter as Adapter };

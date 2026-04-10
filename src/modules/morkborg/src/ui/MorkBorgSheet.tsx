@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 
 import grunge from './assets/grunge.png';
 import BackgroundTab from './BackgroundTab';
@@ -8,11 +8,19 @@ import EquipmentTab from './EquipmentTab';
 import ViolenceTab from './ViolenceTab';
 import SpecialTab from './SpecialTab';
 import RestModal from './components/RestModal';
-import MorkBorgRollModal, { type MorkBorgRollConfig } from './components/MorkBorgRollModal';
-import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import MorkBorgRollModal from './components/MorkBorgRollModal';
+import MorkBorgConfirmModal from './components/MorkBorgConfirmModal';
+import { 
+    type MorkBorgRollConfig, 
+    type MorkBorgConfirmConfig, 
+    type MorkBorgRollType, 
+    type MorkBorgRollOptions, 
+    type MorkBorgRollData 
+} from './types';
 import MorkBorgEditScvmModal from './components/MorkBorgEditScvmModal';
 import MorkBorgChatStyles from './components/chat/MorkBorgChatStyles';
-import { MorkBorgAdapter } from '../logic/adapter';
+import { getRollData, categorizeItems } from '../logic/rules';
+import { morkborgTheme } from './themes/morkborg';
 import { logger } from '@shared/utils/logger';
 
 
@@ -81,11 +89,12 @@ const AbilityBlock = ({ label, value, onRoll }: { label: string, value: number, 
     </div>
 );
 
-export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, onCreateItem }: MorkBorgSheetProps) {
-    const [activeTab, setActiveTab] = useState<'background' | 'equipment' | 'violence' | 'special'>('violence');
+export default function MorkBorgSheet({ actor, onUpdate, onRoll, onDeleteItem, onCreateItem }: MorkBorgSheetProps) {
+    const [activeTab, setActiveTab] = useState('violence');
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isRestModalOpen, setIsRestModalOpen] = useState(false);
-    const [isEditScvmModalOpen, setIsEditScvmModalOpen] = useState(false);
-    const [rollModal, setRollModal] = useState<(MorkBorgRollConfig & { rollData?: any }) | null>(null);
+    
+    const [rollModal, setRollModal] = useState<MorkBorgRollConfig | null>(null);
     const [confirmModal, setConfirmModal] = useState<{ config: MorkBorgConfirmConfig; onConfirm: () => void } | null>(null);
     const [rollMode, setRollMode] = useState<string>(
         typeof window !== 'undefined' ? (localStorage.getItem('sheetdelver_roll_mode') || 'publicroll') : 'publicroll'
@@ -96,10 +105,39 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
         if (typeof window !== 'undefined') localStorage.setItem('sheetdelver_roll_mode', mode);
     }, []);
 
+    // Derived logic 
+    const inventory = categorizeItems(actor);
+    
+    // Map categorized items and derived stats into the view model
+    const sheetActor = {
+        ...actor,
+        items: actor.categorizedItems || {
+            weapons: [],
+            armor: [],
+            equipment: [],
+            scrolls: [],
+            uncategorized: []
+        },
+        derived: actor.derived || {
+            currentHp: 0,
+            maxHp: 1,
+            omens: { value: 0, max: 0 },
+            powers: { value: 0, max: 0 },
+            abilities: {},
+            slotsUsed: 0,
+            maxSlots: 10,
+            encumbered: false,
+            silver: 0
+        }
+    };
+
+    useEffect(() => {
+        logger.debug(`[MorkBorg] Initializing Sheet for actor: ${actor.name}`);
+    }, []);
+
     // Intercept onRoll for types that need the confirmation modal
-    const handleRoll = useCallback((type: string, key: string, options: any = {}) => {
-        const adapter = new MorkBorgAdapter();
-        const rollData = adapter.getRollData(actor, type, key, options);
+    const handleAbilityRoll = useCallback((type: MorkBorgRollType, key: string, options: MorkBorgRollOptions = {}) => {
+        const rollData = getRollData(actor, type, key, options);
 
         if (!rollData) return; // passive feat or no-op
 
@@ -204,29 +242,6 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
     // Safety check
     if (!actor) return null;
 
-    // Map categorized items to expected structure for tabs
-    const sheetActor = {
-        ...actor,
-        items: actor.categorizedItems || {
-            weapons: [],
-            armor: [],
-            equipment: [],
-            scrolls: [],
-            uncategorized: []
-        },
-        derived: actor.derived || {
-            currentHp: 0,
-            maxHp: 1,
-            omens: { value: 0, max: 0 },
-            powers: { value: 0, max: 0 },
-            abilities: {},
-            slotsUsed: 0,
-            maxSlots: 10,
-            encumbered: false,
-            silver: 0
-        }
-    };
-
     return (
         <div className={`min-h-screen text-[#111] $"font-inter" selection:bg-pink-500 selection:text-white`} suppressHydrationWarning>
             {/* Global Yellow Background Force */}
@@ -244,7 +259,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                     <header className="mb-10 bg-[#ffe900] p-6 shadow-[8px_8px_0_0_rgba(0,0,0,1)] border-2 border-black relative text-black">
                         {/* Corner decorations */}
                         <button className="absolute bottom-0 right-0 p-2 font-mono text-[10px] bg-white text-black font-bold cursor-pointer"
-                            onClick={() => setIsEditScvmModalOpen(true)}
+                            onClick={() => setIsEditModalOpen(true)}
                         >
                             EDIT SCVM
                         </button>
@@ -294,10 +309,10 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                 {/* Abilities - Now below name and description on mobile */}
                                 <div className="w-full md:w-auto">
                                     <div className="grid grid-cols-2 md:flex md:flex-col gap-x-4 gap-y-2 border-t-4 md:border-t-0 md:border-l-4 border-black pt-6 md:pt-0 md:pl-6 py-2">
-                                        <AbilityBlock label="Strength" value={sheetActor.derived.abilities?.strength?.value ?? 0} onRoll={handleRoll} />
-                                        <AbilityBlock label="Agility" value={sheetActor.derived.abilities?.agility?.value ?? 0} onRoll={handleRoll} />
-                                        <AbilityBlock label="Presence" value={sheetActor.derived.abilities?.presence?.value ?? 0} onRoll={handleRoll} />
-                                        <AbilityBlock label="Toughness" value={sheetActor.derived.abilities?.toughness?.value ?? 0} onRoll={handleRoll} />
+                                        <AbilityBlock label="Strength" value={sheetActor.derived.abilities?.strength?.value ?? 0} onRoll={handleAbilityRoll} />
+                                        <AbilityBlock label="Agility" value={sheetActor.derived.abilities?.agility?.value ?? 0} onRoll={handleAbilityRoll} />
+                                        <AbilityBlock label="Presence" value={sheetActor.derived.abilities?.presence?.value ?? 0} onRoll={handleAbilityRoll} />
+                                        <AbilityBlock label="Toughness" value={sheetActor.derived.abilities?.toughness?.value ?? 0} onRoll={handleAbilityRoll} />
                                     </div>
                                 </div>
                             </div>
@@ -305,7 +320,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                             {/* Core Vitality Stats - Now in separate row below */}
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 bg-white/50 p-3 border border-black shadow-inner w-full">
                                 <StatBlock label="HP" value={sheetActor.derived.currentHp} max={sheetActor.derived.maxHp} path="system.hp.value" onUpdate={onUpdate} />
-                                <div className="group cursor-pointer" onClick={() => onRoll('spendOmen', 'spend')}>
+                                <div className="group cursor-pointer" onClick={() => handleAbilityRoll('spendOmen', 'spend')}>
                                     <StatBlock label="Omens" value={sheetActor.derived.omens.value} max={sheetActor.derived.omens.max} showMax={false} path="system.omens.value" onUpdate={onUpdate} />
                                     <div className="absolute top-1 right-2 text-[8px] font-mono text-pink-600 opacity-0 group-hover:opacity-100 transition-opacity">SPEND</div>
                                 </div>
@@ -332,7 +347,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                             confirmLabel: 'Get Better',
                                         },
                                         onConfirm: () => {
-                                            handleRoll('getBetter', 'getBetter');
+                                            handleAbilityRoll('getBetter', 'getBetter');
                                             setConfirmModal(null);
                                         },
                                     })}
@@ -341,7 +356,7 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
                                     GET BETTER
                                 </button>
                                 <button
-                                    onClick={() => handleRoll('broken', 'broken')}
+                                    onClick={() => handleAbilityRoll('broken', 'broken')}
                                     className={`$"font-imfell" bg-neutral-800 text-white px-4 py-1 text-sm border-2 border-black -rotate-2 shadow-[4px_4px_0_0_#000] hover:bg-red-600 hover:text-white transition-all active:scale-95`}
                                 >
                                     BROKEN
@@ -357,9 +372,9 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
 
                         <div className="relative z-10">
                             {activeTab === 'background' && <BackgroundTab actor={sheetActor} onUpdate={onUpdate} />}
-                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
-                            {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} />}
-                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={handleRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
+                            {activeTab === 'equipment' && <EquipmentTab actor={sheetActor} onRoll={handleAbilityRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
+                            {activeTab === 'violence' && <ViolenceTab actor={sheetActor} onRoll={handleAbilityRoll} onUpdate={onUpdate} />}
+                            {activeTab === 'special' && <SpecialTab actor={sheetActor} onRoll={handleAbilityRoll} onUpdate={onUpdate} onDeleteItem={onDeleteItem} onCreateItem={onCreateItem} />}
                         </div>
                     </main>
 
@@ -438,13 +453,13 @@ export default function MorkBorgSheet({ actor, onRoll, onUpdate, onDeleteItem, o
             <RestModal
                 isOpen={isRestModalOpen}
                 onClose={() => setIsRestModalOpen(false)}
-                onRoll={handleRoll}
+                onRoll={handleAbilityRoll}
                 actor={sheetActor}
             />
 
             <MorkBorgEditScvmModal
-                isOpen={isEditScvmModalOpen}
-                onClose={() => setIsEditScvmModalOpen(false)}
+                isOpen={isEditModalOpen}
+                onClose={() => setIsEditModalOpen(false)}
                 onUpdate={onUpdate}
                 actor={sheetActor}
             />

@@ -4,15 +4,7 @@ import { useEffect } from 'react';
 
 import { Check } from 'lucide-react';
 
-
-
-export interface MorkBorgConfirmConfig {
-    title: string;
-    body: string | string[];   // paragraph(s) of description text
-    confirmLabel?: string;     // defaults to "Confirm"
-    confirmIcon?: React.ReactNode;
-    dangerous?: boolean;       // red confirm button instead of pink
-}
+import { type MorkBorgConfirmConfig } from '../types';
 
 interface MorkBorgConfirmModalProps {
     config: MorkBorgConfirmConfig;

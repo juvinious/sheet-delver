@@ -1,4 +1,4 @@
-import { shadowdarkAdapter, ShadowdarkAdapter } from '../../logic/system';
+import { shadowdarkAdapter, ShadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { logger } from '@shared/utils/logger';
 
 // --- Logic Helpers ---

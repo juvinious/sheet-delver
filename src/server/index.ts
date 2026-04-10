@@ -9,6 +9,7 @@ import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModul
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
+import { SetupManager } from './core/foundry/SetupManager';
 
 async function startServer() {
     const config = await loadConfig();
@@ -391,8 +392,24 @@ async function startServer() {
 
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
+
     appRouter.get('/config', (req, res) => {
         res.json(getSanitizedConfig());
+    });
+
+    /**
+     * Public endpoint to check if the application has been configured.
+     * Used by the frontend 'Configuration Required' overlay.
+     */
+    appRouter.get('/config/setup-status', async (req, res) => {
+        try {
+            const cache = await SetupManager.loadCache();
+            const isConfigured = !!(cache.currentWorldId && cache.worlds[cache.currentWorldId]);
+            res.json({ isConfigured });
+        } catch (err: any) {
+            logger.error(`Failed to check setup status: ${err.message}`);
+            res.status(500).json({ isConfigured: false, error: 'Failed to verify configuration status' });
+        }
     });
     appRouter.get('/registry/modules', (req, res) => {
         res.json(getRegisteredModules());

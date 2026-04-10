@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { type MorkBorgRollType, type MorkBorgRollOptions } from './types';
+import { Swords, Shield, Heart, User, Skull, Info } from 'lucide-react';
 import ItemInfoModal from './components/ItemInfoModal';
 
 interface ViolenceTabProps {
     actor: any;
-    onRoll: (type: string, key: string, options?: any) => void;
+    onRoll: (type: MorkBorgRollType, key: string, options?: MorkBorgRollOptions) => void;
     onUpdate: (path: string, value: any) => void;
 }
 

@@ -3,13 +3,14 @@ import paperTexture from './assets/paper-texture.png';
 import RollModal from './components/RollModal';
 import ItemModal from './components/ItemModal';
 import ItemInfoModal from './components/ItemInfoModal';
-import MorkBorgConfirmModal, { type MorkBorgConfirmConfig } from './components/MorkBorgConfirmModal';
+import MorkBorgConfirmModal from './components/MorkBorgConfirmModal';
+import { type MorkBorgConfirmConfig, type MorkBorgRollType, type MorkBorgRollOptions } from './types';
 import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 import { Swords, Shield, Pencil, Trash2, User, PackageCheck } from 'lucide-react';
 
 interface EquipmentTabProps {
     actor: any;
-    onRoll: (type: string, key: string, options?: any) => void;
+    onRoll: (type: MorkBorgRollType, key: string, options?: MorkBorgRollOptions) => void;
     onUpdate: (path: string, value: any) => void;
     onDeleteItem: (itemId: string) => void;
     onUpdateItem?: (itemData: any) => void;

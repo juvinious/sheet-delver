@@ -7,10 +7,12 @@ import { randomRotation } from './utils';
 
 
 
+import { type MorkBorgRollType, type MorkBorgRollOptions } from '../types';
+
 interface RestModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onRoll: (type: string, key: string, options: any) => void;
+    onRoll: (type: MorkBorgRollType, key: string, options: MorkBorgRollOptions) => void;
     actor: any;
 }
 

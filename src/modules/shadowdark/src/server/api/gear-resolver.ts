@@ -1,5 +1,5 @@
 import { logger } from '@shared/utils/logger';
-import { shadowdarkAdapter } from '../../logic/system';
+import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { sanitizeItem } from '../../utils/Sanitizer';
 
 /**

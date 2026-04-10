@@ -1,4 +1,14 @@
 export const shadowdarkTheme = {
+    // Core visual tokens used by the normalization engine and UI components
+    colors: {
+        bg: 'bg-neutral-900',
+        panelBg: 'bg-neutral-800',
+        text: 'text-neutral-200',
+        accent: 'text-amber-500',
+        button: 'bg-amber-700 hover:bg-amber-600',
+        headerFont: 'font-serif tracking-widest',
+        success: 'bg-green-800 hover:bg-green-700'
+    },
     chat: {
         container: "bg-white border-2 border-black",
         header: "text-black text-sm font-bold uppercase mb-4 border-b-2 border-black pb-2 font-serif tracking-widest",

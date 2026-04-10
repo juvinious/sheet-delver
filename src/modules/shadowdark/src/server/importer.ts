@@ -3,7 +3,7 @@ import { FoundryClient } from '@core/foundry';
 import fs from 'fs';
 import path from 'path';
 import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
-import { shadowdarkAdapter } from '../logic/system';
+import { shadowdarkAdapter } from '../server/ShadowdarkAdapter';
 import { sanitizeItem, sanitizeItems, createEffect } from '../utils/Sanitizer';
 import { enrichItem, resolveSubItems, EnrichmentContext } from '../logic/actor-enricher';
 

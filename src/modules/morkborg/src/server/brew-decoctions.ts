@@ -7,7 +7,7 @@
  * - Posts a blind-roll chat card
  */
 
-import { MorkBorgAdapter } from '../logic/adapter';
+import { MorkBorgAdapter } from './MorkBorgAdapter';
 import { logger } from '@shared/utils/logger';
 
 export async function handleBrewDecoctions(actorId: string, request: Request, client: any): Promise<Response> {

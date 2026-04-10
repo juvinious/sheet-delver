@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { type MorkBorgRollType, type MorkBorgRollOptions } from './types';
+import { Sparkles, FlaskConical, Pencil, Trash2, ShieldPlus, ChevronRight, Info } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import ItemInfoModal from './components/ItemInfoModal';
 import MorkBorgAddItemModal from './components/MorkBorgAddItemModal';
 
 interface SpecialTabProps {
     actor: any;
-    onRoll: (type: string, key: string, options?: any) => void;
+    onRoll: (type: MorkBorgRollType, key: string, options?: MorkBorgRollOptions) => void;
     onUpdate: (path: string, value: any) => void;
     onDeleteItem: (itemId: string) => void;
     onCreateItem?: (itemData: any) => void;

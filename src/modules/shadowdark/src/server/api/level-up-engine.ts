@@ -209,7 +209,7 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
         if (handler.resolveItems) {
             const extra = await handler.resolveItems(state, targetLevel, async (uuid: string) => {
                 if (client) {
-                    const { shadowdarkAdapter } = await import('../../logic/system');
+                    const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
                     return shadowdarkAdapter.resolveDocument(client, uuid);
                 } else {
                     return dataManager.getDocument(uuid);
@@ -251,7 +251,7 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
         if (type === 'document' || type === '2') {
             const uuid = item.documentUuid || item.uuid;
             if (uuid) {
-                const { shadowdarkAdapter } = await import('../../logic/system');
+                const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
                 const resolved = await shadowdarkAdapter.resolveDocument(client, uuid);
                 if (resolved) {
                     const clean = JSON.parse(JSON.stringify(resolved));

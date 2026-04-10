@@ -1,2 +1,2 @@
-export { MorkBorgAdapter as Adapter } from '../src/logic/adapter';
-export { MorkBorgAdapter } from '../src/logic/adapter';
+export { MorkBorgAdapter as Adapter } from '../src/server/MorkBorgAdapter';
+export { MorkBorgAdapter } from '../src/server/MorkBorgAdapter';

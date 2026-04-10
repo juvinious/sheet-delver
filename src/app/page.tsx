@@ -1,18 +1,34 @@
-import { loadConfig } from '@core/config';
 import MainPage from '@client/ui/main/MainPage';
-import { SetupManager } from '@core/foundry/SetupManager';
-// import { SetupToken } from '@core/security/SetupToken';
-// import { redirect } from 'next/navigation';
 
+/**
+ * Root Server Component for SheetDelver.
+ * Decoupled from backend internals by using API-based configuration checks.
+ */
 export default async function Page() {
-    const config = await loadConfig();
-    const initialUrl = config?.foundry.url || '';
+    // We hit the Core Service directly via the internal port (defaulting to 8001)
+    // In production, this would be an environment variable.
+    const CORE_API_URL = 'http://localhost:8001';
 
-    // Check if setup is required
-    const cache = await SetupManager.loadCache();
-    const hasCache = cache.currentWorldId && cache.worlds[cache.currentWorldId];
+    let isConfigured = false;
+    let initialUrl = '';
 
-    if (!hasCache) {
+    try {
+        // 1. Check if configured
+        const statusRes = await fetch(`${CORE_API_URL}/api/config/setup-status`, { cache: 'no-store' });
+        const statusData = await statusRes.json();
+        isConfigured = statusData.isConfigured;
+
+        // 2. Load basic config (public version)
+        if (isConfigured) {
+            const configRes = await fetch(`${CORE_API_URL}/api/config`, { cache: 'no-store' });
+            const configData = await configRes.json();
+            initialUrl = configData.foundry?.url || '';
+        }
+    } catch (err) {
+        console.error('Frontend | Failed to reach Core Service:', err);
+    }
+
+    if (!isConfigured) {
         return (
             <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center font-sans p-8">
                 <h1 className="text-4xl font-bold mb-4 text-amber-500" style={{ fontFamily: 'serif' }}>SheetDelver</h1>

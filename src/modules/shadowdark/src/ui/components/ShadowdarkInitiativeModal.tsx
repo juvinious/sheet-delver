@@ -1,14 +1,13 @@
 import React from 'react';
 import RollDialog from '@client/ui/components/RollDialog';
-import { ShadowdarkAdapter } from '../../logic/system';
+import { getInitiativeFormula } from '../../logic/rules';
 import { shadowdarkTheme } from '../themes/shadowdark';
 
 export default function ShadowdarkInitiativeModal(props: any) {
     const { isOpen, title, onClose, onConfirm, actor, theme } = props;
 
-    // Use the adapter to securely get the standardized formula from the actor
-    const adapter = new ShadowdarkAdapter();
-    const rawFormula = actor ? adapter.getInitiativeFormula(actor) : '1d20';
+    // Use the shared pure logic to get the standardized formula from the actor
+    const rawFormula = actor ? getInitiativeFormula(actor) : '1d20';
 
     // Parse out the modifier. Ex: "1d20+2" or "2d20kh1+2"
     let modifier = 0;

@@ -1,4 +1,4 @@
-import { ShadowdarkAdapter } from '../src/logic/system';
-export { ShadowdarkAdapter as Adapter } from '../src/logic/system';
+import { ShadowdarkAdapter } from '../src/server/ShadowdarkAdapter';
+export { ShadowdarkAdapter as Adapter } from '../src/server/ShadowdarkAdapter';
 export { ShadowdarkAdapter };
 export default ShadowdarkAdapter;

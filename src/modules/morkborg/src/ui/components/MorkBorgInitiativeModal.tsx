@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import MorkBorgRollModal, { MorkBorgRollConfig, parseFormula } from './MorkBorgRollModal';
-import { MorkBorgAdapter } from '../../logic/adapter';
+import MorkBorgRollModal, { parseFormula } from './MorkBorgRollModal';
+import { type MorkBorgRollConfig } from '../types';
+import { getInitiativeFormula } from '../../logic/rules';
 
 export default function MorkBorgInitiativeModal(props: any) {
     const { isOpen, title, onClose, onConfirm, actor } = props;
@@ -22,9 +23,8 @@ export default function MorkBorgInitiativeModal(props: any) {
 
     if (!isOpen) return null;
 
-    // Use the adapter to securely get the standardized formula from the actor
-    const adapter = new MorkBorgAdapter();
-    const rawFormula = actor ? adapter.getInitiativeFormula(actor) : '1d6';
+    // Use the shared pure logic to get the standardized formula from the actor
+    const rawFormula = actor ? getInitiativeFormula(actor) : '1d6';
     const parsed = parseFormula(rawFormula);
 
     const config: MorkBorgRollConfig = {

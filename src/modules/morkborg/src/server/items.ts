@@ -3,7 +3,7 @@
  * Manages actor items (categorized view)
  */
 
-import { MorkBorgAdapter } from '../logic/adapter';
+import { MorkBorgAdapter } from './MorkBorgAdapter';
 
 export async function handleGetItems(actorId: string, client: any) {
     if (!client) {

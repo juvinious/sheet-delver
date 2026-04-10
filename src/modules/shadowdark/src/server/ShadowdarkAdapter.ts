@@ -1,15 +1,16 @@
 import { SystemAdapter } from '@modules/registry/types';
 import { ActorSheetData } from '@shared/interfaces';
-import { normalizeItemData } from './rules';
+import { normalizeItemData } from '../logic/rules';
 import { logger } from '@shared/utils/logger';
-import { isClassSpellcaster } from './rules';
+import { isClassSpellcaster } from '../logic/rules';
 import { shadowdarkTheme } from '../ui/themes/shadowdark';
 
 // Unified Service Layer Static Imports
-import { ShadowdarkCache } from './caching';
-import { ShadowdarkNormalizer, resolveDocumentName } from './normalization';
+import { ShadowdarkCache } from '../logic/caching';
+import { ShadowdarkNormalizer, resolveDocumentName } from '../logic/normalization';
 import { dataManager } from '../data/DataManager';
-import { persistentCache } from '@core/cache/PersistentCache';
+import { PersistentCache, persistentCache } from '@core/cache/PersistentCache';
+import { getInitiativeFormula } from '../logic/rules';
 
 /**
  * ShadowdarkAdapter is the primary entry point for the Shadowdark module.
@@ -23,15 +24,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
     private static instance: ShadowdarkAdapter;
     private _cache = ShadowdarkCache.getInstance();
 
-    theme = {
-        bg: 'bg-neutral-900',
-        panelBg: 'bg-neutral-800',
-        text: 'text-neutral-200',
-        accent: 'text-amber-500',
-        button: 'bg-amber-700 hover:bg-amber-600',
-        headerFont: 'font-serif tracking-widest',
-        success: 'bg-green-800 hover:bg-green-700'
-    };
+    theme = shadowdarkTheme.colors;
 
     componentStyles = shadowdarkTheme;
 
@@ -53,20 +46,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
      * Required by SystemAdapter interface.
      */
     getInitiativeFormula(actor: any): string {
-        let dexMod = 0;
-        const s = actor?.system || {};
-        const c = actor?.computed || {};
-
-        if (s.abilities?.dex?.mod !== undefined) dexMod = Number(s.abilities.dex.mod);
-        else if (c.abilities?.dex?.mod !== undefined) dexMod = Number(c.abilities.dex.mod);
-        else if (s.abilities?.dex?.value !== undefined) dexMod = Math.floor((Number(s.abilities.dex.value) - 10) / 2);
-
-        if (isNaN(dexMod)) dexMod = 0;
-        const hasAdvantage = Array.isArray(s.bonuses?.advantage) && s.bonuses.advantage.includes('initiative');
-        const baseDie = hasAdvantage ? '2d20kh1' : '1d20';
-        const sign = dexMod >= 0 ? '+' : '';
-
-        return dexMod !== 0 ? `${baseDie}${sign}${dexMod}` : baseDie;
+        return getInitiativeFormula(actor);
     }
 
     /**
@@ -363,3 +343,5 @@ export class ShadowdarkAdapter implements SystemAdapter {
 }
 
 export const shadowdarkAdapter = ShadowdarkAdapter.getInstance();
+
+export { ShadowdarkAdapter as Adapter };

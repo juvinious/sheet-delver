@@ -1,7 +1,7 @@
 import { getClient } from '@core/foundry/instance';
 import { logger } from '@shared/utils/logger';
 import { getConfig } from '@core/config';
-import { shadowdarkAdapter, ShadowdarkAdapter } from '../../logic/system';
+import { shadowdarkAdapter, ShadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { dataManager } from '../../data/DataManager';
 import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
 import * as levelUpEngine from './level-up-engine';

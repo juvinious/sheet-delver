@@ -68,9 +68,9 @@ async function runDiagnostic() {
         }
 
         // 5. Discover All Item Compendiums
-        logger.info("--- Discovering Compendiums via ShadowdarkDiscovery ---");
-        const { ShadowdarkDiscovery } = await import('../../modules/shadowdark/src/logic/discovery');
-        const data = await ShadowdarkDiscovery.getSystemData(socket);
+        logger.info("--- Discovering Compendiums via ShadowdarkAdapter ---");
+        const { ShadowdarkAdapter } = await import('../../modules/shadowdark/src/server/ShadowdarkAdapter');
+        const data = await new ShadowdarkAdapter().getSystemData(socket);
         
         logger.info(`Discovery complete. Found ${data.ancestries?.length || 0} ancestries and ${data.items?.length || 0} gear items.`);
         

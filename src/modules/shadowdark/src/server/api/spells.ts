@@ -1,7 +1,7 @@
 import { getClient } from '@core/foundry/instance';
 import { dataManager } from '../../data/DataManager';
 import { getConfig } from '@core/config';
-import { shadowdarkAdapter } from '../../logic/system';
+import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn

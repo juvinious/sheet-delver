@@ -65,24 +65,32 @@ export const morkborgTheme = {
         closeBtn: "text-white hover:text-pink-500 transition-colors"
     },
     rollDialog: {
-        overlay: "absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity",
-        container: "w-full max-w-md relative z-10 bg-black border-[4px] border-black shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden",
-        header: "bg-black p-4 flex justify-between items-center",
-        title: "font-serif text-xl font-bold uppercase tracking-widest text-white mx-auto",
-        body: "bg-white p-6 border-t-[4px] border-black space-y-4",
-        inputGroup: "grid grid-cols-3 items-center gap-4",
-        label: "col-span-1 font-bold text-xs uppercase tracking-widest text-neutral-500",
-        input: "col-span-2 p-2 border-2 border-black font-serif text-lg outline-none focus:bg-neutral-50 transition-colors text-black",
-        footer: "bg-white p-6 border-t-2 border-neutral-100 flex flex-col gap-2",
+        overlay: "fixed inset-0 bg-black/80 backdrop-blur-sm z-50",
+        container: "bg-neutral-950 border-2 border-pink-900 shadow-[8px_8px_0_0_#831843] max-w-sm w-full p-6 relative -rotate-1 text-left inline-block transform transition-all z-[51]",
+        header: "mb-4 font-['IM_Fell_Double_Pica']",
+        title: "text-2xl text-yellow-400 uppercase tracking-wide mb-1 leading-tight",
+        closeBtn: "absolute -top-3 -right-3 text-2xl select-none hover:rotate-12 transition-transform",
+        section: "bg-black border border-pink-900/40 p-3 mb-4 font-mono rotate-[0.5deg]",
+        label: "text-neutral-500 text-[10px] uppercase tracking-widest mb-1 block",
+        input: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500",
+        select: "w-full bg-neutral-900 border border-neutral-700 text-white px-2 py-1.5 font-mono text-base focus:outline-none focus:border-pink-500 appearance-none",
+        buttonGroup: "flex border border-neutral-800",
+        buttonActive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-pink-900 text-white",
+        buttonInactive: "flex-1 py-1.5 text-xs uppercase tracking-widest font-mono transition-all bg-black text-neutral-500 hover:text-neutral-300",
+        confirmBtn: "font-['IM_Fell_Double_Pica'] flex-1 bg-pink-900 hover:bg-pink-700 text-white text-xl py-2 px-4 border border-pink-500 tracking-widest uppercase transition-colors shadow-[4px_4px_0_0_#000] cursor-pointer",
+        cancelBtn: "font-['IM_Fell_Double_Pica'] bg-black hover:bg-neutral-900 text-neutral-400 text-xl py-2 px-4 border border-neutral-700 tracking-widest uppercase cursor-pointer",
+        formulaResult: "text-white text-lg font-mono",
+        formulaBreakdown: "text-neutral-400 text-xs mt-1 font-mono",
+        advantageGroup: "flex flex-col gap-2 mt-2",
+        advantageBtn: "font-mono text-xs uppercase tracking-widest py-2 px-3 border transition-all text-left flex justify-between items-center cursor-pointer",
+        advantageBtnActive: "bg-pink-900 border-pink-500 text-white",
+        advantageBtnInactive: "bg-black border-neutral-800 text-neutral-500 hover:border-pink-900 text-neutral-400",
         rollBtn: (mode: 'normal' | 'adv' | 'dis') => {
             const base = "flex-1 py-3 px-4 uppercase font-bold text-sm border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none font-serif tracking-wider rounded-none ";
             if (mode === 'normal') return base + "bg-black text-white hover:bg-neutral-800";
             if (mode === 'adv') return base + "bg-white text-green-700 hover:bg-green-50";
             return base + "bg-white text-red-700 hover:bg-red-50";
         },
-        closeBtn: "text-white hover:text-pink-500 transition-colors",
-        select: "w-full p-2 border-2 border-black font-serif text-lg outline-none appearance-none bg-white cursor-pointer hover:bg-neutral-50 transition-colors text-black",
-        selectArrow: "absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-black"
     },
     loadingModal: {
         overlay: "absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity",

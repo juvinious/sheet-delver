@@ -3,18 +3,18 @@
  * Fetches complete actor data including computed values and categorized items
  */
 
-import { MorkBorgAdapter } from '../logic/adapter';
+import { MorkBorgAdapter } from './MorkBorgAdapter';
 
 export async function handleGetActorData(actorId: string, client: any) {
     if (!client) {
-        return Response.json({ error: 'Not authenticated' }, { status: 401 });
+        throw new Error('Client context is required for handleGetActorData');
     }
 
     try {
         // Fetch raw actor data from Foundry
         const rawActor = await client.getActor(actorId);
         if (!rawActor) {
-            return Response.json({ error: 'Actor not found' }, { status: 404 });
+            throw new Error(`Actor with ID ${actorId} not found`);
         }
 
         // Use adapter to compute derived data
