@@ -110,11 +110,13 @@ export class PersistentCache {
         const filePath = await this.getFilePath(namespace, key);
 
         if (!filePath || !fs || !fs.existsSync(filePath)) {
+            logger.debug(`PersistentCache | MISS: ${namespace}/${key} (Path: ${filePath || 'N/A'})`);
             return null;
         }
 
         try {
             const content = await fs.promises.readFile(filePath, 'utf-8');
+            logger.debug(`PersistentCache | HIT: ${namespace}/${key}`);
             return JSON.parse(content) as T;
         } catch (error) {
             logger.error(`PersistentCache | Failed to read ${namespace}/${key}:`, error);

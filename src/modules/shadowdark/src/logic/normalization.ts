@@ -24,12 +24,16 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
     // (Foundry IDs are often raw alphanumeric strings).
 
     if (cachedSystemData) {
-        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents'];
+        const collections = [
+            'ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 
+            'languages', 'spells', 'talents', 'gear', 'magicItems', 
+            'conditions', 'spellEffects', 'properties', 'documentation', 'macros'
+        ];
         for (const key of collections) {
             const list = (cachedSystemData as any)[key];
             if (!list) continue;
             const match = list.find((c: any) =>
-                c.uuid === val || c._id === val || c.id === val || (val.endsWith(c._id || c.id))
+                c.uuid === val || c._id === val || c.id === val || (typeof val === 'string' && val.endsWith(c._id || c.id))
             );
             if (match) return match.name;
         }

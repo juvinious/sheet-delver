@@ -62,8 +62,30 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
 
+    const fetchPack = async (packId: string) => {
+        if (systemData && systemData[packId]) return systemData[packId];
+
+        try {
+            const headers: any = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const res = await fetch(`/api/modules/shadowdark/fetch-pack/${packId}`, { headers });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data = await res.json();
+            setSystemData((prev: any) => ({
+                ...(prev || {}),
+                [packId]: data
+            }));
+            return data;
+        } catch (err) {
+            logger.error(`Failed to fetch pack ${packId}:`, err);
+            return null;
+        }
+    };
+
     // Shadowdark Level-Up Logic (Consolidated)
-    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any);
+    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any, fetchPack);
 
     const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
 
@@ -228,13 +250,14 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                 }
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
-                setSystemData(data);
+                setSystemData(data || {});
                 setLoadingSystem(false);
             } catch (err) {
                 logger.error('Failed to fetch system data:', err);
                 if (retries > 0) {
                     setTimeout(() => fetchData(retries - 1, delay * 2), delay);
                 } else {
+                    setSystemData({});
                     setLoadingSystem(false);
                 }
             }
@@ -242,6 +265,8 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
 
         fetchData();
     }, [token]);
+
+
 
     // Dynamic Tabs Logic
     const [tabsOrder, setTabsOrder] = useState([
@@ -521,6 +546,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 onDeleteItem={onDeleteItem}
                                 onToggleEffect={onToggleEffect}
                                 triggerLevelUp={triggerLevelUp}
+                                onFetchPack={fetchPack}
                             />
                         )
                         }
@@ -548,6 +574,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                         onDeleteItem={onDeleteItem}
                                         addNotification={addNotification}
                                         token={token}
+                                        onFetchPack={fetchPack}
                                     />
                                 </ErrorBoundary>
                             )

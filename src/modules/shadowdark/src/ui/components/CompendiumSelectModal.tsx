@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Search, Check } from 'lucide-react';
+import { X, Search, Check, Loader2 } from 'lucide-react';
 
 interface Option {
     name: string;
@@ -16,9 +16,10 @@ interface CompendiumSelectModalProps {
     options: Option[];
     currentValue?: string | string[];
     multiSelect?: boolean;
+    isLoading?: boolean;
 }
 
-export default function CompendiumSelectModal({ isOpen, onClose, onSelect, title, options, currentValue, multiSelect }: CompendiumSelectModalProps) {
+export default function CompendiumSelectModal({ isOpen, onClose, onSelect, title, options, currentValue, multiSelect, isLoading }: CompendiumSelectModalProps) {
     const [search, setSearch] = useState('');
 
     const filteredOptions = useMemo(() => {
@@ -64,7 +65,12 @@ export default function CompendiumSelectModal({ isOpen, onClose, onSelect, title
 
                 {/* List */}
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                    {filteredOptions.length > 0 ? (
+                    {isLoading ? (
+                        <div className="flex flex-col items-center justify-center py-20 text-neutral-400 gap-4">
+                            <Loader2 className="w-10 h-10 animate-spin text-black" />
+                            <p className="font-bold uppercase tracking-widest text-xs italic">Fetching {title}...</p>
+                        </div>
+                    ) : filteredOptions.length > 0 ? (
                         <div className="flex flex-col gap-2">
                             {filteredOptions.map((opt, i) => {
                                 const isSelected = Array.isArray(currentValue)

@@ -6,6 +6,7 @@ import { handleLearnSpell, handleGetSpellsBySource, handleGetSpellcasterInfo } f
 import { handleGetDocument } from './api/document';
 import { handleEffects } from './api/effects';
 import { handleGetGear } from './api/gear';
+import { handleGetCollection } from './api/collections';
 import { handleIndex } from './api/index';
 import { handleListRollTables, handleGetRollTable, handleDrawRollTable, handleGetResultPool } from './api/tables';
 import { handleGetNotes, handleUpdateNotes } from './api/notes';
@@ -26,7 +27,7 @@ import {
     handleRandomizeTalents,
     handleRandomizeLanguages
 } from './api/randomize-character';
-import { shadowdarkAdapter } from '../server/ShadowdarkAdapter';
+import { shadowdarkAdapter } from './ShadowdarkAdapter';
 
 // Initialize system adapter
 shadowdarkAdapter.initialize();
@@ -36,6 +37,15 @@ export const apiRoutes = {
     'index': handleIndex,
     'import': handleImport,
     'gear/list': handleGetGear,
+    // Available fetch-pack IDs:
+    // ancestries, backgrounds, classes, deities, patrons, spells, 
+    // talents, languages, gear, magic-items, conditions, spell-effects
+    'fetch-pack/[id]': async (request: Request, { params }: any) => {
+        const { route } = await params;
+        const packId = route[1];
+        const client = (request as any).foundryClient;
+        return handleGetCollection(request, packId, client);
+    },
     'document/[uuid]': handleGetDocument,
     'actors/randomize': handleRandomizeCharacter,
     'actors/randomize/name': handleRandomizeName,

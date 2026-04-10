@@ -20,9 +20,10 @@ interface SpellsTabProps {
     onDeleteItem?: (itemId: string) => void;
     addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
     token?: string | null;
+    onFetchPack?: (packId: string) => Promise<any>;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification, token }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification, token, onFetchPack }: SpellsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -59,6 +60,16 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
         }
     }, [actor.items, isSaving, targetSpellNames, editingTier, modalFilterClass, addNotification]);
+
+    // Hydration: Ensure spells and classes are loaded
+    useEffect(() => {
+        if (!systemData?.spells && onFetchPack) {
+            onFetchPack('spells');
+        }
+        if (!systemData?.classes && onFetchPack) {
+            onFetchPack('classes');
+        }
+    }, [systemData?.spells, systemData?.classes, onFetchPack]);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -162,7 +173,15 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         }
     };
 
-    const openManageModalWithSource = (tier: number, classKey: string) => {
+    const openManageModalWithSource = async (tier: number, classKey: string) => {
+        // Ensure hydration if not already triggered
+        if ((!systemData?.spells || !systemData?.classes) && onFetchPack) {
+            await Promise.all([
+                !systemData?.spells ? onFetchPack('spells') : Promise.resolve(),
+                !systemData?.classes ? onFetchPack('classes') : Promise.resolve()
+            ]);
+        }
+
         setEditingTier(tier);
         setModalFilterClass(classKey);
         setIsAddModalOpen(true);

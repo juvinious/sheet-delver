@@ -40,7 +40,7 @@ export class DataManager {
         
         if (systemData) {
             // Search through the discovered collections
-            const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+            const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'gear', 'magicItems', 'conditions', 'spellEffects', 'properties', 'documentation', 'tables'];
             
             // PRIORITY 1: Find a non-shallow match
             for (const key of collections) {
@@ -86,7 +86,7 @@ export class DataManager {
                         logger.debug(`[DataManager] [TRACE] Hydration complete for ${uuid}`);
                         const cache = ShadowdarkCache.getInstance();
                         const systemData = cache.systemData || {};
-                        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+                        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'gear', 'magicItems', 'conditions', 'spellEffects', 'properties', 'documentation', 'tables'];
 
                         const enrichedDoc = { 
                             ...fullDoc, 
@@ -134,7 +134,7 @@ export class DataManager {
                                 'feature': 'talents',       // Standardize to talents
                                 'rolltable': 'tables'
                             };
-                            const target = typeMap[type] || 'items';
+                            const target = typeMap[type] || 'gear';
                             if (!systemData[target]) systemData[target] = [];
                             logger.debug(`[DataManager] Adding new hydrated doc to fallback collection: ${target}`);
                             systemData[target].push(enrichedDoc);
@@ -168,7 +168,7 @@ export class DataManager {
         if (!systemData) return null;
 
         const normalized = name.toLowerCase();
-        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'items', 'tables'];
+        const collections = ['ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 'languages', 'spells', 'talents', 'gear', 'magicItems', 'conditions', 'spellEffects', 'properties', 'documentation', 'tables'];
         
         for (const key of collections) {
             const found = systemData[key]?.find((doc: any) => {
@@ -199,7 +199,8 @@ export class DataManager {
                         'language': 'languages',
                         'spell': 'spells',
                         'talent': 'talents',
-                        'item': 'items',
+                        'gear': 'gear',
+                        'magicItem': 'magicItems',
                         'table': 'tables'
                     };
 
@@ -346,7 +347,12 @@ export class DataManager {
             ...(systemData.languages || []),
             ...(systemData.spells || []),
             ...(systemData.talents || []),
-            ...(systemData.items || []),
+            ...(systemData.gear || []),
+            ...(systemData.magicItems || []),
+            ...(systemData.conditions || []),
+            ...(systemData.spellEffects || []),
+            ...(systemData.properties || []),
+            ...(systemData.documentation || []),
             ...(systemData.tables || [])
         ];
     }

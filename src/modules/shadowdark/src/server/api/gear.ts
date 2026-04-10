@@ -1,24 +1,22 @@
-
-import { dataManager } from '../../data/DataManager';
+import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { logger } from '@shared/utils/logger';
 
 export async function handleGetGear(request: Request): Promise<Response> {
     try {
         const client = (request as any).foundryClient;
-        if (client) {
-            const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
-            await shadowdarkAdapter.getSystemData(client);
-        }
+        
+        // Ensure system data is warmed/available
+        const systemData = await shadowdarkAdapter.getSystemData(client);
 
-        const allDocs = await dataManager.getAllDocuments();
+        // Aggregate gear and magic items from the cache
+        const combinedGear = [
+            ...(systemData.gear || []),
+            ...(systemData.magicItems || [])
+        ];
 
-        logger.info(`[API] handleGetGear: Found ${allDocs.length} total documents.`);
-        if (allDocs.length > 0) {
-            const sample = allDocs.slice(0, 5).map(d => ({ name: d.name, type: d.type, pack: d.pack }));
-            logger.info(`[API] handleGetGear: Sample items:`, JSON.stringify(sample));
-        }
-
-        return Response.json(allDocs);
+        logger.info(`[API] handleGetGear: Returning ${combinedGear.length} combined items from cache.`);
+        
+        return Response.json(combinedGear);
     } catch (e) {
         logger.error('[API] Failed to get gear:', e);
         return Response.json({ error: 'Failed to fetch gear' }, { status: 500 });

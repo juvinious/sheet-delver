@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { resolveEntityName } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
@@ -20,14 +21,16 @@ interface DetailsTabProps {
     onDeleteItem?: (itemId: string) => void;
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
     triggerLevelUp?: () => void;
+    onFetchPack?: (packId: string) => Promise<any>;
 }
 
-export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp }: DetailsTabProps) {
+export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp, onFetchPack }: DetailsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
+    const [fetchingCategory, setFetchingCategory] = useState<string | null>(null);
 
     // Selection Modal State
     const [selectionModal, setSelectionModal] = useState<{
@@ -36,6 +39,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         options: any[];
         currentValue: any;
         multiSelect: boolean;
+        isLoading: boolean;
         onSelect: (val: any) => void;
     }>({
         isOpen: false,
@@ -43,6 +47,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         options: [],
         currentValue: '',
         multiSelect: false,
+        isLoading: false,
         onSelect: () => { }
     });
 
@@ -63,18 +68,11 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         return actor.details?.class;
     };
 
-    const openSelection = (field: string, title: string, dataKey?: string, multiSelect = false) => {
-        // Resolve options from systemData
-        let options: any[] = [];
-        if (dataKey && systemData && (systemData as any)[dataKey]) {
-            options = (systemData as any)[dataKey];
-        }
-
-        // Current Value
+    const openSelection = async (field: string, title: string, dataKey?: string, multiSelect = false) => {
+        // Current Value (Calculate early for the loading state)
         let current: any = '';
         if (field.includes('.')) {
             const parts = field.split('.');
-            // simple traversal
             current = actor;
             for (const p of parts) {
                 if (current) current = (current as any)[p];
@@ -83,19 +81,48 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
             current = actor[field];
         }
 
-
+        // 1. Initial State: Open modal (Loading if data missing)
+        const hasData = dataKey ? !!systemData?.[dataKey] : true;
+        
         setSelectionModal({
             isOpen: true,
             title,
-            options: options.map((o: any) => ({
+            options: hasData && dataKey ? (systemData[dataKey] || []).map((o: any) => ({
                 name: o.name,
                 uuid: o.uuid,
-                description: o.description || o.data?.description?.value || ''
-            })),
-            currentValue: dataKey ? resolveEntityName(current, actor, systemData, dataKey) : current,
+                description: o.description || o.system?.description?.value || o.data?.description?.value || ''
+            })) : [],
+            currentValue: hasData && dataKey ? resolveEntityName(current, actor, systemData, dataKey) : current,
             multiSelect,
-            onSelect: (option) => {
-                const valToStore = option.uuid || option.name;
+            isLoading: !hasData,
+            onSelect: (option) => handleSelection(field, option, multiSelect)
+        });
+
+        // 2. Hydration: If data is missing, fetch it and update modal
+        if (!hasData && dataKey && onFetchPack) {
+            setFetchingCategory(dataKey);
+            try {
+                const fetched = await onFetchPack(dataKey);
+                if (Array.isArray(fetched)) {
+                    setSelectionModal(prev => ({
+                        ...prev,
+                        isLoading: false,
+                        options: fetched.map((o: any) => ({
+                            name: o.name,
+                            uuid: o.uuid,
+                            description: o.description || o.system?.description?.value || o.data?.description?.value || ''
+                        })),
+                        currentValue: resolveEntityName(current, actor, { ...systemData, [dataKey]: fetched }, dataKey)
+                    }));
+                }
+            } finally {
+                setFetchingCategory(null);
+            }
+        }
+    };
+
+    const handleSelection = (field: string, option: any, multiSelect: boolean) => {
+        const valToStore = option.uuid || option.name;
                 // const optName = option.name;
 
                 // Handle Multi-Select (Toggle)
@@ -143,11 +170,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     setSelectionModal(prev => ({ ...prev, isOpen: false }));
                 }
             }
-        });
-    };
-
-
-    // Common card style
     const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative";
     const cardStyleWithoutPadding = "bg-white border-2 border-black text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
 
@@ -238,8 +260,18 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     {/* Ancestry */}
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
-                            <span className="font-serif font-bold text-lg uppercase">Ancestry</span>
-                            <div className="w-3" />
+                            <div className="flex items-center gap-2">
+                                <span className="font-serif font-bold text-lg uppercase">Ancestry</span>
+                                {fetchingCategory === 'ancestries' && (
+                                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                                )}
+                            </div>
+                            <button
+                                onClick={() => openSelection('system.ancestry', 'Ancestry', 'ancestries')}
+                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
+                            >
+                                Edit
+                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
                             {actor.details?.ancestry || '-'}
@@ -249,7 +281,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     {/* Background */}
                     <div className={cardStyleWithoutPadding}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
-                            <span className="font-serif font-bold text-lg uppercase">Background</span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-serif font-bold text-lg uppercase">Background</span>
+                                {fetchingCategory === 'backgrounds' && (
+                                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                                )}
+                            </div>
                             <button
                                 onClick={() => openSelection('system.background', 'Background', 'backgrounds')}
                                 className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
@@ -289,7 +326,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         : 'md:col-span-2 lg:col-span-1.5'
                         }`}>
                         <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
-                            <span className="font-serif font-bold text-lg uppercase">Deity</span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-serif font-bold text-lg uppercase">Deity</span>
+                                {fetchingCategory === 'deities' && (
+                                    <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                                )}
+                            </div>
                             <button
                                 onClick={() => openSelection('system.deity', 'Deity', 'deities')}
                                 className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
@@ -306,7 +348,12 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                     {(actor.details?.class || '').toLowerCase().includes('warlock') && (
                         <div className={`${cardStyleWithoutPadding} md:col-span-1 lg:col-span-1`}>
                             <div className="bg-black text-white p-1 px-2 border-b border-white flex justify-between items-center">
-                                <span className="font-serif font-bold text-lg uppercase">Patron</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-serif font-bold text-lg uppercase">Patron</span>
+                                    {fetchingCategory === 'patrons' && (
+                                        <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
+                                    )}
+                                </div>
                                 <button
                                     onClick={() => openSelection('system.patron', 'Patron', 'patrons')}
                                     className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"

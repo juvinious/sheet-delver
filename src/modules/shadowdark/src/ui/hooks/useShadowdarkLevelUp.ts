@@ -8,10 +8,12 @@ import { resolveEntityUuid } from '../sheet-utils';
 export function useShadowdarkLevelUp(
     actor: any, 
     systemData: any, 
-    addNotification: (msg: string, type: 'success' | 'error' | 'info' | 'warning') => void
+    addNotification: (msg: string, type: 'success' | 'error' | 'info' | 'warning') => void,
+    onFetchPack?: (packId: string) => Promise<any>
 ) {
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
     const [levelUpData, setLevelUpData] = useState<any>(null);
+    const [isFetching, setIsFetching] = useState(false);
 
     // Auto-close Level Up Modal when level effectively changes in the background
     useEffect(() => {
@@ -25,10 +27,28 @@ export function useShadowdarkLevelUp(
     /**
      * Prepares level-up data and opens the modal.
      */
-    const triggerLevelUp = useCallback(() => {
+    const triggerLevelUp = useCallback(async () => {
         const currentLevel = actor.system?.level?.value || 0;
         const targetLevel = currentLevel + 1;
         
+        let currentSystemData = systemData;
+
+        // Ensure hydration for base essentials needed for level-up resolution
+        if (onFetchPack) {
+            setIsFetching(true);
+            try {
+                const results = await Promise.all([
+                    !currentSystemData?.classes ? onFetchPack('classes') : Promise.resolve(currentSystemData),
+                    !currentSystemData?.patrons ? onFetchPack('patrons') : Promise.resolve(currentSystemData)
+                ]);
+                // Merge results if needed (the setSystemData in parent handles this, 
+                // but we need latest for resolveEntityUuid in next step)
+                currentSystemData = results[0]; 
+            } finally {
+                setIsFetching(false);
+            }
+        }
+
         const data = {
             currentLevel,
             targetLevel,
@@ -38,13 +58,13 @@ export function useShadowdarkLevelUp(
             abilities: actor.system?.abilities,
             spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
             // If Level 0, force empty classUuid so modal prompts for class selection
-            classUuid: currentLevel === 0 ? "" : resolveEntityUuid(actor.system?.class || '', systemData, 'classes'),
-            patronUuid: resolveEntityUuid(actor.system?.patron || '', systemData, 'patrons')
+            classUuid: currentLevel === 0 ? "" : resolveEntityUuid(actor.system?.class || '', currentSystemData, 'classes'),
+            patronUuid: resolveEntityUuid(actor.system?.patron || '', currentSystemData, 'patrons')
         };
         
         setLevelUpData(data);
         setShowLevelUpModal(true);
-    }, [actor, systemData]);
+    }, [actor, systemData, onFetchPack]);
 
     const closeLevelUp = useCallback(() => {
         setShowLevelUpModal(false);

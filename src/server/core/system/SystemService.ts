@@ -86,31 +86,32 @@ export class SystemService extends EventEmitter {
                 const cache = CompendiumCache.getInstance();
                 await cache.initialize(client);
 
-                // 2. Adapter Initialization
+                // 2. Declarative Discovery (Sharding)
                 const sysInfo = await client.getSystem();
                 if (sysInfo?.id) {
-                    const adapter = await getAdapter(sysInfo.id.toLowerCase());
+                    const sysId = sysInfo.id.toLowerCase();
+                    const registered = getRegisteredModules();
+                    const moduleInfo = registered.find(m => m.id.toLowerCase() === sysId);
+                    const adapter = await getAdapter(sysId);
+
+                    let discoveryConfig = (moduleInfo as any)?.discovery;
+
+                    // Fallback to adapter hook
+                    if (!discoveryConfig && adapter?.getDiscoveryConfig) {
+                        discoveryConfig = (adapter as any).getDiscoveryConfig();
+                    }
+
+                    if (discoveryConfig) {
+                        logger.info(`SystemService | Running discovery sync for ${sysId}...`);
+                        await discoveryService.sync(client, sysId, discoveryConfig);
+                    }
+
+                    // 3. Adapter Initialization
                     if (adapter?.initialize) {
                         logger.info(`SystemService | Initializing adapter for ${sysInfo.id}...`);
                         await adapter.initialize(client);
                     }
 
-                    // 3. Declarative Discovery (Sharding)
-                    const registered = getRegisteredModules();
-                    const moduleInfo = registered.find(m => m.id.toLowerCase() === sysInfo.id.toLowerCase());
-                    
-                    let discoveryConfig = (moduleInfo as any)?.discovery;
-                    
-                    // Fallback to adapter hook
-                    if (!discoveryConfig && adapter?.getDiscoveryConfig) {
-                        discoveryConfig = adapter.getDiscoveryConfig();
-                    }
-
-                    if (discoveryConfig) {
-                        logger.info(`SystemService | Running discovery sync for ${sysInfo.id}...`);
-                        await discoveryService.sync(client, sysInfo.id.toLowerCase(), discoveryConfig);
-                    }
-                    
                     this.emit('world:ready', { systemId: sysInfo.id });
                 }
 
