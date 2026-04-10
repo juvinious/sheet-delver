@@ -25,6 +25,38 @@ export default function CombatHUD() {
         setOptimisticCombat(null);
     }, [combats]);
 
+    const [DynamicRollModal, setDynamicRollModal] = useState<React.ComponentType<any> | null>(null);
+
+    useEffect(() => {
+        let isMounted = true;
+        async function resolveRollModal() {
+            // Determine system ID: best source is a combatant's stats, then global system object, then active adapter
+            let sId = 'generic';
+            if (combats && combats.length > 0 && (combats[selectedCombatIndex] as any)?.combatants?.length > 0) {
+                const activeC = combats[selectedCombatIndex];
+                sId = activeC.combatants[0]?._stats?.systemId || sId;
+            }
+            if (sId === 'generic') {
+                sId = system?.id || 'generic';
+            }
+
+            const manifest = await getUIModule(sId);
+            if (!isMounted) return;
+
+            if (manifest?.rollModal) {
+                const modalEntry = manifest.rollModal;
+                const Component = typeof modalEntry === 'function'
+                    ? React.lazy(modalEntry as any)
+                    : modalEntry;
+                setDynamicRollModal(() => Component as any);
+            } else {
+                setDynamicRollModal(() => RollDialog as any);
+            }
+        }
+        resolveRollModal();
+        return () => { isMounted = false; };
+    }, [combats, selectedCombatIndex, system?.id]);
+
     // Hide if not fully in game
     if (['init', 'setup', 'authenticating', 'login', 'startup', 'initializing'].includes(step)) return null;
 
@@ -181,36 +213,6 @@ export default function CombatHUD() {
         ...acted
     ];
 
-    const [DynamicRollModal, setDynamicRollModal] = useState<React.ComponentType<any> | null>(null);
-
-    useEffect(() => {
-        let isMounted = true;
-        async function resolveRollModal() {
-            // Determine system ID: best source is a combatant's stats, then global system object, then active adapter
-            let sId = 'generic';
-            if (activeCombat?.combatants?.length > 0) {
-                sId = activeCombat.combatants[0]?._stats?.systemId || sId;
-            }
-            if (sId === 'generic') {
-                sId = system?.id || 'generic';
-            }
-
-            const manifest = await getUIModule(sId);
-            if (!isMounted) return;
-
-            if (manifest?.rollModal) {
-                const modalEntry = manifest.rollModal;
-                const Component = typeof modalEntry === 'function'
-                    ? React.lazy(modalEntry as any)
-                    : modalEntry;
-                setDynamicRollModal(() => Component as any);
-            } else {
-                setDynamicRollModal(() => RollDialog as any);
-            }
-        }
-        resolveRollModal();
-        return () => { isMounted = false; };
-    }, [activeCombat, system?.id]);
 
     return (
         <>

@@ -108,6 +108,11 @@ async function startServer() {
             foundryClient.on('actorUpdate', handleActorUpdate);
             foundryClient.on('sharedContentUpdate', handleSharedUpdate);
 
+            // New relays for world lifecycle and system status
+            foundryClient.on('systemStatusUpdate', broadcastSystemStatus);
+            foundryClient.on('worldShutdown', broadcastSystemStatus);
+            foundryClient.on('worldReload', broadcastSystemStatus);
+
             socket.on('disconnect', () => {
                 const remaining = io.engine.clientsCount;
                 logger.debug(`App Socket | Client disconnected: ${socket.id}. Remaining: ${remaining}`);
@@ -117,6 +122,9 @@ async function startServer() {
                 foundryClient.off('chatUpdate', handleChatUpdate);
                 foundryClient.off('actorUpdate', handleActorUpdate);
                 foundryClient.off('sharedContentUpdate', handleSharedUpdate);
+                foundryClient.off('systemStatusUpdate', broadcastSystemStatus);
+                foundryClient.off('worldShutdown', broadcastSystemStatus);
+                foundryClient.off('worldReload', broadcastSystemStatus);
             });
         } else {
             socket.on('disconnect', () => {
@@ -442,6 +450,38 @@ async function startServer() {
     // --- Global Guard: Block API until bootstrap complete ---
     appRouter.use(ensureInitialized);
 
+    // --- Normalized Data Helper ---
+    // Shared between /api/actors and /api/combats to ensure UI-ready data
+    const normalizeActors = async (actorList: any[], client: any) => {
+        const systemInfo = await client.getSystem();
+        const adapter = await getAdapter(systemInfo.id);
+        if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
+
+        const { CompendiumCache } = await import('@core/foundry/compendium-cache');
+        const cache = CompendiumCache.getInstance();
+
+        return Promise.all(actorList.map(async (actor: any) => {
+            if (!actor.computed) actor.computed = {};
+            if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
+            if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
+
+            // Resolve top-level image
+            if (actor.img) actor.img = client.resolveUrl(actor.img);
+            if (actor.prototypeToken?.texture?.src) {
+                actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
+            }
+
+            const normalized = adapter.normalizeActorData(actor, client);
+
+            // Compute derived data if adapter supports it (for Dashboard stats)
+            if (adapter.computeActorData) {
+                normalized.derived = adapter.computeActorData(normalized);
+            }
+
+            return normalized;
+        }));
+    };
+
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
@@ -507,30 +547,7 @@ async function startServer() {
             // Yes, standard User can only see what they own/observe.
             // Client.getActors() returns what the socket gives.
 
-            const { CompendiumCache } = await import('@core/foundry/compendium-cache');
-            const cache = CompendiumCache.getInstance();
-            // Note: CompendiumCache is now initialized by SessionManager on startup.
-
-            const normalize = async (actorList: any[]) => Promise.all(actorList.map(async (actor: any) => {
-                if (!actor.computed) actor.computed = {};
-                if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
-                if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
-
-                // Resolve top-level image
-                if (actor.img) actor.img = client.resolveUrl(actor.img);
-                if (actor.prototypeToken?.texture?.src) {
-                    actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
-                }
-
-                const normalized = adapter.normalizeActorData(actor, client);
-
-                // Compute derived data if adapter supports it (for Dashboard stats)
-                if (adapter.computeActorData) {
-                    normalized.derived = adapter.computeActorData(normalized);
-                }
-
-                return normalized;
-            }));
+            const normalize = async (actorList: any[]) => normalizeActors(actorList, client);
 
             // We treat all returned actors as "visible"
             // Filter by ownership and type
@@ -1047,10 +1064,18 @@ async function startServer() {
                     }
                 }));
 
-                // Attach actor data to combatants
+                // Attach actor data to combatants (Normalized for HUD requirements)
+                const actorsToNormalize = Object.values(actorsMap).filter(Boolean);
+                const normalizedActors = await normalizeActors(actorsToNormalize, client);
+                const normalizedMap: Record<string, any> = {};
+                normalizedActors.forEach((a: any) => {
+                    const id = a._id || a.id;
+                    normalizedMap[id] = a;
+                });
+
                 const enrichedCombatants = (combat.combatants || []).map((c: any) => ({
                     ...c,
-                    actor: actorsMap[c.actorId] || null
+                    actor: normalizedMap[c.actorId] || null
                 }));
 
                 return { ...combat, combatants: enrichedCombatants };

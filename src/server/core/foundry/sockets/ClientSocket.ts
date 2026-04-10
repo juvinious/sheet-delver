@@ -88,6 +88,7 @@ export class ClientSocket extends SocketBase {
                         this.userId = data.userId;
                         this.isSocketConnected = true;
                         this.setupSharedContentListeners(this.socket!);
+                        this.setupDocumentListeners(this.socket!);
                         clearTimeout(timeout);
                         this.emit('connect');
                         resolve();
@@ -382,5 +383,54 @@ export class ClientSocket extends SocketBase {
 
     public async getSystemConfig(): Promise<any> {
         return systemService.getSystemClient().getSystemConfig();
+    }
+
+    private setupDocumentListeners(socket: any) {
+        socket.on('modifyDocument', (data: any) => {
+            // Combat & Combatant relay
+            if (data.type === 'Combat' || data.type === 'Combatant') {
+                logger.debug(`ClientSocket | Relay: Combat modification [${data.action}] for ${this.userId}`);
+                this.emit('combatUpdate', data);
+            }
+
+            // Chat relay
+            if (data.type === 'ChatMessage') {
+                logger.debug(`ClientSocket | Relay: Chat modification [${data.action}] for ${this.userId}`);
+                this.emit('chatUpdate', data);
+            }
+
+            // Actor & Item relay
+            if (data.type === 'Actor' || data.type === 'Item') {
+                const actorId = data.type === 'Actor'
+                    ? (Array.isArray(data.result) ? data.result[0]?._id : data.result?._id)
+                    : (data.operation?.parentId || (data.operation?.parentUuid ? data.operation.parentUuid.split('.')[1] : null));
+
+                if (actorId) {
+                    logger.debug(`ClientSocket | Relay: Actor/Item modification [${data.action}] for ${this.userId} (Actor: ${actorId})`);
+                    this.emit('actorUpdate', { actorId });
+                }
+            }
+
+            // User relay (triggers dashboard systemStatus updates)
+            if (data.type === 'User') {
+                this.emit('systemStatusUpdate');
+            }
+        });
+
+        // Engagement relay
+        socket.on('userConnected', () => this.emit('systemStatusUpdate'));
+        socket.on('userDisconnected', () => this.emit('systemStatusUpdate'));
+        socket.on('userActivity', () => this.emit('systemStatusUpdate'));
+
+        // Lifecycle relay
+        socket.on('shutdown', () => {
+            logger.warn(`ClientSocket | Relay: World Shutdown detected for ${this.userId}`);
+            this.emit('worldShutdown');
+        });
+
+        socket.on('reload', () => {
+            logger.info(`ClientSocket | Relay: World Reload detected for ${this.userId}`);
+            this.emit('worldReload');
+        });
     }
 }
