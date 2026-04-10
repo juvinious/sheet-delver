@@ -13,7 +13,7 @@ The UI is driven by a hierarchy of React Contexts that synchronize state with th
 
 ## Key Components
 
-### 1. Floating HUD (`src/app/ui/components/FloatingHUD.tsx`)
+### 1. Floating HUD (`src/client/ui/components/FloatingHUD.tsx`)
 A permanent, stylish navigation bar anchored to the bottom of the screen. It provides quick access to:
 - **Character Select**: Switch between owned and observable actors.
 - **Journal Browser**: Browse world journals and folders.
@@ -24,12 +24,12 @@ A permanent, stylish navigation bar anchored to the bottom of the screen. It pro
 - **JournalBrowser**: A folder-aware explorer for all visible journals.
 - **JournalModal**: A high-fidelity viewer supporting rich text rendering, multi-page navigation, and editor modes for owners.
 
-### 3. Global Chat (`src/app/ui/components/GlobalChat.tsx`)
+### 3. Global Chat (`src/client/ui/components/GlobalChat.tsx`)
 - **Integrated DiceTray**: Visual interface for common dice rolls.
 - **Roll Parsing**: Automatically detects and executes `/roll` commands.
 - **Actor Attribution**: Automatically attaches the current user's selected actor as the "speaker".
 
-### 4. Combat HUD (`src/app/ui/components/Combat/CombatHUD.tsx`)
+### 4. Combat HUD (`src/client/ui/components/Combat/CombatHUD.tsx`)
 A dedicated, real-time overlay for active encounters:
 - **Turn Tracking**: Displays the current initiative order, highlighting the active combatant and round number.
 - **Automated Appearance**: Automatically mounts and unmounts based on the Foundry world's combat state.

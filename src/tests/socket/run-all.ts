@@ -11,10 +11,11 @@ import { testUsersAndCompendia } from './04-users-compendia.test';
 import { testWriteOperations } from './05-write-operations.test';
 import { testAppLogin } from './06-app-login.test';
 import { testRolling } from './09-rolling.test'; // Added rolling test import
+import { logger } from '@shared/utils/logger';
 
 async function runAllTests() {
-    console.log('🚀 Socket Client Test Suite\n');
-    console.log('='.repeat(60));
+    logger.info('🚀 Socket Client Test Suite\n');
+    logger.info('='.repeat(60));
 
     const tests = [
         { name: 'Connection & Authentication', fn: testConnection },
@@ -29,45 +30,45 @@ async function runAllTests() {
     const results: any[] = [];
 
     for (const test of tests) {
-        console.log(`\n📋 Running: ${test.name}`);
-        console.log('-'.repeat(60));
+        logger.info(`\n📋 Running: ${test.name}`);
+        logger.info('-'.repeat(60));
 
         try {
             const result = await test.fn();
             results.push({ name: test.name, ...result });
         } catch (error: any) {
-            console.error(`❌ Test crashed: ${error.message}`);
+            logger.error(`❌ Test crashed: ${error.message}`);
             results.push({ name: test.name, success: false, error: error.message });
         }
 
-        console.log('='.repeat(60));
+        logger.info('='.repeat(60));
     }
 
     // Final Summary
-    console.log('\n\n' + '='.repeat(60));
-    console.log('📊 FINAL TEST SUMMARY');
-    console.log('='.repeat(60));
+    logger.info('\n\n' + '='.repeat(60));
+    logger.info('📊 FINAL TEST SUMMARY');
+    logger.info('='.repeat(60));
 
     const passed = results.filter(r => r.success).length;
     const failed = results.filter(r => !r.success).length;
 
     results.forEach(r => {
         const icon = r.success ? '✅' : '❌';
-        console.log(`${icon} ${r.name}`);
+        logger.info(`${icon} ${r.name}`);
         if (r.error) {
-            console.log(`   Error: ${r.error}`);
+            logger.info(`   Error: ${r.error}`);
         }
     });
 
-    console.log('\n' + '-'.repeat(60));
-    console.log(`Total: ${results.length} | Passed: ${passed} | Failed: ${failed}`);
-    console.log(`Success Rate: ${((passed / results.length) * 100).toFixed(1)}%`);
-    console.log('='.repeat(60) + '\n');
+    logger.info('\n' + '-'.repeat(60));
+    logger.info(`Total: ${results.length} | Passed: ${passed} | Failed: ${failed}`);
+    logger.info(`Success Rate: ${((passed / results.length) * 100).toFixed(1)}%`);
+    logger.info('='.repeat(60) + '\n');
 
     process.exit(failed > 0 ? 1 : 0);
 }
 
 runAllTests().catch(error => {
-    console.error('❌ Test runner crashed:', error);
+    logger.error('❌ Test runner crashed:', error);
     process.exit(1);
 });

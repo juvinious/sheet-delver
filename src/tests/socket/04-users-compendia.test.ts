@@ -1,12 +1,12 @@
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 
 /**
  * Test 4: User and Compendium Data
  * Tests user list and compendium access
  */
 export async function testUsersAndCompendia() {
-    console.log('🧪 Test 4: Users & Compendium Data\n');
+    logger.info('🧪 Test 4: Users & Compendium Data\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -18,60 +18,61 @@ export async function testUsersAndCompendia() {
 
     try {
         await client.connect();
-        console.log('✅ Connected\n');
+        logger.info('✅ Connected\n');
 
         // Test 4a: getUsers()
-        console.log('4a. Testing getUsers()...');
+        logger.info('4a. Testing getUsers()...');
         try {
             const users = await client.getUsers();
-            console.log(`   ✅ Found ${users.length} users`);
+            logger.info(`   ✅ Found ${users.length} users`);
             users.forEach((u: any) => {
-                console.log(`      - ${u.name}: Role ${u.role} (${typeof u.role})`);
+                logger.info(`      - ${u.name}: Role ${u.role} (${typeof u.role})`);
             });
             results.tests.push({ name: 'getUsers', success: true, data: { count: users.length } });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'getUsers', success: false, error: error.message });
         }
 
         // Test 4b: getUsersDetails()
-        console.log('\n4b. Testing getUsersDetails()...');
+        logger.info('\n4b. Testing getUsersDetails()...');
         try {
             await client.getGameData()['users'];
-            console.log(`   ✅ Retrieved detailed user info`);
+            logger.info(`   ✅ Retrieved detailed user info`);
             results.tests.push({ name: 'getUsersDetails', success: true });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'getUsersDetails', success: false, error: error.message });
         }
 
         // Test 4c: getAllCompendiumIndices()
-        console.log('\n4c. Testing getAllCompendiumIndices()...');
+        logger.info('\n4c. Testing getAllCompendiumIndices()...');
         try {
             const indices = await client.getAllCompendiumIndices();
-            console.log(`   ✅ Found ${indices.length} compendium packs`);
+            logger.info(`   ✅ Found ${indices.length} compendium packs`);
             results.tests.push({ name: 'getAllCompendiumIndices', success: true, data: { count: indices.length } });
         } catch (error: any) {
-            console.log(`   ❌ Failed: ${error.message}`);
+            logger.info(`   ❌ Failed: ${error.message}`);
             results.tests.push({ name: 'getAllCompendiumIndices', success: false, error: error.message });
         }
 
         const successCount = results.tests.filter((t: any) => t.success).length;
         results.success = successCount === results.tests.length;
 
-        console.log(`\n📊 ${successCount}/${results.tests.length} tests passed`);
+        logger.info(`\n📊 ${successCount}/${results.tests.length} tests passed`);
         return results;
 
     } catch (error: any) {
-        console.error('❌ Test suite failed:', error.message);
+        logger.error('❌ Test suite failed:', error.message);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('📡 Disconnected\n');
+        logger.info('📡 Disconnected\n');
     }
 }
 
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     testUsersAndCompendia().then(result => {

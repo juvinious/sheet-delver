@@ -1,10 +1,10 @@
 'use client';
 
-import { use, useEffect, useState, Suspense } from 'react';
+import React, { use, useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { useFoundry } from '@/app/ui/context/FoundryContext';
-import { getModule } from '@/modules/core/registry';
-import LoadingModal from '@/app/ui/components/LoadingModal';
+import { useFoundry } from '@client/ui/context/FoundryContext';
+import { getUIModule } from '@modules/registry/client';
+import LoadingModal from '@client/ui/components/LoadingModal';
 
 /**
  * Core actor page router.
@@ -46,14 +46,19 @@ export default function ActorPageRouter({ params }: { params: Promise<{ id: stri
                     return;
                 }
 
-                const manifest = getModule(systemId);
+                const manifest = await getUIModule(systemId);
                 if (!manifest?.actorPage) {
                     setError(`No actor page registered for system: ${systemId}`);
                     return;
                 }
 
-                // actorPage may be a lazy component - resolve it
-                setActorPage(() => manifest.actorPage as React.ComponentType<{ actorId: string; token?: string | null }>);
+                // Resolve the component from the thunk and wrap in React.lazy if it's not already a component
+                const actorPageEntry = manifest.actorPage;
+                const ResolvedComponent = typeof actorPageEntry === 'function' 
+                    ? React.lazy(actorPageEntry as any) 
+                    : actorPageEntry;
+
+                setActorPage(() => ResolvedComponent as any);
             } catch (e: any) {
                 setError('Failed to load actor: ' + e.message);
             } finally {

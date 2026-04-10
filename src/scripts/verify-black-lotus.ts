@@ -1,29 +1,22 @@
-
-import { dataManager } from '../modules/shadowdark/data/DataManager';
-
-// Mock logger
-const logger = {
-    info: console.log,
-    warn: console.warn,
-    error: console.error,
-    debug: console.log
-};
-(global as any).logger = logger;
+import { logger } from '@shared/utils/logger';
+import { dataManager } from '../modules/shadowdark/src/data/DataManager';
 
 async function verify() {
     try {
-        console.log("Loading Black Lotus table...");
+        logger.info("Loading Black Lotus table...");
         const tableName = "Black Lotus Talents";
 
-        const rollResult = await dataManager.rollTable(tableName);
+        // Mock client that can resolve by UUID if needed
+        const mockClient = { fetchByUuid: async (uuid: string) => null };
+        const rollResult = await dataManager.draw(tableName, mockClient);
 
         if (!rollResult || !rollResult.table) {
-            console.error("❌ Could not load table");
+            logger.error("❌ Could not load table");
             return;
         }
 
         const table = rollResult.table;
-        console.log(`Table: ${table.name}, Formula: ${table.formula}`);
+        logger.info(`Table: ${table.name}, Formula: ${table.formula}`);
 
         // precise check: ensure ranges are NOT modified to 2d6 tiers
         // Black Lotus items use 1d12 so ranges are like [1,1], [2,2]...
@@ -32,7 +25,7 @@ async function verify() {
 
         // Find an item
         const item = table.results[0];
-        console.log(`First item range: [${item.range}]`);
+        logger.info(`First item range: [${item.range}]`);
 
         // If it was sanitized to 2d6, we'd expect 2-12 ranges.
         // If it was skipped, it should keep 1d12 ranges (e.g. 1-1, 2-2).
@@ -42,7 +35,7 @@ async function verify() {
         }
 
     } catch (e) {
-        console.error("Error:", e);
+        logger.error("Error:", e);
     }
 }
 

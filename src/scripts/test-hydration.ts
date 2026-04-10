@@ -1,8 +1,8 @@
 import { DataManager } from '../modules/shadowdark/data/DataManager';
-import { logger } from '../core/logger';
+import { logger } from '@shared/utils/logger';
 
 async function testHydration() {
-    console.log("Starting hydration test...");
+    logger.info("Starting hydration test...");
     const dataManager = DataManager.getInstance();
     await dataManager.initialize();
 
@@ -11,27 +11,27 @@ async function testHydration() {
     const gearTable = await dataManager.getDocument(GEAR_TABLE_UUID);
 
     if (gearTable) {
-        console.log(`Found table: ${gearTable.name}`);
-        console.log(`Results count: ${gearTable.results?.length}`);
+        logger.info(`Found table: ${gearTable.name}`);
+        logger.info(`Results count: ${gearTable.results?.length}`);
 
         if (gearTable.results && gearTable.results.length > 0) {
             const firstResult = gearTable.results[0];
-            console.log("First result sample:", JSON.stringify(firstResult, null, 2));
+            logger.info("First result sample:", JSON.stringify(firstResult, null, 2));
 
             if (firstResult.range && Array.isArray(firstResult.range)) {
-                console.log("SUCCESS: Results have ranges!");
+                logger.info("SUCCESS: Results have ranges!");
             } else {
-                console.log("FAILURE: Results missing ranges.");
+                logger.info("FAILURE: Results missing ranges.");
             }
         } else {
-            console.log("FAILURE: Table has no results.");
+            logger.info("FAILURE: Table has no results.");
         }
     } else {
-        console.log(`FAILURE: Could not find table ${GEAR_TABLE_UUID}`);
-        console.log("Available rollable-tables keys:");
+        logger.info(`FAILURE: Could not find table ${GEAR_TABLE_UUID}`);
+        logger.info("Available rollable-tables keys:");
         for (const key of dataManager.index.keys()) {
             if (key.includes('rollable-tables')) {
-                console.log(`  - ${key}`);
+                logger.info(`  - ${key}`);
             }
         }
     }
@@ -40,6 +40,6 @@ async function testHydration() {
 }
 
 testHydration().catch(err => {
-    console.error("Test failed:", err);
+    logger.error("Test failed:", err);
     process.exit(1);
 });

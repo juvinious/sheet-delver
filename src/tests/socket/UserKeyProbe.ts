@@ -6,7 +6,8 @@
 
 const fetch = global.fetch;
 
-import { loadConfig } from '../../core/config';
+import { loadConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
 
 const config = await loadConfig();
 const BASE_URL = config?.foundry.url || 'http://localhost:30000';
@@ -14,13 +15,13 @@ const USERNAME = config?.foundry.username || 'Gamemaster';
 const PASSWORD = process.env.FOUNDRY_PASSWORD || 'password';
 
 async function probeLogin() {
-    console.log(`[PROBE] Starting UserKey Probe for user "${USERNAME}"...`);
+    logger.info(`[PROBE] Starting UserKey Probe for user "${USERNAME}"...`);
 
     // 1. Fetch /join to get cookies
     const joinRes = await fetch(`${BASE_URL}/join`);
     const setCookie = joinRes.headers.get('set-cookie');
     const cookie = setCookie ? setCookie.split(';')[0] : '';
-    console.log(`[PROBE] Cookie: ${cookie}`);
+    logger.info(`[PROBE] Cookie: ${cookie}`);
 
     // 2. Prepare payload
     // User requested specifically to try "username for login under userid"
@@ -41,7 +42,7 @@ async function probeLogin() {
     ];
 
     for (const t of tests) {
-        console.log(`\n--- Testing: ${t.name} (Form URL Encoded + Cookie) ---`);
+        logger.info(`\n--- Testing: ${t.name} (Form URL Encoded + Cookie) ---`);
         try {
             const res = await fetch(`${BASE_URL}/join`, {
                 method: 'POST',
@@ -56,21 +57,21 @@ async function probeLogin() {
                 redirect: 'manual'
             });
 
-            console.log(`Status: ${res.status}`);
+            logger.info(`Status: ${res.status}`);
             const text = await res.text();
             if (res.status === 401 && text.includes("ErrorUserDoesNotExist")) {
-                console.log("RESULT: FAILED (User Lookup Failed)");
+                logger.info("RESULT: FAILED (User Lookup Failed)");
             } else if (res.status === 401 && text.includes("ErrorInvalidPassword")) {
-                console.log("RESULT: SUCCESS!! (User Found, Password Wrong)");
+                logger.info("RESULT: SUCCESS!! (User Found, Password Wrong)");
             } else if (res.status === 302) {
-                console.log("RESULT: SUCCESS (Redirect)");
+                logger.info("RESULT: SUCCESS (Redirect)");
             } else {
-                console.log(`RESULT: Other (${res.status})`);
-                console.log(text.substring(0, 100));
+                logger.info(`RESULT: Other (${res.status})`);
+                logger.info(text.substring(0, 100));
             }
 
         } catch (e: any) {
-            console.error("Exception:", e.message);
+            logger.error("Exception:", e.message);
         }
     }
 }

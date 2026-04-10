@@ -24,9 +24,13 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"],
+      "@app/*": ["./src/app/*"],
+      "@client/*": ["./src/client/*"],
+      "@server/*": ["./src/server/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@core/*": ["./src/server/core/*"],
+      "@modules/*": ["./src/modules/*"]
     }
   },
   "include": [
@@ -41,6 +45,7 @@
     "node_modules",
     "scripts",
     "src/scripts",
-    "temp-shadowdark"
+    "temp-shadowdark",
+    "temp"
   ]
 }

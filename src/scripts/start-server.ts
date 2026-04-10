@@ -1,4 +1,4 @@
-
+import { logger } from '@shared/utils/logger';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
@@ -13,11 +13,11 @@ let apiPort = 3001;
 
 // Read settings.yaml
 try {
-    console.log(`[Manager] Current Working Directory: ${process.cwd()}`);
-    console.log(`[Manager] Looking for settings at: ${SETTINGS_PATH}`);
+    logger.info(`[Manager] Current Working Directory: ${process.cwd()}`);
+    logger.info(`[Manager] Looking for settings at: ${SETTINGS_PATH}`);
 
     if (fs.existsSync(SETTINGS_PATH)) {
-        console.log('[Manager] settings.yaml found.');
+        logger.info('[Manager] settings.yaml found.');
         const fileContents = fs.readFileSync(SETTINGS_PATH, 'utf8');
         const settings = yaml.load(fileContents) as any;
 
@@ -27,12 +27,12 @@ try {
             if (settings.app['api-port']) apiPort = settings.app['api-port'];
         }
 
-        console.log(`[Manager] Loading configuration: App=${host}:${port}, API=${apiPort}`);
+        logger.info(`[Manager] Loading configuration: App=${host}:${port}, API=${apiPort}`);
     } else {
-        console.log('[Manager] No settings.yaml found, using defaults.');
+        logger.info('[Manager] No settings.yaml found, using defaults.');
     }
 } catch (e) {
-    console.error('[Manager] Error reading settings.yaml:', e);
+    logger.error('[Manager] Error reading settings.yaml:', e);
 }
 
 // Determine command (dev or start)
@@ -45,10 +45,10 @@ if (command !== 'build') {
     const LEGACY_CACHE_PATH = path.join(process.cwd(), '.foundry-cache.json');
 
     if (!fs.existsSync(CACHE_PATH) && !fs.existsSync(LEGACY_CACHE_PATH)) {
-        console.error('\n\x1b[31m[CRITICAL] Cache Missing: World data not found.\x1b[0m');
-        console.error('The application cannot start without initial world data.');
-        console.error('Please run the setup script to initialize the cache:');
-        console.error('\n    \x1b[36mnpm run setup\x1b[0m\n');
+        logger.error('\n\x1b[31m[CRITICAL] Cache Missing: World data not found.\x1b[0m');
+        logger.error('The application cannot start without initial world data.');
+        logger.error('Please run the setup script to initialize the cache:');
+        logger.error('\n    \x1b[36mnpm run setup\x1b[0m\n');
         process.exit(1);
     }
 }
@@ -57,13 +57,13 @@ let coreProcess: ChildProcess | null = null;
 let shellProcess: ChildProcess | null = null;
 
 function cleanup() {
-    console.log('\n[Manager] Shutting down services...');
+    logger.info('\n[Manager] Shutting down services...');
     if (coreProcess) {
-        console.log('[Manager] Stopping Core Service...');
+        logger.info('[Manager] Stopping Core Service...');
         coreProcess.kill('SIGINT');
     }
     if (shellProcess) {
-        console.log('[Manager] Stopping Shell Service...');
+        logger.info('[Manager] Stopping Shell Service...');
         shellProcess.kill('SIGINT');
     }
 }
@@ -82,7 +82,7 @@ process.on('SIGTERM', () => {
 async function start() {
     // Handle Build Command
     if (command === 'build') {
-        console.log(`[Manager] Building Application with API_PORT=${apiPort}...`);
+        logger.info(`[Manager] Building Application with API_PORT=${apiPort}...`);
         const nextCmd = path.join(process.cwd(), 'node_modules', '.bin', 'next');
         const env = { ...process.env, API_PORT: apiPort.toString() };
 
@@ -97,10 +97,10 @@ async function start() {
         return;
     }
 
-    console.log('[Manager] Starting Decoupled Architecture...');
+    logger.info('[Manager] Starting Decoupled Architecture...');
 
     // 1. Start Core Service
-    console.log(`[Manager] Launching Core Service (Express) on port ${apiPort}...`);
+    logger.info(`[Manager] Launching Core Service (Express) on port ${apiPort}...`);
     // npx tsx src/server/index.ts
     // We pass the API_PORT via env var as usual, but specific naming might be needed depending on server/index.ts
     // server/index.ts reads config.app.apiPort mostly, but falls back to env.PORT or env.API_PORT
@@ -111,23 +111,23 @@ async function start() {
     });
 
     coreProcess.on('error', (err) => {
-        console.error('[Manager] Core Service failed to start:', err);
+        logger.error('[Manager] Core Service failed to start:', err);
         cleanup();
         process.exit(1);
     });
 
     coreProcess.on('close', (code) => {
         if (code !== 0 && code !== null) {
-            console.error(`[Manager] Core Service crashed with code ${code}`);
+            logger.error(`[Manager] Core Service crashed with code ${code}`);
         } else {
-            console.log(`[Manager] Core Service exited.`);
+            logger.info(`[Manager] Core Service exited.`);
         }
         cleanup();
         process.exit(code || 0);
     });
 
     // 2. Start Shell Service
-    console.log(`[Manager] Launching Shell Service (Next.js ${command}) on ${host}:${port}...`);
+    logger.info(`[Manager] Launching Shell Service (Next.js ${command}) on ${host}:${port}...`);
     const nextCmd = path.join(process.cwd(), 'node_modules', '.bin', 'next');
 
     // Pass API_PORT to Next.js so it knows where to proxy
@@ -140,20 +140,20 @@ async function start() {
     });
 
     shellProcess.on('error', (err) => {
-        console.error('[Manager] Shell Service failed to start:', err);
+        logger.error('[Manager] Shell Service failed to start:', err);
         cleanup();
         process.exit(1);
     });
 
     shellProcess.on('close', (code) => {
-        console.log(`[Manager] Shell Service exited with code ${code}`);
+        logger.info(`[Manager] Shell Service exited with code ${code}`);
         cleanup();
         process.exit(code || 0);
     });
 }
 
 start().catch(err => {
-    console.error('[Manager] Fatal error during startup:', err);
+    logger.error('[Manager] Fatal error during startup:', err);
     cleanup();
     process.exit(1);
 });
