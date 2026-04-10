@@ -502,11 +502,13 @@ async function startServer() {
             // Auth handled by middleware
             const systemClient = systemService.getSystemClient();
             const gameData = systemClient.getGameData();
-            const adapter = systemClient.getSystemAdapter();
+            const { getAdapter } = await import('@modules/registry/server');
+            const adapter = await getAdapter(gameData.system.id);
+            const adapterName = adapter?.constructor?.name || 'Unknown';
 
             if (adapter && typeof (adapter as any).getSystemData === 'function') {
                 const data = await (adapter as any).getSystemData(systemClient);
-                logger.debug(`[CoreService] System data fetched. Keys: ${Object.keys(data || {}).join(', ')}`);
+                logger.debug(`[CoreService] [PID:${process.pid}] System data fetched (${adapterName}). Keys: ${Object.keys(data || {}).length}`);
                 res.json(data);
             } else {
                 // Fallback: Return raw scraper data if adapter doesn't provide more

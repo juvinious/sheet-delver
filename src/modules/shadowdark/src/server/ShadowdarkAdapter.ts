@@ -1,4 +1,4 @@
-import { shadowdarkRegistry } from './Registry';
+import { shadowdarkRegistry, ShadowdarkRegistry } from './Registry';
 import { ShadowdarkNormalizer, resolveDocumentName } from '../logic/normalization';
 import { shadowdarkTheme } from '../ui/themes/shadowdark';
 import { getInitiativeFormula, normalizeItemData, isClassSpellcaster } from '../logic/rules';
@@ -15,21 +15,32 @@ import { ActorSheetData } from '@shared/interfaces';
 export class ShadowdarkAdapter implements SystemAdapter {
     systemId = 'shadowdark';
     private static instance: ShadowdarkAdapter;
-    private _registry = shadowdarkRegistry;
+    private get _registry() {
+        return ShadowdarkRegistry.getInstance();
+    }
 
     theme = shadowdarkTheme.colors;
     componentStyles = shadowdarkTheme;
 
     constructor() {
+        const globalAny = globalThis as any;
+        if (globalAny.__shadowdarkAdapter) {
+            return globalAny.__shadowdarkAdapter;
+        }
         if (!ShadowdarkAdapter.instance) {
             ShadowdarkAdapter.instance = this;
         }
+        globalAny.__shadowdarkAdapter = ShadowdarkAdapter.instance;
         return ShadowdarkAdapter.instance;
     }
 
     public static getInstance(): ShadowdarkAdapter {
+        const globalAny = globalThis as any;
         if (!ShadowdarkAdapter.instance) {
-            ShadowdarkAdapter.instance = new ShadowdarkAdapter();
+            if (!globalAny.__shadowdarkAdapter) {
+                globalAny.__shadowdarkAdapter = new ShadowdarkAdapter();
+            }
+            ShadowdarkAdapter.instance = globalAny.__shadowdarkAdapter;
         }
         return ShadowdarkAdapter.instance;
     }
@@ -92,7 +103,9 @@ export class ShadowdarkAdapter implements SystemAdapter {
     }
 
     async getSystemData(client: any, _options?: { minimal?: boolean }): Promise<any> {
-        return this._registry.getSystemData(client);
+        const data = await this._registry.getSystemData(client);
+        logger.debug(`[ShadowdarkAdapter] Handing off system data. Type: ${typeof data}, Keys: ${Object.keys(data || {}).length}`);
+        return data;
     }
 
     async getCollection(id: string, options: { summary?: boolean } = {}): Promise<any[]> {

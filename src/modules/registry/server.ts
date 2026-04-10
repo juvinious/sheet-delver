@@ -4,24 +4,45 @@ import { logger } from '@shared/utils/logger';
 import path from 'node:path';
 import fs from 'node:fs';
 
+interface RegistryState {
+    pluginMap: Map<string, SystemPlugin>;
+    adapterInstances: Map<string, any>;
+    isInitialized: boolean;
+}
+
 // In-Memory Cache for Discovered Modules & Active Adapters
-// These are private to the server entry point to prevent external leakage
-const pluginMap = new Map<string, SystemPlugin>();
-const adapterInstances = new Map<string, SystemAdapter>();
-let isInitialized = false;
+// Use globalThis to shared state across dual-loaded modules
+const getGlobalState = (): RegistryState => {
+    const g = globalThis as any;
+    if (!g.__coreRegistry) {
+        g.__coreRegistry = {
+            pluginMap: new Map<string, SystemPlugin>(),
+            adapterInstances: new Map<string, any>(),
+            isInitialized: false
+        };
+    }
+    return g.__coreRegistry;
+};
+
+const _state = getGlobalState();
+const pluginMap = _state.pluginMap;
+const adapterInstances = _state.adapterInstances;
+const isInitialized = () => _state.isInitialized;
+const setInitialized = (val: boolean) => { _state.isInitialized = val; };
 
 /**
  * Boot-Time Scanner: Discovers all modules in src/modules/
  * Uses Node.js 'fs' to build the initial system index.
  */
 export function initializeRegistry() {
-    if (typeof window !== 'undefined' || isInitialized) return;
+    if (typeof window !== 'undefined' || isInitialized()) return;
 
     try {
         const modulesDir = path.join(process.cwd(), 'src', 'modules');
+        logger.info(`Registry [PID:${process.pid}] | Scanning modules directory: ${modulesDir} (CWD: ${process.cwd()})`);
 
         if (!fs.existsSync(modulesDir)) {
-            logger.error(`Registry | Modules directory not found: ${modulesDir}`);
+            logger.error(`Registry [PID:${process.pid}] | Modules directory NOT FOUND at: ${modulesDir}`);
             return;
         }
 
@@ -52,19 +73,13 @@ export function initializeRegistry() {
 
                 const primaryId = info.id.toLowerCase();
                 pluginMap.set(primaryId, plugin);
-
-                // Register aliases if provided
-                if (Array.isArray(info.aliases)) {
-                    info.aliases.forEach((alias: string) => pluginMap.set(alias.toLowerCase(), plugin));
-                }
-
-                logger.info(`Registry | Discovered module: ${info.title} (${primaryId}) at /modules/${entry.name}`);
+                logger.info(`Registry [PID:${process.pid}] | Discovered module: ${info.title} (${primaryId})`);
             } catch (err) {
                 logger.error(`Registry | Failed to parse manifest for "${entry.name}":`, err);
             }
         }
 
-        isInitialized = true;
+        setInitialized(true);
     } catch (err) {
         logger.error('Registry | Fatal error during boot-time discovery:', err);
     }
@@ -75,8 +90,10 @@ export function initializeRegistry() {
  * Used by the Core Service to expose available systems to the frontend.
  */
 export function getRegisteredModules() {
-    // Return unique plugin info objects
-    return Array.from(new Set(pluginMap.values())).map(p => p.info);
+    if (!isInitialized()) initializeRegistry();
+    // Return unique plugin info objects by converting values to a Set then back to an Array
+    const uniquePlugins = Array.from(new Set(pluginMap.values()));
+    return uniquePlugins.map(p => p.info);
 }
 
 /**
@@ -90,7 +107,7 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
     if (adapterInstances.has(id)) return adapterInstances.get(id)!;
 
     // Ensure discovery has run
-    if (!isInitialized) initializeRegistry();
+    if (!isInitialized()) initializeRegistry();
 
     const plugin = pluginMap.get(id) || pluginMap.get('generic');
     if (!plugin) return null;
@@ -124,7 +141,7 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
  * Loads specialized server-side routes or handlers for a system.
  */
 export async function getServerModule(systemId: string) {
-    if (!isInitialized) initializeRegistry();
+    if (!isInitialized()) initializeRegistry();
 
     const plugin = pluginMap.get(systemId.toLowerCase());
     if (!plugin || !plugin.getServer) return null;
@@ -164,7 +181,7 @@ export async function getMatchingAdapter(actor: any): Promise<SystemAdapter> {
         if (exact && exact.systemId !== 'generic') return exact;
     }
 
-    if (!isInitialized) initializeRegistry();
+    if (!isInitialized()) initializeRegistry();
 
     for (const plugin of pluginMap.values()) {
         if (plugin.info.id === 'generic') continue;
