@@ -1,4 +1,5 @@
-import { dataManager } from '../../data/DataManager';
+import { shadowdarkAdapter } from '../ShadowdarkAdapter';
+import { logger } from '@shared/utils/logger';
 
 /**
  * GET /api/modules/shadowdark/roll-table
@@ -6,13 +7,14 @@ import { dataManager } from '../../data/DataManager';
  */
 export async function handleListRollTables() {
     try {
-        const index = await dataManager.getIndex();
+        const index = await shadowdarkAdapter.getRegistryIndex();
         const tables = Object.entries(index)
-            .filter(([uuid, name]) => uuid.includes('.rollable-tables.') && !uuid.includes('.TableResult.'))
+            .filter(([uuid, _name]) => uuid.includes('.rollable-tables.') && !uuid.includes('.TableResult.'))
             .map(([uuid, name]) => ({ uuid, name }));
 
         return Response.json({ success: true, tables });
     } catch (e: any) {
+        logger.error('[Shadowdark API] List tables failed:', e);
         return Response.json({ error: e.message }, { status: 500 });
     }
 }
@@ -23,14 +25,12 @@ export async function handleListRollTables() {
  */
 export async function handleGetRollTable(request: Request, id: string, client?: any) {
     try {
-        // Try to find by ID in our index (which handles both UUID and short ID)
-        let table = await dataManager.getDocument(id, client);
+        let table = await shadowdarkAdapter.resolveDocument(client, id);
 
         if (!table) {
-            // Try searching for the UUID in the index
-            const index = await dataManager.getIndex();
+            const index = await shadowdarkAdapter.getRegistryIndex();
             const uuid = Object.keys(index).find(k => k.endsWith(`.${id}`));
-            if (uuid) table = await dataManager.getDocument(uuid, client);
+            if (uuid) table = await shadowdarkAdapter.resolveDocument(client, uuid);
         }
 
         if (!table) {
@@ -49,7 +49,7 @@ export async function handleGetRollTable(request: Request, id: string, client?: 
  */
 export async function handleDrawRollTable(request: Request, id: string, client?: any) {
     try {
-        const result = await dataManager.draw(id, client);
+        const result = await shadowdarkAdapter.drawTable(id, client);
 
         if (!result) {
             return Response.json({ error: `Draw failed for table: ${id}` }, { status: 404 });
@@ -60,6 +60,7 @@ export async function handleDrawRollTable(request: Request, id: string, client?:
             ...result
         });
     } catch (e: any) {
+        logger.error(`[Shadowdark API] Draw failed for ${id}:`, e);
         return Response.json({ error: e.message }, { status: 500 });
     }
 }
@@ -70,11 +71,9 @@ export async function handleDrawRollTable(request: Request, id: string, client?:
  */
 export async function handleGetResultPool(request: Request, tableId: string, resultId: string, client?: any) {
     try {
-        const table = await dataManager.getDocument(tableId, client);
+        const table = await shadowdarkAdapter.resolveDocument(client, tableId);
         if (!table) return Response.json({ error: `Table not found: ${tableId}` }, { status: 404 });
 
-        // User wants the result pool from that range. 
-        // We can use the resultId to find the range, then return all results in that range.
         const targetResult = table.results?.find((r: any) => r._id === resultId || r.id === resultId);
         if (!targetResult) return Response.json({ error: `Result not found: ${resultId}` }, { status: 404 });
 
@@ -87,7 +86,7 @@ export async function handleGetResultPool(request: Request, tableId: string, res
         return Response.json({
             success: true,
             id: tableId,
-            roll: range[0], // Represent as if we rolled this range
+            roll: range[0], 
             results: pool
         });
     } catch (e: any) {

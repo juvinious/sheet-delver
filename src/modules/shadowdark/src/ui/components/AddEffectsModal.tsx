@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Power, Search } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
-import { EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
+import { useShadowdarkCustomMaps } from '../hooks/useShadowdarkCustomMaps';
 import { logger } from '@shared/utils/logger';
 
 interface AddEffectsModalProps {
@@ -29,10 +29,11 @@ export default function AddEffectsModal({
     onCreate,
     onUpdate,
     initialData,
-    systemConfig,
-    predefinedEffects
+    systemConfig: _systemConfig,
+    predefinedEffects: _predefinedEffects
 }: AddEffectsModalProps) {
     const { resolveImageUrl } = useConfig();
+    const { predefinedEffects, effectTranslations } = useShadowdarkCustomMaps();
     const [loading, setLoading] = useState(false);
 
     // Effect state
@@ -47,7 +48,7 @@ export default function AddEffectsModal({
 
     // Flatten predefined effects for dropdown
     const effectOptions = useMemo(() => {
-        const effects = systemConfig?.PREDEFINED_EFFECTS || {};
+        const effects = predefinedEffects || {};
         return Object.entries(effects).map(([key, val]: [string, any]) => ({
             key,
             label: val.label || val.name || key,
@@ -56,7 +57,7 @@ export default function AddEffectsModal({
             defaultValue: val.value,
             mode: val.mode || 2
         })).sort((a, b) => a.label.localeCompare(b.label));
-    }, [systemConfig]);
+    }, [predefinedEffects]);
 
     // Initialize from Initial Data (Edit Mode)
     useEffect(() => {
@@ -74,8 +75,7 @@ export default function AddEffectsModal({
                 setMode(Number(change.mode ?? 2));
 
                 // Try to match to a predefined effect
-                const effectsMap = predefinedEffects || systemConfig?.PREDEFINED_EFFECTS || {};
-                const found = Object.entries(effectsMap).find(([_key, conf]: any) =>
+                const found = Object.entries(predefinedEffects).find(([_key, conf]: any) =>
                     conf && conf.key === change.key
                 );
 
@@ -88,7 +88,7 @@ export default function AddEffectsModal({
                 }
             }
         }
-    }, [initialData, predefinedEffects, systemConfig]);
+    }, [initialData, predefinedEffects]);
 
     if (!isOpen) return null;
 
@@ -107,7 +107,7 @@ export default function AddEffectsModal({
             return;
         }
 
-        const config = systemConfig?.PREDEFINED_EFFECTS?.[key];
+        const config = predefinedEffects?.[key];
         if (!config) return;
 
         setEffectKey(key);
@@ -266,7 +266,7 @@ export default function AddEffectsModal({
                                                         'Other': []
                                                     };
 
-                                                    Object.entries(EFFECT_TRANSLATIONS_MAP).forEach(([key, label]) => {
+                                                    Object.entries(effectTranslations).forEach(([key, label]) => {
                                                         if (key.includes('abilities') && key.endsWith('.bonus')) {
                                                             groups['Abilities (Bonus)'].push({ key, label });
                                                         } else if (key.includes('abilities') && key.endsWith('.base')) {

@@ -123,53 +123,42 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
 
     const handleSelection = (field: string, option: any, multiSelect: boolean) => {
         const valToStore = option.uuid || option.name;
-                // const optName = option.name;
 
-                // Handle Multi-Select (Toggle)
-                if (multiSelect) {
-                    setSelectionModal(prev => {
-                        const currentVal = prev.currentValue;
-                        const modalOptions = prev.options;
+        // Handle Multi-Select (Toggle)
+        if (multiSelect) {
+            setSelectionModal(prev => {
+                const currentVal = prev.currentValue;
+                const modalOptions = prev.options;
 
-                        // Sanitize & Normalize to UUIDs
-                        // We map existing values (Names or UUIDs) to the authoritative UUIDs from options if available.
-                        const cleanArray = (Array.isArray(currentVal) ? currentVal : []).filter((c: any) => c != null).map((c: any) => {
-                            const val = typeof c === 'object' ? (c.uuid || c.name) : c;
-                            if (!val) return '';
+                // Sanitize & Normalize to UUIDs
+                const cleanArray = (Array.isArray(currentVal) ? currentVal : []).filter((c: any) => c != null).map((c: any) => {
+                    const val = typeof c === 'object' ? (c.uuid || c.name) : c;
+                    if (!val) return '';
 
-                            // Try to resolve to UUID from options
-                            // Value might be "Common" (Name) or "Item.xyz" (UUID)
-                            const match = modalOptions.find(o => o.uuid === val || o.name === val);
-                            if (match && match.uuid) return match.uuid;
+                    const match = modalOptions.find(o => o.uuid === val || o.name === val);
+                    if (match && match.uuid) return match.uuid;
 
-                            return val;
-                        }).filter((c: any) => c !== '');
+                    return val;
+                }).filter((c: any) => c !== '');
 
-                        // Deduplicate
-                        const newArray = Array.from(new Set(cleanArray));
+                const newArray = Array.from(new Set(cleanArray));
+                const targetVal = option.uuid || option.name;
+                const existingIndex = newArray.findIndex((c: any) => c === targetVal);
 
-                        // Determine the value to toggle (Prefer UUID)
-                        const targetVal = option.uuid || option.name;
-
-                        const existingIndex = newArray.findIndex((c: any) => c === targetVal);
-
-                        if (existingIndex >= 0) {
-                            newArray.splice(existingIndex, 1);
-                        } else {
-                            newArray.push(targetVal);
-                        }
-
-                        // Update Backend (Async)
-                        setTimeout(() => onUpdate(field, newArray), 0);
-
-                        return { ...prev, currentValue: newArray };
-                    });
+                if (existingIndex >= 0) {
+                    newArray.splice(existingIndex, 1);
                 } else {
-                    // Single Select - Replace
-                    onUpdate(field, valToStore);
-                    setSelectionModal(prev => ({ ...prev, isOpen: false }));
+                    newArray.push(targetVal);
                 }
-            }
+
+                setTimeout(() => onUpdate(field, newArray), 0);
+                return { ...prev, currentValue: newArray };
+            });
+        } else {
+            onUpdate(field, valToStore);
+            setSelectionModal(prev => ({ ...prev, isOpen: false }));
+        }
+    }
     const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative";
     const cardStyleWithoutPadding = "bg-white border-2 border-black text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
 
@@ -266,12 +255,6 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                     <Loader2 className="w-3 h-3 animate-spin text-amber-500" />
                                 )}
                             </div>
-                            <button
-                                onClick={() => openSelection('system.ancestry', 'Ancestry', 'ancestries')}
-                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
-                            >
-                                Edit
-                            </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
                             {actor.details?.ancestry || '-'}
@@ -401,10 +384,17 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                             </div>
                                         </div>
                                         <button
-                                            onClick={() => setIsLanguageModalOpen(true)}
+                                            onClick={async () => {
+                                                if (!systemData?.languages && onFetchPack) {
+                                                    setFetchingCategory('languages');
+                                                    await onFetchPack('languages');
+                                                    setFetchingCategory(null);
+                                                }
+                                                setIsLanguageModalOpen(true);
+                                            }}
                                             className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
                                         >
-                                            Edit
+                                            {fetchingCategory === 'languages' ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Edit'}
                                         </button>
                                     </>
                                 );
@@ -533,6 +523,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         onUpdate={onUpdateItem}
                         initialData={editingItem}
                         systemConfig={systemData}
+                        predefinedEffects={systemData?.PREDEFINED_EFFECTS}
                     />
                 )
             }
@@ -550,6 +541,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                 onCancel={() => setItemToDelete(null)}
                 theme={shadowdarkTheme.modal}
             />
+
+
 
             <CompendiumSelectModal
                 isOpen={selectionModal.isOpen}

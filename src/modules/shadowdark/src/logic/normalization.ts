@@ -24,6 +24,11 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
     // (Foundry IDs are often raw alphanumeric strings).
 
     if (cachedSystemData) {
+        // High-performance Name Index lookup (preferred)
+        const nameIndex = cachedSystemData.nameIndex || {};
+        if (nameIndex[val]) return nameIndex[val];
+
+        // Legacy/Fallback collections lookup
         const collections = [
             'ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 
             'languages', 'spells', 'talents', 'gear', 'magicItems', 

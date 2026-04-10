@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { X, Trash2, Power, Search } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
-import { BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
+import { useShadowdarkCustomMaps } from '../hooks/useShadowdarkCustomMaps';
 import { logger } from '@shared/utils/logger';
 
 interface CustomBoonModalProps {
@@ -30,8 +30,9 @@ const MODES = [
     { value: 4, label: 'DOWNGRADE' },
 ];
 
-export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, initialData, systemConfig, predefinedEffects }: CustomBoonModalProps) {
+export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, initialData, systemConfig: _systemConfig, predefinedEffects: _predefinedEffects }: CustomBoonModalProps) {
     const { resolveImageUrl } = useConfig();
+    const { predefinedEffects, boonTypes, effectTranslations } = useShadowdarkCustomMaps();
     const [name, setName] = useState('');
     const [boonType, setBoonType] = useState('blessing');
     const [level, setLevel] = useState(1);
@@ -44,11 +45,13 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
     // For simplicity, we might replace all effects on update to ensure 1:1 mapping with UI
     const [originalEffectIds, setOriginalEffectIds] = useState<string[]>([]);
 
-    // const boonTypes = systemConfig?.BOON_TYPES || DEFAULT_BOON_TYPES;
+    const activeBoonTypes = useMemo(() => {
+        return Object.keys(boonTypes).length > 0 ? boonTypes : DEFAULT_BOON_TYPES;
+    }, [boonTypes]);
 
     // Flatten predefined effects for dropdown
     const effectOptions = useMemo(() => {
-        const effects = systemConfig?.PREDEFINED_EFFECTS || {};
+        const effects = predefinedEffects || {};
         return Object.entries(effects).map(([key, val]: [string, any]) => ({
             key,
             label: val.label || val.name || key,
@@ -57,7 +60,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
             defaultValue: val.value,
             mode: val.mode || 2
         })).sort((a, b) => a.label.localeCompare(b.label));
-    }, [systemConfig]);
+    }, [predefinedEffects]);
 
     // Initialize from Initial Data (Edit Mode)
     useEffect(() => {
@@ -77,12 +80,12 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                         let matchKey = 'custom';
                         let matchConfig: any = null;
 
-                        const effectsMap = predefinedEffects || systemConfig?.PREDEFINED_EFFECTS || {};
-
-                        const found = Object.entries(effectsMap).find(([_key, conf]: any) =>
+                        // Try to match to a predefined effect
+                        const found = Object.entries(predefinedEffects).find(([_key, conf]: any) => 
                             conf && conf.effectKey === c.key
                         );
 
+                        const label = found ? (found[1].label || found[1].name) : (effectTranslations[c.key] || c.key);
                         if (found) {
                             matchKey = found[0];
                             matchConfig = found[1];
@@ -91,7 +94,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                         return {
                             id: crypto.randomUUID(),
                             key: matchKey,
-                            label: matchConfig?.name || ae.name || 'Custom Effect',
+                            label: matchConfig?.name || ae.name || label || 'Custom Effect',
                             icon: matchConfig?.img || ae.icon || 'icons/svg/aura.svg',
                             effectKey: c.key,
                             value: c.value,
@@ -104,7 +107,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                 setOriginalEffectIds(ids);
             }
         }
-    }, [initialData, predefinedEffects, systemConfig]);
+    }, [initialData, predefinedEffects, effectTranslations]);
 
     if (!isOpen) return null;
 
@@ -127,7 +130,7 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
             return;
         }
 
-        const config = systemConfig?.PREDEFINED_EFFECTS?.[key];
+        const config = predefinedEffects?.[key];
         if (!config) return;
 
         const newEffect = {
@@ -252,8 +255,8 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                     onChange={e => setBoonType(e.target.value)}
                                     className="w-full bg-white border-2 border-black text-black px-4 py-3 focus:bg-neutral-50 outline-none font-black uppercase text-xs appearance-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
                                 >
-                                    {Object.entries(BOON_TYPE_MAP).map(([key, label]) => (
-                                        <option key={key} value={key}>{label}</option>
+                                    {Object.entries(activeBoonTypes).map(([key, label]: [string, any]) => (
+                                        <option key={key} value={key}>{typeof label === 'string' ? label : (label.label || key)}</option>
                                     ))}
                                 </select>
                             </div>
@@ -346,19 +349,19 @@ export default function CustomBoonModal({ isOpen, onClose, onCreate, onUpdate, i
                                                                 'Other': []
                                                             };
 
-                                                            Object.entries(EFFECT_TRANSLATIONS_MAP).forEach(([key, label]) => {
+                                                            Object.entries(effectTranslations).forEach(([key, label]: [string, any]) => {
                                                                 if (key.includes('abilities') && key.endsWith('.bonus')) {
-                                                                    groups['Abilities (Bonus)'].push({ key, label });
+                                                                    groups['Abilities (Bonus)'].push({ key, label: label.label || label });
                                                                 } else if (key.includes('abilities') && key.endsWith('.base')) {
-                                                                    groups['Abilities (Base/Permanent)'].push({ key, label });
+                                                                    groups['Abilities (Base/Permanent)'].push({ key, label: label.label || label });
                                                                 } else if (key.includes('bonuses.melee') || key.includes('bonuses.ranged') ||
                                                                     key.includes('bonuses.attack') || key.includes('bonuses.damage') ||
                                                                     key.includes('bonuses.ac')) {
-                                                                    groups['Combat Bonuses'].push({ key, label });
+                                                                    groups['Combat Bonuses'].push({ key, label: label.label || label });
                                                                 } else if (key.includes('spellcasting')) {
-                                                                    groups['Spellcasting'].push({ key, label });
+                                                                    groups['Spellcasting'].push({ key, label: label.label || label });
                                                                 } else {
-                                                                    groups['Other'].push({ key, label });
+                                                                    groups['Other'].push({ key, label: label.label || label });
                                                                 }
                                                             });
 

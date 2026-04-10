@@ -8,9 +8,9 @@ import { handleEffects } from './api/effects';
 import { handleGetGear } from './api/gear';
 import { handleGetCollection } from './api/collections';
 import { handleIndex } from './api/index';
+import { handleGetCustomMaps } from './api/custom-maps';
 import { handleListRollTables, handleGetRollTable, handleDrawRollTable, handleGetResultPool } from './api/tables';
 import { handleGetNotes, handleUpdateNotes } from './api/notes';
-import { dataManager } from '../data/DataManager';
 import { getConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
 import {
@@ -35,6 +35,7 @@ shadowdarkAdapter.initialize();
 
 export const apiRoutes = {
     'index': handleIndex,
+    'custom-maps': handleGetCustomMaps,
     'import': handleImport,
     'gear/list': handleGetGear,
     // Available fetch-pack IDs:

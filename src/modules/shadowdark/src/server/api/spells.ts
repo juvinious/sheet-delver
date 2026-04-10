@@ -1,5 +1,5 @@
 import { getClient } from '@core/foundry/instance';
-import { dataManager } from '../../data/DataManager';
+import { logger } from '@shared/utils/logger';
 import { getConfig } from '@core/config';
 import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 
@@ -65,7 +65,7 @@ export async function handleGetSpellsBySource(request: Request) {
         const normalizedSource = source.toLowerCase();
 
         // 1. Fetch Local Spells (Offline Capable)
-        const localSpells = await dataManager.getSpellsBySource(source);
+        const localSpells = await shadowdarkAdapter.getSpellsBySource(source);
 
         // 2. Fetch Remote Spells (Foundry)
         const client = getClient();

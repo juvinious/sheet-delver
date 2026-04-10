@@ -1,4 +1,4 @@
-import { dataManager } from '../../data/DataManager';
+import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { logger } from '@shared/utils/logger';
 
 export async function handleGetDocument(request: Request, { params }: any) {
@@ -10,7 +10,6 @@ export async function handleGetDocument(request: Request, { params }: any) {
             return Response.json({ error: 'Missing UUID' }, { status: 400 });
         }
 
-        const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
         const client = (request as any).foundryClient;
         const document = await shadowdarkAdapter.resolveDocument(client, uuid);
 

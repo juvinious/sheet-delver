@@ -2,7 +2,6 @@ import { getClient } from '@core/foundry/instance';
 import { logger } from '@shared/utils/logger';
 import { getConfig } from '@core/config';
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../../server/ShadowdarkAdapter';
-import { dataManager } from '../../data/DataManager';
 import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
 import * as levelUpEngine from './level-up-engine';
 import { TALENT_HANDLERS } from '../../logic/talent-handlers';
@@ -265,7 +264,7 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
 
         while (attempts < maxAttempts) {
             attempts++;
-            const result = await dataManager.draw(tableUuidOrName, client);
+            const result = await shadowdarkAdapter.drawTable(tableUuidOrName, client);
             if (!result) {
                 return Response.json({ error: `RollTable not found: ${tableUuidOrName}` }, { status: 404 });
             }
@@ -397,8 +396,8 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         }
 
         // Backend assembly and validation
-        const classObj = body.classObj || (body.classUuid ? (await dataManager.getDocument(body.classUuid, client) || await client.fetchByUuid(body.classUuid)) : null);
-        const ancestry = body.ancestryObj || (body.ancestryUuid ? (await dataManager.getDocument(body.ancestryUuid, client) || await client.fetchByUuid(body.ancestryUuid)) : null);
+        const classObj = body.classObj || (body.classUuid ? (await shadowdarkAdapter.resolveDocument(client, body.classUuid)) : null);
+        const ancestry = body.ancestryObj || (body.ancestryUuid ? (await shadowdarkAdapter.resolveDocument(client, body.ancestryUuid)) : null);
 
         const state = {
             rolledTalents: body.rolledTalents || [],

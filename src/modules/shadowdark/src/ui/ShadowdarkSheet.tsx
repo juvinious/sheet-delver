@@ -69,7 +69,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
             const headers: any = {};
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
-            const res = await fetch(`/api/modules/shadowdark/fetch-pack/${packId}`, { headers });
+            const res = await fetch(`/api/modules/shadowdark/fetch-pack/${packId}?summary=true`, { headers });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
             const data = await res.json();

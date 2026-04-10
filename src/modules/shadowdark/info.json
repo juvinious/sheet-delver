@@ -76,7 +76,7 @@
             {
                 "id": "shadowdark.rollable-tables",
                 "type": "RollTable",
-                "hydrate": false
+                "hydrate": true
             }
         ]
     }

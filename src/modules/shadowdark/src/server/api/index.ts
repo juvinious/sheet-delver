@@ -5,6 +5,9 @@ export async function handleIndex(request: Request) {
     try {
         const client = (request as any).foundryClient;
         const systemData = await shadowdarkAdapter.getSystemData(client);
+        
+        logger.debug(`[ShadowdarkAPI] Responding with system data. Keys: ${Object.keys(systemData || {}).join(', ')}, IndexSize: ${Object.keys(systemData?.nameIndex || {}).length}`);
+        
         return Response.json(systemData);
     } catch (e: any) {
         logger.error('Failed to get Shadowdark system data', e);

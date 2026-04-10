@@ -1,5 +1,5 @@
 import { logger } from '@shared/utils/logger';
-import { dataManager } from '../../data/DataManager';
+import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { TALENT_HANDLERS } from '../../logic/talent-handlers';
 import { resolveBaggage, resolveGear } from './gear-resolver';
 import { ROLL_TABLE_FILTER } from '../../data/roll-table-patterns';
@@ -208,12 +208,7 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
     for (const handler of TALENT_HANDLERS) {
         if (handler.resolveItems) {
             const extra = await handler.resolveItems(state, targetLevel, async (uuid: string) => {
-                if (client) {
-                    const { shadowdarkAdapter } = await import('../../server/ShadowdarkAdapter');
-                    return shadowdarkAdapter.resolveDocument(client, uuid);
-                } else {
-                    return dataManager.getDocument(uuid);
-                }
+                return shadowdarkAdapter.resolveDocument(client, uuid);
             });
             items.push(...extra);
         }

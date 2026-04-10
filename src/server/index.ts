@@ -506,6 +506,7 @@ async function startServer() {
 
             if (adapter && typeof (adapter as any).getSystemData === 'function') {
                 const data = await (adapter as any).getSystemData(systemClient);
+                logger.debug(`[CoreService] System data fetched. Keys: ${Object.keys(data || {}).join(', ')}`);
                 res.json(data);
             } else {
                 // Fallback: Return raw scraper data if adapter doesn't provide more
