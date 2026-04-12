@@ -78,7 +78,7 @@ export function ShadowdarkUIProvider({
 
         const fetchData = async (retries = 3, delay = 1000) => {
             try {
-                const res = await fetch('/api/system/data', { headers });
+                const res = await fetch('/api/modules/shadowdark/index', { headers });
                 
                 // Handle system initialization state
                 if (res.status === 503 && retries > 0) {
@@ -112,21 +112,9 @@ export function ShadowdarkUIProvider({
     const resolveName = useCallback((value: string, collection?: string): string => {
         if (!value) return '';
 
-        // 1. Check systemData (Lean Index)
-        if (systemData) {
-            // Find in specific collection if provided
-            if (collection && systemData[collection]) {
-                const found = systemData[collection].find((i: any) => i.id === value || i.uuid === value || i._id === value);
-                if (found) return found.name;
-            }
-
-            // Global search in all systemData collections if no collection specified
-            for (const key of Object.keys(systemData)) {
-                if (Array.isArray(systemData[key])) {
-                    const found = systemData[key].find((i: any) => i.id === value || i.uuid === value || i._id === value);
-                    if (found) return found.name;
-                }
-            }
+        // 1. Check systemData (Lean Index) - Use Name Index
+        if (systemData?.nameIndex?.[value]) {
+            return systemData.nameIndex[value];
         }
 
         // 2. Check collections (Hydrated Shards)
@@ -145,11 +133,9 @@ export function ShadowdarkUIProvider({
         // If it already looks like a UUID, return it
         if (nameOrValue.includes('.') && nameOrValue.length > 20) return nameOrValue;
 
-        // 1. Check Lean Index
-        if (systemData && systemData[collection]) {
-            const found = systemData[collection].find((i: any) => i.name === nameOrValue || i.id === nameOrValue || i._id === nameOrValue || i.uuid === nameOrValue);
-            if (found) return found.uuid || found._id || found.id;
-        }
+        // 1. Check Lean Index - We can't reverse search nameIndex easily, 
+        // but often 'value' IS the ID/UUID.
+        if (systemData?.nameIndex?.[nameOrValue]) return nameOrValue;
 
         // 2. Check Hydrated Shards
         if (collections[collection]) {

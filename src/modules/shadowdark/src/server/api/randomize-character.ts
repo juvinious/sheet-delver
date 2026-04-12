@@ -3,56 +3,36 @@ import { logger } from '@shared/utils/logger';
 
 // --- Logic Helpers ---
 
-async function getRandomAncestry(client: any, systemData?: any) {
-    if (!systemData) {
-        systemData = await shadowdarkAdapter.getSystemData(client);
-    }
-    const options = systemData.ancestries || [];
+async function getRandomAncestry(client: any) {
+    const options = await shadowdarkAdapter.getCollection('ancestries', { summary: true });
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
-async function getRandomClass(client: any, systemData?: any) {
-    if (!systemData) {
-        systemData = await shadowdarkAdapter.getSystemData(client);
-    }
-    const options = (systemData.classes || []).filter((c: any) => c.name !== "Level 0");
+async function getRandomClass(client: any) {
+    const options = (await shadowdarkAdapter.getCollection('classes', { summary: true })).filter((c: any) => c.name !== "Level 0");
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
-async function getRandomBackground(client: any, systemData?: any) {
-    if (!systemData) {
-        systemData = await shadowdarkAdapter.getSystemData(client);
-    }
-    const options = systemData.backgrounds || [];
-    if (!options.length) return null;
-    const selection = options[Math.floor(Math.random() * options.length)];
-    // Backgrounds are often simple items, but we fetch full doc to be safe/consistent
-    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
-}
-
-async function getRandomDeity(client: any, systemData?: any) {
-    if (!systemData) {
-        systemData = await shadowdarkAdapter.getSystemData(client);
-    }
-    const options = systemData.deities || [];
+async function getRandomBackground(client: any) {
+    const options = await shadowdarkAdapter.getCollection('backgrounds', { summary: true });
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
 }
 
-async function getRandomPatron(client: any, systemData?: any) {
-    if (!systemData) {
-        systemData = await shadowdarkAdapter.getSystemData(client);
-    }
-    // Patrons might be in systemData or need ensuring.
-    // Assuming they are in systemData.patrons (if added to adapter)
-    // If not, we might need to search packs.
-    // For now, return null if not found.
-    const options = systemData.patrons || [];
+async function getRandomDeity(client: any) {
+    const options = await shadowdarkAdapter.getCollection('deities', { summary: true });
+    if (!options.length) return null;
+    const selection = options[Math.floor(Math.random() * options.length)];
+    return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
+}
+
+async function getRandomPatron(client: any) {
+    const options = await shadowdarkAdapter.getCollection('patrons', { summary: true });
     if (!options.length) return null;
     const selection = options[Math.floor(Math.random() * options.length)];
     return await shadowdarkAdapter.resolveDocument(client, selection.uuid);
@@ -182,27 +162,50 @@ async function getRandomGear(client: any, level0: boolean) {
 function getRandomTalents(ancestryDoc: any, classDoc?: any) {
     const results = { ancestry: [] as any[], class: [] as any[] };
 
+    const shuffle = <T>(array: T[]): T[] => {
+        const shuffled = [...array];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+    };
+
     // Ancestry
     if (ancestryDoc?.system?.talents?.length) {
         const talents = ancestryDoc.system.talents;
         const choiceCount = ancestryDoc.system.talentChoiceCount || 0;
 
         if (choiceCount > 0 && talents.length > choiceCount) {
-            const shuffled = [...talents].sort(() => 0.5 - Math.random());
+            const shuffled = shuffle(talents);
             const selected = shuffled.slice(0, choiceCount);
             // Normalize to UUIDs
             results.ancestry = selected.map((t: any) => typeof t === 'string' ? t : t.uuid);
+        }
+    }
+    // Class
+    if (classDoc?.system?.talentChoices?.length) {
+        const talents = classDoc.system.talentChoices;
+        const choiceCount = classDoc.system.talentChoiceCount || 0;
+
+        if (choiceCount > 0 && talents.length > choiceCount) {
+            const shuffled = shuffle(talents);
+            const selected = shuffled.slice(0, choiceCount);
+            results.class = selected.map((t: any) => typeof t === 'string' ? t : t.uuid);
+        } else if (choiceCount > 0) {
+            results.class = talents.map((t: any) => typeof t === 'string' ? t : t.uuid);
         }
     }
 
     return results;
 }
 
-async function getRandomLanguages(client: any, systemData: any, ancestryDoc: any, classDoc: any, intMod: number) {
+async function getRandomLanguages(client: any, ancestryDoc: any, classDoc: any, intMod: number) {
     const known = new Set<string>();
+    const languagesIndex = await shadowdarkAdapter.getCollection('languages', { summary: true });
 
     // 1. Fixed Languages
-    const commonLang = systemData.languages.find((l: any) => l.name.trim().toLowerCase() === 'common');
+    const commonLang = languagesIndex.find((l: any) => l.name.trim().toLowerCase() === 'common');
     if (commonLang) known.add(commonLang.uuid);
 
     ancestryDoc?.system?.languages?.fixed?.forEach((u: string) => known.add(u));
@@ -213,7 +216,7 @@ async function getRandomLanguages(client: any, systemData: any, ancestryDoc: any
     // Helper to pick randomly from a pool based on rarity
     const pickFromPool = (count: number, rarity: string) => {
         const results: string[] = [];
-        const pool = systemData.languages.filter((l: any) =>
+        const pool = languagesIndex.filter((l: any) =>
             l.rarity === rarity && !known.has(l.uuid)
         );
         if (pool.length === 0) return results;
@@ -387,14 +390,11 @@ export async function handleRandomizeLanguages(request: Request) {
         const client = (request as any).foundryClient;
         const body = await request.json().catch(() => ({}));
 
-        const adapter = new ShadowdarkAdapter();
-        const systemData = await adapter.getSystemData(client);
-
         const ancestry = body.ancestryUuid ? await client.fetchByUuid(body.ancestryUuid) : null;
         const cls = body.classUuid ? await client.fetchByUuid(body.classUuid) : null;
         const intMod = body.intMod || 0;
 
-        const languages = await getRandomLanguages(client, systemData, ancestry, cls, intMod);
+        const languages = await getRandomLanguages(client, ancestry, cls, intMod);
         return Response.json({ languages });
     } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
 }
@@ -410,18 +410,11 @@ export async function handleRandomizeCharacter(request: Request) {
         const body = await request.json().catch(() => ({}));
         const isLevel0 = body.level0 === true;
 
-        const adapter = new ShadowdarkAdapter();
-        const systemData = await adapter.getSystemData(client);
-
-        if (!systemData.ancestries?.length || !systemData.classes?.length) {
-            return Response.json({ error: 'System data incomplete' }, { status: 500 });
-        }
-
         // Parallel fetch for basic randoms
         const [ancestry, bg, deity, alignment, stats, gear] = await Promise.all([
-            getRandomAncestry(client, systemData),
-            getRandomBackground(client, systemData),
-            getRandomDeity(client, systemData),
+            getRandomAncestry(client),
+            getRandomBackground(client),
+            getRandomDeity(client),
             Promise.resolve(getRandomAlignment()),
             Promise.resolve(getRandomStats()),
             getRandomGear(client, isLevel0)
@@ -431,14 +424,9 @@ export async function handleRandomizeCharacter(request: Request) {
         let cls = null;
         let patron = null;
         if (!isLevel0) {
-            cls = await getRandomClass(client, systemData);
-            // Warlock check? If class is warlock, maybe get patron? 
-            // Logic in Generator.tsx handled this.
-            // We can fetch patron if class name is "Warlock" or has feature?
-            // For now, let's randomized patron if we have patron options. 
-            // Or explicitly check class name.
+            cls = await getRandomClass(client);
             if (cls && cls.name.toLowerCase().includes('warlock')) {
-                patron = await getRandomPatron(client, systemData);
+                patron = await getRandomPatron(client);
             }
         }
 
@@ -449,9 +437,8 @@ export async function handleRandomizeCharacter(request: Request) {
         const talents = getRandomTalents(ancestry, cls);
 
         // Languages (needs ancestry + class + int mod)
-        // We use the randomized stats INT mod
         const intMod = stats.INT?.mod || 0;
-        const languages = await getRandomLanguages(client, systemData, ancestry, cls, intMod);
+        const languages = await getRandomLanguages(client, ancestry, cls, intMod);
 
         const result = {
             name,
@@ -466,7 +453,7 @@ export async function handleRandomizeCharacter(request: Request) {
             talents,
             languages,
             hp: isLevel0 ? Math.max(1, 1 + (stats.CON?.mod || 0)) : 0,
-            gold: 0 // Removed per request
+            gold: 0
         };
 
         return Response.json(result);
@@ -476,3 +463,4 @@ export async function handleRandomizeCharacter(request: Request) {
         return Response.json({ error: e.message }, { status: 500 });
     }
 }
+

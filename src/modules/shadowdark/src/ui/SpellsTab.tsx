@@ -336,7 +336,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 const lowerC = c.toLowerCase();
                 if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
 
-                const classList = collections?.classes || systemData.classes || [];
+                const classList = collections?.classes || [];
                 const match = classList.find((cls: any) =>
                     cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
                 );

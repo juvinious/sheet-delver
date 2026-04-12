@@ -264,17 +264,18 @@ export async function resolveSubItems(
                 // FILTERING RULES (Shadowdark System):
                 let include = true;
 
-                if (doc.type === "Talent") {
-                    // IF Parent is Ancestry: Resolve ONLY if Fixed (length <= choiceCount)
-                    if (isAncestry) {
-                        const count = parentItem.system.talentChoiceCount || 0;
-                        const total = parentItem.system.talents?.length || 0;
-                        if (total > count) {
-                            include = false;
-                            logger.debug(`[ActorEnricher] Skipping ancestry choice talent: ${doc.name}`);
-                        }
+                // IF Parent is Ancestry: Resolve ONLY if Fixed (total <= choiceCount)
+                if (isAncestry && parentItem.system.talents?.includes(uuid)) {
+                    const count = parentItem.system.talentChoiceCount || 0;
+                    const total = parentItem.system.talents?.length || 0;
+                    // It's a choice IF total > count. Items in choice pools should not be 'fixed'.
+                    if (total > count) {
+                        include = false;
+                        logger.debug(`[ActorEnricher] Skipping ancestry choice item: ${doc.name}`);
                     }
-                    // IF Parent is Class: Resolve ALL talents
+                }
+
+                if (include && doc.type === "Talent") {
                     const isChoiceTemplate = doc.effects?.[0]?.changes?.[0]?.value === "REPLACEME";
                     if (isChoiceTemplate && !isClass && !context.bonusTo) {
                         include = false;

@@ -51,13 +51,13 @@ export const useLevelUp = (props: LevelUpProps) => {
 
     const availableClasses = useMemo(() => {
         if (propsAvailableClasses && propsAvailableClasses.length > 0) return propsAvailableClasses;
-        return systemData?.classes || EMPTY_ARRAY;
-    }, [propsAvailableClasses, systemData]);
+        return collections.classes || EMPTY_ARRAY;
+    }, [propsAvailableClasses, collections.classes]);
 
     const availableLanguages = useMemo(() => {
         if (propsAvailableLanguages && propsAvailableLanguages.length > 0) return propsAvailableLanguages;
-        return systemData?.languages || EMPTY_ARRAY;
-    }, [propsAvailableLanguages, systemData]);
+        return collections.languages || EMPTY_ARRAY;
+    }, [propsAvailableLanguages, collections.languages]);
 
     const [statuses, setStatuses] = useState<Record<string, SectionStatus>>({
         class: 'LOADING',
@@ -890,18 +890,18 @@ export const useLevelUp = (props: LevelUpProps) => {
                     const requiresPatron = Boolean(currentClass.system?.patron?.required || currentClass.system?.patron?.requiredBoon);
 
                     // --- Pre-fetch Patrons if needed ---
-                    if (requiresPatron && availablePatrons.length === 0) {
+                    if (requiresPatron && (!availablePatrons.length && !(collections.patrons?.length))) {
                         try {
                             setStatuses(prev => ({ ...prev, patron: 'LOADING' }));
-                            const response = await fetch('/api/system/data', {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            });
-                            const data = await response.json();
-                            setAvailablePatrons(data.patrons || []);
+                            const data = await fetchPack('patrons');
+                            setAvailablePatrons(data || []);
                             setStatuses(prev => ({ ...prev, patron: 'READY' }));
                         } catch (e) {
                             setStatuses(prev => ({ ...prev, patron: 'ERROR' }));
                         }
+                    } else if (requiresPatron && (availablePatrons.length > 0 || collections.patrons?.length > 0)) {
+                        if (availablePatrons.length === 0) setAvailablePatrons(collections.patrons);
+                        setStatuses(prev => ({ ...prev, patron: 'READY' }));
                     } else if (!requiresPatron) {
                         // Ensure patron status doesn't block UI if not required
                         setStatuses(prev => {
@@ -996,7 +996,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class, fetchPack]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {

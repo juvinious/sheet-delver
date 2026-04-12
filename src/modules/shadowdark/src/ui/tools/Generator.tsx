@@ -6,13 +6,22 @@ import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@shared/utils/logger';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
+import { useShadowdarkUI, ShadowdarkUIProvider } from '../context/ShadowdarkUIContext';
 import LoadingModal from '@client/ui/components/LoadingModal';
 import { enrichItem, resolveSubItems, EnrichmentContext } from '@modules/shadowdark/src/logic/actor-enricher';
 
-
-
-
 export default function Generator() {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('sheet-delver-token') : null;
+
+    return (
+        <ShadowdarkUIProvider token={token}>
+            <GeneratorContent />
+        </ShadowdarkUIProvider>
+    );
+}
+
+function GeneratorContent() {
+    const { systemData, collections, fetchPack, resolveName, resolveUuid } = useShadowdarkUI();
     const { setFoundryUrl: setConfigFoundryUrl } = useConfig();
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
@@ -41,7 +50,6 @@ export default function Generator() {
         amount: number;
     } | null>(null);
 
-    const [systemData, setSystemData] = useState<any>(null);
     const [ancestryDetails, setAncestryDetails] = useState<any>(null);
     const [classDetails, setClassDetails] = useState<any>(null);
     const [patronDetails, setPatronDetails] = useState<any>(null);
@@ -115,10 +123,37 @@ export default function Generator() {
     };
 
     const fetchDocument = useCallback(async (uuid: string) => {
-        const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
-        if (!res.ok) throw new Error(`Failed to fetch document: ${uuid}`);
-        return res.json();
-    }, [fetchWithAuth]);
+        // 1. Check loaded shards
+        for (const shard of Object.values(collections)) {
+            const found = shard.find((i: any) => i.uuid === uuid || i.id === uuid || i._id === uuid);
+            if (found) return found;
+        }
+
+        // 2. Check systemData collections (Lean Index)
+        if (systemData) {
+            for (const category of Object.values(systemData)) {
+                if (Array.isArray(category)) {
+                    const found = category.find((i: any) => i.uuid === uuid || i.id === uuid || i._id === uuid);
+                    if (found) return found;
+                }
+            }
+        }
+
+        // 3. Last Resource: Check Name Index (for simple resolution if possible)
+        if (systemData?.nameIndex?.[uuid]) {
+            return { uuid, name: systemData.nameIndex[uuid], type: 'Unknown' };
+        }
+
+        // 4. Fallback to network
+        try {
+            const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.json();
+        } catch (e) {
+            logger.error(`Failed to fetch document ${uuid}:`, e);
+            return null;
+        }
+    }, [fetchWithAuth, collections, systemData]);
 
     // Verify Connection on Mount
     useEffect(() => {
@@ -147,16 +182,36 @@ export default function Generator() {
         checkConnection();
     }, [fetchWithAuth, setConfigFoundryUrl]);
 
-    // Load System Data
+    // Load Shards and Index
     useEffect(() => {
-        fetchWithAuth('/api/system/data')
-            .then(res => res.json())
-            .then(data => {
-                setSystemData(data);
+        const loadRequiredData = async () => {
+            try {
+                setLoading(true);
+                // Fetch Identity Shards needed for Character Creation
+                await Promise.all([
+                    fetchPack('ancestries'),
+                    fetchPack('classes'),
+                    fetchPack('backgrounds'),
+                    fetchPack('deities'),
+                    fetchPack('patrons'),
+                    fetchPack('languages')
+                ]);
                 setLoading(false);
-            })
-            .catch(err => logger.error('Failed to load system data', err));
-    }, [fetchWithAuth]);
+            } catch (err) {
+                logger.error("Failed to load character creation shards:", err);
+                setLoading(false);
+            }
+        };
+
+        if (token) loadRequiredData();
+    }, [token, fetchPack]);
+
+    // Handle initial loading state sync
+    useEffect(() => {
+        if (systemData && collections.ancestries) {
+            setLoading(false);
+        }
+    }, [systemData, collections.ancestries]);
 
 
 
@@ -337,24 +392,25 @@ export default function Generator() {
     }, [formData.level0, formData.stats.CON?.mod, formData.hp]);
 
     // Effect: React to Level Toggle
+    const lastLevel0 = useRef(formData.level0);
     useEffect(() => {
-        if (!systemData?.classes) return;
+        if (!collections.classes) return;
+        
+        const isSwitchingToLevel1 = lastLevel0.current && !formData.level0;
+        const isSwitchingToLevel0 = !lastLevel0.current && formData.level0;
+        lastLevel0.current = formData.level0;
 
-        const level0Class = systemData.classes.find((c: any) => c.name === "Level 0");
-
-        if (formData.level0) {
-            // Switching TO Level 0
-            if (level0Class && formData.class !== level0Class.uuid) {
-                setFormData(prev => ({ ...prev, class: level0Class.uuid }));
-            }
-        } else {
-            // Switching TO Level 1
-            // If the current class is the Level 0 class, clear it so it shows "Choose Class..."
-            if (level0Class && formData.class === level0Class.uuid) {
-                setFormData(prev => ({ ...prev, class: '' }));
+        if (isSwitchingToLevel0) {
+            setFormData(prev => ({ ...prev, class: '' }));
+        } else if (isSwitchingToLevel1 && !formData.class) {
+            // Pick a random class if level 1 but none selected
+            const options = (collections.classes || []).filter((c: any) => c.name !== "Level 0");
+            if (options.length > 0) {
+                const random = options[Math.floor(Math.random() * options.length)];
+                setFormData(prev => ({ ...prev, class: random.uuid }));
             }
         }
-    }, [formData.level0, systemData?.classes, formData.class]);
+    }, [formData.level0, collections.classes, formData.class]);
 
     // Effect: Load Ancestry Details & Talents & Languages
     useEffect(() => {
@@ -400,22 +456,32 @@ export default function Generator() {
                     description: (i.system?.description?.value || i.system?.description || "").replace(/<[^>]+>/g, ' ')
                 })));
 
-                // If we have more talents than choice count, the UI might need to show choices
-                // But in Shadowdark, if total <= choiceCount, they are all fixed.
-                const total = details.system.talents?.length || 0;
-                if (total > choiceCount && choiceCount > 0) {
-                     // Fetch actual choice docs for the modal if needed
-                     // (Leaving existing choice logic as is if it relies on specific UI state)
+                // In Shadowdark, an ancestry choice only exists if total items > choice count.
+                // If total <= choiceCount, all items are fixed base traits.
+                const totalTalents = details.system.talents?.length || 0;
+                const effectiveChoiceCount = totalTalents > choiceCount ? choiceCount : 0;
+                
+                if (totalTalents > choiceCount && choiceCount > 0) {
+                     try {
+                         const choices = await Promise.all(details.system.talents.map((u: string) => fetchDocument(u)));
+                         choiceTalents.push(...choices.map((d, i) => d ? {
+                             uuid: details.system.talents[i],
+                             name: d.name,
+                             description: (d.system?.description?.value || d.system?.description || "").replace(/<[^>]+>/g, ' ')
+                         } : null).filter(d => d));
+                     } catch (e) {
+                         logger.error("Ancestry choice load error", e);
+                     }
                 }
 
-                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: choiceTalents.length > 0 ? choiceCount : 0 });
+                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount });
 
             } catch (e) {
                 logger.error("Ancestry load error", e);
             }
         };
         loadAncestry();
-    }, [formData.ancestry, systemData, fetchDocument, ancestryDetails]);
+    }, [formData.ancestry, collections, fetchDocument, ancestryDetails]);
 
 
 
@@ -876,7 +942,7 @@ export default function Generator() {
         }
     };
 
-    if (loading && !systemData) { // Only full load screen on initial system load
+    if (loading && !collections.ancestries) { // Only full load screen on initial system load
         // Return minimal skeleton or transparent loader to let dashboard transition look smoother?
         // Or a nicer themed loader.
         return (
@@ -1105,22 +1171,13 @@ export default function Generator() {
                                 <span>Class {formErrors.class && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <select
-                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                                 value={formData.class}
-                                onChange={(e) => {
-                                    setFormData(prev => ({ ...prev, class: e.target.value }));
-                                    // Reset languages related to class
-                                    setKnownLanguages(prev => ({
-                                        ...prev,
-                                        selected: { ...prev.selected, class: [] }
-                                    }));
-                                }}
+                                onChange={(e) => setFormData(prev => ({ ...prev, class: e.target.value }))}
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                                 disabled={formData.level0}
                             >
-                                <option value="" disabled={!formData.level0 && formData.class !== ""}>
-                                    {formData.level0 ? "Gauntlet (No Class)" : "Choose Class..."}
-                                </option>
-                                {systemData?.classes?.filter((c: any) => c.name !== "Level 0").sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
+                                <option value="">Select class...</option>
+                                {(collections.classes || []).filter((c: any) => c.name !== "Level 0").sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1146,7 +1203,7 @@ export default function Generator() {
                                 }}
                             >
                                 <option value="">Select Ancestry...</option>
-                                {systemData?.ancestries?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
+                                {(collections.ancestries || []).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1158,12 +1215,12 @@ export default function Generator() {
                                 <span>Background {formErrors.background && <span className="text-xs uppercase font-sans font-bold float-right mt-1">Required</span>}</span>
                             </h2>
                             <select
-                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                                 value={formData.background}
                                 onChange={(e) => setFormData(prev => ({ ...prev, background: e.target.value }))}
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-2 text-lg font-bold font-serif"
                             >
-                                <option value="">Select Background...</option>
-                                {systemData?.backgrounds?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
+                                <option value="">Select background...</option>
+                                {(collections.backgrounds || []).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1187,13 +1244,12 @@ export default function Generator() {
                         <div className="bg-white p-6 border-2 border-black shadow-sm">
                             <h2 className="text-black font-black font-serif text-xl border-b-2 border-black mb-4 pb-1">Deity</h2>
                             <select
-                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
                                 value={formData.deity}
                                 onChange={(e) => setFormData(prev => ({ ...prev, deity: e.target.value }))}
+                                className="w-full bg-transparent border-b-2 border-neutral-300 focus:border-black outline-none py-1 font-serif text-lg"
                             >
-                                <option value="">None / Select...</option>
-                                {/* Populate from systemData if available, or fetch */}
-                                {systemData?.deities?.sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
+                                <option value="">Select deity...</option>
+                                {(collections.deities || []).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((a: any) => (
                                     <option key={a.uuid} value={a.uuid}>{a.name}</option>
                                 ))}
                             </select>
@@ -1242,49 +1298,37 @@ export default function Generator() {
                                     })()}
                                 </div>
 
-                                {ancestryTalents.fixed.map((talent, i) => (
-                                    <div key={`anc-fixed-${i}`} className="mb-1 leading-tight">
-                                        <span className="font-bold">{talent.name}. </span>
-                                        <span dangerouslySetInnerHTML={{ __html: talent.description }}></span>
-                                    </div>
-                                ))}
-
-                                {ancestryTalents.choice.length > 0 && (
-                                    <div className="mt-2">
-                                        <span className="font-bold italic text-neutral-600">
-                                            Choose {ancestryTalents.choiceCount}:
+                                {/* 2. Ancestry Talents (Unified List) */}
+                                {(ancestryTalents.fixed.length > 0 || ancestryTalents.choiceCount > 0) && (
+                                    <div className="mt-1 leading-tight">
+                                        <span className={`font-bold ${formErrors.ancestryTalents ? 'text-red-600' : 'text-black'}`}>
+                                            Ancestry Talents:
                                         </span>
-                                        <div className="mt-2">
-                                            <span className={`font-bold block mb-1 ${formErrors.ancestryTalents ? 'text-red-600' : 'text-neutral-600'}`}>
-                                                Ancestry Choice ({selectedAncestryTalents.length}/{ancestryTalents.choiceCount}):
-                                                {formErrors.ancestryTalents && <span className="ml-2 text-xs uppercase font-bold text-red-600">Required</span>}
-                                            </span>
-
-                                            {/* Show selected talents */}
-                                            {selectedAncestryTalents.length > 0 && (
-                                                <div className="ml-2 mb-2">
-                                                    {ancestryTalents.choice
+                                        <span className="ml-1">
+                                            {[
+                                                ...ancestryTalents.fixed.map(t => t.name),
+                                                ...(ancestryTalents.choice.length > 0
+                                                    ? ancestryTalents.choice
                                                         .filter(t => selectedAncestryTalents.includes(t.uuid))
-                                                        .map((talent, i) => (
-                                                            <div key={`sel-anc-${i}`} className="mb-1 leading-tight text-neutral-800">
-                                                                <span className="font-bold text-xs">● {talent.name}. </span>
-                                                                <span className="text-xs" dangerouslySetInnerHTML={{ __html: talent.description }}></span>
-                                                            </div>
-                                                        ))}
-                                                </div>
-                                            )}
+                                                        .map(t => t.name)
+                                                    : [])
+                                            ].join(", ") || (ancestryTalents.choiceCount > 0 ? "None selected" : "")}
+                                        </span>
 
-                                            {/* Selection Button */}
-                                            <button
-                                                onClick={() => setShowAncestryTalentsModal(true)}
-                                                className={`text-xs px-2 py-1 rounded border ${selectedAncestryTalents.length === ancestryTalents.choiceCount
-                                                    ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
-                                                    : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
-                                                    }`}
-                                            >
-                                                {selectedAncestryTalents.length === ancestryTalents.choiceCount ? 'Re-select Talents' : 'Select Talents'}
-                                            </button>
-                                        </div>
+                                        {ancestryTalents.choiceCount > 0 && (
+                                            <>
+                                                <button
+                                                    onClick={() => setShowAncestryTalentsModal(true)}
+                                                    className={`ml-2 text-[10px] px-2 py-1 rounded border transition-colors uppercase font-bold tracking-widest ${selectedAncestryTalents.length === ancestryTalents.choiceCount
+                                                        ? 'bg-neutral-100 text-neutral-600 border-neutral-300 hover:bg-neutral-200 hover:border-black'
+                                                        : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300 hover:border-indigo-400'
+                                                        }`}
+                                                >
+                                                    {selectedAncestryTalents.length === ancestryTalents.choiceCount ? 'Edit Choices' : `Select (${selectedAncestryTalents.length}/${ancestryTalents.choiceCount})`}
+                                                </button>
+                                                {formErrors.ancestryTalents && <span className="ml-2 text-xs uppercase font-bold text-red-600">Required</span>}
+                                            </>
+                                        )}
                                     </div>
                                 )}
 
@@ -1330,7 +1374,7 @@ export default function Generator() {
                                                                     }`}
                                                             >
                                                                 <div className="flex justify-between items-start">
-                                                                    <div className={`font-black font-serif uppercase tracking-wide ${isSelected ? 'text-black' : 'text-neutral-600'}`}>{t.name}</div>
+                                                                    <div className={`font-serif font-black text-sm uppercase tracking-widest ${isSelected ? 'text-black' : 'text-neutral-600'}`}>{t.name}</div>
                                                                     {isSelected && <span className="text-indigo-600 font-bold">✓</span>}
                                                                 </div>
                                                                 <div className="text-xs text-neutral-500 mt-2 font-medium" dangerouslySetInnerHTML={{ __html: t.description }}></div>
@@ -1356,6 +1400,20 @@ export default function Generator() {
                                 )}
                             </div>
                         )}
+                                {/* 7. Class Talents (Fixed) */}
+                                {!formData.level0 && classDetails && classTalents.fixed.length > 0 && (
+                                    <div className="mt-1 leading-tight">
+                                        <span className="font-bold text-black">Class Talents: </span>
+                                        <span>
+                                            {classTalents.fixed.map(t => t.name).join(", ")}
+                                        </span>
+                                        {classTalents.table && (
+                                            <span className="italic text-neutral-500 ml-1">
+                                                (+ Random Class Talent)
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
 
                         {/* 3. Weapons */}
                         <div>
@@ -1423,13 +1481,13 @@ export default function Generator() {
                             </span>
                             <span>
                                 {[
-                                    ...knownLanguages.fixed.map((l: any) => l.name || systemData?.languages?.find((sl: any) => sl.uuid === l)?.name).filter(Boolean),
+                                    ...knownLanguages.fixed.map((l: any) => l.name || resolveName(l, 'languages')).filter(Boolean),
                                     ...([
                                         ...knownLanguages.selected.common,
                                         ...knownLanguages.selected.rare,
                                         ...knownLanguages.selected.ancestry,
                                         ...knownLanguages.selected.class
-                                    ].map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)?.name).filter(Boolean))
+                                    ].map(uuid => resolveName(uuid, 'languages')).filter(Boolean))
                                 ].join(", ") || "Common"}
                             </span>
 
@@ -1440,12 +1498,12 @@ export default function Generator() {
                                 return (
                                     <button
                                         onClick={() => setShowLanguageModal(true)}
-                                        className={`ml-2 text-xs px-2 py-1 rounded border transition-colors ${totalSelected >= totalAllowed
-                                            ? 'bg-neutral-100 text-neutral-600 border-neutral-300'
+                                        className={`ml-2 text-[10px] px-2 py-1 rounded border transition-colors uppercase font-bold tracking-widest ${totalSelected >= totalAllowed
+                                            ? 'bg-neutral-100 text-neutral-600 border-neutral-300 hover:bg-neutral-200'
                                             : 'bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border-indigo-300'
                                             }`}
                                     >
-                                        {totalSelected >= totalAllowed ? 'Edit Languages' : `Select Languages (${totalSelected}/${totalAllowed})`}
+                                        {totalSelected >= totalAllowed ? 'Edit Languages' : `Select (${totalSelected}/${totalAllowed})`}
                                     </button>
                                 );
                             })()}
@@ -1480,19 +1538,19 @@ export default function Generator() {
                                             let options: any[] = [];
                                             if (section.key === 'common') {
                                                 // @ts-ignore
-                                                options = systemData?.languages?.filter((l: any) => !l.rarity || l.rarity === 'common') || [];
+                                                options = collections.languages?.filter((l: any) => !l.rarity || l.rarity === 'common') || [];
                                             } else if (section.key === 'rare') {
                                                 // @ts-ignore
-                                                options = systemData?.languages?.filter((l: any) => l.rarity === 'rare') || [];
+                                                options = collections.languages?.filter((l: any) => l.rarity === 'rare') || [];
                                             } else {
                                                 // @ts-ignore
                                                 const allowedIds = section.config.options;
                                                 if (allowedIds && allowedIds.length > 0) {
                                                     // @ts-ignore
-                                                    options = allowedIds.map(uuid => systemData?.languages?.find((l: any) => l.uuid === uuid)).filter(Boolean);
+                                                    options = allowedIds.map(uuid => collections.languages?.find((l: any) => l.uuid === uuid)).filter(Boolean);
                                                 } else {
                                                     // @ts-ignore
-                                                    options = systemData?.languages || [];
+                                                    options = collections.languages || [];
                                                 }
                                             }
 
@@ -1563,25 +1621,25 @@ export default function Generator() {
 
                         {/* 6. Patron */}
                         {classDetails?.system?.patron?.required && (
-                            <div className="mb-2">
-                                {/*<span className="font-bold">Patron: </span>*/}
+                            <div className="mt-1">
+                                <span className="font-bold">Patron: </span>
                                 {formData.patron && patronDetails ? (
                                     <span>
+                                        <span className="font-bold italic">{patronDetails.name}</span>
                                         <button
                                             onClick={() => setShowPatronModal(true)}
-                                            className="text-[10px] uppercase bg-neutral-200 hover:bg-neutral-300 text-neutral-800 px-1 rounded mr-2 border border-neutral-400"
+                                            className="ml-2 text-[10px] px-2 py-1 rounded border bg-neutral-100 hover:bg-neutral-200 text-neutral-600 border-neutral-300 uppercase font-bold tracking-widest transition-colors hover:border-black"
                                         >
                                             Edit/Change
                                         </button>
-                                        <span className="font-bold">{patronDetails.name}: </span>
-                                        <span className="italic text-neutral-600 text-sm">
+                                        <div className="italic text-neutral-600 text-[11px] mt-1 leading-tight ml-4 border-l-2 border-neutral-200 pl-2">
                                             <span dangerouslySetInnerHTML={{ __html: (patronDetails.system?.description?.value || patronDetails.system?.description || "").replace(/<[^>]+>/g, ' ') }}></span>
-                                        </span>
+                                        </div>
                                     </span>
                                 ) : (
                                     <button
                                         onClick={() => setShowPatronModal(true)}
-                                        className="text-xs bg-red-100 hover:bg-red-200 text-red-800 px-2 py-1 rounded border border-red-300"
+                                        className="ml-2 text-[10px] px-2 py-1 rounded border bg-red-50 hover:bg-red-100 text-red-800 border-red-200 uppercase font-bold tracking-widest transition-colors hover:border-red-400"
                                     >
                                         Select Patron
                                     </button>
@@ -1602,39 +1660,42 @@ export default function Generator() {
                                             </svg>
                                         </button>
                                     </div>
-                                    <div className="p-6 overflow-y-auto">
-                                        {!systemData?.patrons?.length ? (
-                                            <p className="italic text-neutral-500 text-center font-serif">No patrons found in the darkness.</p>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                {/* @ts-ignore */}
-                                                {systemData.patrons.map((p: any) => (
-                                                    <div
-                                                        key={p.uuid}
-                                                        onClick={() => {
-                                                            setFormData(prev => ({ ...prev, patron: p.uuid }));
-                                                            setShowPatronModal(false);
-                                                        }}
-                                                        className={`p-4 border-2 transition-all cursor-pointer ${formData.patron === p.uuid
-                                                            ? 'border-black bg-indigo-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                                                            : 'border-neutral-200 hover:border-black hover:bg-neutral-100'
+                                    <div className="p-6 overflow-y-auto max-h-[60vh] custom-scrollbar">
+                                        <div className="generator-patron-selection">
+                                            {!(collections.patrons || []).length ? (
+                                                <div className="text-center py-8 text-neutral-400 italic font-medium">
+                                                    No patrons discovered...
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    {(collections.patrons || []).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((p: any) => (
+                                                        <div 
+                                                            key={p.uuid}
+                                                            className={`p-4 border-2 transition-all cursor-pointer flex flex-col items-center text-center gap-1 group ${
+                                                                formData.patron === p.uuid 
+                                                                    ? 'border-black bg-indigo-50 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' 
+                                                                    : 'border-neutral-200 hover:border-black hover:bg-neutral-100'
                                                             }`}
-                                                    >
-                                                        <div className={`font-black font-serif uppercase tracking-wide ${formData.patron === p.uuid ? 'text-black' : 'text-neutral-600'}`}>{p.name}</div>
-                                                        <div className="text-xs text-neutral-500 mt-2 font-medium line-clamp-2">
-                                                            {(p.description || "").replace(/<[^>]+>/g, ' ')}
+                                                            onClick={() => setFormData(prev => ({ ...prev, patron: p.uuid }))}
+                                                        >
+                                                            <div className="flex justify-between items-center w-full">
+                                                                <div className={`font-serif font-black text-sm uppercase tracking-widest ${formData.patron === p.uuid ? 'text-black' : 'text-neutral-600'}`}>
+                                                                    {p.name}
+                                                                </div>
+                                                                {formData.patron === p.uuid && <span className="text-indigo-600 font-bold text-lg">✓</span>}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="p-4 border-t-4 border-black bg-neutral-100 flex justify-end">
                                         <button
                                             onClick={() => setShowPatronModal(false)}
-                                            className="px-6 py-2 bg-black text-white font-black uppercase tracking-widest text-sm hover:bg-neutral-800 transition-colors"
+                                            className="px-8 py-2 bg-black text-white font-black uppercase tracking-widest text-sm hover:bg-neutral-800 transition-colors shadow-[4px_4px_0px_0px_rgba(100,100,100,1)] active:translate-y-1 active:shadow-none"
                                         >
-                                            Cancel
+                                            Done
                                         </button>
                                     </div>
                                 </div>
@@ -1642,41 +1703,7 @@ export default function Generator() {
                         )}
 
 
-                        {/* 7. Class Talents */}
-                        {!formData.level0 && classDetails && (
-                            <div className="mt-1">
-                                {classTalents.fixed.map((talent, i) => (
-                                    <div key={`fixed-${i}`} className="mb-1 leading-tight">
-                                        <span className="font-bold">{talent.name}: </span>
-                                        <span dangerouslySetInnerHTML={{ __html: talent.description }}></span>
-                                    </div>
-                                ))}
 
-                                {classTalents.choiceCount > 0 && (
-                                    <div className="mt-2">
-                                        <span className="font-bold italic text-neutral-600">Choose {classTalents.choiceCount}:</span>
-                                        {classTalents.choice.length > 0 ? (
-                                            <div className="ml-2">
-                                                {classTalents.choice.map((talent, i) => (
-                                                    <div key={`choice-${i}`} className="mb-1 leading-tight text-neutral-700">
-                                                        <span className="font-bold text-xs">○ {talent.name}: </span>
-                                                        <span className="text-xs" dangerouslySetInnerHTML={{ __html: talent.description }}></span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <span className="italic text-neutral-500"> (Options loading or see sheet)</span>
-                                        )}
-                                    </div>
-                                )}
-
-                                {classTalents.table && (
-                                    <div className="mt-1 italic text-neutral-600">
-                                        + Random Class Talent (Roll on table)
-                                    </div>
-                                )}
-                            </div>
-                        )}
 
                         {/* 8. Gear */}
                         {/* 8. Gear */}
@@ -1718,7 +1745,7 @@ export default function Generator() {
                     >
                         {loading ? 'Creating...' : 'Create Character'}
                     </button>
-                    <p className="text-xs text-neutral-500">{systemData.title} {systemData.version}</p>
+                    <p className="text-xs text-neutral-500">{(systemData?.titles?.main || 'Shadowdark')} {systemData?.titles?.version || ''}</p>
                 </div>
 
                 {/* Stat Selection Modal */}
@@ -1759,15 +1786,14 @@ export default function Generator() {
                         ancestry={ancestryDetails}
                         classObj={classDetails}
                         classUuid={formData.class}
-                        patron={formData.patron ? { uuid: formData.patron, system: systemData.patrons.find((p: any) => p.uuid === formData.patron) } : null}
+                        patron={formData.patron ? { uuid: formData.patron, system: collections.patrons?.find((p: any) => p.uuid === formData.patron) } : null}
                         abilities={formData.stats}
-                        availableClasses={systemData.classes}
-                        availableLanguages={systemData.languages}
+                        availableClasses={collections.classes || []}
+                        availableLanguages={collections.languages || []}
                         knownLanguages={[
-                            ...knownLanguages.fixed.map((l: any) => typeof l === 'string' ? { uuid: l, name: systemData.languages.find((s: any) => s.uuid === l)?.name || l } : l),
+                            ...knownLanguages.fixed.map((l: any) => typeof l === 'string' ? { uuid: l, name: resolveName(l, 'languages') } : l),
                             ...[...knownLanguages.selected.common, ...knownLanguages.selected.rare, ...knownLanguages.selected.ancestry, ...knownLanguages.selected.class].map(uuid => {
-                                const l = systemData.languages.find((s: any) => s.uuid === uuid);
-                                return { uuid, name: l?.name || "Unknown" };
+                                return { uuid, name: resolveName(uuid, 'languages') };
                             })
                         ]}
                         skipLanguageSelection={true}
