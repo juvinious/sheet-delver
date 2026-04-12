@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { X, Search } from 'lucide-react';
 import { isRareLanguage } from '../../logic/rules';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
 interface Language {
     name: string;
@@ -12,7 +13,7 @@ interface LanguageSelectionModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSelect: (languages: string[]) => void;
-    availableLanguages: Language[];
+    availableLanguages?: Language[];
     currentLanguages: string[]; // UUIDs or Names
     maxCommon: number;
     maxRare: number;
@@ -22,12 +23,18 @@ export default function LanguageSelectionModal({
     isOpen,
     onClose,
     onSelect,
-    availableLanguages,
+    availableLanguages: propsAvailableLanguages,
     currentLanguages,
     maxCommon,
     maxRare
 }: LanguageSelectionModalProps) {
+    const { systemData } = useShadowdarkUI();
     const [search, setSearch] = useState('');
+
+    const availableLanguages = useMemo(() => {
+        if (propsAvailableLanguages && propsAvailableLanguages.length > 0) return propsAvailableLanguages;
+        return systemData?.languages || [];
+    }, [propsAvailableLanguages, systemData]);
     const [selected, setSelected] = useState<string[]>(currentLanguages);
 
     const filteredLanguages = useMemo(() => {

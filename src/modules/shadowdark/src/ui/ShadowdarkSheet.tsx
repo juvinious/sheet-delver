@@ -7,7 +7,7 @@ import LoadingModal from '@client/ui/components/LoadingModal';
 import { shadowdarkTheme } from './themes/shadowdark';
 import { useNotifications, NotificationContainer } from '@client/ui/components/NotificationSystem';
 
-import { resolveEntityName, calculateSpellBonus, resolveEntityUuid } from './sheet-utils';
+import { calculateSpellBonus } from './sheet-utils';
 import { shouldShowSpellsTab } from '../logic/rules';
 import { Menu, X, Check } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
@@ -32,14 +32,9 @@ import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
 import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 import { logger } from '@shared/utils/logger';
 
-
-
-
 interface ShadowdarkSheetProps {
     actor: any;
-    // ...
     token?: string | null;
-    // ...
     onRoll: (type: string, key: string, options?: any) => void;
     onUpdate: (path: string, value: any) => void;
     onToggleEffect: (effectId: string, enabled: boolean) => void;
@@ -78,7 +73,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
     } = props;
     
     const { resolveImageUrl } = useConfig();
-    const { systemData, loadingSystem, fetchPack } = useShadowdarkUI();
+    const { systemData, loadingSystem, resolveName } = useShadowdarkUI();
 
     // UI state
     const [activeTab, setActiveTab] = useState('details');
@@ -87,7 +82,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
     const { notifications, addNotification, removeNotification } = useNotifications();
 
     // Shadowdark Level-Up Logic (Consolidated)
-    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any, fetchPack);
+    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, addNotification as any);
 
     const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
 
@@ -125,21 +120,17 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
         } else if (type === 'item') {
             let item = actor.items?.find((i: any) => i.id === key || i._id === key);
 
-            // Fallback: Look in systemData (Compendium) for spells by UUID or ID
-            if (!item && systemData?.spells) {
-                const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
-                const targetUuid = normalizeUuid(key);
-
-                const spell = systemData.spells.find((s: any) => {
-                    if (s.uuid && normalizeUuid(s.uuid) === targetUuid) return true;
-                    if (s._id === key || s.id === key) return true;
-                    if (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === targetUuid) return true;
-                    return false;
-                });
-
-                if (spell) {
-                    item = { ...spell };
-                    if (!item.type) item.type = 'Spell';
+            // Fallback: Look in systemData (Compendium) for spells using centralized resolver
+            if (!item) {
+                const name = resolveName(key, 'spells');
+                if (name && name !== key) {
+                    // We found something! It's a "virtual" spell not on the actor
+                    item = { 
+                        name,
+                        uuid: key,
+                        type: 'Spell',
+                        system: { description: '' } // Placeholder, will be fetched if needed
+                    };
                 }
             }
 
@@ -347,7 +338,6 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
             {viewMode === 'simple' ? (
                 <ShadowdarkPaperSheet
                     actor={actor}
-                    systemData={systemData}
                     onUpdate={onUpdate}
                     triggerRollDialog={triggerRollDialog}
                     onRoll={onRoll}
@@ -681,8 +671,6 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                         patronUuid={levelUpData.patronUuid}
                         abilities={levelUpData.abilities}
                         spells={levelUpData.spells}
-                        availableClasses={systemData?.classes || []}
-                        availableLanguages={systemData?.languages || []}
                         onComplete={async (_data: any) => {
                             // Backend finalize already handled data
                             addNotification('Level Up Successful! Updating sheet...', 'success');

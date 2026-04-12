@@ -20,6 +20,8 @@ interface ShadowdarkUIState {
     collections: Record<string, any[]>;
     loadingSystem: boolean;
     fetchPack: (packId: string) => Promise<any>;
+    resolveName: (value: string, collection?: string) => string;
+    resolveUuid: (nameOrValue: string, collection: string) => string;
 }
 
 const ShadowdarkUIContext = createContext<ShadowdarkUIState | undefined>(undefined);
@@ -106,11 +108,65 @@ export function ShadowdarkUIProvider({
         fetchData();
     }, [token]);
 
+    // Helper to resolve a name from a UUID or ID across Lean Index and Shards
+    const resolveName = useCallback((value: string, collection?: string): string => {
+        if (!value) return '';
+
+        // 1. Check systemData (Lean Index)
+        if (systemData) {
+            // Find in specific collection if provided
+            if (collection && systemData[collection]) {
+                const found = systemData[collection].find((i: any) => i.id === value || i.uuid === value || i._id === value);
+                if (found) return found.name;
+            }
+
+            // Global search in all systemData collections if no collection specified
+            for (const key of Object.keys(systemData)) {
+                if (Array.isArray(systemData[key])) {
+                    const found = systemData[key].find((i: any) => i.id === value || i.uuid === value || i._id === value);
+                    if (found) return found.name;
+                }
+            }
+        }
+
+        // 2. Check collections (Hydrated Shards)
+        if (collection && collections[collection]) {
+            const found = collections[collection].find((i: any) => i.id === value || i.uuid === value || i._id === value || i.name === value);
+            if (found) return found.name;
+        }
+
+        return value; // Fallback to raw value
+    }, [systemData, collections]);
+
+    // Helper to resolve a UUID from a name or ID
+    const resolveUuid = useCallback((nameOrValue: string, collection: string): string => {
+        if (!nameOrValue || !collection) return '';
+
+        // If it already looks like a UUID, return it
+        if (nameOrValue.includes('.') && nameOrValue.length > 20) return nameOrValue;
+
+        // 1. Check Lean Index
+        if (systemData && systemData[collection]) {
+            const found = systemData[collection].find((i: any) => i.name === nameOrValue || i.id === nameOrValue || i._id === nameOrValue || i.uuid === nameOrValue);
+            if (found) return found.uuid || found._id || found.id;
+        }
+
+        // 2. Check Hydrated Shards
+        if (collections[collection]) {
+            const found = collections[collection].find((i: any) => i.name === nameOrValue || i.id === nameOrValue || i._id === nameOrValue || i.uuid === nameOrValue);
+            if (found) return found.uuid || found._id || found.id || found.name;
+        }
+
+        return nameOrValue;
+    }, [systemData, collections]);
+
     const value = {
         systemData,
         collections,
         loadingSystem,
-        fetchPack
+        fetchPack,
+        resolveName,
+        resolveUuid
     };
 
     return (

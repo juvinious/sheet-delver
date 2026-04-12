@@ -1,10 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import {
-    resolveEntityName,
-    resolveEntityUuid
-} from './sheet-utils';
 import { Flame, Utensils, Info, Check } from 'lucide-react';
 import ItemModal from './components/ItemModal';
 import NotesModal from './components/NotesModal';
@@ -17,7 +13,6 @@ import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 interface ShadowdarkPaperSheetProps {
     actor: any;
-    systemData: any;
     onUpdate: (path: string, value: any) => void;
     onToggleView: () => void;
     triggerRollDialog: (type: string, key: string, options?: any) => void;
@@ -33,14 +28,14 @@ export default function ShadowdarkPaperSheet({
     onRoll,
     token
 }: ShadowdarkPaperSheetProps) {
-    const { systemData, collections } = useShadowdarkUI();
+    const { systemData, collections, resolveName } = useShadowdarkUI();
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
     const [viewMode, setViewMode] = useState<'paper' | 'list'>('paper');
     const { addNotification } = useNotifications();
 
     // Shadowdark Level-Up Logic (Consolidated)
-    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any);
+    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, addNotification as any);
 
     // Level Up Modal is handled via hook
 
@@ -355,21 +350,21 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Deity</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <div className="text-lg font-bold w-full text-center truncate px-1 capitalize">
-                                    {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, { ...systemData, ...collections }, 'deities') || ''}
+                                    {actor.computed?.resolvedNames?.deity || resolveName(actor.system?.deity, 'deities') || ''}
                                 </div>
                             </div>
                         </div>
  
                         {/* Patron (Warlock Only) */}
                         {(() => {
-                            const clsName = resolveEntityName(actor.system?.class, actor, { ...systemData, ...collections }, 'classes');
+                            const clsName = resolveName(actor.system?.class, 'classes');
                             if ((clsName || '').toLowerCase().includes('warlock')) {
                                 return (
                                     <div className="border-2 border-black h-16 p-1 relative">
                                         <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Patron</div>
                                         <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                             <div className="text-lg font-bold w-full text-center truncate px-1">
-                                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, { ...systemData, ...collections }, 'patrons') || ''}
+                                                {actor.computed?.resolvedNames?.patron || resolveName(actor.system?.patron, 'patrons') || ''}
                                             </div>
                                         </div>
                                     </div>
@@ -562,7 +557,6 @@ export default function ShadowdarkPaperSheet({
                 item={selectedItem}
                 onUpdate={onUpdate}
                 actor={actor}
-                systemData={systemData}
             />
 
             <NotesModal
@@ -585,8 +579,6 @@ export default function ShadowdarkPaperSheet({
                     patronUuid={levelUpData.patronUuid}
                     abilities={levelUpData.abilities}
                     spells={levelUpData.spells}
-                    availableClasses={systemData?.classes || []}
-                    availableLanguages={systemData?.languages || []}
                     onComplete={async (_data: any) => {
                         addNotification('Level Up Successful! Updating sheet...', 'success');
                         await new Promise(resolve => setTimeout(resolve, 800));

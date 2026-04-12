@@ -4,6 +4,7 @@ import { X, Search, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { resolveImage, formatDescription, getSafeDescription } from '../sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { logger } from '@shared/utils/logger';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
 interface SpellOption {
     name: string;
@@ -20,7 +21,8 @@ interface SpellSelectionModalProps {
     onClose: () => void;
     onSave: (selected: SpellOption[]) => void;
     title: string;
-    availableSpells: SpellOption[];
+    tier?: number;
+    classKey?: string;
     knownSpells: SpellOption[];
     maxSelections?: number;
     token?: string | null;
@@ -32,13 +34,15 @@ export default function SpellSelectionModal({
     onClose,
     onSave,
     title,
-    availableSpells,
+    tier,
+    classKey,
     knownSpells,
     maxSelections,
     token,
     isSaving = false
 }: SpellSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
+    const { systemData, collections } = useShadowdarkUI();
     const [search, setSearch] = useState('');
     const [selectedUuids, setSelectedUuids] = useState<Set<string>>(new Set());
     const [expandedUuids, setExpandedUuids] = useState<Set<string>>(new Set());
@@ -47,6 +51,41 @@ export default function SpellSelectionModal({
 
     // Tracks if we have already initialized for the current "open" session
     const [hasInitialized, setHasInitialized] = useState(false);
+
+    const availableSpells = useMemo(() => {
+        const fullSpells = collections?.spells || systemData?.spells || [];
+        if (!tier || !classKey) return [];
+        
+        const filterLower = classKey.toLowerCase();
+        const classList = collections?.classes || systemData?.classes || [];
+
+        return fullSpells.filter((s: any) => {
+            const spellTier = Number(s.tier !== undefined ? s.tier : s.system?.tier);
+            if (spellTier !== tier) return false;
+
+            const classData = s.class || s.system?.class || [];
+            const classArray = Array.isArray(classData) ? classData : [classData];
+
+            const resolvedClasses = classArray.map(c => {
+                if (typeof c !== 'string') return '';
+                const lowerC = c.toLowerCase();
+                if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
+
+                const match = classList.find((cls: any) =>
+                    cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
+                );
+                return match ? match.name.toLowerCase() : lowerC;
+            });
+
+            return resolvedClasses.some(c => c.includes(filterLower));
+        }).map((s: any) => ({
+            name: s.name,
+            uuid: s.uuid || s._id,
+            tier: tier,
+            img: s.img,
+            system: s.system
+        }));
+    }, [systemData, collections, tier, classKey]);
 
     const toggleExpand = (spell: SpellOption) => {
         if (isSaving) return;

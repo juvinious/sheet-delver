@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { resolveEntityUuid } from '../sheet-utils';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
 /**
  * Shared hook to manage the Shadowdark Level-Up process.
@@ -7,10 +7,9 @@ import { resolveEntityUuid } from '../sheet-utils';
  */
 export function useShadowdarkLevelUp(
     actor: any, 
-    systemData: any, 
-    addNotification: (msg: string, type: 'success' | 'error' | 'info' | 'warning') => void,
-    onFetchPack?: (packId: string) => Promise<any>
+    addNotification: (msg: string, type: 'success' | 'error' | 'info' | 'warning') => void
 ) {
+    const { systemData, fetchPack: onFetchPack, resolveUuid } = useShadowdarkUI();
     const [showLevelUpModal, setShowLevelUpModal] = useState(false);
     const [levelUpData, setLevelUpData] = useState<any>(null);
     const [isFetching, setIsFetching] = useState(false);
@@ -58,13 +57,13 @@ export function useShadowdarkLevelUp(
             abilities: actor.system?.abilities,
             spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
             // If Level 0, force empty classUuid so modal prompts for class selection
-            classUuid: currentLevel === 0 ? "" : resolveEntityUuid(actor.system?.class || '', currentSystemData, 'classes'),
-            patronUuid: resolveEntityUuid(actor.system?.patron || '', currentSystemData, 'patrons')
+            classUuid: currentLevel === 0 ? "" : resolveUuid(actor.system?.class || '', 'classes'),
+            patronUuid: resolveUuid(actor.system?.patron || '', 'patrons')
         };
         
         setLevelUpData(data);
         setShowLevelUpModal(true);
-    }, [actor, systemData, onFetchPack]);
+    }, [actor, systemData, onFetchPack, resolveUuid]);
 
     const closeLevelUp = useCallback(() => {
         setShowLevelUpModal(false);

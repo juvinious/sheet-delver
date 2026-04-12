@@ -1,8 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
-import { resolveEntityName } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import CustomBoonModal from './components/CustomBoonModal';
 import CompendiumSelectModal from './components/CompendiumSelectModal';
@@ -24,7 +23,7 @@ interface DetailsTabProps {
 }
 
 export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp }: DetailsTabProps) {
-    const { systemData, collections, fetchPack } = useShadowdarkUI();
+    const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -94,7 +93,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                 uuid: o.uuid,
                 description: o.description || o.system?.description?.value || o.data?.description?.value || ''
             })) : [],
-            currentValue: hasData && dataKey ? resolveEntityName(current, actor, { ...systemData, ...collections }, dataKey) : current,
+            currentValue: hasData && dataKey ? resolveName(current, dataKey) : current,
             multiSelect,
             isLoading: !hasData,
             onSelect: (option) => handleSelection(field, option, multiSelect)
@@ -109,13 +108,13 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                     setSelectionModal(prev => ({
                         ...prev,
                         isLoading: false,
-                        options: fetched.map((o: any) => ({
-                            name: o.name,
-                            uuid: o.uuid,
-                            description: o.description || o.system?.description?.value || o.data?.description?.value || ''
-                        })),
-                        currentValue: resolveEntityName(current, actor, { ...systemData, ...collections, [dataKey]: fetched }, dataKey)
-                    }));
+                         options: fetched.map((o: any) => ({
+                             name: o.name,
+                             uuid: o.uuid,
+                             description: o.description || o.system?.description?.value || o.data?.description?.value || ''
+                         })),
+                         currentValue: resolveName(current, dataKey)
+                     }));
                 }
             } finally {
                 setFetchingCategory(null);
@@ -325,7 +324,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                             </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, { ...systemData, ...collections }, 'deities') || '-'}
+                            {actor.computed?.resolvedNames?.deity || resolveName(actor.system?.deity, 'deities') || '-'}
                         </div>
                     </div>
 
@@ -347,7 +346,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                                 </button>
                             </div>
                             <div className="p-2 font-serif text-lg bg-white font-bold">
-                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, { ...systemData, ...collections }, 'patrons') || '-'}
+                                {actor.computed?.resolvedNames?.patron || resolveName(actor.system?.patron, 'patrons') || '-'}
                             </div>
                         </div>
                     )}
@@ -365,11 +364,11 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                                 const allLangs = (actor.system?.languages || []);
                                 const currentCommon = allLangs.filter((id: string) => {
                                     const lang = (collections?.languages || systemData?.languages)?.find((l: any) => l.uuid === id || l.name === id);
-                                    return !isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
+                                    return !isRareLanguage(resolveName(id, 'languages'));
                                 }).length;
                                 const currentRare = allLangs.filter((id: string) => {
                                     const lang = (collections?.languages || systemData?.languages)?.find((l: any) => l.uuid === id || l.name === id);
-                                    return isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
+                                    return isRareLanguage(resolveName(id, 'languages'));
                                 }).length;
 
                                 const totalCurrent = currentCommon + currentRare;
@@ -559,7 +558,6 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                 <LanguageSelectionModal
                     isOpen={true}
                     onClose={() => setIsLanguageModalOpen(false)}
-                    availableLanguages={collections?.languages || systemData?.languages || []}
                     onSelect={(langs) => onUpdate('system.languages', langs)}
                     currentLanguages={actor.system?.languages || []}
                     maxCommon={actor.computed?.languageLimits?.maxCommon || 0}

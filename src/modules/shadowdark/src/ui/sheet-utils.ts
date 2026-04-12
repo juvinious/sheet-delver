@@ -3,60 +3,7 @@ import { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGem
 export { calculateItemSlots, calculateMaxSlots, calculateCoinSlots, calculateGemSlots };
 
 import { resolveImage, processHtmlContent, getSafeDescription } from '@modules/registry/client';
-export { resolveImage, processHtmlContent, getSafeDescription };
-
-import { resolveDocumentName, formatDescription } from '../logic/normalization';
-export { formatDescription };
-
-/**
- * Resolves a potentially UUID-based field (like class, ancestry, background) to a human-readable name.
- */
-export const resolveEntityName = (value: string, actor: any, systemData: any, _collectionName?: string): string => {
-    if (!value) return '';
-
-    // 1. Try to find an embedded Item on the actor matching ID or UUID
-    const embeddedItem = actor.items?.find((i: any) =>
-        i.id === value ||
-        i.uuid === value ||
-        (typeof value === 'string' && value.endsWith(i.id || i._id))
-    );
-    if (embeddedItem) return embeddedItem.name;
-
-    // 2. Use unified resolver
-    return resolveDocumentName(value, systemData);
-};
-
-/**
- * Resolves a value (Name or UUID) to a Canonical UUID from the system data.
- */
-/**
- * Resolves a value (Name or UUID) to a Canonical UUID.
- * Checks both the lean systemData (for small indices) and the collectionCache (for on-demand shards).
- */
-export const resolveEntityUuid = (value: string, systemData: any, collectionName: string, collectionCache?: Record<string, any[]>): string => {
-    if (!value) return '';
-    
-    // If it looks like a full UUID already, return it
-    if (value.includes('.') && value.length > 16) return value;
-
-    // 1. Check Lean Index (if the collection happens to be tiny and included in systemData)
-    if (systemData && systemData[collectionName]) {
-        const sysObj = systemData[collectionName].find((c: any) => 
-            c.name === value || c.uuid === value || c._id === value || c.id === value
-        );
-        if (sysObj) return sysObj.uuid || sysObj._id || sysObj.id;
-    }
-
-    // 2. Check on-demand collection cache
-    if (collectionCache && collectionCache[collectionName]) {
-        const cachedObj = collectionCache[collectionName].find((c: any) =>
-            c.name === value || c.uuid === value || c._id === value || c.id === value
-        );
-        if (cachedObj) return cachedObj.uuid || cachedObj._id || cachedObj.id;
-    }
-
-    return value;
-};
+export { resolveImage, processHtmlContent as formatDescription, getSafeDescription };
 
 export const calculateSpellBonus = (actor: any, spell?: any): { bonus: number, advantage: boolean, disadvantage: boolean } => {
     if (!actor || !actor.system) return { bonus: 0, advantage: false, disadvantage: false };

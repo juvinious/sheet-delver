@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Flame, Utensils, Shield, Sword, Package, Archive, Minus, Plus } from 'lucide-react';
-import { resolveEntityName } from '../sheet-utils';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
 interface ItemModalProps {
     isOpen: boolean;
@@ -8,7 +8,6 @@ interface ItemModalProps {
     item: any;
     onUpdate: (path: string, value: any) => void;
     actor: any;
-    systemData: any;
 }
 
 export default function ItemModal({
@@ -16,9 +15,9 @@ export default function ItemModal({
     onClose,
     item: initialItem,
     onUpdate,
-    actor,
-    systemData
+    actor
 }: ItemModalProps) {
+    const { resolveName } = useShadowdarkUI();
     // Find the actual item in the actor's list to ensure reactivity when parent state updates
     const item = actor?.items?.find((i: any) => (i.id || i._id) === (initialItem?.id || initialItem?._id)) || initialItem;
 
@@ -74,7 +73,7 @@ export default function ItemModal({
             if (item.system?.properties?.length > 0) {
                 const props = item.system.properties
                     .map((p: any) => {
-                        const resolved = resolveEntityName(p, actor, systemData, 'properties');
+                        const resolved = resolveName(p, 'properties');
                         return resolved;
                     })
                     .filter(Boolean)
@@ -100,7 +99,7 @@ export default function ItemModal({
             // Properties
             if (item.system?.properties?.length > 0) {
                 const props = item.system.properties
-                    .map((p: any) => resolveEntityName(p, actor, systemData, 'properties'))
+                    .map((p: any) => resolveName(p, 'properties'))
                     .filter(Boolean)
                     .join(', ');
                 if (props) qualifiers.push({ label: 'Properties', value: props });

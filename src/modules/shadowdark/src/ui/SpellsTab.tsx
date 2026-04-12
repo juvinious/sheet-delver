@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     formatDescription,
-    getSafeDescription
+    getSafeDescription,
 } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
@@ -23,7 +23,7 @@ interface SpellsTabProps {
 }
 
 export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, addNotification, token }: SpellsTabProps) {
-    const { systemData, collections, fetchPack } = useShadowdarkUI();
+    const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -212,9 +212,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             );
             const spellcasting = resolvedClass?.system?.spellcasting || resolvedClass?.spellcasting;
             if (spellcasting?.ability) {
-                const classKey = resolvedClass.name.toLowerCase();
+                const classKey = resolveName(classRef, 'classes').toLowerCase();
                 sources.set(classKey, {
-                    name: resolvedClass.name,
+                    name: resolveName(classRef, 'classes'),
                     type: 'class',
                     classKey: classKey,
                     spellcasting: spellcasting,
@@ -222,7 +222,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 });
             }
         } else {
-            logger.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasClasses: ${!!(collections?.classes || systemData?.classes)}`);
+            logger.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}`);
         }
 
         // 2. Talents/Boons that grant spellcasting (Formal field OR Name heuristic)
@@ -279,7 +279,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             });
         });
         return Array.from(sources.values());
-    }, [actor.items, actor.computed?.classDetails, systemData, collections, actor.system]);
+    }, [actor.items, actor.computed?.classDetails, resolveName, actor.system]);
 
     const getAccessibleTiers = (source: any) => {
         const level = Number(actor.level?.value || actor.system?.level?.value || 0);
@@ -390,16 +390,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             const filterLower = modalFilterClass.toLowerCase();
 
             // Resolve class names from UUIDs/IDs
-            const resolvedClasses = classArray.map(c => {
-                if (typeof c !== 'string') return '';
-                const lowerC = c.toLowerCase();
-                if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
-
-                const match = (systemData?.classes || []).find((cls: any) =>
-                    cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
-                );
-                return match ? match.name.toLowerCase() : lowerC;
-            });
+            const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase());
 
             // Primary class match: if spell has no class assigned, it belongs to the primary class
             const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
@@ -700,15 +691,17 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
                             // Lookup spell metadata for the first spell (if any)
                             let spellMeta: any = null;
-                            const spellList = collections?.spells || systemData?.spells || [];
-                            if (item.spells && item.spells.length > 0 && spellList.length > 0) {
+                            if (item.spells && item.spells.length > 0) {
+                                // Manual lookup for magic item spell metadata is still needed as it returns full object,
+                                // but we can simplify the search.
+                                const targetUuid = item.spells[0].uuid;
+                                const spellList = collections?.spells || systemData?.spells || [];
                                 const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
-                                const targetUuid = normalizeUuid(item.spells[0].uuid);
-                                spellMeta = spellList.find((s: any) => {
-                                    if (s.uuid && normalizeUuid(s.uuid) === targetUuid) return true;
-                                    if (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === targetUuid) return true;
-                                    return false;
-                                });
+                                const nTarget = normalizeUuid(targetUuid);
+                                spellMeta = spellList.find((s: any) => 
+                                    (s.uuid && normalizeUuid(s.uuid) === nTarget) || 
+                                    (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === nTarget)
+                                );
                             }
 
                             return (
@@ -848,7 +841,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 <SpellSelectionModal
                     isOpen={isAddModalOpen}
                     title={`Manage ${modalFilterClass ? modalFilterClass.charAt(0).toUpperCase() + modalFilterClass.slice(1) : ''} Spells - Tier ${editingTier}`}
-                    availableSpells={filteredSpellOptions}
+                    tier={editingTier || 0}
+                    classKey={modalFilterClass || ''}
                     knownSpells={knownSpellsForModal}
                     onSave={handleManageSpells}
                     onClose={() => setIsAddModalOpen(false)}

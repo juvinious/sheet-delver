@@ -12,27 +12,7 @@ interface GearSelectionModalProps {
 
 type GearCategory = 'Armor' | 'Basic Gear' | 'Herbal Remedies' | 'Starting Gear' | 'Weapons' | 'Magic Items';
 
-// Property mapping from properties.db
-const PROPERTY_MAP: Record<string, string> = {
-    "WhfSBiji8VG1mMzV": "Disadvantage (Stealth)",
-    "qEIYaQ9j2EUmSrx6": "Versatile",
-    "rqQwpoeWEqi0ZcYK": "Finesse",
-    "R9rw4pKdIHfJJoyJ": "Returning",
-    "e5RpI0crHweCVt8B": "Breakable",
-    "F4wv0ycualMPaoco": "Disadvantage (Swim)",
-    "vobaPJfoZ1e50eab": "Blowgun",
-    "bAzl6RH1PW95ZkFE": "Sundering",
-    "jq0m0lGb7QOCSJXL": "Occupies One Hand",
-    "M5iKSTKd3UgtZT8K": "Shuriken",
-    "K5d1agm6gzaTLr1k": "Lash",
-    "61gM0DuJQwLbIBwu": "Shield",
-    "c35ROL1nXwC840kC": "Thrown",
-    "Op1yKvM7uq5pdopr": "Sundering",
-    "b6Gm2ULKj2qyy2xJ": "Two-Handed",
-    "98zYioBHqik74KBV": "Bolas",
-    "kBLs47xhX1snaDGA": "No Swim",
-    "HyqHR9AhIDkm4La9": "Loading"
-};
+// Properties are resolved dynamically via useShadowdarkUI().resolveName and the 'properties' shard.
 
 const FOLDER_IDS: Record<string, GearCategory> = {
     'np4FRJ73NRBEQKnS': 'Armor',
@@ -44,7 +24,7 @@ const FOLDER_IDS: Record<string, GearCategory> = {
 
 export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
-    const { collections, fetchPack } = useShadowdarkUI();
+    const { collections, fetchPack, resolveName } = useShadowdarkUI();
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState<Set<GearCategory>>(new Set(['Basic Gear']));
     const [loading, setLoading] = useState(false);
@@ -75,7 +55,8 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                 try {
                     await Promise.all([
                         fetchPack('gear'),
-                        fetchPack('magic-items')
+                        fetchPack('magic-items'),
+                        fetchPack('properties')
                     ]);
                 } finally {
                     setLoading(false);
@@ -260,13 +241,9 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                                                     }
                                                 }
 
-                                                // Generic Properties from property map
                                                 if (item.system?.properties && Array.isArray(item.system.properties)) {
                                                     item.system.properties.forEach((propId: string) => {
-                                                        // Extract UUID part if it is a full path (Compendium...)
-                                                        const parts = propId.split('.');
-                                                        const id = parts[parts.length - 1];
-                                                        const propName = PROPERTY_MAP[id];
+                                                        const propName = resolveName(propId, 'properties');
                                                         if (propName) {
                                                             properties.push({ label: propName, color: 'bg-slate-700 text-white' });
                                                         }

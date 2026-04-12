@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { resolveEntityName } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
+import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 interface AbilitiesTabProps {
     actor: any;
@@ -12,6 +12,7 @@ interface AbilitiesTabProps {
 }
 
 export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll }: AbilitiesTabProps) {
+    const { resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
 
     // Common container style for standard sheet feel
@@ -310,8 +311,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                     if (typeof src === 'string') group = src;
                                     else if (typeof src === 'object') group = src.title || src.name || src.label || "General";
                                 }
-                                else if (item.system?.talentClass === 'class') group = actor.computed?.resolvedNames?.class || resolveEntityName(actor.system?.class, actor, {}, 'classes') || "Class";
-                                else if (item.system?.talentClass === 'ancestry') group = actor.computed?.resolvedNames?.ancestry || resolveEntityName(actor.system?.ancestry, actor, {}, 'ancestries') || "Ancestry";
+                                else if (item.system?.talentClass === 'class') group = actor.computed?.resolvedNames?.class || resolveName(actor.system?.class, 'classes') || "Class";
+                                else if (item.system?.talentClass === 'ancestry') group = actor.computed?.resolvedNames?.ancestry || resolveName(actor.system?.ancestry, 'ancestries') || "Ancestry";
 
                                 if (!grouped[group]) grouped[group] = [];
                                 grouped[group].push(item);

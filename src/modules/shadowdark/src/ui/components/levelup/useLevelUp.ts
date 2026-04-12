@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { isClassSpellcaster } from '../../../logic/rules';
 import { logger } from '@shared/utils/logger';
 import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
+import { useShadowdarkUI } from '../../context/ShadowdarkUIContext';
+import { useConfig } from '@client/ui/context/ConfigContext';
 
 export interface LevelUpProps {
     actorId: string;
@@ -38,12 +40,24 @@ export const useLevelUp = (props: LevelUpProps) => {
         patron,
         patronUuid,
         abilities: _abilities,
-        availableClasses = EMPTY_ARRAY,
-        availableLanguages = EMPTY_ARRAY,
+        availableClasses: propsAvailableClasses,
+        availableLanguages: propsAvailableLanguages,
         knownLanguages: initialKnownLanguages = EMPTY_ARRAY,
         skipLanguageSelection = false,
         onComplete,
     } = props;
+
+    const { systemData, collections, resolveUuid } = useShadowdarkUI();
+
+    const availableClasses = useMemo(() => {
+        if (propsAvailableClasses && propsAvailableClasses.length > 0) return propsAvailableClasses;
+        return systemData?.classes || EMPTY_ARRAY;
+    }, [propsAvailableClasses, systemData]);
+
+    const availableLanguages = useMemo(() => {
+        if (propsAvailableLanguages && propsAvailableLanguages.length > 0) return propsAvailableLanguages;
+        return systemData?.languages || EMPTY_ARRAY;
+    }, [propsAvailableLanguages, systemData]);
 
     const [statuses, setStatuses] = useState<Record<string, SectionStatus>>({
         class: 'LOADING',
