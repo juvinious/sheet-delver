@@ -14,7 +14,6 @@ interface EffectsTabProps {
     onAddPredefinedEffect?: (effectId: string) => Promise<void>;
     onCreateEffect?: (effectData: any) => Promise<void>;
     onUpdateEffect?: (effectData: any) => Promise<void>;
-    systemConfig?: any;
 }
 
 export default function EffectsTab({
@@ -24,8 +23,7 @@ export default function EffectsTab({
     onDeleteEffect,
     onAddPredefinedEffect: _onAddPredefinedEffect,
     onCreateEffect,
-    onUpdateEffect,
-    systemConfig
+    onUpdateEffect
 }: EffectsTabProps) {
     const { resolveImageUrl } = useConfig();
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
@@ -223,7 +221,6 @@ export default function EffectsTab({
                 onCreate={handleCreateEffect}
                 onUpdate={handleUpdateEffect}
                 initialData={editingEffect}
-                systemConfig={systemConfig}
             />
         </div>
     );

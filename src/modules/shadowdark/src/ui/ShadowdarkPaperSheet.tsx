@@ -12,6 +12,7 @@ import { LevelUpModal } from './components/LevelUpModal';
 import { useNotifications } from '@client/ui/components/NotificationSystem';
 import { logger } from '@shared/utils/logger';
 import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
+import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 
 interface ShadowdarkPaperSheetProps {
@@ -26,13 +27,13 @@ interface ShadowdarkPaperSheetProps {
 
 export default function ShadowdarkPaperSheet({
     actor,
-    systemData,
     onUpdate,
     onToggleView,
     triggerRollDialog,
     onRoll,
     token
 }: ShadowdarkPaperSheetProps) {
+    const { systemData, collections } = useShadowdarkUI();
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
     const [viewMode, setViewMode] = useState<'paper' | 'list'>('paper');
@@ -354,21 +355,21 @@ export default function ShadowdarkPaperSheet({
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Deity</div>
                             <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                 <div className="text-lg font-bold w-full text-center truncate px-1 capitalize">
-                                    {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || ''}
+                                    {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, { ...systemData, ...collections }, 'deities') || ''}
                                 </div>
                             </div>
                         </div>
-
+ 
                         {/* Patron (Warlock Only) */}
                         {(() => {
-                            const clsName = resolveEntityName(actor.system?.class, actor, systemData, 'classes');
+                            const clsName = resolveEntityName(actor.system?.class, actor, { ...systemData, ...collections }, 'classes');
                             if ((clsName || '').toLowerCase().includes('warlock')) {
                                 return (
                                     <div className="border-2 border-black h-16 p-1 relative">
                                         <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Patron</div>
                                         <div className="flex items-end justify-center h-full w-full pb-1 px-1">
                                             <div className="text-lg font-bold w-full text-center truncate px-1">
-                                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || ''}
+                                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, { ...systemData, ...collections }, 'patrons') || ''}
                                             </div>
                                         </div>
                                     </div>

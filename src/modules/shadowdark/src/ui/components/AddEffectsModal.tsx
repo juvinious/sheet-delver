@@ -10,7 +10,6 @@ interface AddEffectsModalProps {
     onCreate?: (effectData: any) => Promise<void>;
     onUpdate?: (effectData: any) => Promise<void>;
     initialData?: any;
-    systemConfig?: any;
     predefinedEffects?: Record<string, any>;
 }
 
@@ -29,7 +28,6 @@ export default function AddEffectsModal({
     onCreate,
     onUpdate,
     initialData,
-    systemConfig: _systemConfig,
     predefinedEffects: _predefinedEffects
 }: AddEffectsModalProps) {
     const { resolveImageUrl } = useConfig();

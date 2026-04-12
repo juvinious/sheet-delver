@@ -29,15 +29,30 @@ export const resolveEntityName = (value: string, actor: any, systemData: any, _c
 /**
  * Resolves a value (Name or UUID) to a Canonical UUID from the system data.
  */
-export const resolveEntityUuid = (value: string, systemData: any, collectionName: string): string => {
+/**
+ * Resolves a value (Name or UUID) to a Canonical UUID.
+ * Checks both the lean systemData (for small indices) and the collectionCache (for on-demand shards).
+ */
+export const resolveEntityUuid = (value: string, systemData: any, collectionName: string, collectionCache?: Record<string, any[]>): string => {
     if (!value) return '';
+    
+    // If it looks like a full UUID already, return it
     if (value.includes('.') && value.length > 16) return value;
 
+    // 1. Check Lean Index (if the collection happens to be tiny and included in systemData)
     if (systemData && systemData[collectionName]) {
         const sysObj = systemData[collectionName].find((c: any) => 
             c.name === value || c.uuid === value || c._id === value || c.id === value
         );
         if (sysObj) return sysObj.uuid || sysObj._id || sysObj.id;
+    }
+
+    // 2. Check on-demand collection cache
+    if (collectionCache && collectionCache[collectionName]) {
+        const cachedObj = collectionCache[collectionName].find((c: any) =>
+            c.name === value || c.uuid === value || c._id === value || c.id === value
+        );
+        if (cachedObj) return cachedObj.uuid || cachedObj._id || cachedObj.id;
     }
 
     return value;

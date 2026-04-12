@@ -10,20 +10,20 @@ import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
 import { logger } from '@shared/utils/logger';
+import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 interface SpellsTabProps {
     actor: any;
     onUpdate: (path: string, value: any) => void;
     triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
-    systemData?: any;
     onDeleteItem?: (itemId: string) => void;
     addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
     token?: string | null;
-    onFetchPack?: (packId: string) => Promise<any>;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, systemData, onDeleteItem, addNotification, token, onFetchPack }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, addNotification, token }: SpellsTabProps) {
+    const { systemData, collections, fetchPack } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -63,13 +63,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
     // Hydration: Ensure spells and classes are loaded
     useEffect(() => {
-        if (!systemData?.spells && onFetchPack) {
-            onFetchPack('spells');
+        if (!collections?.spells && !systemData?.spells) {
+            fetchPack('spells');
         }
-        if (!systemData?.classes && onFetchPack) {
-            onFetchPack('classes');
+        if (!collections?.classes && !systemData?.classes) {
+            fetchPack('classes');
         }
-    }, [systemData?.spells, systemData?.classes, onFetchPack]);
+    }, [systemData?.spells, systemData?.classes, collections?.spells, collections?.classes, fetchPack]);
 
     const toggleItem = (id: string) => {
         const newSet = new Set(expandedItems);
@@ -175,10 +175,10 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
     const openManageModalWithSource = async (tier: number, classKey: string) => {
         // Ensure hydration if not already triggered
-        if ((!systemData?.spells || !systemData?.classes) && onFetchPack) {
+        if (!(collections?.spells || systemData?.spells) || !(collections?.classes || systemData?.classes)) {
             await Promise.all([
-                !systemData?.spells ? onFetchPack('spells') : Promise.resolve(),
-                !systemData?.classes ? onFetchPack('classes') : Promise.resolve()
+                !(collections?.spells || systemData?.spells) ? fetchPack('spells') : Promise.resolve(),
+                !(collections?.classes || systemData?.classes) ? fetchPack('classes') : Promise.resolve()
             ]);
         }
 
@@ -201,10 +201,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                 spellcasting: classItem.system.spellcasting,
                 bonusSpells: 0
             });
-        } else if (actor.system?.class && systemData?.classes) {
-            // Fallback: Resolve via systemData if class identified by UUID
+        } else if (actor.system?.class && (collections?.classes || systemData?.classes)) {
+            // Fallback: Resolve via systemData/collections if class identified by UUID
             const classRef = actor.system.class;
-            const resolvedClass = systemData.classes.find((c: any) => 
+            const classList = collections?.classes || systemData?.classes || [];
+            const resolvedClass = classList.find((c: any) => 
                 c.uuid === classRef || 
                 c.name.toLowerCase() === (String(classRef).toLowerCase()) ||
                 (typeof classRef === 'string' && classRef.endsWith(c.uuid.split('.').pop()!))
@@ -219,11 +220,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     spellcasting: spellcasting,
                     bonusSpells: 0
                 });
-            } else {
-                logger.debug(`[SpellsTab] Fallback failed. classRef: ${classRef}, resolved: ${resolvedClass?.name}, hasAbility: ${!!spellcasting?.ability}`);
             }
         } else {
-            logger.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasSystemDataClasses: ${!!systemData?.classes}`);
+            logger.debug(`[SpellsTab] No classItem and no fallback possible. actor.system.class: ${actor.system?.class}, hasClasses: ${!!(collections?.classes || systemData?.classes)}`);
         }
 
         // 2. Talents/Boons that grant spellcasting (Formal field OR Name heuristic)
@@ -280,7 +279,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             });
         });
         return Array.from(sources.values());
-    }, [actor.items, actor.computed?.classDetails, systemData, actor.system]);
+    }, [actor.items, actor.computed?.classDetails, systemData, collections, actor.system]);
 
     const getAccessibleTiers = (source: any) => {
         const level = Number(actor.level?.value || actor.system?.level?.value || 0);
@@ -319,24 +318,26 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     };
 
     const filteredSpellOptions = useMemo(() => {
-        if (!systemData?.spells || !editingTier || !modalFilterClass) return [];
+        const fullSpells = collections?.spells || systemData?.spells;
+        if (!fullSpells || !editingTier || !modalFilterClass) return [];
         const seen = new Set();
         const filterLower = modalFilterClass.toLowerCase();
 
-        return systemData.spells.filter((s: any) => {
+        return fullSpells.filter((s: any) => {
             const spellTier = Number(s.tier !== undefined ? s.tier : s.system?.tier);
             if (spellTier !== editingTier) return false;
 
             const classData = s.class || s.system?.class || [];
             const classArray = Array.isArray(classData) ? classData : [classData];
 
-            // Resolve class names from UUIDs/IDs using systemData.classes
+            // Resolve class names from UUIDs/IDs using systemData.classes/collections.classes
             const resolvedClasses = classArray.map(c => {
                 if (typeof c !== 'string') return '';
                 const lowerC = c.toLowerCase();
                 if (!c.includes('.') && !c.includes('Compendium')) return lowerC;
 
-                const match = (systemData.classes || []).find((cls: any) =>
+                const classList = collections?.classes || systemData.classes || [];
+                const match = classList.find((cls: any) =>
                     cls.uuid === c || cls._id === c || cls.id === c || c.endsWith(cls._id || cls.id)
                 );
                 return match ? match.name.toLowerCase() : lowerC;
@@ -348,7 +349,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             seen.add(s.name);
             return true;
         });
-    }, [systemData, editingTier, modalFilterClass]);
+    }, [systemData, collections, editingTier, modalFilterClass]);
 
     const getMaxSpellsForSource = useCallback((tier: number, classKey: string) => {
         const source = spellSources.find((s: any) => s.classKey === classKey);
@@ -699,10 +700,11 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
                             // Lookup spell metadata for the first spell (if any)
                             let spellMeta: any = null;
-                            if (item.spells && item.spells.length > 0 && systemData?.spells) {
+                            const spellList = collections?.spells || systemData?.spells || [];
+                            if (item.spells && item.spells.length > 0 && spellList.length > 0) {
                                 const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
                                 const targetUuid = normalizeUuid(item.spells[0].uuid);
-                                spellMeta = systemData.spells.find((s: any) => {
+                                spellMeta = spellList.find((s: any) => {
                                     if (s.uuid && normalizeUuid(s.uuid) === targetUuid) return true;
                                     if (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === targetUuid) return true;
                                     return false;

@@ -2,6 +2,7 @@ import { logger } from '@shared/utils/logger';
 import { useState, useEffect, useMemo } from 'react';
 import { X, Search, ChevronDown, ChevronRight, Shield, Backpack, Swords, Sparkles, Sprout, Briefcase, Plus, Flame, Sun, Target } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
 interface GearSelectionModalProps {
     isOpen: boolean;
@@ -43,64 +44,46 @@ const FOLDER_IDS: Record<string, GearCategory> = {
 
 export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
+    const { collections, fetchPack } = useShadowdarkUI();
     const [searchTerm, setSearchTerm] = useState('');
     const [expandedCategories, setExpandedCategories] = useState<Set<GearCategory>>(new Set(['Basic Gear']));
-    const [items, setItems] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
+
+    const gearItems = collections['gear'] || [];
+    const magicItems = collections['magic-items'] || [];
+    
+    // Combine and apply existing filtering logic to the cached collections
+    const items = useMemo(() => {
+        const allDocs = [...gearItems, ...magicItems];
+        if (allDocs.length === 0) return [];
+
+        return allDocs.filter((d: any) => {
+            if (d._key && d._key.startsWith('!folders!')) return false;
+
+            const validTypes = ['Basic', 'Weapon', 'Armor', 'Potion', 'Scroll', 'Wand', 'Gem', 'item', 'Item'];
+            const dType = d.type || "";
+            const typeMatch = validTypes.some(t => t.toLowerCase() === dType.toLowerCase());
+
+            return typeMatch;
+        });
+    }, [gearItems, magicItems]);
 
     useEffect(() => {
-        if (isOpen && items.length === 0) {
-            setLoading(true);
-            const fetchData = async () => {
+        if (isOpen) {
+            const loadNeeded = async () => {
+                setLoading(true);
                 try {
-                    // Fetch from API because DataManager is server-side only
-                    const response = await fetch('/api/modules/shadowdark/gear/list');
-                    if (!response.ok) throw new Error(`API Error: ${response.status}`);
-                    const allDocs = await response.json();
-
-                    logger.debug(`[GearSelectionModal] Fetched ${allDocs.length} docs`);
-
-                    const gearItems = allDocs.filter((d: any) => {
-                        // Filter out non-items or folders
-                        if (d._key && d._key.startsWith('!folders!')) return false;
-
-                        // Filter out effects/bonuses from magic-items.db
-                        const validTypes = ['Basic', 'Weapon', 'Armor', 'Potion', 'Scroll', 'Wand', 'Gem', 'item', 'Item'];
-                        const dType = d.type || "";
-                        const typeMatch = validTypes.some(t => t.toLowerCase() === dType.toLowerCase());
-
-                        // Check specific packs
-                        const dPack = d.pack || "";
-                        const validPacks = ['items', 'gear', 'magic-items', 'shadowdark.items', 'shadowdark.magic-items'];
-                        const packMatch = validPacks.some(vp => dPack.toLowerCase().includes(vp));
-
-                        if (typeMatch && packMatch) return true;
-                        
-                        // Debug log for potential false negatives
-                        if (allDocs.length < 500 && dType && !typeMatch) {
-                            // Only log if we have relatively few total docs and it's an item-like doc
-                            if (dPack.includes('items')) logger.debug(`[GearSelectionModal] Rejected Item: ${d.name} (Type: ${dType}, Pack: ${dPack})`);
-                        }
-
-                        return false;
-                    });
-                    
-                    logger.debug(`[GearSelectionModal] Filtered Gear Count: ${gearItems.length}`);
-                    
-                    // Log unique packs for debugging
-                    const uniquePacks = Array.from(new Set(allDocs.map((d: any) => d.pack || "unknown"))).slice(0, 10);
-                    logger.debug(`[GearSelectionModal] Registry Packs (first 10): ${uniquePacks.join(', ')}`);
-                    
-                    setItems(gearItems);
-                } catch (e) {
-                    logger.error("Failed to load gear:", e);
+                    await Promise.all([
+                        fetchPack('gear'),
+                        fetchPack('magic-items')
+                    ]);
                 } finally {
                     setLoading(false);
                 }
             };
-            fetchData();
+            loadNeeded();
         }
-    }, [isOpen, items.length]);
+    }, [isOpen, fetchPack]);
 
     const toggleCategory = (category: GearCategory) => {
         const newSet = new Set(expandedCategories);
@@ -131,7 +114,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
             // Category Logic
             let category: GearCategory | null = null;
 
-            if (item.pack === 'magic-items' || item.pack === 'shadowdark.magic-items' || item.system?.magicItem === true) {
+            if (item.pack?.includes('magic-items') || item.system?.magicItem === true) {
                 category = 'Magic Items';
             } else if (item.folder && FOLDER_IDS[item.folder]) {
                 category = FOLDER_IDS[item.folder];
@@ -139,9 +122,9 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
                 category = 'Armor';
             } else if (item.type === 'Weapon') {
                 category = 'Weapons';
-            } else {
-                // Fallback for items in gear.db without a folder (if any)
-                if (item.pack === 'gear' || item.pack === 'shadowdark.items') category = 'Basic Gear';
+            } else if (item.pack?.includes('gear') || item.pack?.includes('items')) {
+                // Broad fallback for standard items
+                category = 'Basic Gear';
             }
 
             if (category) {

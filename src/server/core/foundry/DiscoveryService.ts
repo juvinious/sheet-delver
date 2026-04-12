@@ -86,7 +86,7 @@ export class DiscoveryService {
         }
 
         // Use the aggregate entry IDs as a base for the signature if Foundry doesn't provide a hash
-        const currentHash = this.computeHash(entries);
+        const currentHash = this.computeHash(entries, packConfig.hydrate || false);
         const existing = manifest.packs[packId];
 
         if (existing && existing.hash === currentHash) {
@@ -146,9 +146,10 @@ export class DiscoveryService {
         return true;
     }
 
-    private computeHash(entries: any[]): string {
+    private computeHash(entries: any[], hydrate: boolean): string {
         const signatureString = entries
             .map(e => `${e._id || e.id}-${e.name}`)
+            .concat(hydrate ? ['HYDRATED'] : ['INDEXED'])
             .sort()
             .join('|');
         return crypto.createHash('md5').update(signatureString).digest('hex');

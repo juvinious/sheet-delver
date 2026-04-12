@@ -48,50 +48,15 @@ export default function SpellSelectionModal({
     // Tracks if we have already initialized for the current "open" session
     const [hasInitialized, setHasInitialized] = useState(false);
 
-    const toggleExpand = async (spell: SpellOption) => {
+    const toggleExpand = (spell: SpellOption) => {
         if (isSaving) return;
         const newSet = new Set(expandedUuids);
         if (newSet.has(spell.uuid)) {
             newSet.delete(spell.uuid);
         } else {
             newSet.add(spell.uuid);
-            // Fetch description if not already loaded or present
-            if (!spell.description && !fetchedData[spell.uuid]) {
-                await loadDescription(spell);
-            }
         }
         setExpandedUuids(newSet);
-    };
-
-    const loadDescription = async (spell: SpellOption) => {
-        setLoadingUuids(prev => new Set(prev).add(spell.uuid));
-        try {
-            const headers: any = {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            const res = await fetch(`/api/foundry/document?uuid=${encodeURIComponent(spell.uuid)}`, {
-                headers
-            });
-            if (res.ok) {
-                const doc = await res.json();
-                const desc = getSafeDescription(doc.system);
-                setFetchedData(prev => ({
-                    ...prev,
-                    [spell.uuid]: {
-                        description: desc,
-                        system: doc.system
-                    }
-                }));
-            }
-        } catch (e) {
-            logger.error("Failed to fetch description", e);
-        } finally {
-            setLoadingUuids(prev => {
-                const next = new Set(prev);
-                next.delete(spell.uuid);
-                return next;
-            });
-        }
     };
 
     // Initialize selection from known spells ONLY when the modal opens
@@ -265,42 +230,35 @@ export default function SpellSelectionModal({
                                     {/* Expanded Info */}
                                     {isExpanded && (
                                         <div className="p-4 pt-2 border-t border-dashed border-neutral-200 bg-neutral-50">
-                                            {isLoading ? (
-                                                <div className="flex items-center gap-2 text-sm text-neutral-400 italic py-2">
-                                                    <div className="w-4 h-4 border-2 border-neutral-300 border-t-neutral-600 rounded-full animate-spin" />
-                                                    Loading spell description...
-                                                </div>
-                                            ) : (
-                                                <div className="space-y-4">
-                                                    {/* Metadata row inside expanded info */}
-                                                    <div className="flex flex-wrap gap-6 py-2 border-b border-neutral-200">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-widest">Duration</span>
-                                                            <span className="font-serif text-black uppercase">
-                                                                {(() => {
-                                                                    const system = fetched?.system || spell.system || {};
-                                                                    const val = system.duration?.value;
-                                                                    const type = system.duration?.type || '-';
-                                                                    if (val === undefined || val === null || val === '' || val === -1) return type.charAt(0).toUpperCase() + type.slice(1);
-                                                                    return `${val} ${type.charAt(0).toUpperCase() + type.slice(1)}${val !== 1 ? 's' : ''}`;
-                                                                })()}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-widest">Range</span>
-                                                            <span className="font-serif text-black uppercase">{(fetched?.system || spell.system)?.range || 'Close'}</span>
-                                                        </div>
+                                            <div className="space-y-4">
+                                                {/* Metadata row inside expanded info */}
+                                                <div className="flex flex-wrap gap-6 py-2 border-b border-neutral-200">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-widest">Duration</span>
+                                                        <span className="font-serif text-black uppercase">
+                                                            {(() => {
+                                                                const system = spell.system || {};
+                                                                const val = system.duration?.value;
+                                                                const type = system.duration?.type || '-';
+                                                                if (val === undefined || val === null || val === '' || val === -1) return type.charAt(0).toUpperCase() + type.slice(1);
+                                                                return `${val} ${type.charAt(0).toUpperCase() + type.slice(1)}${val !== 1 ? 's' : ''}`;
+                                                            })()}
+                                                        </span>
                                                     </div>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[10px] uppercase font-bold text-neutral-400 tracking-widest">Range</span>
+                                                        <span className="font-serif text-black uppercase">{spell.system?.range || 'Close'}</span>
+                                                    </div>
+                                                </div>
 
-                                                    <div className="text-sm font-serif leading-relaxed text-neutral-800 prose prose-sm max-w-none">
-                                                        {description ? (
-                                                            <div dangerouslySetInnerHTML={{ __html: formatDescription(description) }} />
-                                                        ) : (
-                                                            <span className="italic text-neutral-400">No description available.</span>
-                                                        )}
-                                                    </div>
+                                                <div className="text-sm font-serif leading-relaxed text-neutral-800 prose prose-sm max-w-none">
+                                                    {description ? (
+                                                        <div dangerouslySetInnerHTML={{ __html: formatDescription(description) }} />
+                                                    ) : (
+                                                        <span className="italic text-neutral-400">No description available.</span>
+                                                    )}
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
                                     )}
                                 </div>

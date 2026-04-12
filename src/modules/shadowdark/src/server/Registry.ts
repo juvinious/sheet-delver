@@ -61,7 +61,7 @@ export class ShadowdarkRegistry {
 
     private static readonly COLLECTIONS = [
         ...new Set(Object.values(ShadowdarkRegistry.TYPE_TO_COLLECTION)),
-        'magicItems', 'conditions', 'spellEffects', 'properties'
+        'magic-items', 'conditions', 'spell-effects', 'properties'
     ];
 
     private constructor() { }
@@ -111,7 +111,15 @@ export class ShadowdarkRegistry {
                 img: d.img,
                 rarity: d.rarity,
                 type: d.type,
-                tier: d.system?.tier
+                tier: d.system?.tier,
+                // Rule Shard Statistics
+                system: {
+                    cost: d.system?.cost,
+                    slots: d.system?.slots,
+                    properties: d.system?.properties,
+                    description: d.system?.description,
+                    tier: d.system?.tier // for redundancy
+                }
             }));
         }
 
@@ -409,6 +417,7 @@ export class ShadowdarkRegistry {
                 const docType = doc.type === 'RollTable' ? 'RollTable' : 'Item';
                 doc.uuid = `Compendium.${packId}.${docType}.${id}`;
             }
+            doc.pack = packId; // Ensure pack is attached for UI categorization
 
             if (encounteredUuids.has(doc.uuid)) return;
             encounteredUuids.add(doc.uuid);
@@ -428,10 +437,10 @@ export class ShadowdarkRegistry {
                 else if (lowerPack.includes('spells')) category = 'spells';
                 else if (lowerPack.includes('talents') || lowerPack.includes('class-abilities')) category = 'talents';
                 else if (lowerPack.includes('languages')) category = 'languages';
-                else if (lowerPack.includes('magic-items')) category = 'magicItems';
+                else if (lowerPack.includes('magic-items')) category = 'magic-items';
                 else if (lowerPack.includes('gear')) category = 'gear';
                 else if (lowerPack.includes('conditions')) category = 'conditions';
-                else if (lowerPack.includes('spell-effects')) category = 'spellEffects';
+                else if (lowerPack.includes('spell-effects')) category = 'spell-effects';
                 else if (lowerPack.includes('properties')) category = 'properties';
             }
 

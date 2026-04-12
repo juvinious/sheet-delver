@@ -12,6 +12,7 @@ import { shouldShowSpellsTab } from '../logic/rules';
 import { Menu, X, Check } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import dynamic from 'next/dynamic';
+import { ShadowdarkUIProvider, useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -52,37 +53,38 @@ interface ShadowdarkSheetProps {
     isDiceTrayOpen?: boolean;
 }
 
-export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onToggleEffect, onDeleteEffect, onDeleteItem, onCreateItem, onUpdateItem, onAddPredefinedEffect, onToggleDiceTray, isDiceTrayOpen }: ShadowdarkSheetProps) {
+export default function ShadowdarkSheet(props: ShadowdarkSheetProps) {
+    return (
+        <ShadowdarkUIProvider token={props.token}>
+            <ShadowdarkSheetInternal {...props} />
+        </ShadowdarkUIProvider>
+    );
+}
+
+function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
+    const { 
+        actor, 
+        token, 
+        onRoll, 
+        onUpdate, 
+        onToggleEffect, 
+        onDeleteEffect, 
+        onDeleteItem, 
+        onCreateItem, 
+        onUpdateItem, 
+        onAddPredefinedEffect, 
+        onToggleDiceTray, 
+        isDiceTrayOpen 
+    } = props;
+    
     const { resolveImageUrl } = useConfig();
-    // ... (State initialization)
+    const { systemData, loadingSystem, fetchPack } = useShadowdarkUI();
+
+    // UI state
     const [activeTab, setActiveTab] = useState('details');
-    const [systemData, setSystemData] = useState<any>(null);
-    const [loadingSystem, setLoadingSystem] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
-
-    const fetchPack = async (packId: string) => {
-        if (systemData && systemData[packId]) return systemData[packId];
-
-        try {
-            const headers: any = {};
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-            const res = await fetch(`/api/modules/shadowdark/fetch-pack/${packId}?summary=true`, { headers });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-            const data = await res.json();
-            setSystemData((prev: any) => ({
-                ...(prev || {}),
-                [packId]: data
-            }));
-            return data;
-        } catch (err) {
-            logger.error(`Failed to fetch pack ${packId}:`, err);
-            return null;
-        }
-    };
 
     // Shadowdark Level-Up Logic (Consolidated)
     const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, systemData, addNotification as any, fetchPack);
@@ -235,36 +237,7 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
         });
     };
 
-    useEffect(() => {
-        setLoadingSystem(true);
-        const headers: any = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const fetchData = async (retries = 3, delay = 1000) => {
-            try {
-                const res = await fetch('/api/system/data', { headers });
-                if (res.status === 503 && retries > 0) {
-                    logger.warn(`System initializing (503), retrying in ${delay / 1000}s...`);
-                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
-                    return;
-                }
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                setSystemData(data || {});
-                setLoadingSystem(false);
-            } catch (err) {
-                logger.error('Failed to fetch system data:', err);
-                if (retries > 0) {
-                    setTimeout(() => fetchData(retries - 1, delay * 2), delay);
-                } else {
-                    setSystemData({});
-                    setLoadingSystem(false);
-                }
-            }
-        };
-
-        fetchData();
-    }, [token]);
+    // System manifest fetching is now handled by ShadowdarkUIProvider.
 
 
 
@@ -539,14 +512,12 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                         {activeTab === 'details' && (
                             <DetailsTab
                                 actor={actor}
-                                systemData={systemData}
                                 onUpdate={onUpdate}
                                 onCreateItem={onCreateItem}
                                 onUpdateItem={onUpdateItem}
                                 onDeleteItem={onDeleteItem}
                                 onToggleEffect={onToggleEffect}
                                 triggerLevelUp={triggerLevelUp}
-                                onFetchPack={fetchPack}
                             />
                         )
                         }
@@ -567,14 +538,12 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                 <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
                                     <SpellsTab
                                         actor={actor}
-                                        systemData={systemData}
                                         onUpdate={onUpdate}
                                         triggerRollDialog={triggerRollDialog}
                                         onRoll={onRoll}
                                         onDeleteItem={onDeleteItem}
                                         addNotification={addNotification}
                                         token={token}
-                                        onFetchPack={fetchPack}
                                     />
                                 </ErrorBoundary>
                             )
@@ -620,7 +589,6 @@ export default function ShadowdarkSheet({ actor, token, onRoll, onUpdate, onTogg
                                     onToggleEffect={onToggleEffect}
                                     onDeleteEffect={onDeleteEffect}
                                     onAddPredefinedEffect={onAddPredefinedEffect}
-                                    systemConfig={systemData}
                                     onCreateEffect={async (effectData) => {
                                         try {
                                             const id = actor.id || actor._id;

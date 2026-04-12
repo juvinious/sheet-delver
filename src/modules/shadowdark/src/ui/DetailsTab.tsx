@@ -10,10 +10,10 @@ import LanguageSelectionModal from './components/LanguageSelectionModal';
 import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from './themes/shadowdark';
 import { isRareLanguage } from '../logic/rules';
+import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 interface DetailsTabProps {
     actor: any;
-    systemData: any;
     onUpdate: (path: string, value: any) => void;
     foundryUrl?: string;
     onCreateItem?: (itemData: any) => Promise<void>;
@@ -21,10 +21,10 @@ interface DetailsTabProps {
     onDeleteItem?: (itemId: string) => void;
     onToggleEffect?: (effectId: string, enabled: boolean) => void;
     triggerLevelUp?: () => void;
-    onFetchPack?: (packId: string) => Promise<any>;
 }
 
-export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp, onFetchPack }: DetailsTabProps) {
+export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp }: DetailsTabProps) {
+    const { systemData, collections, fetchPack } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
@@ -82,27 +82,29 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
         }
 
         // 1. Initial State: Open modal (Loading if data missing)
-        const hasData = dataKey ? !!systemData?.[dataKey] : true;
+        // Check both small indexing in systemData and hydrated cache in collections
+        const hasData = dataKey ? (!!systemData?.[dataKey] || !!collections?.[dataKey]) : true;
+        const activeCollection = dataKey ? (collections?.[dataKey] || systemData?.[dataKey] || []) : [];
         
         setSelectionModal({
             isOpen: true,
             title,
-            options: hasData && dataKey ? (systemData[dataKey] || []).map((o: any) => ({
+            options: hasData && dataKey ? activeCollection.map((o: any) => ({
                 name: o.name,
                 uuid: o.uuid,
                 description: o.description || o.system?.description?.value || o.data?.description?.value || ''
             })) : [],
-            currentValue: hasData && dataKey ? resolveEntityName(current, actor, systemData, dataKey) : current,
+            currentValue: hasData && dataKey ? resolveEntityName(current, actor, { ...systemData, ...collections }, dataKey) : current,
             multiSelect,
             isLoading: !hasData,
             onSelect: (option) => handleSelection(field, option, multiSelect)
         });
 
-        // 2. Hydration: If data is missing, fetch it and update modal
-        if (!hasData && dataKey && onFetchPack) {
+        // 2. Hydration: If data is missing or incomplete, fetch it and update modal
+        if (!hasData && dataKey) {
             setFetchingCategory(dataKey);
             try {
-                const fetched = await onFetchPack(dataKey);
+                const fetched = await fetchPack(dataKey);
                 if (Array.isArray(fetched)) {
                     setSelectionModal(prev => ({
                         ...prev,
@@ -112,7 +114,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             uuid: o.uuid,
                             description: o.description || o.system?.description?.value || o.data?.description?.value || ''
                         })),
-                        currentValue: resolveEntityName(current, actor, { ...systemData, [dataKey]: fetched }, dataKey)
+                        currentValue: resolveEntityName(current, actor, { ...systemData, ...collections, [dataKey]: fetched }, dataKey)
                     }));
                 }
             } finally {
@@ -323,7 +325,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             </button>
                         </div>
                         <div className="p-2 font-serif text-lg bg-white font-bold">
-                            {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, systemData, 'deities') || '-'}
+                            {actor.computed?.resolvedNames?.deity || resolveEntityName(actor.system?.deity, actor, { ...systemData, ...collections }, 'deities') || '-'}
                         </div>
                     </div>
 
@@ -345,7 +347,7 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 </button>
                             </div>
                             <div className="p-2 font-serif text-lg bg-white font-bold">
-                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, systemData, 'patrons') || '-'}
+                                {actor.computed?.resolvedNames?.patron || resolveEntityName(actor.system?.patron, actor, { ...systemData, ...collections }, 'patrons') || '-'}
                             </div>
                         </div>
                     )}
@@ -362,11 +364,11 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                 // Split languages by rarity using the centralized helper
                                 const allLangs = (actor.system?.languages || []);
                                 const currentCommon = allLangs.filter((id: string) => {
-                                    const lang = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                                    const lang = (collections?.languages || systemData?.languages)?.find((l: any) => l.uuid === id || l.name === id);
                                     return !isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
                                 }).length;
                                 const currentRare = allLangs.filter((id: string) => {
-                                    const lang = systemData?.languages?.find((l: any) => l.uuid === id || l.name === id);
+                                    const lang = (collections?.languages || systemData?.languages)?.find((l: any) => l.uuid === id || l.name === id);
                                     return isRareLanguage(lang?.name || (typeof id === 'string' ? id : ''));
                                 }).length;
 
@@ -385,9 +387,9 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                                         </div>
                                         <button
                                             onClick={async () => {
-                                                if (!systemData?.languages && onFetchPack) {
+                                                if (!(collections?.languages || systemData?.languages)) {
                                                     setFetchingCategory('languages');
-                                                    await onFetchPack('languages');
+                                                    await fetchPack('languages');
                                                     setFetchingCategory(null);
                                                 }
                                                 setIsLanguageModalOpen(true);
@@ -407,8 +409,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                             const actorLangs = actor.system?.languages || [];
                             const resolvedLangs = actorLangs.map((l: any) => {
                                 const id = typeof l === 'string' ? l : (l.name || l.uuid || '');
-                                // Find extra info in systemData for tooltips
-                                const match = systemData?.languages?.find((sl: any) =>
+                                // Find extra info in systemData/collections for tooltips
+                                const match = (collections?.languages || systemData?.languages)?.find((sl: any) =>
                                     sl.uuid === id || sl.name === id || (typeof id === 'string' && id.endsWith(sl.uuid?.split('.').pop()!))
                                 );
 
@@ -522,8 +524,8 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                         onCreate={onCreateItem!}
                         onUpdate={onUpdateItem}
                         initialData={editingItem}
-                        systemConfig={systemData}
-                        predefinedEffects={systemData?.PREDEFINED_EFFECTS}
+                        systemConfig={{ ...systemData, ...collections }}
+                        predefinedEffects={collections?.PREDEFINED_EFFECTS || systemData?.PREDEFINED_EFFECTS}
                     />
                 )
             }
@@ -553,30 +555,18 @@ export default function DetailsTab({ actor, systemData, onUpdate, onCreateItem, 
                 currentValue={selectionModal.currentValue}
                 multiSelect={selectionModal.multiSelect}
             />
-
             {isLanguageModalOpen && (
                 <LanguageSelectionModal
                     isOpen={true}
                     onClose={() => setIsLanguageModalOpen(false)}
-                    onSelect={(langs) => {
-                        onUpdate('system.languages', langs);
-                        setIsLanguageModalOpen(false);
-                    }}
-                    availableLanguages={systemData?.languages || []}
-                    currentLanguages={(actor.system?.languages || []).map((id: string) => {
-                        const found = systemData?.languages?.find((l: any) =>
-                            l.uuid === id ||
-                            l.name === id ||
-                            (typeof id === 'string' && id.endsWith(l.uuid.split('.').pop()!))
-                        );
-                        return found?.uuid || id;
-                    })}
+                    availableLanguages={collections?.languages || systemData?.languages || []}
+                    onSelect={(langs) => onUpdate('system.languages', langs)}
+                    currentLanguages={actor.system?.languages || []}
                     maxCommon={actor.computed?.languageLimits?.maxCommon || 0}
                     maxRare={actor.computed?.languageLimits?.maxRare || 0}
                 />
             )}
-
-        </div >
+        </div>
 
     );
 }
