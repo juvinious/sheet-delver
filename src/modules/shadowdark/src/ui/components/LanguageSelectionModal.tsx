@@ -28,13 +28,13 @@ export default function LanguageSelectionModal({
     maxCommon,
     maxRare
 }: LanguageSelectionModalProps) {
-    const { systemData } = useShadowdarkUI();
+    const { collections } = useShadowdarkUI();
     const [search, setSearch] = useState('');
 
     const availableLanguages = useMemo(() => {
         if (propsAvailableLanguages && propsAvailableLanguages.length > 0) return propsAvailableLanguages;
-        return systemData?.languages || [];
-    }, [propsAvailableLanguages, systemData]);
+        return collections?.languages || [];
+    }, [propsAvailableLanguages, collections]);
     const [selected, setSelected] = useState<string[]>(currentLanguages);
 
     const filteredLanguages = useMemo(() => {

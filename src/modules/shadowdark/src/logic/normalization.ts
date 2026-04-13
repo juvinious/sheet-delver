@@ -131,9 +131,9 @@ export class ShadowdarkNormalizer {
     /**
      * Normalizes a raw actor into a structure suitable for the character sheet.
      */
-    static normalizeActorData(actor: any, cachedSystemData: any, baseUrl?: string): ActorSheetData {
+    static normalizeActorData(actor: any, cachedSystemData: any, baseUrl?: string, collections?: any): ActorSheetData {
         const actorItems = actor.items || [];
-        const computed = rulesNormalizeActorData(actor, actorItems, cachedSystemData);
+        const computed = rulesNormalizeActorData(actor, actorItems, cachedSystemData, collections);
 
         // Merge resolved names from resolveActorNames if available
         if (actor.computed?.resolvedNames) {

@@ -84,12 +84,20 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
     // Shadowdark Level-Up Logic (Consolidated)
     const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, addNotification as any);
 
-    const [viewMode, setViewMode] = useState<'simple' | 'advanced'>('simple');
+    const [viewMode, setViewMode] = useState<'simple' | 'advanced'>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('shadowdark_view_mode') as 'simple' | 'advanced';
+            if (saved === 'simple' || saved === 'advanced') return saved;
+        }
+        return 'simple';
+    });
 
-    // Reset view mode when actor changes
-    useEffect(() => {
-        setViewMode('simple');
-    }, [actor._id, actor.id]);
+    const handleToggleView = (mode: 'simple' | 'advanced') => {
+        setViewMode(mode);
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('shadowdark_view_mode', mode);
+        }
+    };
 
     const [rollDialog, setRollDialog] = useState<{
         open: boolean;
@@ -343,7 +351,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                     onRoll={onRoll}
                     token={token}
                     onToggleView={() => {
-                        setViewMode('advanced');
+                        handleToggleView('advanced');
                     }}
                 />
             ) : (
@@ -367,7 +375,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                                         </p>
                                         <button
                                             onClick={() => {
-                                                setViewMode('simple');
+                                                handleToggleView('simple');
                                             }}
                                             className="text-[10px] text-amber-500 hover:text-amber-400 font-bold uppercase tracking-widest mt-1 border border-amber-500/30 px-2 py-0.5 rounded w-fit"
                                         >

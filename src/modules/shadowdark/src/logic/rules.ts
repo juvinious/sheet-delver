@@ -302,7 +302,7 @@ export const calculateAttacks = (actor: any, items: any[]) => {
 /**
  * Calculates language selection limits based on class and ancestry.
  */
-export const getLanguageLimits = (actor: any, systemData?: any) => {
+export const getLanguageLimits = (actor: any, systemData?: any, collections?: any) => {
     const items = actor.items || [];
     const findItem = (type: string) => items.find((i: any) => (i.type || "").toLowerCase() === type.toLowerCase());
 
@@ -322,9 +322,9 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
         return found?.system?.languages || found?.languages || {};
     };
 
-    const cl = getLangConfig(classObj, actor.system?.class, systemData?.classes);
-    const al = getLangConfig(ancestryObj, actor.system?.ancestry, systemData?.ancestries);
-    const bl = getLangConfig(backgroundObj, actor.system?.background, systemData?.backgrounds);
+    const cl = getLangConfig(classObj, actor.system?.class, collections?.classes || systemData?.classes);
+    const al = getLangConfig(ancestryObj, actor.system?.ancestry, collections?.ancestries || systemData?.ancestries);
+    const bl = getLangConfig(backgroundObj, actor.system?.background, collections?.backgrounds || systemData?.backgrounds);
 
     const allFixed = Array.from(new Set([
         ...(cl.fixed || []),
@@ -341,7 +341,7 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
 
     const countRarity = (pool: any[], counter: { common: number, rare: number }) => {
         for (const f of pool) {
-            const lang = systemData?.languages?.find((l: any) => l.name === f || l.uuid === f);
+            const lang = (collections?.languages || systemData?.languages)?.find((l: any) => l.name === f || l.uuid === f);
             const name = lang?.name || (typeof f === 'string' ? f : '');
             if (isRareLanguage(name)) {
                 counter.rare++;
@@ -385,7 +385,7 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
     let currentRare = 0;
     
     for (const id of currentLanguages) {
-        const lang = systemData?.languages?.find((l: any) => 
+        const lang = (collections?.languages || systemData?.languages)?.find((l: any) => 
             l.uuid === id || l.name === id || (typeof id === 'string' && id.endsWith(l.uuid?.split('.').pop() || ""))
         );
         const name = lang?.name || (typeof id === 'string' ? id : '');
@@ -563,7 +563,7 @@ export const normalizeItemData = (item: any, baseUrl?: string) => {
  * Normalizes an actor document and computes all derived Shadowdark stats.
  * This is the single source of truth for both client and server.
  */
-export const normalizeActorData = (actor: any, items: any[] = [], systemData: any = null) => {
+export const normalizeActorData = (actor: any, items: any[] = [], systemData: any = null, collections: any = null) => {
     const s = actor.system || {};
     const computed = { ...(actor.computed || {}) };
 
@@ -643,7 +643,7 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
     computed.inventory = { equipped: eq, stashed: st, carried: cr };
 
     // 10. Language Limits
-    computed.languageLimits = getLanguageLimits(actorProxy, systemData);
+    computed.languageLimits = getLanguageLimits(actorProxy, systemData, collections);
 
     return computed;
 };
