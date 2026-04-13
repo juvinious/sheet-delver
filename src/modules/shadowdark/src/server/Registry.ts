@@ -3,8 +3,8 @@ import { persistentCache } from '@core/cache/PersistentCache';
 import { CompendiumCache } from '@core/foundry/compendium-cache';
 import { isRareLanguage } from '../logic/rules';
 import { SYSTEM_PREDEFINED_EFFECTS, BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../data/talent-effects';
-import fs from 'node:fs';
-import path from 'node:path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 /**
  * ShadowdarkRegistry is a server-only service that manages system-wide data.
@@ -118,7 +118,11 @@ export class ShadowdarkRegistry {
                     slots: d.system?.slots,
                     properties: d.system?.properties,
                     description: d.system?.description,
-                    tier: d.system?.tier // for redundancy
+                    tier: d.system?.tier,
+                    talentClass: d.system?.talentClass,
+                    talentLevel: d.system?.talentLevel,
+                    requirement: d.system?.requirement,
+                    class: d.system?.class
                 }
             }));
         }
@@ -177,9 +181,9 @@ export class ShadowdarkRegistry {
                 }
 
                 this._collections = aggregated;
-                this.nameIndex = encounteredUuids.size > 0 ? Array.from(encounteredUuids).reduce((acc: any, uuid) => {
+                this.nameIndex = encounteredUuids.size > 0 ? Array.from(encounteredUuids).reduce((acc: Record<string, string>, uuid: string) => {
                     const name = compendiumCache.getName(uuid);
-                    if (name) acc[uuid] = name;
+                    if (name) acc[uuid] = name as string;
                     return acc;
                 }, {}) : {};
                 
@@ -215,12 +219,34 @@ export class ShadowdarkRegistry {
         if (!uuid) return null;
 
         // 1. Check local aggregated cache
-        const data = await this.getSystemData();
-        
+        if (!this.isFresh()) await this.aggregate();
+        const collections = this._collections;
+
+        // Diagnostic: Log if the request seems to be a valid UUID but not found
+        let found = null;
         for (const key of ShadowdarkRegistry.COLLECTIONS) {
-            const found = data[key]?.find((d: any) => d.uuid === uuid || d._id === uuid || d.id === uuid);
+            found = collections[key]?.find((d: any) => {
+                if (d.uuid === uuid || d._id === uuid || d.id === uuid) return true;
+                
+                // Flexible UUID matching (handle missing .Item. or .RollTable. segment)
+                if (uuid.startsWith('Compendium.') && d.uuid.startsWith('Compendium.')) {
+                    const parts1 = uuid.split('.');
+                    const parts2 = d.uuid.split('.');
+                    // Basic sanity check: same pack
+                    if (parts1[1] === parts2[1] && parts1[2] === parts2[2]) {
+                        const id1 = parts1[parts1.length - 1];
+                        const id2 = parts2[parts2.length - 1];
+                        return id1 === id2;
+                    }
+                }
+                return false;
+            });
             // If it's a deep match (has system or is a table), return it
-            if (found && (found.system || found.type === 'RollTable')) return found;
+            if (found && (found.system || found.type === 'RollTable' || found.results)) return found;
+        }
+
+        if (!found) {
+            logger.debug(`[ShadowdarkRegistry] ${uuid} not found in cache. Registry has ${Object.keys(this.nameIndex).length} items.`);
         }
 
         // 2. Fetch from Foundry (Fulfillment)
@@ -261,12 +287,13 @@ export class ShadowdarkRegistry {
             table = await this.findByName(uuidOrName, 'RollTable');
         }
 
-        if (!table || !table.results) {
+        if (!table || (!table.results && !table.results?.length)) {
             logger.warn(`[ShadowdarkRegistry] Draw failed: Table '${uuidOrName}' not found or empty.`);
             return null;
         }
 
-        const formula = table.system?.formula || "1d20";
+        // Formula can be in system.formula or top-level formula
+        const formula = table.system?.formula || table.formula || "1d20";
         let roll = rollOverride;
         
         if (roll === undefined) {
@@ -287,18 +314,14 @@ export class ShadowdarkRegistry {
             return roll! >= range[0] && roll! <= range[1];
         });
 
-        const hydratedResults = [];
+        const items: any[] = [];
         for (const res of matched) {
-            // Shadowdark Table results often point to items (documentUuid or documentId)
+            // Shadowdark Table results use 'documentUuid' for direct compendium links
             const targetUuid = res.documentUuid || (res.documentCollection && res.documentId ? `Compendium.${res.documentCollection}.Item.${res.documentId}` : null);
             
             if (targetUuid) {
-                // Resolve LOCAL ONLY by not passing the client. 
-                // Since gear/spells are hydrated, they will be found in systemData.
-                const itemDoc = await this.getDocument(targetUuid); 
-                hydratedResults.push(itemDoc ? { ...res, document: itemDoc } : res);
-            } else {
-                hydratedResults.push(res);
+                const item = await this.getDocument(targetUuid, client);
+                if (item) items.push(item);
             }
         }
 
@@ -307,8 +330,8 @@ export class ShadowdarkRegistry {
             roll,
             total: roll,
             formula,
-            results: hydratedResults,
-            items: hydratedResults.map(r => r.document || r).filter(Boolean),
+            results: matched,
+            items: items,
             table
         };
     }
@@ -411,19 +434,24 @@ export class ShadowdarkRegistry {
     }
 
     private _processShardDocuments(packId: string, docs: any[], results: any, compendiumCache: CompendiumCache, encounteredUuids: Set<string>) {
-        docs.forEach(doc => {
+        const lowerPack = packId.toLowerCase();
+        docs.forEach(originalDoc => {
+            // Add a temporary UUID for lookup if missing, but DO NOT mutate source if possible
+            // Actually, we need a UUID for internal tracking, we clone the doc for our collections
+            const doc = { ...originalDoc };
+            const id = doc._id || doc.id;
+            
             if (!doc.uuid) {
-                const id = doc._id || doc.id;
-                const docType = doc.type === 'RollTable' ? 'RollTable' : 'Item';
+                const isTable = doc.type === 'RollTable' || (doc.results && !doc.type) || lowerPack.includes('rollable-tables');
+                const docType = isTable ? 'RollTable' : 'Item';
                 doc.uuid = `Compendium.${packId}.${docType}.${id}`;
             }
-            doc.pack = packId; // Ensure pack is attached for UI categorization
+            doc.pack = packId; 
 
             if (encounteredUuids.has(doc.uuid)) return;
             encounteredUuids.add(doc.uuid);
             compendiumCache.set(doc.uuid, doc.name);
 
-            const lowerPack = packId.toLowerCase();
             const type = (doc.type || "").toLowerCase();
             let category: string | null = null;
             
@@ -442,6 +470,7 @@ export class ShadowdarkRegistry {
                 else if (lowerPack.includes('conditions')) category = 'conditions';
                 else if (lowerPack.includes('spell-effects')) category = 'spell-effects';
                 else if (lowerPack.includes('properties')) category = 'properties';
+                else if (lowerPack.includes('rollable-tables')) category = 'tables';
             }
 
             // Special handling for combined patrons and deities pack
@@ -463,8 +492,13 @@ export class ShadowdarkRegistry {
                 if (['item', 'weapon', 'armor'].includes(type)) {
                     results.gear.push(doc);
                 }
-            } else if (type === 'rolltable') {
-                results.tables.push(doc);
+            }
+            
+            // Ensure RollTables are pushed to results.tables if not already categorized
+            if (type === 'rolltable' || (doc.results && !category)) {
+                if (!results.tables.includes(doc)) {
+                    results.tables.push(doc);
+                }
             }
         });
     }

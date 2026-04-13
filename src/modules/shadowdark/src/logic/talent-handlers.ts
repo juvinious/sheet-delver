@@ -164,7 +164,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         description: "Choose one type of weapon",
         matches: (item: any) => {
             const name = (item.name || item.text || item.description || "").toLowerCase();
-            return name === 'weapon mastery' || item._id === '5bpWuaT0KTNzuzCu';
+            return name === 'weapon mastery' || item._id === '5bpWuaT0KTNzuzCu' || item.uuid?.endsWith('5bpWuaT0KTNzuzCu');
         },
         action: 'weapon-mastery',
         config: { required: 1 },
@@ -172,7 +172,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             const items = [];
             if (state.weaponMasterySelection && state.weaponMasterySelection.selected.length > 0) {
                 const selection = state.weaponMasterySelection.selected[0];
-                const uuid = 'Compendium.shadowdark.talents.5bpWuaT0KTNzuzCu';
+                const uuid = 'Compendium.shadowdark.talents.Item.5bpWuaT0KTNzuzCu';
 
                 let doc = null;
                 if (resolveDocFn) {
@@ -180,19 +180,23 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 }
 
                 if (doc) {
-                    const cleaned = { ...doc };
-                    delete cleaned._id;
-                    if (!cleaned.system) cleaned.system = {};
-                    cleaned.system.level = targetLevel;
+                    // CLONE AND AUGMENT (Additive)
+                    const enriched = JSON.parse(JSON.stringify(doc));
+                    delete enriched._id;
+                    
+                    if (!enriched.system) enriched.system = {};
+                    enriched.system.level = targetLevel;
 
-                    if (cleaned.system.bonuses) {
-                        cleaned.system.bonuses.weaponMastery = selection.toLowerCase();
-                    }
-                    cleaned.name = `${cleaned.name} (${selection})`;
+                    // SYNC BONUSES (Additive)
+                    if (!enriched.system.bonuses) enriched.system.bonuses = {};
+                    enriched.system.bonuses.weaponMastery = selection.toLowerCase();
+                    
+                    // SELECTIVE NAME MUTATION (Match Original Module behavior)
+                    enriched.name = `${enriched.name} (${selection})`;
 
-                    // Update embedded effects
-                    if (cleaned.effects) {
-                        cleaned.effects.forEach((effect: any) => {
+                    // UPDATE EFFECTS (Additive)
+                    if (enriched.effects) {
+                        enriched.effects.forEach((effect: any) => {
                             if (effect.changes) {
                                 effect.changes.forEach((c: any) => {
                                     if (c.value === 'REPLACEME') c.value = selection.toLowerCase();
@@ -201,18 +205,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                         });
                     }
 
-                    items.push(cleaned);
-                } else {
-                    items.push({
-                        name: `Weapon Mastery (${selection})`,
-                        type: 'Talent',
-                        img: 'icons/skills/melee/weapons-crossed-swords-white-blue.webp',
-                        system: {
-                            level: targetLevel,
-                            bonuses: { weaponMastery: selection.toLowerCase() },
-                            description: `<p>You gain +1 to attack and damage with ${selection}.</p>`
-                        }
-                    });
+                    items.push(enriched);
                 }
             }
             return items;
@@ -223,7 +216,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
         description: "Choose one type of armor",
         matches: (item: any) => {
             const name = (item.name || item.text || item.description || "").toLowerCase();
-            return name === 'armor mastery' || item._id === 'BsRPGhKXYwJBI9ex' || item._id === '0g9MUhj9Tr3AWRXl';
+            return name === 'armor mastery' || item._id === 'BsRPGhKXYwJBI9ex' || item.uuid?.endsWith('BsRPGhKXYwJBI9ex');
         },
         action: 'armor-mastery',
         config: { required: 1 },
@@ -231,7 +224,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
             const items = [];
             if (state.armorMasterySelection && state.armorMasterySelection.selected.length > 0) {
                 const selection = state.armorMasterySelection.selected[0];
-                const uuid = 'Compendium.shadowdark.talents.BsRPGhKXYwJBI9ex';
+                const uuid = 'Compendium.shadowdark.talents.Item.BsRPGhKXYwJBI9ex';
 
                 let doc = null;
                 if (resolveDocFn) {
@@ -239,19 +232,23 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                 }
 
                 if (doc) {
-                    const cleaned = { ...doc };
-                    delete cleaned._id;
-                    if (!cleaned.system) cleaned.system = {};
-                    cleaned.system.level = targetLevel;
+                    // CLONE AND AUGMENT (Additive)
+                    const enriched = JSON.parse(JSON.stringify(doc));
+                    delete enriched._id;
+                    
+                    if (!enriched.system) enriched.system = {};
+                    enriched.system.level = targetLevel;
 
-                    if (cleaned.system.bonuses) {
-                        cleaned.system.bonuses.armorMastery = selection.toLowerCase();
-                    }
-                    cleaned.name = `${cleaned.name} (${selection})`;
+                    // SYNC BONUSES (Additive)
+                    if (!enriched.system.bonuses) enriched.system.bonuses = {};
+                    enriched.system.bonuses.armorMastery = selection.toLowerCase();
+                    
+                    // SELECTIVE NAME MUTATION (Match Original Module behavior)
+                    enriched.name = `${enriched.name} (${selection})`;
 
-                    // Update embedded effects
-                    if (cleaned.effects) {
-                        cleaned.effects.forEach((effect: any) => {
+                    // UPDATE EFFECTS (Additive)
+                    if (enriched.effects) {
+                        enriched.effects.forEach((effect: any) => {
                             if (effect.changes) {
                                 effect.changes.forEach((c: any) => {
                                     if (c.value === 'REPLACEME') c.value = selection.toLowerCase();
@@ -260,25 +257,7 @@ export const TALENT_HANDLERS: TalentHandler[] = [
                         });
                     }
 
-                    // Legacy check for 'changes' on top level (if some older DB format exists)
-                    if (cleaned.changes) {
-                        cleaned.changes.forEach((c: any) => {
-                            if (c.value === 'REPLACEME') c.value = selection.toLowerCase();
-                        });
-                    }
-
-                    items.push(cleaned);
-                } else {
-                    items.push({
-                        name: `Armor Mastery (${selection})`,
-                        type: 'Talent',
-                        img: 'icons/magic/defensive/shield-barrier-deflect-teal.webp',
-                        system: {
-                            level: targetLevel,
-                            bonuses: { armorMastery: selection.toLowerCase() },
-                            description: `<p>You gain +1 AC with ${selection}.</p>`
-                        }
-                    });
+                    items.push(enriched);
                 }
             }
             return items;

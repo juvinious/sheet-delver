@@ -7,6 +7,7 @@ import { logger } from '@shared/utils/logger';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
 import { useShadowdarkUI, ShadowdarkUIProvider } from '../context/ShadowdarkUIContext';
+import { useFoundry } from '@client/ui/context/FoundryContext';
 import LoadingModal from '@client/ui/components/LoadingModal';
 import { enrichItem, resolveSubItems, EnrichmentContext } from '@modules/shadowdark/src/logic/actor-enricher';
 
@@ -21,7 +22,8 @@ export default function Generator() {
 }
 
 function GeneratorContent() {
-    const { systemData, collections, fetchPack, resolveName, resolveUuid } = useShadowdarkUI();
+    const { systemData, collections, fetchPack, resolveName, resolveUuid, loadingSystem } = useShadowdarkUI();
+    const { step, system, token: foundryToken } = useFoundry();
     const { setFoundryUrl: setConfigFoundryUrl } = useConfig();
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
@@ -164,10 +166,16 @@ function GeneratorContent() {
 
 
 
-                // If not connected, system mismatch, or NOT LOGGED IN, redirect to home.
-                // Fix: Check data.isAuthenticated (User Session) instead of data.system.isLoggedIn (Undefined/System Client)
-                if (!data.connected || (data.system && data.system.id !== 'shadowdark') || data.system?.id === 'setup' || !data.isAuthenticated) {
-                    window.location.href = '/';
+                // Only redirect if we are CERTAIN we shouldn't be here.
+                // If it's just 'startup' or 'initializing', we wait.
+                const isBadState = !data.isAuthenticated || (data.system && data.system.id !== 'shadowdark');
+                const isSetupMode = data.system?.id === 'setup';
+                
+                if (isBadState || isSetupMode) {
+                    // Only redirect if we aren't already waiting for a world to start
+                    if (data.system?.status !== 'startup' && data.system?.status !== 'initializing') {
+                        window.location.href = '/';
+                    }
                 }
                 if (data.url) {
                     setFoundryUrl(data.url);
@@ -206,12 +214,16 @@ function GeneratorContent() {
         if (token) loadRequiredData();
     }, [token, fetchPack]);
 
+    // Consolidated Readiness Logic
+    const isAppLoading = loading || loadingSystem || !systemData || !collections.ancestries;
+    const isCoreReady = step === 'dashboard' && system?.status === 'active';
+
     // Handle initial loading state sync
     useEffect(() => {
-        if (systemData && collections.ancestries) {
+        if (systemData && collections.ancestries && isCoreReady) {
             setLoading(false);
         }
-    }, [systemData, collections.ancestries]);
+    }, [systemData, collections.ancestries, isCoreReady]);
 
 
 
@@ -755,45 +767,39 @@ function GeneratorContent() {
                 return enriched;
             };
 
-            const ancestryDoc = await fetchDocument(formData.ancestry);
-            if (ancestryDoc) {
-                const enriched = await enrichItem(ancestryDoc, enrichmentContext);
-                if (enriched) {
-                    items.push(enriched);
-                    const subItems = await resolveSubItems(ancestryDoc, fetchDocument, enrichmentContext);
-                    items.push(...subItems);
-                }
-            }
-
-            for (const uuid of selectedAncestryTalents) {
-                await addItem(uuid);
-            }
-
-            // Gear (Level 0)
-            if (formData.level0 && gearSelected.length > 0) {
-                for (const item of gearSelected) {
-                    const enriched = await enrichItem(item, enrichmentContext);
-                    if (enriched) items.push(enriched);
-                }
-            }
-
-            await addItem(formData.background);
-
-            if (effectivePatronUuid) {
-                await addItem(effectivePatronUuid);
-            }
-
-            if (!formData.level0 && formData.class) {
-                const classDoc = await fetchDocument(formData.class);
-                if (classDoc) {
-                    const enriched = await enrichItem(classDoc, enrichmentContext);
+            // 2. Ancestry & Basic Traits (Level 0 Only - Level 1+ resolved via Server)
+            if (formData.level0) {
+                const ancestryDoc = await fetchDocument(formData.ancestry);
+                if (ancestryDoc) {
+                    const enriched = await enrichItem(ancestryDoc, enrichmentContext);
                     if (enriched) {
                         items.push(enriched);
-                        const subItems = await resolveSubItems(classDoc, fetchDocument, enrichmentContext);
+                        const subItems = await resolveSubItems(ancestryDoc, fetchDocument, enrichmentContext);
                         items.push(...subItems);
                     }
                 }
+
+                for (const uuid of selectedAncestryTalents) {
+                    await addItem(uuid);
+                }
+
+                // Gear (Level 0)
+                if (gearSelected.length > 0) {
+                    for (const item of gearSelected) {
+                        const enriched = await enrichItem(item, enrichmentContext);
+                        if (enriched) items.push(enriched);
+                    }
+                }
+
+                await addItem(formData.background);
+
+                if (effectivePatronUuid) {
+                    await addItem(effectivePatronUuid);
+                }
             }
+
+            // Class resolution is handled by Server for Level 1+
+            // Level 0 characters have no class.
 
             // Add Level Up Items (Talents, Boons, Spells)
 
@@ -942,18 +948,24 @@ function GeneratorContent() {
         }
     };
 
-    if (loading && !collections.ancestries) { // Only full load screen on initial system load
-        // Return minimal skeleton or transparent loader to let dashboard transition look smoother?
-        // Or a nicer themed loader.
+    // 3. Main Render
+    if (!isCoreReady || isAppLoading) {
+        // Use the standard application loading aesthetic requested by the user
+        const bootstrapMessage = !isCoreReady ? "World Starting..." : 
+                                 loadingSystem ? "Loading Manifest..." : 
+                                 "Hydrating Rules...";
+        
+        const bootstrapSubmessage = !isCoreReady ? "Please wait while the world launches" :
+                                    loadingSystem ? "Reading the ancient scrolls..." :
+                                    "Consulting the oracles...";
+
         return (
             <LoadingModal
-                message="Loading Character Generator"
+                message={bootstrapMessage}
+                submessage={bootstrapSubmessage}
                 visible={true}
                 theme={{
-                    overlay: "absolute inset-0 bg-neutral-900/95 backdrop-blur-md transition-opacity",
-                    container: "relative z-10 p-8 rounded-2xl bg-neutral-900/95 backdrop-blur-xl border border-white/10 shadow-2xl text-center space-y-4 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-300",
-                    spinner: "w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto",
-                    text: "text-xl font-bold text-white font-sans"
+                    spinner: "w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto",
                 }}
             />
         );

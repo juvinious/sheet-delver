@@ -22,8 +22,8 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
         ...(doc.system.features || []),
         ...(doc.system.abilities || []),
         ...(doc.system.classAbilities || []),
-        ...(doc.system.startingSpells || []),
-        ...(doc.system.talentChoices || [])
+        ...(doc.system.startingSpells || [])
+        // talentChoices excluded - these are handled by the Generator UI
     ];
 
     for (const ref of refs) {

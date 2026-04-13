@@ -17,16 +17,6 @@ export interface EnrichmentContext {
 }
 
 /**
- * Mandatory traits by Ancestry/Class Name for rule-based injection.
- * These are added if they aren't already resolved from the base document.
- */
-const RULE_DEFAULTS: Record<string, string[]> = {
-    "Orc": ["Compendium.shadowdark.talents.Item.LR6h4lXVXwx7AFQ6"],       // Sturdy
-    "Half-Orc": ["Compendium.shadowdark.talents.Item.LR6h4lXVXwx7AFQ6"],  // Sturdy
-    "Human": ["Compendium.shadowdark.talents.Item.DYWFJu5XeazJYc0P"]     // Ambitious
-};
-
-/**
  * Standardized item enrichment for Shadowdark characters.
  * Identical logic shared between Generator (Client) and Importer (Server).
  */
@@ -34,119 +24,41 @@ export async function enrichItem(item: any, context: EnrichmentContext): Promise
     if (!item) return null;
     
     const sourceId = item.uuid || item.flags?.core?.sourceId || item._id;
-    const itemType = item.type || "Unknown";
     const itemName = item.name || "Unnamed";
-    const typeNameKey = `${itemType}:${itemName}`;
 
-    // 0. High-Visibility Trace Start
-    logger.debug(`[ActorEnricher] START enrichment: ${itemName} [${itemType}] (Source: ${sourceId || 'new'})`);
-
-    // 1. Prevent Duplicates (Refined: allow same name if different type)
-    if (sourceId && context.addedSourceIds.has(sourceId)) {
-        logger.debug(`[ActorEnricher] SKIP duplicate source: ${sourceId} (${itemName})`);
-        return null;
-    }
-    
-    // We only skip by name if the type is ALSO the same. 
-    // This allows a Talent and a Class Ability to share a name (e.g. Demonic Possession)
-    if (context.addedNames.has(typeNameKey)) {
-        logger.debug(`[ActorEnricher] SKIP duplicate ${itemType} by name: ${itemName}`);
-        return null;
+    // Standardize type ONLY if missing
+    if (!item.type || item.type === "Unknown") {
+        item.type = "Talent";
     }
 
-    // Clone to avoid mutating original discovered indices
+    // 1. Prevent Duplicates
+    const typeNameKey = `${item.type}:${itemName}`;
+    if (sourceId && context.addedSourceIds.has(sourceId)) return null;
+    if (context.addedNames.has(typeNameKey)) return null;
+
+    // 2. Clone to avoid mutating original source
     const enriched = JSON.parse(JSON.stringify(item));
     
-    // 2. Pre-generate ID if missing (Foundry requirement)
+    // 3. Ensure ID exists
     if (!enriched._id && !enriched.id) {
-        enriched._id = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        enriched._id = Math.random().toString(36).substring(2, 15);
     }
 
-    // 3. Boon/Talent Labeling & Tagging
-    // Restore logic from main: label with patron if applicable
-    if (context.patronName && enriched.type === "Talent") {
-        if (!enriched.name.includes(`[${context.patronName}]`)) {
-            enriched.name += ` [${context.patronName}]`;
-        }
+    // 4. Trace context if applicable (Minimal)
+    if (context.patronName && enriched.type === "Talent" && !enriched.name.includes(`[${context.patronName}]`)) {
+        enriched.name += ` [${context.patronName}]`;
     }
 
-    // 3. Apply Talent Handlers (Stat selection, etc.)
-    for (const handler of TALENT_HANDLERS) {
-        if (handler.matches(enriched)) {
-            try {
-                if (handler.mutateItem) {
-                    handler.mutateItem(enriched, context);
-                }
-            } catch (e) {
-                logger.warn(`[ActorEnricher] Handler ${handler.id} failed for ${enriched.name}`);
-            }
-        }
-    }
-
-    // 5. Apply System Predefined Effects (Automation)
-    const predefinedKey = enriched.name.replace(/\s+/g, "");
-    let predef = SYSTEM_PREDEFINED_EFFECTS[enriched.name] || SYSTEM_PREDEFINED_EFFECTS[predefinedKey];
-    
-    // Polyfill: If no direct match by name, try fallback keyword matching 
-    // This restores the "Sanitizer" logic from main branch
-    if (!predef && enriched.effects?.length === 0) {
-        const nameLower = enriched.name.toLowerCase();
-        for (const [key, def] of Object.entries(SYSTEM_PREDEFINED_EFFECTS)) {
-            const defLabelLower = (def as any).label?.toLowerCase() || key.toLowerCase();
-            if (nameLower.includes(defLabelLower) || defLabelLower.includes(nameLower)) {
-                predef = def;
-                logger.debug(`[ActorEnricher] Polyfilled effect ${key} for ${enriched.name}`);
-                break;
-            }
-        }
-    }
-
-    if (predef) {
-        enriched.img = predef.icon || enriched.img;
-        const changes = predef.changes || (predef.key ? [{ key: predef.key, mode: predef.mode || 2, value: predef.value }] : []);
-        
-        if (changes.length > 0) {
-            // Resolve "REPLACEME" if context provides a target
-            const resolvedChanges = changes.map(c => {
-                let val = c.value;
-                if (typeof val === 'string' && val.includes("REPLACEME")) {
-                    val = val.replace("REPLACEME", (context.bonusTo || "").toLowerCase().replace(/\s+/g, "-"));
-                }
-                return { ...c, value: val };
-            });
-
-            // Ensure we don't double-add if it already has this effect ID
-            const effect = createEffect(predef.label, predef.icon, resolvedChanges, { 
-                sourceName: "Shadowdark Enrichment",
-                flags: { shadowdarkling: { name: enriched.name } }
-            });
-            
-            enriched.effects = enriched.effects || [];
-            if (!enriched.effects.some((e: any) => e.name === effect.name)) {
-                enriched.effects.push(effect);
-            }
-        }
-    }
-
-    // 5. Force Level context if applicable
-    if (enriched.system && typeof enriched.system.level !== 'undefined') {
-        enriched.system.level = context.targetLevel || 1;
-    }
-
-    // 6. Sanitize
-    const cleaned = sanitizeItem(enriched);
-    
-    if (sourceId) context.addedSourceIds.add(sourceId);
-    context.addedNames.add(`${cleaned.type}:${cleaned.name}`);
-    
-    logger.debug(`[ActorEnricher] SUCCESS enriched: ${cleaned.name} [${cleaned.type}]`);
-    
-    // 7. Resolve Linked Items (@UUID in description)
+    // 5. Discovery only - DO NOT mutate with handlers or predef for cached docs
+    // We only resolve linked items (@UUID)
     if (context.resolveDoc && context.discoveredItems) {
-        await resolveLinkedItems(cleaned, context.resolveDoc, context);
+        await resolveLinkedItems(enriched, context.resolveDoc, context);
     }
 
-    return cleaned;
+    if (sourceId) context.addedSourceIds.add(sourceId);
+    context.addedNames.add(`${enriched.type}:${enriched.name}`);
+    
+    return enriched;
 }
 
 /**
@@ -223,8 +135,6 @@ export async function resolveSubItems(
     const items: any[] = [];
     if (!parentItem?.system) return items;
 
-    // Logic: Always include Fixed base traits. Choices are handled via UI or JSON.
-    const isClass = parentItem.type === "Class";
     const isAncestry = parentItem.type === "Ancestry";
 
     const talentRefs = parentItem.system.talents || [];
@@ -233,7 +143,7 @@ export async function resolveSubItems(
     const classAbilities = parentItem.system.classAbilities || [];
     const startingSpells = parentItem.system.startingSpells || [];
 
-    // Aggregate references
+    // Aggregate references strictly from the compendium document
     let allRefs = [
         ...talentRefs, 
         ...featureRefs, 
@@ -241,16 +151,6 @@ export async function resolveSubItems(
         ...classAbilities, 
         ...startingSpells
     ];
-
-    // Inject Rule Defaults if missing
-    const defaults = RULE_DEFAULTS[parentItem.name];
-    if (defaults) {
-        defaults.forEach(uuid => {
-            if (!allRefs.includes(uuid)) {
-                allRefs.push(uuid);
-            }
-        });
-    }
 
     logger.debug(`[ActorEnricher] Resolving ${allRefs.length} sub-items for ${parentItem.name} (${parentItem.type})...`);
 
@@ -261,25 +161,16 @@ export async function resolveSubItems(
         try {
             const doc = await resolveDocFn(uuid);
             if (doc) {
-                // FILTERING RULES (Shadowdark System):
                 let include = true;
 
-                // IF Parent is Ancestry: Resolve ONLY if Fixed (total <= choiceCount)
-                if (isAncestry && parentItem.system.talents?.includes(uuid)) {
+                // IF Parent is Ancestry: Resolve ONLY if Fixed
+                if (isAncestry && talentRefs.includes(uuid)) {
                     const count = parentItem.system.talentChoiceCount || 0;
-                    const total = parentItem.system.talents?.length || 0;
+                    const total = talentRefs.length || 0;
                     // It's a choice IF total > count. Items in choice pools should not be 'fixed'.
                     if (total > count) {
                         include = false;
                         logger.debug(`[ActorEnricher] Skipping ancestry choice item: ${doc.name}`);
-                    }
-                }
-
-                if (include && doc.type === "Talent") {
-                    const isChoiceTemplate = doc.effects?.[0]?.changes?.[0]?.value === "REPLACEME";
-                    if (isChoiceTemplate && !isClass && !context.bonusTo) {
-                        include = false;
-                        logger.debug(`[ActorEnricher] Skipping un-resolved choice template: ${doc.name}`);
                     }
                 }
 

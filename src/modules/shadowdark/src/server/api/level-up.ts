@@ -385,7 +385,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         }
 
         const body = await request.json();
-        const { hpRoll, items, languages, gold, patron } = body;
+        const { hpRoll, items, languages, gold } = body;
 
         logger.info(`[API] Finalizing Level Up for ${actorId} -> Level ${body.targetLevel || 'Unknown'}`);
 
@@ -398,6 +398,8 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         // Backend assembly and validation
         const classObj = body.classObj || (body.classUuid ? (await shadowdarkAdapter.resolveDocument(client, body.classUuid)) : null);
         const ancestry = body.ancestryObj || (body.ancestryUuid ? (await shadowdarkAdapter.resolveDocument(client, body.ancestryUuid)) : null);
+        const background = body.backgroundObj || (body.backgroundUuid ? (await shadowdarkAdapter.resolveDocument(client, body.backgroundUuid)) : null);
+        const patron = body.patronObj || (body.patronUuid ? (await shadowdarkAdapter.resolveDocument(client, body.patronUuid)) : null);
 
         const state = {
             rolledTalents: body.rolledTalents || [],
@@ -416,7 +418,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         const targetLevel = body.targetLevel || (actor?.system?.level?.value || 0) + 1;
 
         // Assembly
-        const finalItems = await assembleFinalItems(state, targetLevel, classObj, ancestry, client);
+        const finalItems = await assembleFinalItems(state, targetLevel, classObj, ancestry, background, patron, client);
 
         const actorUpdates: any = {};
         if (actor && actorId !== 'new') {

@@ -890,18 +890,15 @@ export const useLevelUp = (props: LevelUpProps) => {
                     const requiresPatron = Boolean(currentClass.system?.patron?.required || currentClass.system?.patron?.requiredBoon);
 
                     // --- Pre-fetch Patrons if needed ---
-                    if (requiresPatron && (!availablePatrons.length && !(collections.patrons?.length))) {
-                        try {
-                            setStatuses(prev => ({ ...prev, patron: 'LOADING' }));
-                            const data = await fetchPack('patrons');
-                            setAvailablePatrons(data || []);
+                    if (requiresPatron) {
+                        if (collections.patrons?.length > 0) {
+                            if (availablePatrons.length === 0) setAvailablePatrons(collections.patrons);
                             setStatuses(prev => ({ ...prev, patron: 'READY' }));
-                        } catch (e) {
-                            setStatuses(prev => ({ ...prev, patron: 'ERROR' }));
+                        } else {
+                            // If we require patron but it's not in collections yet, 
+                            // we wait for ShadowdarkUIContext to hydrate it.
+                            setStatuses(prev => ({ ...prev, patron: 'LOADING' }));
                         }
-                    } else if (requiresPatron && (availablePatrons.length > 0 || collections.patrons?.length > 0)) {
-                        if (availablePatrons.length === 0) setAvailablePatrons(collections.patrons);
-                        setStatuses(prev => ({ ...prev, patron: 'READY' }));
                     } else if (!requiresPatron) {
                         // Ensure patron status doesn't block UI if not required
                         setStatuses(prev => {
@@ -996,7 +993,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class, fetchPack]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {
@@ -1302,19 +1299,19 @@ export const useLevelUp = (props: LevelUpProps) => {
     useEffect(() => {
         if (!activeClassObj) return;
         const hitDieStr = String(activeClassObj.system?.hitPoints || "d6");
-
-        // Extract die value (e.g. from "1d6", "d6", "6")
-        const dieMatch = hitDieStr.match(/d?(\d+)/);
-        const dieVal = dieMatch ? parseInt(dieMatch[1]) : 6;
+        
+        // Extract die value (e.g. from "1d8", "d8", "8")
+        // Robust extraction: get the last number after any 'd'
+        const parts = hitDieStr.toLowerCase().split('d');
+        const dieVal = parseInt(parts.pop() || "6") || 6;
 
         const baseDie = `1d${dieVal}`;
         const formula = baseDie;
         const max = dieVal; // Max is just the die face value
 
-        // Only update if changed (and not currently rolling/set by API)
         setHpFormula(prev => prev === formula ? prev : formula);
         setHpMax(max);
-    }, [activeClassObj, _abilities]);
+    }, [activeClassObj]);
 
     const goldFormula = "2d6 x 5";
     const goldMax = 60;

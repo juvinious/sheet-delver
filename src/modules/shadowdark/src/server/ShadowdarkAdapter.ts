@@ -205,7 +205,7 @@ export class ShadowdarkAdapter implements SystemAdapter {
             currentXP,
             talentGained,
             classHitDie: classDoc?.system?.hitPoints || '1d4',
-            classTalentTable: classDoc?.system?.classTalentTable,
+            talentTable: classDoc?.system?.classTalentTable,
             patronBoonTable: patronDoc?.system?.boonTable,
             canRollBoons: classDoc?.system?.patron?.required || false,
             startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
