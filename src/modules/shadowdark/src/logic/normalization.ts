@@ -54,11 +54,20 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
 
 /**
  * Common sanitization for item descriptions (UUID links, inline rolls).
+ * Returns the same structure as input (string or object) to prevent data loss.
  */
-export const formatDescription = (desc: any, theme?: any) => {
-    if (!desc || typeof desc !== 'string') return '';
+export const formatDescription = (desc: any, theme?: any): any => {
+    if (!desc) return desc;
 
-    let fixed = desc;
+    // Handle v13 object vs raw string
+    const isObject = typeof desc === 'object' && desc !== null && 'value' in desc;
+    const rawContent = isObject ? desc.value : desc;
+
+    if (typeof rawContent !== 'string' || !rawContent) {
+        return desc;
+    }
+
+    let fixed = rawContent;
 
     // 1. @UUID Links: @UUID[...]{Label} -> Label
     fixed = fixed.replace(/@UUID\[[^\]]+\]\{([^}]+)\}/g, '$1');
@@ -82,6 +91,10 @@ export const formatDescription = (desc: any, theme?: any) => {
 
         return match;
     });
+
+    if (isObject) {
+        return { ...desc, value: fixed };
+    }
 
     return fixed;
 };

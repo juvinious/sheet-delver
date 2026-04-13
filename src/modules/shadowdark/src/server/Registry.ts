@@ -104,8 +104,15 @@ export class ShadowdarkRegistry {
         if (!this.isFresh()) await this.aggregate();
         const collection = (this._collections as any)[id] || [];
 
-        if (options.summary) {
-            return collection.map((d: any) => ({
+        // Force full data for character builder critical categories
+        // This ensures the Generator gets "unaltered" data without diet summaries.
+        const forceFull = [
+            'ancestries', 'backgrounds', 'classes', 
+            'deities', 'patrons', 'talents', 'languages'
+        ].includes(id);
+
+        if (options.summary && !forceFull) {
+            return JSON.parse(JSON.stringify(collection.map((d: any) => ({
                 uuid: d.uuid,
                 name: d.name,
                 img: d.img,
@@ -124,10 +131,10 @@ export class ShadowdarkRegistry {
                     requirement: d.system?.requirement,
                     class: d.system?.class
                 }
-            }));
+            }))));
         }
 
-        return collection;
+        return JSON.parse(JSON.stringify(collection));
     }
 
     private async aggregate() {
@@ -242,7 +249,9 @@ export class ShadowdarkRegistry {
                 return false;
             });
             // If it's a deep match (has system or is a table), return it
-            if (found && (found.system || found.type === 'RollTable' || found.results)) return found;
+            if (found && (found.system || found.type === 'RollTable' || found.results)) {
+                return JSON.parse(JSON.stringify(found));
+            }
         }
 
         if (!found) {
@@ -350,7 +359,7 @@ export class ShadowdarkRegistry {
                 if (!type) return true;
                 return (doc.type || "").toLowerCase() === type.toLowerCase();
             });
-            if (found) return found;
+            if (found) return JSON.parse(JSON.stringify(found));
         }
         return null;
     }
@@ -363,11 +372,11 @@ export class ShadowdarkRegistry {
         if (!this._collections?.spells) return [];
 
         const normalizedClass = className.toLowerCase();
-        return this._collections.spells.filter((spell: any) => {
+        return JSON.parse(JSON.stringify(this._collections.spells.filter((spell: any) => {
             const spellClasses = spell.system?.class || [];
             const list = Array.isArray(spellClasses) ? spellClasses : [spellClasses];
             return list.some((c: string) => String(c).toLowerCase().includes(normalizedClass));
-        });
+        })));
     }
 
     public async getIndex(): Promise<Record<string, string>> {
@@ -404,7 +413,7 @@ export class ShadowdarkRegistry {
             }
         }
 
-        return enriched;
+        return JSON.parse(JSON.stringify(enriched));
     }
 
     private isFresh(): boolean {

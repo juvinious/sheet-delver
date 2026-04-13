@@ -16,6 +16,7 @@ export interface LevelUpProps {
     abilities: any;
     spells: any[];
     availableClasses?: any[];
+    availablePatrons?: any[];
     availableLanguages?: any[];
     knownLanguages?: any[]; // Passed for new characters (pre-gen selections)
     skipLanguageSelection?: boolean; // For when languages are handled externally (Generator)
@@ -41,6 +42,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         patronUuid,
         abilities: _abilities,
         availableClasses: propsAvailableClasses,
+        availablePatrons: propsAvailablePatrons,
         availableLanguages: propsAvailableLanguages,
         knownLanguages: initialKnownLanguages = EMPTY_ARRAY,
         skipLanguageSelection = false,
@@ -102,7 +104,10 @@ export const useLevelUp = (props: LevelUpProps) => {
     }, [patronUuid, patron, selectedPatronUuid]);
 
     const [fetchedPatron, setFetchedPatron] = useState<any>(null);
-    const [availablePatrons, setAvailablePatrons] = useState<any[]>([]);
+    const availablePatrons = useMemo(() => {
+        if (propsAvailablePatrons && propsAvailablePatrons.length > 0) return propsAvailablePatrons;
+        return collections.patrons || EMPTY_ARRAY;
+    }, [propsAvailablePatrons, collections.patrons]);
 
 
     const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
@@ -828,8 +833,29 @@ export const useLevelUp = (props: LevelUpProps) => {
 
 
                 const needsFetch = !classLoaded && (targetClassUuid || classUuid);
+                
+                if (targetClassUuid || classUuid) {
+                    const findInList = (uuid: string) => {
+                        return availableClasses.find((c: any) => 
+                            c.uuid === uuid || c._id === uuid || c.id === uuid
+                        );
+                    };
 
-                if (needsFetch) {
+                    const searchId = targetClassUuid || classUuid;
+                    const classInList = findInList(searchId!);
+
+                    if (classInList && classInList.system?.hitPoints && classInList.system?.patron) {
+                        // We have the full document in the local list, use it!
+                        if (!currentClass) {
+                            currentClass = classInList;
+                            setActiveClassObj(classInList);
+                            if (classInList.uuid) effectiveClassUuid = classInList.uuid;
+                            classLoaded = true;
+                        }
+                    }
+                }
+
+                if (needsFetch && !classLoaded) {
                     // We must wait for token for any server-side document fetch
                     if (!token) {
                         setStatuses(prev => {
@@ -847,11 +873,18 @@ export const useLevelUp = (props: LevelUpProps) => {
                     if (targetClassUuid) {
                         const targetClassFromList = availableClasses.find((c: any) => (c.uuid === targetClassUuid) || (c._id === targetClassUuid));
                         if (targetClassFromList) {
-                            if (targetClassFromList.pack) searchUuid = `Compendium.${targetClassFromList.pack}.${targetClassFromList._id}`;
-                            else if (!targetClassFromList.uuid && targetClassFromList._id) searchUuid = `Compendium.shadowdark.classes.${targetClassFromList._id}`;
+                            if (targetClassFromList.uuid) {
+                                searchUuid = targetClassFromList.uuid;
+                            } else if (targetClassFromList.pack) {
+                                // For items, the core system expects Compendium.pack.Item.id
+                                const id = targetClassFromList._id || targetClassFromList.id;
+                                searchUuid = `Compendium.${targetClassFromList.pack}.Item.${id}`;
+                            } else if (!targetClassFromList.uuid && targetClassFromList._id) {
+                                searchUuid = `Compendium.shadowdark.classes.Item.${targetClassFromList._id}`;
+                            }
                         }
                     }
-                    const cls = await fetchDocument(searchUuid);
+                    const cls = await fetchDocument(searchUuid!);
 
                     if (cls) {
                         logger.debug("[LevelUp] Successfully fetched class:", cls.name);
@@ -891,13 +924,18 @@ export const useLevelUp = (props: LevelUpProps) => {
 
                     // --- Pre-fetch Patrons if needed ---
                     if (requiresPatron) {
-                        if (collections.patrons?.length > 0) {
-                            if (availablePatrons.length === 0) setAvailablePatrons(collections.patrons);
-                            setStatuses(prev => ({ ...prev, patron: 'READY' }));
+                        if (availablePatrons.length > 0) {
+                            setStatuses(prev => {
+                                if (prev.patron === 'READY') return prev;
+                                return { ...prev, patron: 'READY' };
+                            });
                         } else {
                             // If we require patron but it's not in collections yet, 
                             // we wait for ShadowdarkUIContext to hydrate it.
-                            setStatuses(prev => ({ ...prev, patron: 'LOADING' }));
+                            setStatuses(prev => {
+                                if (prev.patron === 'LOADING') return prev;
+                                return { ...prev, patron: 'LOADING' };
+                            });
                         }
                     } else if (!requiresPatron) {
                         // Ensure patron status doesn't block UI if not required
@@ -916,25 +954,44 @@ export const useLevelUp = (props: LevelUpProps) => {
                     if (requiresPatron) {
                         setNeedsBoon(true);
                         if (targetLevel === 1) {
-                            reqBoons = 1; talentTotal = 0;
+                            // Level 1 Warlocks get BOTH a Talent and a Boon
+                            reqBoons = 1; 
+                            talentTotal = 1;
                         } else if (isOddLevel) {
-                            choices = 1; talentTotal = 0;
+                            // Odd levels (3+) let you choose between Talent OR Boon
+                            choices = 1; 
+                            talentTotal = 0;
                         } else {
                             talentTotal = 0;
                         }
 
                         const patronUuidToFetch = selectedPatronUuid || patronUuid || currentClass.system?.patron?.uuid;
                         if (patronUuidToFetch) {
-                            const fullPatron = await fetchDocument(patronUuidToFetch);
-                            if (fullPatron) {
-                                setFetchedPatron(fullPatron);
-                                if (fullPatron.system?.boonTable) {
-                                    // Sanitize UUID - Foundry sometimes includes .RollTable incorrectly
-                                    let tableUuid = fullPatron.system.boonTable;
-                                    if (tableUuid.includes('.RollTable.')) {
-                                        tableUuid = tableUuid.replace('.RollTable.', '.');
+                            // Use availablePatrons first!
+                            const patronInList = availablePatrons.find((p: any) => 
+                                p.uuid === patronUuidToFetch || p._id === patronUuidToFetch || p.id === patronUuidToFetch
+                            );
+
+                            if (patronInList && patronInList.system?.boonTable) {
+                                setFetchedPatron(patronInList);
+                                let tableUuid = patronInList.system.boonTable;
+                                if (tableUuid.includes('.RollTable.')) {
+                                    tableUuid = tableUuid.replace('.RollTable.', '.');
+                                }
+                                setBoonTable(tableUuid);
+                            } else {
+                                // Fallback to fetch if not in list or not hydrated
+                                const fullPatron = await fetchDocument(patronUuidToFetch);
+                                if (fullPatron) {
+                                    setFetchedPatron(fullPatron);
+                                    if (fullPatron.system?.boonTable) {
+                                        // Sanitize UUID - Foundry sometimes includes .RollTable incorrectly
+                                        let tableUuid = fullPatron.system.boonTable;
+                                        if (tableUuid.includes('.RollTable.')) {
+                                            tableUuid = tableUuid.replace('.RollTable.', '.');
+                                        }
+                                        setBoonTable(tableUuid);
                                     }
-                                    setBoonTable(tableUuid);
                                 }
                             }
                         }
@@ -993,7 +1050,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {

@@ -30,19 +30,24 @@ export function useShadowdarkLevelUp(
         const currentLevel = actor.system?.level?.value || 0;
         const targetLevel = currentLevel + 1;
         
-        let currentSystemData = systemData;
+        let fetchedClasses = [];
+        let fetchedPatrons = [];
+        let fetchedLanguages = [];
 
         // Ensure hydration for base essentials needed for level-up resolution
         if (onFetchPack) {
             setIsFetching(true);
             try {
-                const results = await Promise.all([
-                    !currentSystemData?.classes ? onFetchPack('classes') : Promise.resolve(currentSystemData),
-                    !currentSystemData?.patrons ? onFetchPack('patrons') : Promise.resolve(currentSystemData)
+                // Fetch packs explicitly and use the returned data
+                const [classes, patrons, languages] = await Promise.all([
+                    onFetchPack('classes'),
+                    onFetchPack('patrons'),
+                    // Also fetch languages if currentLevel is 0 (initial gear/lang selection)
+                    currentLevel === 0 ? onFetchPack('languages') : Promise.resolve([])
                 ]);
-                // Merge results if needed (the setSystemData in parent handles this, 
-                // but we need latest for resolveEntityUuid in next step)
-                currentSystemData = results[0]; 
+                fetchedClasses = Array.isArray(classes) ? classes : [];
+                fetchedPatrons = Array.isArray(patrons) ? patrons : [];
+                fetchedLanguages = Array.isArray(languages) ? languages : [];
             } finally {
                 setIsFetching(false);
             }
@@ -58,12 +63,16 @@ export function useShadowdarkLevelUp(
             spells: actor.items?.filter((i: any) => i.type === 'Spell') || [],
             // If Level 0, force empty classUuid so modal prompts for class selection
             classUuid: currentLevel === 0 ? "" : resolveUuid(actor.system?.class || '', 'classes'),
-            patronUuid: resolveUuid(actor.system?.patron || '', 'patrons')
+            patronUuid: resolveUuid(actor.system?.patron || '', 'patrons'),
+            // Pass the collections explicitly to ensure modal is ready
+            availableClasses: fetchedClasses,
+            availablePatrons: fetchedPatrons,
+            availableLanguages: fetchedLanguages
         };
         
         setLevelUpData(data);
         setShowLevelUpModal(true);
-    }, [actor, systemData, onFetchPack, resolveUuid]);
+    }, [actor, onFetchPack, resolveUuid]);
 
     const closeLevelUp = useCallback(() => {
         setShowLevelUpModal(false);

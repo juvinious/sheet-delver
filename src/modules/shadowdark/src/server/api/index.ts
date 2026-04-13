@@ -14,3 +14,25 @@ export async function handleIndex(request: Request) {
         return Response.json({ error: e.message }, { status: 500 });
     }
 }
+
+export async function handleDebugRegistry(request: Request) {
+    try {
+        const adapter: any = shadowdarkAdapter;
+        const registry = adapter._registry;
+        const state = registry._state;
+        
+        const counts: Record<string, number> = {};
+        for (const key of Object.keys(state.collections)) {
+            counts[key] = state.collections[key]?.length || 0;
+        }
+        
+        return Response.json({
+            indexSize: Object.keys(state.nameIndex).length,
+            collections: counts,
+            lastFetch: state.lastFetch,
+            isFresh: (Date.now() - state.lastFetch) < 300000 
+        });
+    } catch (e: any) {
+        return Response.json({ error: e.message }, { status: 500 });
+    }
+}

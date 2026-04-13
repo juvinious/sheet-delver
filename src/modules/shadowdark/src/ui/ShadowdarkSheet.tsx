@@ -671,6 +671,9 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                         patronUuid={levelUpData.patronUuid}
                         abilities={levelUpData.abilities}
                         spells={levelUpData.spells}
+                        availableClasses={levelUpData.availableClasses}
+                        availablePatrons={levelUpData.availablePatrons}
+                        availableLanguages={levelUpData.availableLanguages}
                         onComplete={async (_data: any) => {
                             // Backend finalize already handled data
                             addNotification('Level Up Successful! Updating sheet...', 'success');

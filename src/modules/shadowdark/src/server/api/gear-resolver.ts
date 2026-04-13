@@ -32,7 +32,8 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
             try {
                 const item = await shadowdarkAdapter.resolveDocument(client, uuid);
                 if (item) {
-                    const clean = sanitizeItem(item);
+                    // DEEP CLONE: Prevent cache poisoning by ensuring each resolved item is a fresh instance
+                    const clean = JSON.parse(JSON.stringify(sanitizeItem(item)));
                     delete clean._id;
 
                     // ATTACH UUID: Essential for duplication checks in the Generator
@@ -83,7 +84,8 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
         try {
             const item = await shadowdarkAdapter.resolveDocument(client, entry);
             if (item) {
-                const clean = sanitizeItem(item);
+                // DEEP CLONE: Prevent cache poisoning
+                const clean = JSON.parse(JSON.stringify(sanitizeItem(item)));
                 delete clean._id;
 
                 // ATTACH UUID: Essential for duplication checks
@@ -103,7 +105,7 @@ export async function resolveGear(doc: any, client?: any): Promise<any[]> {
         if (Array.isArray(list)) {
             for (const entry of list) {
                 if (typeof entry === 'object' && entry.name && entry.type) {
-                    resolvedItems.push(sanitizeItem(entry));
+                    resolvedItems.push(JSON.parse(JSON.stringify(sanitizeItem(entry))));
                 }
             }
         }

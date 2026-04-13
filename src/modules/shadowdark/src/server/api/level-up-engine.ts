@@ -184,9 +184,14 @@ export async function validateState(state: LevelUpState, requirements: any, acto
 /**
  * Assembles all items for finalization.
  */
-export async function assembleFinalItems(state: LevelUpState, targetLevel: number, classObj: any, ancestry?: any, background?: any, patron?: any, client?: any) {
+export async function assembleFinalItems(state: LevelUpState, targetLevel: number, classObj: any, ancestry?: any, background?: any, patron?: any, client?: any, actor?: any) {
     const items: any[] = [];
     const baggageUuids = new Set<string>();
+    const baggageNames = new Set<string>();
+
+    const existingItems = actor?.items || [];
+    const existingNames = new Set(existingItems.map((i: any) => (i.name || "").trim().toLowerCase()));
+    const existingUuids = new Set(existingItems.map((i: any) => i.uuid || i._id).filter(Boolean));
 
     // 1. Process Talents and Boons
     const allRolled = [...state.rolledTalents, ...state.rolledBoons];
@@ -194,7 +199,8 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
     const displacedUuids = new Set<string>();
 
     for (const rawItem of allRolled) {
-        const item = { ...rawItem };
+        // DEEP CLONE: Prevent cache poisoning and ensure mutations stay local to this level-up session
+        const item = JSON.parse(JSON.stringify(rawItem));
         
         // Ensure level is set for table-rolled talents
         if (!item.system) item.system = {};
@@ -244,43 +250,66 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
 
     // 4. Baggage (Level 1 / Swap only)
     if (targetLevel === 1) {
-        if (classObj) {
-            const classBaggage = await resolveGear(classObj, client);
-            items.push(...classBaggage);
+        const processBaggageGroup = async (doc: any, resolveFn: any) => {
+            if (!doc) return;
+            
+            const baggage = await resolveFn(doc, client);
+            for (const item of baggage) {
+                const uuid = item.uuid || item.documentUuid;
+                const name = (item.name || "").trim().toLowerCase();
+                
+                // Deduplicate against existing actor items to prevent 0 -> 1 duplicates
+                if ((uuid && existingUuids.has(uuid)) || existingNames.has(name)) {
+                    logger.debug(`[LevelUpEngine] Skipping baggage item already on actor: ${item.name}`);
+                    continue;
+                }
 
-            const classAbilities = await resolveBaggage(classObj, client);
-            classAbilities.forEach(i => { if (i.uuid) baggageUuids.add(i.uuid); });
-            items.push(...classAbilities);
+                if (uuid) baggageUuids.add(uuid);
+                if (name) baggageNames.add(name);
+                items.push(item);
+            }
+        };
+
+        if (classObj) {
+            // Include the Class item itself IF not already present
+            const classUuid = classObj.uuid;
+            const className = (classObj.name || "").trim().toLowerCase();
+            if (!(classUuid && existingUuids.has(classUuid)) && !existingNames.has(className)) {
+                 const cleanClass = JSON.parse(JSON.stringify(classObj));
+                 delete cleanClass._id;
+                 if (classObj.uuid) cleanClass.uuid = classObj.uuid;
+                 items.push(cleanClass);
+            }
+
+            await processBaggageGroup(classObj, resolveGear);
+            await processBaggageGroup(classObj, resolveBaggage);
         }
         if (ancestry) {
-            const ancestryBaggage = await resolveGear(ancestry, client);
-            items.push(...ancestryBaggage);
+            // Include the Ancestry item itself IF not already present
+            const ancestryUuid = ancestry.uuid;
+            const ancestryName = (ancestry.name || "").trim().toLowerCase();
+            if (!(ancestryUuid && existingUuids.has(ancestryUuid)) && !existingNames.has(ancestryName)) {
+                const cleanAncestry = JSON.parse(JSON.stringify(ancestry));
+                delete cleanAncestry._id;
+                if (ancestry.uuid) cleanAncestry.uuid = ancestry.uuid;
+                items.push(cleanAncestry);
+            }
 
-            const ancestryAbilities = await resolveBaggage(ancestry, client);
-            ancestryAbilities.forEach(i => { if (i.uuid) baggageUuids.add(i.uuid); });
-            items.push(...ancestryAbilities);
+            await processBaggageGroup(ancestry, resolveGear);
+            await processBaggageGroup(ancestry, resolveBaggage);
         }
         if (background) {
-            const bgAbilities = await resolveBaggage(background, client);
-            bgAbilities.forEach(i => { if (i.uuid) baggageUuids.add(i.uuid); });
-            items.push(...bgAbilities);
+            await processBaggageGroup(background, resolveBaggage);
         }
         if (patron) {
-            const patronAbilities = await resolveBaggage(patron, client);
-            patronAbilities.forEach(i => { if (i.uuid) baggageUuids.add(i.uuid); });
-            items.push(...patronAbilities);
+            await processBaggageGroup(patron, resolveBaggage);
         }
     }
 
     // 5. Final pass (Resolution & Categorization)
     const resolvedItems: any[] = [];
     const seenUuids = new Set<string>();
-    const baggageNames = new Set(
-        items
-            .filter(i => !allRolled.some(r => (r.uuid || r.documentUuid) === (i.uuid || i.documentUuid)))
-            .map(i => (i.name || "").trim().toLowerCase())
-            .filter(Boolean)
-    );
+    // baggageNames now populated during Baggage pass above
 
     for (const item of items) {
         const uuid = item.documentUuid || item.uuid || item._id;
@@ -319,11 +348,13 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
             try {
                 const doc = await shadowdarkAdapter.resolveDocument(client, uuid!);
                 if (doc) {
-                    clean = { ...doc };
+                    // DEEP CLONE: Prevent cache poisoning
+                    clean = JSON.parse(JSON.stringify(doc));
                     delete clean._id;
                     clean.uuid = uuid!;
                     
-                    // Metadata pass: ensure talentClass and talentLevel are preserved if they were on the 'stub'
+                    // Metadata pass: ensure synthetic fields are preserved if they were on the 'stub'
+                    // and missing from the cache
                     if (item.system?.talentClass && !clean.system?.talentClass) {
                         if (!clean.system) clean.system = {};
                         clean.system.talentClass = item.system.talentClass;
@@ -351,10 +382,18 @@ export async function assembleFinalItems(state: LevelUpState, targetLevel: numbe
             }
         }
 
-        // TAGGING: Tag advancements as 'level' if they lack a class to avoid being lost
-        if (rolledUuids.has(uuid || "") && !baggageUuids.has(uuid || "") && !clean.system?.talentClass) {
+        // TAGGING: Tag advancements as 'level' if they lack any classification
+        // Trust compendium/resolution metadata (talentClass) if it exists.
+        // If targetLevel is 0 (Character Generation), we don't default to 'level' 
+        // to avoid botching ancestry items resolved during generation.
+        const isLevelAdvancement = targetLevel > 0;
+        const existsAsRolled = rolledUuids.has(uuid || "");
+        const existsAsBaggage = baggageUuids.has(uuid || "");
+
+        if (isLevelAdvancement && existsAsRolled && !existsAsBaggage && !clean.system?.talentClass) {
             if (!clean.system) clean.system = {};
             clean.system.talentClass = "level";
+            logger.debug(`[LevelUpEngine] Defaulted ${clean.name} to 'level' (isRolled: ${existsAsRolled})`);
         }
 
         resolvedItems.push(clean);

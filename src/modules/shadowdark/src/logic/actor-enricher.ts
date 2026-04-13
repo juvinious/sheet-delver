@@ -14,6 +14,7 @@ export interface EnrichmentContext {
     patronName?: string; // If applicable (Warlock)
     discoveredItems?: any[]; // Collects items linked via @UUID
     resolveDoc?: (uuid: string) => Promise<any>; // Function to resolve documents for linked items
+    defaultTalentClass?: 'ancestry' | 'class' | 'level'; // Hint for talent categorization
 }
 
 /**
@@ -23,21 +24,21 @@ export interface EnrichmentContext {
 export async function enrichItem(item: any, context: EnrichmentContext): Promise<any | null> {
     if (!item) return null;
     
-    const sourceId = item.uuid || item.flags?.core?.sourceId || item._id;
-    const itemName = item.name || "Unnamed";
+    // 1. DEEP CLONE: Prevent cache poisoning of shared shard data or server cache
+    const enriched = JSON.parse(JSON.stringify(item));
+    
+    const sourceId = enriched.uuid || enriched.flags?.core?.sourceId || enriched._id;
+    const itemName = enriched.name || "Unnamed";
 
     // Standardize type ONLY if missing
-    if (!item.type || item.type === "Unknown") {
-        item.type = "Talent";
+    if (!enriched.type || enriched.type === "Unknown") {
+        enriched.type = "Talent";
     }
 
-    // 1. Prevent Duplicates
-    const typeNameKey = `${item.type}:${itemName}`;
+    // 2. Prevent Duplicates
+    const typeNameKey = `${enriched.type}:${itemName}`;
     if (sourceId && context.addedSourceIds.has(sourceId)) return null;
     if (context.addedNames.has(typeNameKey)) return null;
-
-    // 2. Clone to avoid mutating original source
-    const enriched = JSON.parse(JSON.stringify(item));
     
     // 3. Ensure ID exists
     if (!enriched._id && !enriched.id) {
@@ -53,6 +54,13 @@ export async function enrichItem(item: any, context: EnrichmentContext): Promise
     // We only resolve linked items (@UUID)
     if (context.resolveDoc && context.discoveredItems) {
         await resolveLinkedItems(enriched, context.resolveDoc, context);
+    }
+
+    // 6. Apply Talent Metadata Hinting
+    if (enriched.type === "Talent" && !enriched.system?.talentClass && context.defaultTalentClass) {
+        if (!enriched.system) enriched.system = {};
+        enriched.system.talentClass = context.defaultTalentClass;
+        logger.debug(`[ActorEnricher] Applied talentClass hint '${context.defaultTalentClass}' to ${enriched.name}`);
     }
 
     if (sourceId) context.addedSourceIds.add(sourceId);
@@ -175,7 +183,12 @@ export async function resolveSubItems(
                 }
 
                 if (include) {
-                    return await enrichItem(doc, context);
+                    // Create a sub-context with the appropriate hint
+                    const subContext: EnrichmentContext = {
+                        ...context,
+                        defaultTalentClass: isAncestry ? 'ancestry' : (parentItem.type === 'Class' ? 'class' : context.defaultTalentClass)
+                    };
+                    return await enrichItem(doc, subContext);
                 }
             } else {
                 logger.warn(`[ActorEnricher] Could not resolve sub-item: ${uuid}`);

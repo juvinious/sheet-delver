@@ -109,9 +109,10 @@ export function ShadowdarkUIProvider({
     }, [token]);
 
     // Helper to resolve a name from a UUID or ID across Lean Index and Shards
-    const resolveName = useCallback((value: string, collection?: string): string => {
+    const resolveName = useCallback((value: any, collection?: string): string => {
         if (!value) return '';
-
+        if (typeof value !== 'string') return value.name || value.label || value.title || '';
+        
         // 1. Check systemData (Lean Index) - Use Name Index
         if (systemData?.nameIndex?.[value]) {
             return systemData.nameIndex[value];

@@ -418,7 +418,7 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
         const targetLevel = body.targetLevel || (actor?.system?.level?.value || 0) + 1;
 
         // Assembly
-        const finalItems = await assembleFinalItems(state, targetLevel, classObj, ancestry, background, patron, client);
+        const finalItems = await assembleFinalItems(state, targetLevel, classObj, ancestry, background, patron, client, actor);
 
         const actorUpdates: any = {};
         if (actor && actorId !== 'new') {
@@ -447,7 +447,18 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
             }
 
             if (patron) {
-                actorUpdates['system.patron'] = patron;
+                const patronUuid = patron.uuid || body.patronUuid;
+                actorUpdates['system.patron'] = patronUuid;
+                actorUpdates['system.patronUuid'] = patronUuid;
+            }
+
+            if (targetLevel === 1) {
+                if (classObj) {
+                    actorUpdates['system.class'] = classObj.uuid || body.classUuid;
+                }
+                if (ancestry) {
+                    actorUpdates['system.ancestry'] = ancestry.uuid || body.ancestryUuid;
+                }
             }
 
             if (Object.keys(actorUpdates).length > 0) {

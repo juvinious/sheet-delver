@@ -570,6 +570,7 @@ export default function ShadowdarkPaperSheet({
             {showLevelUpModal && levelUpData && (
                 <LevelUpModal
                     actorId={actor._id || actor.id}
+                    actorName={actor.name}
                     currentLevel={levelUpData.currentLevel}
                     targetLevel={levelUpData.targetLevel}
                     ancestry={levelUpData.ancestry}
@@ -579,6 +580,9 @@ export default function ShadowdarkPaperSheet({
                     patronUuid={levelUpData.patronUuid}
                     abilities={levelUpData.abilities}
                     spells={levelUpData.spells}
+                    availableClasses={levelUpData.availableClasses}
+                    availablePatrons={levelUpData.availablePatrons}
+                    availableLanguages={levelUpData.availableLanguages}
                     onComplete={async (_data: any) => {
                         addNotification('Level Up Successful! Updating sheet...', 'success');
                         await new Promise(resolve => setTimeout(resolve, 800));

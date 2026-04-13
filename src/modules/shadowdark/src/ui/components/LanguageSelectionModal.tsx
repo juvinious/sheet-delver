@@ -41,27 +41,27 @@ export default function LanguageSelectionModal({
         let langs = availableLanguages;
         if (search) {
             const lower = search.toLowerCase();
-            langs = availableLanguages.filter(l => l.name.toLowerCase().includes(lower));
+            langs = availableLanguages.filter((l: any) => l.name.toLowerCase().includes(lower));
         }
         return [...langs].sort((a, b) => a.name.localeCompare(b.name));
     }, [availableLanguages, search]);
 
-    const commonLanguages = filteredLanguages.filter(l => !isRareLanguage(l.name));
-    const rareLanguages = filteredLanguages.filter(l => isRareLanguage(l.name));
+    const commonLanguages = filteredLanguages.filter((l: any) => !isRareLanguage(l.name));
+    const rareLanguages = filteredLanguages.filter((l: any) => isRareLanguage(l.name));
 
     // Count currently selected by category
     const selectedCommonCount = selected.filter(id => {
-        const lang = availableLanguages.find(l => l.uuid === id || l.name === id);
+        const lang = availableLanguages.find((l: any) => l.uuid === id || l.name === id);
         return !isRareLanguage(lang?.name || (typeof id === 'string' && !id.startsWith('Compendium.') ? id : ''));
     }).length;
 
     const selectedRareCount = selected.filter(id => {
-        const lang = availableLanguages.find(l => l.uuid === id || l.name === id);
+        const lang = availableLanguages.find((l: any) => l.uuid === id || l.name === id);
         return isRareLanguage(lang?.name || (typeof id === 'string' && !id.startsWith('Compendium.') ? id : ''));
     }).length;
 
     const toggleLanguage = (uuid: string) => {
-        const lang = availableLanguages.find(l => l.uuid === uuid);
+        const lang = availableLanguages.find((l: any) => l.uuid === uuid);
         const name = lang?.name;
         const isSelected = selected.includes(uuid) || (!!name && selected.includes(name));
 

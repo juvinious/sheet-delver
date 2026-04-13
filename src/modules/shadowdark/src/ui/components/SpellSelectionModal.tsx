@@ -83,6 +83,7 @@ export default function SpellSelectionModal({
             uuid: s.uuid || s._id,
             tier: tier,
             img: s.img,
+            description: s.description || s.system?.description?.value || s.system?.description,
             system: s.system
         }));
     }, [systemData, collections, tier, classKey]);

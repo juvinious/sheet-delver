@@ -338,7 +338,11 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         // If auth token is present, server joins us to the 'authenticated' room
         const socket = io({
             auth: token ? { token } : {},
-            reconnectionAttempts: 5,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 2000,
+            reconnectionDelayMax: 5000,
+            randomizationFactor: 0.5,
+            timeout: 10000,
             transports: ['polling', 'websocket']
         });
 
@@ -347,7 +351,16 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         });
 
         socket.on('connect_error', (err) => {
-            logger.error('FoundryContext | App Socket Connection Error:', err.message);
+            const isNoisyError = err.message === 'xhr poll error' || 
+                                err.message === 'websocket error' ||
+                                err.message.includes('timeout');
+
+            if (isNoisyError) {
+                // Log as debug during reconnection attempts to avoid console red spray
+                logger.debug('FoundryContext | App Socket Reconnection attempt failed:', err.message);
+            } else {
+                logger.error('FoundryContext | App Socket Connection Error:', err.message);
+            }
         });
 
         setAppSocket(socket);
@@ -371,9 +384,10 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             // Priority 1: Explicit System States (Setup/Offline/Startup)
             if (status === 'setup') return 'setup';
             if (status === 'offline') {
-                // If we discovered a world title during the probe, we are in 'startup/gray state'
-                // rather than truly 'initializing' from scratch.
-                return worldTitle ? 'startup' : 'setup';
+                // If we discovered a world title during the probe, we are in 'startup'
+                // If not, we are still 'initializing' or waiting for the server to wake up.
+                // Critical: Do NOT jump to 'setup' here based on uncertainty.
+                return worldTitle ? 'startup' : 'initializing';
             }
             if (status === 'startup') return 'startup';
 

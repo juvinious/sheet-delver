@@ -134,6 +134,7 @@ export const LevelUpModal = (props: LevelUpProps) => {
                                         onResetBoons={actions.handleResetTalents}
                                         onResolveNested={actions.handleResolveNested}
                                         patronName={state.fetchedPatron?.name || state.availablePatrons.find((p: any) => (p.uuid || p._id) === state.selectedPatronUuid)?.name}
+                                        isPatronSelected={!!state.selectedPatronUuid}
                                     />
 
                                     <SpellSelectionSection

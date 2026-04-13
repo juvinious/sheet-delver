@@ -17,6 +17,7 @@ interface Props {
     onResetBoons?: () => void;
     onResolveNested?: (index: number, item: any, context: 'talent' | 'boon') => void;
     patronName?: string;
+    isPatronSelected?: boolean;
 }
 
 export const TalentBoonSection = ({
@@ -35,7 +36,8 @@ export const TalentBoonSection = ({
     onResetTalents,
     onResetBoons,
     onResolveNested,
-    patronName
+    patronName,
+    isPatronSelected = true
 }: Props) => {
 
     // Calculate availability
@@ -43,7 +45,7 @@ export const TalentBoonSection = ({
     const choicesAvailable = Math.max(0, choiceRolls - usedChoices);
 
     const canRollTalent = talentStatus !== 'LOADING' && (rolledTalents.length < requiredTalents || choicesAvailable > 0);
-    const canRollBoon = boonStatus !== 'LOADING' && (rolledBoons.length < startingBoons || choicesAvailable > 0);
+    const canRollBoon = boonStatus !== 'LOADING' && isPatronSelected && (rolledBoons.length < startingBoons || choicesAvailable > 0);
 
     return (
         <div className="space-y-6">

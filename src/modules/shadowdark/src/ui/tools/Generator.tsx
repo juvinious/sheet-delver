@@ -128,7 +128,9 @@ function GeneratorContent() {
         // 1. Check loaded shards
         for (const shard of Object.values(collections)) {
             const found = shard.find((i: any) => i.uuid === uuid || i.id === uuid || i._id === uuid);
-            if (found) return found;
+            // ONLY return from shard if it is a FULL document (has system data)
+            // fetchPack uses summaries which are lean stubs.
+            if (found && found.system) return found; 
         }
 
         // 2. Check systemData collections (Lean Index)
@@ -136,25 +138,25 @@ function GeneratorContent() {
             for (const category of Object.values(systemData)) {
                 if (Array.isArray(category)) {
                     const found = category.find((i: any) => i.uuid === uuid || i.id === uuid || i._id === uuid);
-                    if (found) return found;
+                    if (found && found.system) return found;
                 }
             }
         }
 
-        // 3. Last Resource: Check Name Index (for simple resolution if possible)
+        // 3. Fallback to network
+        try {
+            const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
+            if (res.ok) return await res.json();
+        } catch (e) {
+            logger.warn(`Failed to fetch document ${uuid} via network, checking local index:`, e);
+        }
+
+        // 4. Last Resource: Check Name Index (for simple resolution if possible)
         if (systemData?.nameIndex?.[uuid]) {
             return { uuid, name: systemData.nameIndex[uuid], type: 'Unknown' };
         }
 
-        // 4. Fallback to network
-        try {
-            const res = await fetchWithAuth(`/api/modules/shadowdark/document/${uuid}`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return await res.json();
-        } catch (e) {
-            logger.error(`Failed to fetch document ${uuid}:`, e);
-            return null;
-        }
+        return null;
     }, [fetchWithAuth, collections, systemData]);
 
     // Verify Connection on Mount
@@ -759,10 +761,13 @@ function GeneratorContent() {
                 resolveDoc: fetchDocument
             };
 
-            const addItem = async (uuid: string) => {
+            const addItem = async (uuid: string, talentClass?: 'ancestry' | 'class' | 'level') => {
                 const doc = await fetchDocument(uuid);
                 if (!doc) return null;
-                const enriched = await enrichItem(doc, enrichmentContext);
+                const enriched = await enrichItem(doc, { 
+                    ...enrichmentContext,
+                    defaultTalentClass: talentClass
+                });
                 if (enriched) items.push(enriched);
                 return enriched;
             };
@@ -780,7 +785,7 @@ function GeneratorContent() {
                 }
 
                 for (const uuid of selectedAncestryTalents) {
-                    await addItem(uuid);
+                    await addItem(uuid, 'ancestry');
                 }
 
                 // Gear (Level 0)
@@ -925,9 +930,16 @@ function GeneratorContent() {
             const token = localStorage.getItem('sheet-delver-token');
             if (token) headers['Authorization'] = `Bearer ${token}`;
 
+            // --- DIRECT PERSISTENCE ---
+            // Following the "Lean" strategy: The Registry now serves full data
+            // to the Builder, so we can POST directly to Core.
+            logger.info("[Generator] Transmitting unaltered character data to Core...");
             const res = await fetch('/api/actors', {
                 method: 'POST',
-                headers,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify(actorData)
             });
 
