@@ -338,10 +338,6 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
         ...(bl.selectOptions || [])
     ]));
 
-    let fixedCommon = 0;
-    let fixedRare = 0;
-    let optionCommon = 0;
-    let optionRare = 0;
 
     const countRarity = (pool: any[], counter: { common: number, rare: number }) => {
         for (const f of pool) {
@@ -390,7 +386,7 @@ export const getLanguageLimits = (actor: any, systemData?: any) => {
     
     for (const id of currentLanguages) {
         const lang = systemData?.languages?.find((l: any) => 
-            l.uuid === id || l.name === id || (typeof id === 'string' && id.endsWith(l.uuid?.split('.').pop()!))
+            l.uuid === id || l.name === id || (typeof id === 'string' && id.endsWith(l.uuid?.split('.').pop() || ""))
         );
         const name = lang?.name || (typeof id === 'string' ? id : '');
         if (isRareLanguage(name)) {

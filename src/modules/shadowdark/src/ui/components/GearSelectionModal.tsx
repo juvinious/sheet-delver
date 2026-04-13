@@ -29,11 +29,10 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
     const [expandedCategories, setExpandedCategories] = useState<Set<GearCategory>>(new Set(['Basic Gear']));
     const [loading, setLoading] = useState(false);
 
-    const gearItems = collections['gear'] || [];
-    const magicItems = collections['magic-items'] || [];
-    
     // Combine and apply existing filtering logic to the cached collections
     const items = useMemo(() => {
+        const gearItems = collections['gear'] || [];
+        const magicItems = collections['magic-items'] || [];
         const allDocs = [...gearItems, ...magicItems];
         if (allDocs.length === 0) return [];
 
@@ -46,7 +45,7 @@ export default function GearSelectionModal({ isOpen, onClose, onCreate }: GearSe
 
             return typeMatch;
         });
-    }, [gearItems, magicItems]);
+    }, [collections]);
 
     useEffect(() => {
         if (isOpen) {

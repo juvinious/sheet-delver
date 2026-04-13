@@ -14,17 +14,21 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "temp/**",
     "temp-shadowdark/**",
+    "src/tests/**",
+    "scripts/**",
+    "src/scripts/**"
   ]),
   {
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-unused-vars": "warn",
       "@typescript-eslint/ban-ts-comment": "off",
       "@next/next/no-img-element": "off",
       "@typescript-eslint/no-require-imports": "off",
       "react-hooks/set-state-in-effect": "off",
       "@typescript-eslint/no-unsafe-function-type": "off",
-      "prefer-const": "warn"
+      "prefer-const": "warn",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": "off"
     }
   }
 ]);

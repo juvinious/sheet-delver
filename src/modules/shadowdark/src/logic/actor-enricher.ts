@@ -152,7 +152,7 @@ export async function resolveSubItems(
     const startingSpells = parentItem.system.startingSpells || [];
 
     // Aggregate references strictly from the compendium document
-    let allRefs = [
+    const allRefs = [
         ...talentRefs, 
         ...featureRefs, 
         ...abilityRefs, 

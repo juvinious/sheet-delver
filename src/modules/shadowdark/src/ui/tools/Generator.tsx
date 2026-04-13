@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { LevelUpModal } from '../components/LevelUpModal';
 import { logger } from '@shared/utils/logger';
 import { useConfig } from '@client/ui/context/ConfigContext';
-import { TALENT_HANDLERS } from '@modules/shadowdark/src/logic/talent-handlers';
 import { useShadowdarkUI, ShadowdarkUIProvider } from '../context/ShadowdarkUIContext';
 import { useFoundry } from '@client/ui/context/FoundryContext';
 import LoadingModal from '@client/ui/components/LoadingModal';
@@ -22,8 +21,8 @@ export default function Generator() {
 }
 
 function GeneratorContent() {
-    const { systemData, collections, fetchPack, resolveName, resolveUuid, loadingSystem } = useShadowdarkUI();
-    const { step, system, token: foundryToken } = useFoundry();
+    const { systemData, collections, fetchPack, resolveName, loadingSystem } = useShadowdarkUI();
+    const { step, system } = useFoundry();
     const { setFoundryUrl: setConfigFoundryUrl } = useConfig();
     const [loading, setLoading] = useState(true);
     const [foundryUrl, setFoundryUrl] = useState<string>('');
@@ -91,11 +90,6 @@ function GeneratorContent() {
     const getMod = (score: number) => Math.floor((score - 10) / 2);
 
     // Helper: Fetch Foundry Document
-    const promptStatChoice = (amount: number): Promise<string> => {
-        return new Promise((resolve) => {
-            setCurrentStatPrompt({ resolve, amount });
-        });
-    };
 
     const handleStatSelect = (stat: string) => {
         if (currentStatPrompt) {
@@ -488,14 +482,12 @@ function GeneratorContent() {
                      }
                 }
 
-                setAncestryTalents({ fixed: fixedTalents, choice: choiceTalents, choiceCount: effectiveChoiceCount });
-
             } catch (e) {
                 logger.error("Ancestry load error", e);
             }
         };
         loadAncestry();
-    }, [formData.ancestry, collections, fetchDocument, ancestryDetails]);
+    }, [formData.ancestry, collections, fetchDocument, ancestryDetails, formData.level0]);
 
 
 
@@ -810,9 +802,6 @@ function GeneratorContent() {
 
 
             for (const item of extraItems) {
-                // Determine Source ID
-                const sourceId = item.flags?.core?.sourceId || item.uuid || item._id;
-
                 // 1. FILTER: Gear for Level 1 Characters
                 if (!formData.level0) {
                     const type = (String(item.type || "")).toLowerCase();

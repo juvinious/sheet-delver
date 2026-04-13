@@ -410,7 +410,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                                 const id = typeof l === 'string' ? l : (l.name || l.uuid || '');
                                 // Find extra info in systemData/collections for tooltips
                                 const match = (collections?.languages || systemData?.languages)?.find((sl: any) =>
-                                    sl.uuid === id || sl.name === id || (typeof id === 'string' && id.endsWith(sl.uuid?.split('.').pop()!))
+                                    sl.uuid === id || sl.name === id || (typeof id === 'string' && id.endsWith(sl.uuid?.split('.').pop() || ""))
                                 );
 
                                 return {

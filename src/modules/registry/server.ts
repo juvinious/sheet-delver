@@ -102,7 +102,7 @@ export function getRegisteredModules() {
  */
 export async function getAdapter(systemId: string): Promise<SystemAdapter | null> {
     const id = systemId.toLowerCase();
-    
+
     // Return cached instance if available
     if (adapterInstances.has(id)) return adapterInstances.get(id)!;
 
@@ -113,8 +113,8 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
     if (!plugin) return null;
 
     try {
-        const module = await plugin.getLogic();
-        const AdapterClass = module.Adapter || module.default;
+        const logicModule = await plugin.getLogic();
+        const AdapterClass = logicModule.Adapter || logicModule.default;
 
         if (!AdapterClass) {
             logger.error(`Registry | No Adapter class found for ${id}`);
@@ -122,12 +122,12 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
         }
 
         const adapter = new AdapterClass();
-        
+
         // Optional initialization hook for adapters (e.g., cache warming)
         if (typeof (adapter as any).initialize === 'function') {
             await (adapter as any).initialize();
         }
-        
+
         adapterInstances.set(id, adapter);
         return adapter;
     } catch (e) {
@@ -145,7 +145,7 @@ export async function getServerModule(systemId: string) {
 
     const plugin = pluginMap.get(systemId.toLowerCase());
     if (!plugin || !plugin.getServer) return null;
-    
+
     try {
         return await plugin.getServer();
     } catch (e) {

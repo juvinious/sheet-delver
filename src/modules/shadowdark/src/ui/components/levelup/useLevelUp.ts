@@ -1050,7 +1050,7 @@ export const useLevelUp = (props: LevelUpProps) => {
             }
         };
         init();
-    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj]);
+    }, [classObj, actorId, targetLevel, targetClassUuid, selectedPatronUuid, patronUuid, availableClasses, availablePatrons, collections, classUuid, currentLevel, fetchDocument, fetchLevelUpData, token, activeClassObj, statuses.class]);
 
     // Fetch Extra Spells if needed
     useEffect(() => {
@@ -1343,7 +1343,7 @@ export const useLevelUp = (props: LevelUpProps) => {
         return true;
     }, [
         rolledTalents, requiredTalents, targetLevel, existingItems, statSelection, statPool, weaponMasterySelection, armorMasterySelection, activeClassObj,
-        needsBoon, rolledBoons, startingBoons, choiceRolls,
+        rolledBoons, choiceRolls,
         extraSpellSelection,
         languageGroups, availableLanguages, fixedLanguages, selectedLanguages, knownLanguages,
         isSpellcaster, spellsToChooseTotal, availableSpells, selectedSpells, spellsToChoose,
