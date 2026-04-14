@@ -329,7 +329,6 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
                         isOwner={actor?.isOwner ?? true}
                         onRoll={handleRoll}
                         onUpdate={handleUpdate}
-                        onSync={handleSync}
                         onToggleEffect={handleToggleEffect}
                         onDeleteEffect={handleDeleteEffect}
                         onDeleteItem={handleDeleteItem}

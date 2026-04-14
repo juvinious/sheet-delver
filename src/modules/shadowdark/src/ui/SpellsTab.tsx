@@ -20,15 +20,10 @@ interface SpellsTabProps {
     onDeleteItem?: (itemId: string) => void;
     onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
     addNotification: (message: string, type?: 'info' | 'success' | 'error', options?: any) => void;
-    /**
-     * Triggers a manual synchronization of actor data. 
-     * Essential for batch operations where automatic socket based updates may be missed or delayed.
-     */
-    onSync?: () => void;
     token?: string | null;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, onUpdateItem, addNotification, onSync, token }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, onUpdateItem, addNotification, token }: SpellsTabProps) {
     const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -45,13 +40,13 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
      */
     function isSpellMatching(item: any, tier: number, classKey: string) {
         if (item.type !== 'Spell') return false;
-        
+
         const iTier = Number(item.system?.tier !== undefined ? item.system.tier : item.tier);
         if (iTier !== tier) return false;
 
         const classData = item.system?.class || item.class || '';
-        const classArray = Array.isArray(classData) 
-            ? classData 
+        const classArray = Array.isArray(classData)
+            ? classData
             : (typeof classData === 'string' ? classData.split(',').map(s => s.trim()) : [classData]);
 
         const filterLower = classKey.toLowerCase();
@@ -153,7 +148,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
         setIsSaving(true);
         try {
-            const currentSpells = (actor.items || []).filter((i: any) => 
+            const currentSpells = (actor.items || []).filter((i: any) =>
                 isSpellMatching(i, editingTier, modalFilterClass)
             );
 
@@ -175,10 +170,6 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // Fire updates and clear management state immediately (optimistic)
             await Promise.all(tasks);
 
-            // Manual synchronization ensures the UI reacts immediately to batch changes
-            // that might be missed by the standard socket relay.
-            onSync?.();
-            
             setIsAddModalOpen(false);
             addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
             setIsSaving(false);
@@ -238,8 +229,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             // Fallback: Resolve via systemData/collections if class identified by UUID
             const classRef = actor.system.class;
             const classList = collections?.classes || systemData?.classes || [];
-            const resolvedClass = classList.find((c: any) => 
-                c.uuid === classRef || 
+            const resolvedClass = classList.find((c: any) =>
+                c.uuid === classRef ||
                 c.name.toLowerCase() === (String(classRef).toLowerCase()) ||
                 (typeof classRef === 'string' && classRef.endsWith(c.uuid.split('.').pop()!))
             );
@@ -331,7 +322,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     }
                 }
             }
-            
+
             // Fallback for known caster classes if table is missing or empty
             if (tiers.length === 0) {
                 const knownCasters = ['wizard', 'priest', 'witch', 'warlock', 'seer', 'druid', 'bard'];
@@ -410,7 +401,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const knownSpellsForModal = useMemo(() => {
         if (!editingTier || !modalFilterClass) return [];
 
-        return (actor.items || []).filter((i: any) => 
+        return (actor.items || []).filter((i: any) =>
             isSpellMatching(i, editingTier, modalFilterClass)
         ).map((s: any) => ({
             name: s.name,
@@ -562,7 +553,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                    handleLostToggle(spell.id || spell._id, !!lost);
+                                                        handleLostToggle(spell.id || spell._id, !!lost);
                                                     }}
                                                     className={`w-10 h-10 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
                                                 >
@@ -718,8 +709,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                 const spellList = collections?.spells || systemData?.spells || [];
                                 const normalizeUuid = (u: string) => u.replace('.Item.', '.').replace('Compendium.shadowdark.', '');
                                 const nTarget = normalizeUuid(targetUuid);
-                                spellMeta = spellList.find((s: any) => 
-                                    (s.uuid && normalizeUuid(s.uuid) === nTarget) || 
+                                spellMeta = spellList.find((s: any) =>
+                                    (s.uuid && normalizeUuid(s.uuid) === nTarget) ||
                                     (s.flags?.core?.sourceId && normalizeUuid(s.flags.core.sourceId) === nTarget)
                                 );
                             }
