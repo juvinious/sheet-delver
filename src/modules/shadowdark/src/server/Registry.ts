@@ -375,7 +375,18 @@ export class ShadowdarkRegistry {
         return JSON.parse(JSON.stringify(this._collections.spells.filter((spell: any) => {
             const spellClasses = spell.system?.class || [];
             const list = Array.isArray(spellClasses) ? spellClasses : [spellClasses];
-            return list.some((c: string) => String(c).toLowerCase().includes(normalizedClass));
+            return list.some((c: string) => {
+                const identifier = String(c).toLowerCase();
+                
+                // 1. Direct Name Match (e.g. "Priest")
+                if (identifier.includes(normalizedClass)) return true;
+
+                // 2. UUID Resolution (e.g. "Compendium.shadowdark.classes.Item.xxxx")
+                const resolvedName = (this.nameIndex[c] || "").toLowerCase();
+                if (resolvedName && resolvedName.includes(normalizedClass)) return true;
+
+                return false;
+            });
         })));
     }
 

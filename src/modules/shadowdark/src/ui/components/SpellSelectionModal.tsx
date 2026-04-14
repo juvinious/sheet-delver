@@ -27,6 +27,7 @@ interface SpellSelectionModalProps {
     maxSelections?: number;
     token?: string | null;
     isSaving?: boolean;
+    actor?: any;
 }
 
 export default function SpellSelectionModal({
@@ -39,7 +40,8 @@ export default function SpellSelectionModal({
     knownSpells,
     maxSelections,
     token,
-    isSaving = false
+    isSaving = false,
+    actor
 }: SpellSelectionModalProps) {
     const { resolveImageUrl } = useConfig();
     const { systemData, collections } = useShadowdarkUI();
@@ -51,6 +53,11 @@ export default function SpellSelectionModal({
 
     // Tracks if we have already initialized for the current "open" session
     const [hasInitialized, setHasInitialized] = useState(false);
+    const [initialKnownUuids, setInitialKnownUuids] = useState<Set<string>>(new Set());
+
+    const freeSpellUuids = useMemo(() => {
+        return new Set<string>(actor?.computed?.freeSpellUuids || []);
+    }, [actor?.computed?.freeSpellUuids]);
 
     const availableSpells = useMemo(() => {
         const fullSpells = collections?.spells || systemData?.spells || [];
@@ -84,7 +91,8 @@ export default function SpellSelectionModal({
             tier: tier,
             img: s.img,
             description: s.description || s.system?.description?.value || s.system?.description,
-            system: s.system
+            system: s.system,
+            isInnate: !!s.isInnate
         }));
     }, [systemData, collections, tier, classKey]);
 
@@ -111,6 +119,7 @@ export default function SpellSelectionModal({
                 }
             });
             setSelectedUuids(initialSet);
+            setInitialKnownUuids(new Set(initialSet));
             setHasInitialized(true);
         } else if (!isOpen) {
             setHasInitialized(false);
@@ -144,7 +153,26 @@ export default function SpellSelectionModal({
         setSelectedUuids(newSet);
     };
 
-    const isMaxReached = maxSelections ? selectedUuids.size >= maxSelections : false;
+    const innateUuids = useMemo(() => {
+        const set = new Set<string>();
+        availableSpells.forEach(s => {
+            const isInnate = (s as any).isInnate || 
+                (s as any).computed?.isInnate || 
+                Array.from(freeSpellUuids).some(id => s.uuid === id || (typeof s.uuid === 'string' && s.uuid.endsWith(id)));
+            if (isInnate) set.add(s.uuid);
+        });
+        return set;
+    }, [availableSpells, freeSpellUuids]);
+
+    const selectableCount = useMemo(() => {
+        let count = 0;
+        selectedUuids.forEach(uuid => {
+            if (!innateUuids.has(uuid)) count++;
+        });
+        return count;
+    }, [selectedUuids, innateUuids]);
+
+    const isMaxReached = maxSelections ? selectableCount >= maxSelections : false;
 
     const handleSave = () => {
         const selected = availableSpells.filter(s => selectedUuids.has(s.uuid));
@@ -165,7 +193,7 @@ export default function SpellSelectionModal({
                     <div>
                         <h2 className="text-2xl font-serif font-bold tracking-wider uppercase">{title}</h2>
                         <div className="text-xs font-sans tracking-widest uppercase mt-1 text-neutral-400">
-                            Selected: <span className={selectedUuids.size > (maxSelections || 99) ? "text-red-500 font-bold" : "text-amber-500 font-bold"}>{selectedUuids.size}</span>
+                            Selected: <span className={selectableCount > (maxSelections || 99) ? "text-red-500 font-bold" : "text-amber-500 font-bold"}>{selectableCount}</span>
                             {maxSelections !== undefined && (
                                 <> / <span className="text-white">{maxSelections}</span></>
                             )}
@@ -219,13 +247,22 @@ export default function SpellSelectionModal({
                         {filteredSpells.map((spell, idx) => {
                             const isSelected = selectedUuids.has(spell.uuid);
                             const isExpanded = expandedUuids.has(spell.uuid);
-                            const disabled = (!isSelected && isMaxReached) || isSaving;
                             const fetched = fetchedData[spell.uuid];
                             const description = spell.description || fetched?.description;
                             const isLoading = loadingUuids.has(spell.uuid);
 
+                            const isInnate = (spell as any).isInnate || 
+                                (spell as any).computed?.isInnate || 
+                                Array.from(freeSpellUuids).some(id => spell.uuid === id || (typeof spell.uuid === 'string' && spell.uuid.endsWith(id)));
+                            const isPreExisting = initialKnownUuids.has(spell.uuid);
+
+                            // Only lock innate spells; pre-existing known spells can be swapped
+                            const isLocked = isInnate;
+
+                            const disabled = (!isSelected && isMaxReached) || isSaving || isLocked;
+
                             return (
-                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'} ${isSaving ? 'opacity-70 pointer-events-none' : ''}`}>
+                                <div key={(spell as any).uuid || (spell as any)._id || `spell-select-${idx}`} className={`border-b border-black/20 last:border-b-0 transition-all ${isSelected ? 'bg-amber-50/50' : 'bg-white hover:bg-neutral-50'} ${isSaving ? 'opacity-70 pointer-events-none' : ''} ${isLocked ? 'opacity-60' : ''}`}>
                                     <div
                                         className={`flex items-center gap-3 py-1.5 px-2 cursor-pointer transition-colors`}
                                         onClick={() => toggleExpand(spell)}
@@ -242,7 +279,10 @@ export default function SpellSelectionModal({
                                         {/* Name */}
                                         <div className="flex-1 min-w-0">
                                             <div className="font-serif font-bold text-base uppercase leading-tight truncate flex items-center gap-2">
-                                                {spell.name}
+                                                <span className={isLocked ? 'text-neutral-500' : 'text-black'}>
+                                                    {spell.name}
+                                                    {(isInnate || (isPreExisting && !isInnate)) && <span className="ml-2 text-[10px] text-neutral-400 font-sans normal-case tracking-tight">(Known)</span>}
+                                                </span>
                                                 {isExpanded ? <ChevronUp className="w-4 h-4 text-neutral-400" /> : <ChevronDown className="w-4 h-4 text-neutral-400" />}
                                             </div>
                                         </div>

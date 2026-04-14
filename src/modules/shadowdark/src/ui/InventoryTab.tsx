@@ -3,9 +3,6 @@
 import { useState, useEffect } from 'react';
 import {
     calculateItemSlots,
-    calculateMaxSlots,
-    calculateCoinSlots,
-    calculateGemSlots,
 } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
@@ -62,7 +59,6 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
     // For slot calculation, we need to include gems specifically since they are excluded from the gear lists
     const gems = applyOverrides((actor.items || []).filter((i: any) => i.type === 'Gem'));
 
-    const calculateTotal = (list: any[]) => list.reduce((acc, i) => acc + calculateItemSlots(i), 0);
 
     // Separate treasure items from regular gear
     const isTreasure = (i: any) => !!i.system?.treasure;
@@ -79,18 +75,22 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
         .filter(i => isTreasure(i) && !i.system?.stashed)
         .sort((a: any, b: any) => a.name.localeCompare(b.name));
 
-    const gearItems = [...displayEquipped, ...displayCarried]; // For slot calculation excluding treasure
+    // Use pre-computed slot breakdown from the rules engine
+    const slotBreakdown = actor.computed?.slotBreakdown || {
+        gear: 0,
+        treasure: 0,
+        gems: 0,
+        coins: 0
+    };
 
-
-    const gearSlots = calculateTotal(gearItems);
-    const treasureSlots = calculateTotal(treasureItems);
-    const gemSlots = calculateGemSlots(gems.filter(g => !g.system?.stashed));
-    const coinSlots = calculateCoinSlots(actor.system?.coins);
+    const gearSlots = slotBreakdown.gear;
+    const treasureSlots = slotBreakdown.treasure;
+    const gemSlots = slotBreakdown.gems;
+    const coinSlots = slotBreakdown.coins;
 
     // Use backend computed value for the total to ensure consistency
-    // We still calculate individual categories for the breakdown display, but the total comes from the source of truth
-    const currentSlots = actor.computed?.slotsUsed ?? (gearSlots + treasureSlots + gemSlots + coinSlots);
-    const maxSlots = actor.system?.slots?.max || calculateMaxSlots(actor);
+    const currentSlots = actor.computed?.slotsUsed ?? 0;
+    const maxSlots = actor.computed?.maxSlots ?? actor.system?.slots?.max ?? 0;
 
     // Coin Synced States
     const [localGp, setLocalGp] = useState(actor.system?.coins?.gp || 0);
@@ -313,7 +313,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                 <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     <h3 className="font-serif font-bold text-lg border-b-2 border-black pb-1 mb-3 uppercase tracking-wide flex justify-between items-center">
                         Coins
-                        <span className="text-[10px] text-neutral-400 font-sans tracking-tight">10 gp = 1 slot</span>
+                        <span className="text-[10px] text-neutral-400 font-sans tracking-tight">100 coins = 1 slot (after first 100)</span>
                     </h3>
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">

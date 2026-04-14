@@ -72,23 +72,27 @@ export const ExtraSpellSelectionSection = ({
                                     const uuid = spell.uuid || spell._id;
                                     const isSelected = selectedSpells.some(s => (s.uuid || s._id) === uuid);
                                     const isBlocked = blockedSpells.some(s => (s.uuid || s._id) === uuid);
+                                    const isInnate = !!spell.isInnate || !!spell.computed?.isInnate;
+                                    const isDisabled = isBlocked || isInnate || (!isSelected && selectedSpells.length >= 1);
 
                                     return (
                                         <button
                                             key={uuid}
-                                            disabled={isBlocked || (!isSelected && selectedSpells.length >= 1)}
+                                            disabled={isDisabled}
                                             onClick={() => {
                                                 if (isSelected) onSelectionChange([]);
                                                 else onSelectionChange([spell]);
                                             }}
                                             className={`px-4 py-2 text-left text-xs font-bold uppercase tracking-wide transition-all border-2 ${isSelected
                                                 ? 'bg-indigo-600 text-white border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]'
-                                                : isBlocked
+                                                : (isBlocked || isInnate)
                                                     ? 'bg-neutral-100 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-50'
                                                     : 'bg-white text-black border-black hover:bg-neutral-100 disabled:opacity-30 disabled:border-neutral-200 disabled:text-neutral-400'
                                                 }`}
                                         >
-                                            {spell.name} {isBlocked && <span className="text-[8px] opacity-70 ml-1">(Alt Source)</span>}
+                                            {spell.name} 
+                                            {isBlocked && <span className="text-[8px] opacity-70 ml-1">(Alt Source)</span>}
+                                            {isInnate && <span className="text-[8px] opacity-70 ml-1">(Known)</span>}
                                         </button>
                                     );
                                 })}

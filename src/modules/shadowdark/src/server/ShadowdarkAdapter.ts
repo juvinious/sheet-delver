@@ -2,6 +2,7 @@ import { shadowdarkRegistry, ShadowdarkRegistry } from './Registry';
 import { ShadowdarkNormalizer, resolveDocumentName } from '../logic/normalization';
 import { shadowdarkTheme } from '../ui/themes/shadowdark';
 import { getInitiativeFormula, normalizeItemData, isClassSpellcaster } from '../logic/rules';
+import { TALENT_GRANTED_SPELLS } from '../data/talent-effects';
 import { logger } from '@shared/utils/logger';
 import { SystemAdapter } from '@modules/registry/types';
 import { ActorSheetData } from '@shared/interfaces';
@@ -194,6 +195,48 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
             if (classDoc.name) {
                 availableSpells = await this.getSpellsBySource(classDoc.name);
+
+                // Identify Innate Spells for this actor/class
+                const freeSpellUuids = new Set<string>();
+                const actorItems = actor?.items || [];
+
+                // Check actor's existing talents for innate grants
+                actorItems.forEach((i: any) => {
+                    if (['Talent', 'Boon', 'Feature', 'Class Ability'].includes(i.type)) {
+                        const sourceId = i.flags?.core?.sourceId || i.uuid || i._id;
+                        const name = (i.name || "").toLowerCase();
+
+                        Object.entries(TALENT_GRANTED_SPELLS).forEach(([talentId, spellId]) => {
+                            if (sourceId === talentId || (typeof sourceId === 'string' && sourceId.endsWith(talentId))) {
+                                freeSpellUuids.add(spellId);
+                            }
+                        });
+
+                        if (name === "turn undead") {
+                            freeSpellUuids.add(TALENT_GRANTED_SPELLS["LfHTnYW8I65x8Y31"]);
+                        }
+                    }
+                });
+
+                // Also check if the class itself grants innate spells (like Turn Undead for Priests)
+                if (classDoc.name.toLowerCase() === 'priest') {
+                    freeSpellUuids.add(TALENT_GRANTED_SPELLS["LfHTnYW8I65x8Y31"]);
+                }
+
+                // Flag the available spells
+                availableSpells.forEach(s => {
+                    const sourceId = s.flags?.core?.sourceId || s.uuid || s._id;
+                    const name = (s.name || "").toLowerCase();
+                    const matchesId = (id: string) => sourceId === id || (typeof sourceId === 'string' && sourceId.endsWith(id));
+
+                    const isFreeId = Array.from(freeSpellUuids).some(matchesId);
+                    const turnUndeadSpellId = TALENT_GRANTED_SPELLS["LfHTnYW8I65x8Y31"];
+                    const isTurnUndead = name === "turn undead" && (isFreeId || freeSpellUuids.has(turnUndeadSpellId));
+
+                    if (isFreeId || isTurnUndead) {
+                        s.isInnate = true;
+                    }
+                });
             }
         }
 

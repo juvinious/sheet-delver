@@ -1,4 +1,6 @@
 
+import { TALENT_GRANTED_SPELLS } from '../data/talent-effects';
+
 /**
  * Get the standardized initiative formula for an actor
  */
@@ -24,7 +26,7 @@ export function getInitiativeFormula(actor: any): string {
  */
 export const SHADOWDARK_LANGUAGES = {
     common: [
-        'common', 'dwarvish', 'elvish', 'giant', 'goblin', 
+        'common', 'dwarvish', 'elvish', 'giant', 'goblin',
         'merran', 'orcish', 'reptilian', 'sylvan', 'thanian'
     ],
     rare: [
@@ -39,9 +41,54 @@ export const isRareLanguage = (name: string): boolean => {
     const lower = (name || '').toLowerCase();
     if (SHADOWDARK_LANGUAGES.rare.some(r => lower.includes(r))) return true;
     if (SHADOWDARK_LANGUAGES.common.some(c => lower.includes(c))) return false;
-    
+
     // Default system fallback for unknown languages
     return false;
+};
+
+/**
+ * XP and Talent Rules
+ */
+
+export const calculateXPForLevel = (level: number): number => {
+    return level * 10;
+};
+
+export const calculateXPCarryover = (currentXP: number, currentLevel: number): number => {
+    if (currentLevel === 0) return 0;
+    return currentXP - (currentLevel * 10);
+};
+
+export const shouldGainTalent = (targetLevel: number): boolean => {
+    return targetLevel % 2 !== 0;
+};
+
+/**
+ * Spellcasting Logic
+ */
+
+export const calculateSpellBonus = (actor: any, spell?: any): { bonus: number, advantage: boolean, disadvantage: boolean } => {
+    if (!actor || !actor.system) return { bonus: 0, advantage: false, disadvantage: false };
+
+    let bonus = 0;
+    let advantage = false;
+    const disadvantage = false;
+
+    // 1. General Spellcasting Check Bonus
+    bonus += Number(actor.system.bonuses?.spellcastingCheckBonus) || 0;
+
+    // 2. Spell-Specific Advantage
+    if (spell && actor.system.bonuses?.advantage) {
+        const adv = actor.system.bonuses.advantage;
+        const spellName = spell.name?.toLowerCase() || "";
+
+        // Match specific spell name or generic "spellcasting"
+        if (adv === "spellcasting" || adv === spellName || (Array.isArray(adv) && (adv.includes("spellcasting") || adv.includes(spellName)))) {
+            advantage = true;
+        }
+    }
+
+    return { bonus, advantage, disadvantage };
 };
 
 export const calculateItemSlots = (item: any) => {
@@ -59,7 +106,7 @@ export const calculateItemSlots = (item: any) => {
     const freeCarry = Number(s.free_carry) || 0;
 
     const rawCost = Math.ceil(quantity / perSlot) * slotsUsed;
-    return Math.max(0, rawCost - freeCarry);
+    return Math.max(0, rawCost - (freeCarry * slotsUsed));
 };
 
 export const calculateMaxSlots = (actor: any) => {
@@ -94,17 +141,17 @@ export const calculateCoinSlots = (coins: any) => {
     const sp = Number(coins.sp) || 0;
     const cp = Number(coins.cp) || 0;
 
-    // Total Value in GP: 100 CP = 10 SP = 1 GP
-    const totalGP = gp + (sp / 10) + (cp / 100);
+    const totalCoins = gp + sp + cp;
 
-    // 10 GP = 1 Slot
-    return Math.floor(totalGP / 10);
+    // Official Shadowdark: 100 free then 100 per slot
+    if (totalCoins <= 100) return 0;
+    return Math.ceil((totalCoins - 100) / 100);
 };
 
 export const calculateGemSlots = (gems: any[]) => {
     if (!gems || gems.length === 0) return 0;
     const total = gems.reduce((acc, g) => acc + (Number(g.system?.quantity) || 1), 0);
-    return Math.floor(total / 10);
+    return Math.ceil(total / 10);
 };
 
 export const calculateAC = (actor: any, items: any[]) => {
@@ -277,7 +324,7 @@ export const calculateAttacks = (actor: any, items: any[]) => {
         const dmgDie = s.damage?.melee || s.damage?.ranged || '1d4';
         let dmgMod = damageBonus;
         if (!isRangedType) dmgMod += strMod; // Strength adds to melee damage in SD
-        
+
         const dmgStr = `${dmgDie}${dmgMod !== 0 ? (dmgMod > 0 ? '+' : '') + dmgMod : ''}`;
 
         const attackData = {
@@ -353,7 +400,7 @@ export const getLanguageLimits = (actor: any, systemData?: any, collections?: an
 
     const fixedCounts = { common: 0, rare: 0 };
     const optionCounts = { common: 0, rare: 0 };
-    
+
     countRarity(allFixed, fixedCounts);
     countRarity(allSelectOptions, optionCounts);
 
@@ -369,9 +416,9 @@ export const getLanguageLimits = (actor: any, systemData?: any, collections?: an
     const intMod = Number(actor.system?.abilities?.int?.mod) || 0;
     const playerBaseCommon = (actor.type === "Player" || actor.type === "Character") ? (1 + Math.max(0, intMod)) : 0;
 
-    const baseCommon = playerBaseCommon + 
-                       (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
-                       (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || Number(fallbackCommonSelect));
+    const baseCommon = playerBaseCommon +
+        (Number(cl.common) || 0) + (Number(al.common) || 0) + (Number(bl.common) || 0) +
+        (Number(cl.select) || 0) + (Number(al.select) || 0) + (Number(bl.select) || Number(fallbackCommonSelect));
 
     const baseRare = (Number(cl.rare) || 0) + (Number(al.rare) || 0) + (Number(bl.rare) || Number(fallbackRareSelect));
 
@@ -383,9 +430,9 @@ export const getLanguageLimits = (actor: any, systemData?: any, collections?: an
     const currentLanguages = actor.system?.languages || [];
     let currentCommon = 0;
     let currentRare = 0;
-    
+
     for (const id of currentLanguages) {
-        const lang = (collections?.languages || systemData?.languages)?.find((l: any) => 
+        const lang = (collections?.languages || systemData?.languages)?.find((l: any) =>
             l.uuid === id || l.name === id || (typeof id === 'string' && id.endsWith(l.uuid?.split('.').pop() || ""))
         );
         const name = lang?.name || (typeof id === 'string' ? id : '');
@@ -454,8 +501,8 @@ export const isSpellcaster = (actor: any): boolean => {
     const items = actor.items?.contents || (Array.isArray(actor.items) ? actor.items : []);
 
     // 1. Check for Class with explicit spellcasting metadata
-    if (items.some((i: any) => 
-        (i.type || "").toLowerCase() === 'class' && 
+    if (items.some((i: any) =>
+        (i.type || "").toLowerCase() === 'class' &&
         (i.system?.spellcasting?.ability || i.system?.spellcasting?.base)
     )) return true;
 
@@ -577,7 +624,7 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
         if (i.effects) acc.push(...i.effects);
         return acc;
     }, []);
-    
+
     // Also include actor's own effects
     const actorEffects = actor.effects?.contents || (Array.isArray(actor.effects) ? actor.effects : []);
     allEffects.push(...actorEffects);
@@ -588,22 +635,83 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
     stats = calculateAbilities(effectApplied);
     computed.abilities = stats;
 
+    // 2.5 Compute Free Spells from Talents (TALENT_GRANTED_SPELLS mapping)
+    const freeSpellUuids: string[] = [];
+    items.forEach(i => {
+        // Expand type check to include other potential talent/feature containers
+        if (['Talent', 'Boon', 'Feature', 'Class Ability'].includes(i.type)) {
+            const sourceId = i.flags?.core?.sourceId || i.uuid || i._id;
+            const name = (i.name || "").toLowerCase();
+
+            let isMatch = false;
+            Object.entries(TALENT_GRANTED_SPELLS).forEach(([talentId, spellId]) => {
+                const matchesTalent = sourceId === talentId || (typeof sourceId === 'string' && sourceId.endsWith(talentId));
+                if (matchesTalent) {
+                    isMatch = true;
+                    if (!freeSpellUuids.includes(spellId)) freeSpellUuids.push(spellId);
+                }
+            });
+
+            // Name-based fallback for Turn Undead
+            if (!isMatch && name === "turn undead") {
+                const turnUndeadSpellId = TALENT_GRANTED_SPELLS["LfHTnYW8I65x8Y31"];
+                if (!freeSpellUuids.includes(turnUndeadSpellId)) freeSpellUuids.push(turnUndeadSpellId);
+            }
+        }
+    });
+
+    // Flag the spells themselves as innate for UI clarity
+    items.forEach(i => {
+        if (i.type === 'Spell') {
+            const sourceId = i.flags?.core?.sourceId || i.uuid || i._id;
+            const name = (i.name || "").toLowerCase();
+
+            const matchesFreeId = (id: string) => sourceId === id || (typeof sourceId === 'string' && sourceId.endsWith(id));
+            const isKnownMappedFree = freeSpellUuids.some(matchesFreeId);
+            
+            const turnUndeadSpellId = TALENT_GRANTED_SPELLS["LfHTnYW8I65x8Y31"];
+            const isTurnUndeadInnate = name === "turn undead" && 
+                (freeSpellUuids.some(matchesFreeId) || freeSpellUuids.includes(turnUndeadSpellId));
+
+            if (isKnownMappedFree || isTurnUndeadInnate) {
+                if (!i.computed) i.computed = {};
+                i.computed.isInnate = true;
+            }
+        }
+    });
+    computed.freeSpellUuids = freeSpellUuids;
+
     // 3. Derived Stats
     const actorProxy = { ...actor, system: effectApplied, items, computed };
     computed.ac = calculateAC(actorProxy, items);
     computed.maxSlots = calculateMaxSlots(actorProxy);
-    
+
     // 4. Slot Calculation
-    let usedSlots = 0;
+    let gearSlots = 0;
+    let treasureSlots = 0;
+
     items.forEach((i: any) => {
         if (!i.system?.stashed && i.type !== 'Gem') {
-            usedSlots += calculateItemSlots(i);
+            const used = calculateItemSlots(i);
+            if (i.system?.treasure) {
+                treasureSlots += used;
+            } else {
+                gearSlots += used;
+            }
         }
     });
-    usedSlots += calculateGemSlots(items.filter((i: any) => i.type === 'Gem' && !i.system?.stashed));
-    usedSlots += calculateCoinSlots(effectApplied.coins);
-    
-    computed.slotsUsed = Math.max(0, usedSlots);
+
+    const gemSlots = calculateGemSlots(items.filter((i: any) => i.type === 'Gem' && !i.system?.stashed));
+    const coinSlots = calculateCoinSlots(effectApplied.coins);
+
+    computed.slotBreakdown = {
+        gear: gearSlots,
+        treasure: treasureSlots,
+        gems: gemSlots,
+        coins: coinSlots
+    };
+
+    computed.slotsUsed = Math.max(0, gearSlots + treasureSlots + gemSlots + coinSlots);
     computed.gearSlots = computed.maxSlots; // Compatibility mapping
 
     // 5. Find Key Items (Class, Ancestry, etc.) - Moved up for leveling logic
@@ -633,7 +741,7 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
 
     // 9. Inventory Categorization (for UI components)
     // Exclude non-physical items like Spells, Talents, etc.
-    const physicalItems = items.filter(i => 
+    const physicalItems = items.filter(i =>
         !['Talent', 'Spell', 'Effect', 'Class', 'Ancestry', 'Background', 'Deity', 'Title', 'Language', 'Patron', 'Gem', 'Boon'].includes(i.type)
     );
 

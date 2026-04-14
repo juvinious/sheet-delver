@@ -131,7 +131,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             const selectedNames = new Set(selectedSpells.map((s: { name: string }) => s.name));
 
             const toAdd = selectedSpells.filter((s: { name: string }) => !currentNames.has(s.name));
-            const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; }) => !selectedNames.has(s.name));
+            const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; computed?: any; }) => !selectedNames.has(s.name) && !s.computed?.isInnate);
 
             setTargetSpellNames(selectedNames);
 
@@ -401,7 +401,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             uuid: s.flags?.core?.sourceId || s.uuid || s._id,
             tier: editingTier,
             img: s.img,
-            system: s.system
+            system: s.system,
+            isInnate: !!s.computed?.isInnate
         }));
     }, [actor.items, editingTier, modalFilterClass, spellSources, resolveName]);
 
@@ -637,6 +638,12 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 const max = getMaxSpellsForSource(tier, source.classKey);
                                                 const current = (actor.items || []).filter((i: any) => {
                                                     if (i.type !== 'Spell') return false;
+
+                                                    // Exclude free spells granted by talents from the count
+                                                    const sourceId = i.flags?.core?.sourceId || i.uuid || i._id;
+                                                    const isFree = i.computed?.isInnate || (actor.computed?.freeSpellUuids || []).some((id: string) => sourceId === id || (typeof sourceId === 'string' && (sourceId.endsWith(id) || (i.uuid && i.uuid.endsWith(id)))));
+                                                    if (isFree) return false;
+
                                                     if (Number(i.system?.tier) !== tier) return false;
                                                     const classData = i.system?.class || "";
                                                     const spellClass = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
@@ -849,6 +856,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                     maxSelections={maxSelections}
                     token={token}
                     isSaving={isSaving}
+                    actor={actor}
                 />
             )}
 

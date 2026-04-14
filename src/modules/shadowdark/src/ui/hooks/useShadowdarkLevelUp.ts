@@ -45,7 +45,9 @@ export function useShadowdarkLevelUp(
                     // Also fetch languages if currentLevel is 0 (initial gear/lang selection)
                     currentLevel === 0 ? onFetchPack('languages') : Promise.resolve([])
                 ]);
-                fetchedClasses = Array.isArray(classes) ? classes : [];
+                fetchedClasses = (Array.isArray(classes) ? classes : []).filter(
+                    (c: any) => (c.name || "").toLowerCase() !== "level 0"
+                );
                 fetchedPatrons = Array.isArray(patrons) ? patrons : [];
                 fetchedLanguages = Array.isArray(languages) ? languages : [];
             } finally {

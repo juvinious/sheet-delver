@@ -58,14 +58,6 @@ export default function ShadowdarkPaperSheet({
         { label: 'CHA', key: 'cha' },
     ];
 
-    // Calculate detailed slots
-    const calculateSlots = () => {
-        const items = actor.items || [];
-        // Use the pre-calculated slotsUsed from the adapter if available
-        return items.reduce((acc: number, item: any) => acc + (item.slotsUsed || 0), 0);
-    };
-
-    const usedSlots = calculateSlots();
 
     // Helper for gear status
     const getGearStatus = (item: any) => {
@@ -459,7 +451,7 @@ export default function ShadowdarkPaperSheet({
                         <div className="border-2 border-black h-16 relative flex flex-col items-center justify-center">
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Slots</div>
                             <div className="text-2xl font-bold">
-                                {actor.computed?.slotsUsed ?? usedSlots} / {actor.computed?.maxSlots ?? actor.system?.slots ?? 10}
+                                {actor.computed?.slotsUsed ?? 0} / {actor.computed?.maxSlots ?? 10}
                             </div>
                         </div>
 
