@@ -6,26 +6,24 @@ import { useConfig } from '@client/ui/context/ConfigContext';
 import { Plus, Edit2 } from 'lucide-react';
 import AddEffectsModal from './components/AddEffectsModal';
 
+
 interface EffectsTabProps {
-    actor: any;
-    token?: string | null;
-    onToggleEffect: (effectId: string, enabled: boolean) => void;
-    onDeleteEffect: (effectId: string) => void;
-    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
-    onCreateEffect?: (effectData: any) => Promise<void>;
-    onUpdateEffect?: (effectData: any) => Promise<void>;
 }
 
-export default function EffectsTab({
-    actor,
-    token: _token,
-    onToggleEffect,
-    onDeleteEffect,
-    onAddPredefinedEffect: _onAddPredefinedEffect,
-    onCreateEffect,
-    onUpdateEffect
-}: EffectsTabProps) {
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+
+interface EffectsTabProps {
+}
+
+export default function EffectsTab({ }: EffectsTabProps) {
     const { resolveImageUrl } = useConfig();
+    const { 
+        actor, 
+        toggleEffect, 
+        deleteEffect, 
+        createEffect, 
+        updateEffect 
+    } = useShadowdarkActor();
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingEffect, setEditingEffect] = useState<any>(null);
@@ -119,7 +117,7 @@ export default function EffectsTab({
                                     <Edit2 className="w-5 h-5" />
                                 </button>
                                 <button
-                                    onClick={() => onToggleEffect(e._id || e.id, !!e.disabled)}
+                                    onClick={() => toggleEffect(e._id || e.id, !!e.disabled)}
                                     title={e.disabled ? "Enable Effect" : "Disable Effect"}
                                     className={`w-6 h-6 rounded flex items-center justify-center border transition-all ${!e.disabled ? 'bg-black text-white border-black' : 'bg-white text-neutral-300 border-neutral-300 hover:border-black'}`}
                                 >
@@ -142,17 +140,6 @@ export default function EffectsTab({
         );
     };
 
-    const handleCreateEffect = async (effectData: any) => {
-        if (onCreateEffect) {
-            await onCreateEffect(effectData);
-        }
-    };
-
-    const handleUpdateEffect = async (effectData: any) => {
-        if (onUpdateEffect) {
-            await onUpdateEffect(effectData);
-        }
-    };
 
     return (
         <div className="space-y-8 pb-20">
@@ -204,8 +191,8 @@ export default function EffectsTab({
                 message="Are you sure you want to remove this effect?"
                 confirmLabel="Delete"
                 onConfirm={() => {
-                    if (effectToDelete && onDeleteEffect) {
-                        onDeleteEffect(effectToDelete);
+                    if (effectToDelete) {
+                        deleteEffect(effectToDelete);
                         setEffectToDelete(null);
                     }
                 }}
@@ -218,8 +205,8 @@ export default function EffectsTab({
                     setIsModalOpen(false);
                     setEditingEffect(null);
                 }}
-                onCreate={handleCreateEffect}
-                onUpdate={handleUpdateEffect}
+                onCreate={createEffect}
+                onUpdate={updateEffect}
                 initialData={editingEffect}
             />
         </div>

@@ -10,52 +10,38 @@ import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from './themes/shadowdark';
 import { isRareLanguage } from '../logic/rules';
 import { useShadowdarkUI } from './context/ShadowdarkUIContext';
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+import dynamic from 'next/dynamic';
+import LoadingModal from '@client/ui/components/LoadingModal';
+import { LevelUpModal } from './components/LevelUpModal';
 
 interface DetailsTabProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
     foundryUrl?: string;
-    onCreateItem?: (itemData: any) => Promise<void>;
-    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
-    onDeleteItem?: (itemId: string) => void;
-    onToggleEffect?: (effectId: string, enabled: boolean) => void;
-    triggerLevelUp?: () => void;
 }
 
-export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem, onDeleteItem, triggerLevelUp }: DetailsTabProps) {
+export default function DetailsTab({}: DetailsTabProps) {
     const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
+    const {
+        actor,
+        updateActor,
+        deleteItem,
+        createItem,
+        updateItem,
+        getDraftValue,
+        refreshActor,
+        // Level-up state — single shared instance from context
+        triggerLevelUp,
+        showLevelUpModal,
+        levelUpData,
+        closeLevelUp
+    } = useShadowdarkActor();
+    const [selectionModal, setSelectionModal] = useState<any>({ isOpen: false });
     const [isCreatingBoon, setIsCreatingBoon] = useState(false);
     const [editingItem, setEditingItem] = useState<any>(null);
     const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
     const [isLanguageModalOpen, setIsLanguageModalOpen] = useState(false);
     const [fetchingCategory, setFetchingCategory] = useState<string | null>(null);
-
-    // Selection Modal State
-    const [selectionModal, setSelectionModal] = useState<{
-        isOpen: boolean;
-        title: string;
-        options: any[];
-        currentValue: any;
-        multiSelect: boolean;
-        isLoading: boolean;
-        onSelect: (val: any) => void;
-    }>({
-        isOpen: false,
-        title: '',
-        options: [],
-        currentValue: '',
-        multiSelect: false,
-        isLoading: false,
-        onSelect: () => { }
-    });
-
-    // XP State Sync
-    const [xpVal, setXpVal] = useState(actor.system?.level?.xp || 0);
-
-    useEffect(() => {
-        setXpVal(actor.system?.level?.xp || 0);
-    }, [actor.system?.level?.xp]);
 
     const getClassName = () => {
         if (!actor.details?.class) {
@@ -96,7 +82,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
             currentValue: hasData && dataKey ? resolveName(current, dataKey) : current,
             multiSelect,
             isLoading: !hasData,
-            onSelect: (option) => handleSelection(field, option, multiSelect)
+            onSelect: (option: any) => handleSelection(field, option, multiSelect)
         });
 
         // 2. Hydration: If data is missing or incomplete, fetch it and update modal
@@ -105,7 +91,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
             try {
                 const fetched = await fetchPack(dataKey);
                 if (Array.isArray(fetched)) {
-                    setSelectionModal(prev => ({
+                    setSelectionModal((prev: any) => ({
                         ...prev,
                         isLoading: false,
                          options: fetched.map((o: any) => ({
@@ -127,7 +113,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
 
         // Handle Multi-Select (Toggle)
         if (multiSelect) {
-            setSelectionModal(prev => {
+            setSelectionModal((prev: any) => {
                 const currentVal = prev.currentValue;
                 const modalOptions = prev.options;
 
@@ -136,7 +122,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                     const val = typeof c === 'object' ? (c.uuid || c.name) : c;
                     if (!val) return '';
 
-                    const match = modalOptions.find(o => o.uuid === val || o.name === val);
+                    const match = modalOptions.find((o: any) => o.uuid === val || o.name === val);
                     if (match && match.uuid) return match.uuid;
 
                     return val;
@@ -152,12 +138,12 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                     newArray.push(targetVal);
                 }
 
-                setTimeout(() => onUpdate(field, newArray), 0);
+                setTimeout(() => updateActor(field, newArray, { immediate: true }), 0);
                 return { ...prev, currentValue: newArray };
             });
         } else {
-            onUpdate(field, valToStore);
-            setSelectionModal(prev => ({ ...prev, isOpen: false }));
+            updateActor(field, valToStore, { immediate: true });
+            setSelectionModal((prev: any) => ({ ...prev, isOpen: false }));
         }
     }
     const cardStyle = "bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col gap-2 relative";
@@ -181,14 +167,17 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                         </div>
                         <div className="p-2 text-center font-serif text-xl font-bold bg-white flex items-center justify-center min-h-[44px]">
                             {actor.computed?.levelUp ? (
+                                /* When eligible to level up, render a clickable button just like the header */
                                 <button
                                     onClick={triggerLevelUp}
-                                    className="bg-amber-500 text-black px-2 py-1 text-xs md:text-sm font-bold rounded animate-pulse shadow-lg ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors cursor-pointer"
+                                    className="bg-amber-500 text-black px-3 py-1 text-sm font-black uppercase tracking-widest animate-pulse shadow-md ring-2 ring-amber-400/50 hover:bg-amber-400 transition-colors w-full"
                                 >
                                     LEVEL UP!
                                 </button>
                             ) : (
-                                <span>{actor.system?.level?.value ?? 1}</span>
+                                <span>
+                                    {actor.system?.level?.value ?? 1}
+                                </span>
                             )}
                         </div>
                     </div>
@@ -226,19 +215,16 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                         <div className={`p-2 flex items-center justify-center gap-2 font-serif text-lg bg-white min-h-[44px] ${(!actor.system?.level?.value || actor.system.level.value === 0) ? 'opacity-50 grayscale cursor-not-allowed' : ''}`}>
                             <input
                                 type="number"
-                                value={xpVal}
+                                value={getDraftValue('system.level.xp', actor.system?.level?.xp || 0)}
                                 min={0}
                                 max={actor.level?.next || 10}
                                 disabled={!actor.system?.level?.value || actor.system.level.value === 0}
-                                onChange={(e) => setXpVal(parseInt(e.target.value) || 0)}
-                                onBlur={(e) => {
+                                onChange={(e) => {
                                     const nextXP = actor.level?.next || 10;
-                                    let val = parseInt(e.target.value);
-                                    if (isNaN(val)) val = 0;
+                                    let val = parseInt(e.target.value) || 0;
                                     if (val < 0) val = 0;
                                     if (val > nextXP) val = nextXP;
-                                    // if (val !== xpVal) setXpVal(val); // Optional local clamp
-                                    if (val !== actor.system?.level?.xp) onUpdate('system.level.xp', val);
+                                    updateActor('system.level.xp', val);
                                 }}
                                 className={`w-12 bg-neutral-100 border-b border-black text-center outline-none px-1 disabled:bg-transparent disabled:border-transparent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
                             />
@@ -295,7 +281,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                             <select
                                 className="w-full bg-neutral-50 outline-none cursor-pointer font-serif font-bold text-lg px-1 border border-dashed border-neutral-200"
                                 value={actor.system?.alignment || 'neutral'}
-                                onChange={(e) => onUpdate('system.alignment', e.target.value)}
+                                onChange={(e) => updateActor('system.alignment', e.target.value, { immediate: true })}
                             >
                                 <option value="lawful">Lawful</option>
                                 <option value="neutral">Neutral</option>
@@ -453,15 +439,13 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                 <div className={cardStyle}>
                     <div className="bg-black text-white p-1 -mx-4 -mt-4 mb-2 px-2 border-b border-white flex justify-between items-center">
                         <span className="font-serif font-bold text-lg uppercase">Boons</span>
-                        {onCreateItem && (
-                            <button
-                                onClick={() => setIsCreatingBoon(true)}
-                                className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
-                                title="Add Boon"
-                            >
-                                Add
-                            </button>
-                        )}
+                        <button
+                            onClick={() => setIsCreatingBoon(true)}
+                            className="bg-white text-black px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
+                            title="Add Boon"
+                        >
+                            Add
+                        </button>
                     </div>
                     <div className="grid grid-cols-12 text-xs font-bold uppercase tracking-widest text-neutral-500 border-b-2 border-black px-2 py-1 mb-2">
                         <div className="col-span-5">Boon Name</div>
@@ -486,25 +470,21 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                                     <div className="col-span-2 text-center">{item.system?.level?.value || item.system?.level || '-'}</div>
                                     <div className="col-span-2 flex justify-end gap-2">
                                         {/* Edit Item - ADDED */}
-                                        {onUpdateItem && (
-                                            <button
-                                                onClick={() => setEditingItem(item)}
-                                                className="bg-black text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-800 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
-                                                title="Edit Boon"
-                                            >
-                                                Edit
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={() => setEditingItem(item)}
+                                            className="bg-black text-white px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-800 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,0.2)]"
+                                            title="Edit Boon"
+                                        >
+                                            Edit
+                                        </button>
                                         {/* Delete Item */}
-                                        {onDeleteItem && (
-                                            <button
-                                                onClick={() => setItemToDelete({ id: item.id, name: item.name })}
-                                                className="bg-white text-black px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
-                                                title="Delete Boon"
-                                            >
-                                                Del
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={() => setItemToDelete({ id: item.id, name: item.name })}
+                                            className="bg-white text-black px-3 py-1 text-[10px] font-bold uppercase tracking-wider border border-black hover:bg-neutral-200 transition-colors shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]"
+                                            title="Delete Boon"
+                                        >
+                                            Del
+                                        </button>
                                     </div>
                                 </div>
                             ))}
@@ -516,12 +496,12 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
             </div>
 
             {
-                (isCreatingBoon || editingItem) && onCreateItem && (
+                (isCreatingBoon || editingItem) && (
                     <CustomBoonModal
                         isOpen={true}
                         onClose={() => { setIsCreatingBoon(false); setEditingItem(null); }}
-                        onCreate={onCreateItem!}
-                        onUpdate={onUpdateItem}
+                        onCreate={createItem}
+                        onUpdate={updateItem}
                         initialData={editingItem}
                         systemConfig={{ ...systemData, ...collections }}
                         predefinedEffects={collections?.PREDEFINED_EFFECTS || systemData?.PREDEFINED_EFFECTS}
@@ -536,7 +516,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                 confirmLabel="Delete"
                 isDanger={true}
                 onConfirm={() => {
-                    if (itemToDelete && onDeleteItem) onDeleteItem(itemToDelete.id);
+                    if (itemToDelete) deleteItem(itemToDelete.id);
                     setItemToDelete(null);
                 }}
                 onCancel={() => setItemToDelete(null)}
@@ -547,7 +527,7 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
 
             <CompendiumSelectModal
                 isOpen={selectionModal.isOpen}
-                onClose={() => setSelectionModal(prev => ({ ...prev, isOpen: false }))}
+                onClose={() => setSelectionModal((prev: any) => ({ ...prev, isOpen: false }))}
                 onSelect={selectionModal.onSelect}
                 title={selectionModal.title}
                 options={selectionModal.options}
@@ -558,10 +538,38 @@ export default function DetailsTab({ actor, onUpdate, onCreateItem, onUpdateItem
                 <LanguageSelectionModal
                     isOpen={true}
                     onClose={() => setIsLanguageModalOpen(false)}
-                    onSelect={(langs) => onUpdate('system.languages', langs)}
+                    onSelect={(langs) => {
+                        setIsLanguageModalOpen(false);
+                        updateActor('system.languages', langs, { immediate: true });
+                    }}
                     currentLanguages={actor.system?.languages || []}
                     maxCommon={actor.computed?.languageLimits?.maxCommon || 0}
                     maxRare={actor.computed?.languageLimits?.maxRare || 0}
+                />
+            )}
+
+            {/* Level-Up Modal — shared state from ShadowdarkActorContext, rendered here for the Details tab Level card */}
+            {showLevelUpModal && levelUpData && (
+                <LevelUpModal
+                    actorId={actor._id || actor.id}
+                    actorName={actor.name}
+                    currentLevel={levelUpData.currentLevel}
+                    targetLevel={levelUpData.targetLevel}
+                    ancestry={levelUpData.ancestry}
+                    classObj={levelUpData.classObj}
+                    classUuid={levelUpData.classUuid}
+                    patron={levelUpData.patron}
+                    patronUuid={levelUpData.patronUuid}
+                    abilities={levelUpData.abilities}
+                    spells={levelUpData.spells}
+                    availableClasses={levelUpData.availableClasses}
+                    availablePatrons={levelUpData.availablePatrons}
+                    availableLanguages={levelUpData.availableLanguages}
+                    onComplete={async (_data: any) => {
+                        await refreshActor();
+                        closeLevelUp();
+                    }}
+                    onCancel={closeLevelUp}
                 />
             )}
         </div>

@@ -4,34 +4,21 @@ import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
 import { logger } from '@shared/utils/logger';
 
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+import { useShadowdarkUI } from './context/ShadowdarkUIContext';
+
 interface NotesTabProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
-    token?: string | null;
 }
 
-export default function NotesTab({ actor, onUpdate, token }: NotesTabProps) {
+export default function NotesTab({ }: NotesTabProps) {
+    const { token } = useShadowdarkUI();
+    const { actor, updateActor, getDraftValue } = useShadowdarkActor();
 
-    // Use normalized notes path from system.ts
-    const notesContent = actor.details?.notes || '';
+    const notesContent = getDraftValue('system.notes', actor.details?.notes || '');
 
     const handleSave = async (html: string) => {
         try {
-            const res = await fetch(`/api/modules/shadowdark/actors/${actor.id}/notes`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ notes: html })
-            });
-
-            if (!res.ok) {
-                throw new Error('Failed to save notes');
-            }
-
-            // Update local state to reflect the change
-            onUpdate('details.notes', html);
+            await updateActor('system.notes', html, { immediate: true });
         } catch (error) {
             logger.error('Error saving notes:', error);
             throw error;

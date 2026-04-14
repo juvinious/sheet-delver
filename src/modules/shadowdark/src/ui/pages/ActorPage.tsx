@@ -11,6 +11,8 @@ import { resolveImage, processHtmlContent, getSafeDescription } from '@modules/r
 import { useNotifications } from '@client/ui/components/NotificationSystem';
 import LoadingModal from '@client/ui/components/LoadingModal';
 import { SharedContentModal } from '@client/ui/components/SharedContentModal';
+import { ShadowdarkActorProvider } from '../context/ShadowdarkActorContext';
+import { ShadowdarkUIProvider } from '../context/ShadowdarkUIContext';
 
 export interface ShadowdarkActorPageProps {
     actorId: string;
@@ -162,15 +164,6 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
         }
     };
 
-    /**
-     * Imperatively triggers a full synchronization of actor data from the server.
-     * This is intended for complex or batch operations where automatic socket-based
-     * synchronization might be insufficient, delayed, or missed.
-     */
-    const handleSync = useCallback(async () => {
-        if (!actorId) return;
-        await fetchActor(actorId, true);
-    }, [actorId, fetchActor]);
 
     // --- Shadowdark-specific: Effect handlers ---
 
@@ -321,24 +314,59 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
 
             {actor && (
                 <div className="w-full max-w-5xl mx-auto p-4 pt-20">
-                    <SheetRouter
-                        systemId={actor.systemId || 'shadowdark'}
+                    <ShadowdarkUIProvider token={token}>
+                        <ShadowdarkActorProvider
                         actor={actor}
-                        foundryUrl={actor?.foundryUrl}
-                        token={token}
-                        isOwner={actor?.isOwner ?? true}
-                        onRoll={handleRoll}
                         onUpdate={handleUpdate}
-                        onToggleEffect={handleToggleEffect}
-                        onDeleteEffect={handleDeleteEffect}
                         onDeleteItem={handleDeleteItem}
                         onCreateItem={handleCreateItem}
                         onUpdateItem={handleUpdateItem}
+                        onRoll={handleRoll}
+                        onToggleEffect={handleToggleEffect}
+                        onDeleteEffect={handleDeleteEffect}
+                        onCreateEffect={async (effectData) => {
+                            const id = actor.id || actor._id;
+                            const res = await fetchWithAuth(`/api/modules/shadowdark/actors/${id}/effects/create`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(effectData)
+                            });
+                            const data = await res.json();
+                            if (data.success) fetchActor(id, true);
+                        }}
+                        onUpdateEffect={async (effectData) => {
+                            const id = actor.id || actor._id;
+                            const res = await fetchWithAuth(`/api/modules/shadowdark/actors/${id}/effects/update`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(effectData)
+                            });
+                            const data = await res.json();
+                            if (data.success) fetchActor(id, true);
+                        }}
                         onAddPredefinedEffect={handleTogglePredefinedEffect}
-                        onToggleDiceTray={toggleDiceTray}
-                        isDiceTrayOpen={isDiceTrayOpen}
-                    />
-                </div>
+                        onRefresh={async () => { await fetchActor(actor.id || actor._id, true) }}
+                    >
+                        <SheetRouter
+                            systemId={actor.systemId || 'shadowdark'}
+                            actor={actor}
+                            foundryUrl={actor?.foundryUrl}
+                            token={token}
+                            isOwner={actor?.isOwner ?? true}
+                            onRoll={handleRoll}
+                            onUpdate={handleUpdate}
+                            onToggleEffect={handleToggleEffect}
+                            onDeleteEffect={handleDeleteEffect}
+                            onDeleteItem={handleDeleteItem}
+                            onCreateItem={handleCreateItem}
+                            onUpdateItem={handleUpdateItem}
+                            onAddPredefinedEffect={handleTogglePredefinedEffect}
+                            onToggleDiceTray={toggleDiceTray}
+                            isDiceTrayOpen={isDiceTrayOpen}
+                        />
+                    </ShadowdarkActorProvider>
+                </ShadowdarkUIProvider>
+            </div>
             )}
 
             <SharedContentModal />

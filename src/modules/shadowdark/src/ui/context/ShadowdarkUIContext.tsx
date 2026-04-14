@@ -22,6 +22,7 @@ interface ShadowdarkUIState {
     fetchPack: (packId: string) => Promise<any>;
     resolveName: (value: string, collection?: string) => string;
     resolveUuid: (nameOrValue: string, collection: string) => string;
+    token?: string | null;
 }
 
 const ShadowdarkUIContext = createContext<ShadowdarkUIState | undefined>(undefined);
@@ -153,7 +154,8 @@ export function ShadowdarkUIProvider({
         loadingSystem,
         fetchPack,
         resolveName,
-        resolveUuid
+        resolveUuid,
+        token
     };
 
     return (

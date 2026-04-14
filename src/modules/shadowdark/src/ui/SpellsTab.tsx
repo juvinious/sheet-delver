@@ -9,29 +9,31 @@ import { useConfig } from '@client/ui/context/ConfigContext';
 import SpellSelectionModal from './components/SpellSelectionModal';
 
 import { Loader2 } from 'lucide-react';
+import { useNotifications } from '@client/ui/components/NotificationSystem';
 import { logger } from '@shared/utils/logger';
 import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
-interface SpellsTabProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
-    triggerRollDialog: (type: string, key: string, options?: any) => void;
-    onRoll: (type: string, key: string, options?: any) => void;
-    onDeleteItem?: (itemId: string) => void;
-    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
-    addNotification: (message: string, type?: 'info' | 'success' | 'error', options?: any) => void;
-    token?: string | null;
-}
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, onUpdateItem, addNotification, token }: SpellsTabProps) {
-    const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
+interface SpellsTabProps {}
+
+export default function SpellsTab({}: SpellsTabProps) {
+    const { addNotification } = useNotifications();
+    const { systemData, collections, fetchPack, resolveName, token } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
+    const {
+        actor,
+        updateActor,
+        deleteItem,
+        updateItem, 
+        getDraftValue,
+        triggerRollDialog
+    } = useShadowdarkActor();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [editingTier, setEditingTier] = useState<number | null>(null);
     const [modalFilterClass, setModalFilterClass] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [optimisticLostState, setOptimisticLostState] = useState<Record<string, boolean>>({});
 
 
     /**
@@ -45,15 +47,20 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         if (iTier !== tier) return false;
 
         const classData = item.system?.class || item.class || '';
-        const classArray = Array.isArray(classData)
-            ? classData
-            : (typeof classData === 'string' ? classData.split(',').map(s => s.trim()) : [classData]);
+        let classArray: any[] = [];
+        if (Array.isArray(classData)) {
+            classArray = classData;
+        } else if (typeof classData === 'string') {
+            classArray = classData.split(',').map(s => s.trim()).filter(Boolean);
+        } else if (classData && typeof classData === 'object') {
+            classArray = [classData.name || classData.label || String(classData)];
+        }
 
         const filterLower = classKey.toLowerCase();
         const source = spellSources.find((s: any) => s.classKey === filterLower);
 
         // Resolve class names from UUIDs/IDs using context resolver
-        const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase());
+        const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase()).filter(Boolean);
 
         // Primary class match: if spell has no class assigned, it belongs to the primary class source
         const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
@@ -61,28 +68,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
         return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
     }
 
-    // Sync "lost" state and clear optimistic overrides when confirmed by backend
-    useEffect(() => {
-        const optimisticIds = Object.keys(optimisticLostState);
-        if (optimisticIds.length === 0) return;
-
-        const spells = (actor.items || []).filter((i: any) => i.type === 'Spell');
-        let hasChanges = false;
-        const newState = { ...optimisticLostState };
-
-        optimisticIds.forEach(id => {
-            const spell = spells.find((s: any) => (s.id || s._id) === id);
-            // If we found the spell and it now matches our optimistic state, clear the override
-            if (spell && spell.system?.lost === optimisticLostState[id]) {
-                delete newState[id];
-                hasChanges = true;
-            }
-        });
-
-        if (hasChanges) {
-            setOptimisticLostState(newState);
-        }
-    }, [actor.items, optimisticLostState]);
+    // Optimistic "lost" state is now handled by getDraftValue in the render loop or handlers
 
     // Hydration: Ensure spells and classes are loaded
     useEffect(() => {
@@ -114,33 +100,18 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             const action = rollBtn.getAttribute('data-action');
             if (action === 'roll-check') {
                 const stat = rollBtn.getAttribute('data-stat');
-                if (stat) onRoll('ability', stat);
+                if (stat) triggerRollDialog('ability', stat);
             }
         }
     };
 
     const isLost = (spell: any) => {
         const id = spell.id || spell._id;
-        if (optimisticLostState[id] !== undefined) {
-            return optimisticLostState[id];
-        }
-        return spell.system?.lost;
+        return getDraftValue(`items.${id}.system.lost`, spell.system?.lost);
     };
 
     const handleLostToggle = (spellId: string, currentLost: boolean) => {
-        setOptimisticLostState(prev => ({
-            ...prev,
-            [spellId]: !currentLost
-        }));
-
-        if (onUpdateItem) {
-            onUpdateItem({
-                _id: spellId,
-                system: { lost: !currentLost }
-            });
-        } else {
-            onUpdate(`items.${spellId}.system.lost`, !currentLost);
-        }
+        updateActor(`items.${spellId}.system.lost`, !currentLost, { immediate: true });
     };
 
     const handleManageSpells = async (selectedSpells: any[]) => {
@@ -153,8 +124,8 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             );
 
             // Filter out innate spells from the management logic entirely.
-            const managedSelectedSpells = selectedSpells.filter(s => !s.isInnate);
-            const managedCurrentSpells = currentSpells.filter(s => !s.computed?.isInnate);
+            const managedSelectedSpells = selectedSpells.filter((s: any) => !s.isInnate);
+            const managedCurrentSpells = currentSpells.filter((s: any) => !s.computed?.isInnate);
 
             const currentNames = new Set(managedCurrentSpells.map((s: { name: string }) => s.name));
             const selectedNames = new Set(managedSelectedSpells.map((s: { name: string }) => s.name));
@@ -164,7 +135,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
             const tasks = [
                 ...toAdd.map((spell: any) => handleAddSpell(spell)),
-                ...(onDeleteItem ? toRemove.map((spell: any) => onDeleteItem(spell.id || spell._id)) : [])
+                ...toRemove.map((spell: any) => deleteItem(spell.id || spell._id))
             ];
 
             // Fire updates and clear management state immediately (optimistic)

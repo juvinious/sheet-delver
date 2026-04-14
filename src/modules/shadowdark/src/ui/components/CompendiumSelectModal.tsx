@@ -23,10 +23,10 @@ export default function CompendiumSelectModal({ isOpen, onClose, onSelect, title
     const [search, setSearch] = useState('');
 
     const filteredOptions = useMemo(() => {
-        let result = options;
+        let result = options || [];
         if (search) {
             const lower = search.toLowerCase();
-            result = options.filter(o =>
+            result = result.filter(o =>
                 o.name.toLowerCase().includes(lower) ||
                 (o.description && o.description.toLowerCase().includes(lower))
             );

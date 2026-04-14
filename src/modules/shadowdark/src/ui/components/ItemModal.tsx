@@ -2,22 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { X, Flame, Utensils, Shield, Sword, Package, Archive, Minus, Plus } from 'lucide-react';
 import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
 
+import { useShadowdarkActor } from '../context/ShadowdarkActorContext';
+
 interface ItemModalProps {
     isOpen: boolean;
     onClose: () => void;
     item: any;
-    onUpdate: (path: string, value: any) => void;
-    actor: any;
 }
 
 export default function ItemModal({
     isOpen,
     onClose,
-    item: initialItem,
-    onUpdate,
-    actor
+    item: initialItem
 }: ItemModalProps) {
     const { resolveName } = useShadowdarkUI();
+    const { actor, updateActor } = useShadowdarkActor();
     // Find the actual item in the actor's list to ensure reactivity when parent state updates
     const item = actor?.items?.find((i: any) => (i.id || i._id) === (initialItem?.id || initialItem?._id)) || initialItem;
 
@@ -110,29 +109,29 @@ export default function ItemModal({
     };
 
     const handleToggleEquip = () => {
-        onUpdate(`items.${item.id}.system.equipped`, !item.system?.equipped);
+        updateActor(`items.${item.id}.system.equipped`, !item.system?.equipped);
         if (!item.system?.equipped) {
-            onUpdate(`items.${item.id}.system.stashed`, false);
+            updateActor(`items.${item.id}.system.stashed`, false);
         }
         onClose();
     };
 
     const handleToggleStashed = () => {
-        onUpdate(`items.${item.id}.system.stashed`, !item.system?.stashed);
+        updateActor(`items.${item.id}.system.stashed`, !item.system?.stashed);
         if (!item.system?.stashed) {
-            onUpdate(`items.${item.id}.system.equipped`, false);
+            updateActor(`items.${item.id}.system.equipped`, false);
         }
         onClose();
     };
 
     const handleToggleLight = () => {
-        onUpdate(`items.${item.id}.system.light.active`, !item.system?.light?.active);
+        updateActor(`items.${item.id}.system.light.active`, !item.system?.light?.active);
         onClose();
     };
 
     const handleUseRation = () => {
         const qty = Math.max(0, (item.system?.quantity || 0) - 1);
-        onUpdate(`items.${item.id}.system.quantity`, qty);
+        updateActor(`items.${item.id}.system.quantity`, qty);
         onClose();
     };
 
@@ -140,14 +139,14 @@ export default function ItemModal({
         e.stopPropagation();
         const newVal = (localQuantity || 0) + 1;
         setLocalQuantity(newVal);
-        onUpdate(`items.${item.id}.system.quantity`, newVal);
+        updateActor(`items.${item.id}.system.quantity`, newVal);
     };
 
     const handleDecreaseQuantity = (e: React.MouseEvent) => {
         e.stopPropagation();
         const newVal = Math.max(0, (localQuantity || 0) - 1);
         setLocalQuantity(newVal);
-        onUpdate(`items.${item.id}.system.quantity`, newVal);
+        updateActor(`items.${item.id}.system.quantity`, newVal);
     };
 
     return (

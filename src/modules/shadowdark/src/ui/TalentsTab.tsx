@@ -7,13 +7,14 @@ import {
 } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
 
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+
 interface TalentsTabProps {
-    actor: any;
-    onRoll: (type: string, key: string, options?: any) => void;
 }
 
-export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
+export default function TalentsTab({ }: TalentsTabProps) {
     const { resolveImageUrl } = useConfig();
+    const { actor, triggerRollDialog } = useShadowdarkActor();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
     const toggleItem = (id: string) => {
@@ -36,7 +37,7 @@ export default function TalentsTab({ actor, onRoll }: TalentsTabProps) {
             const action = rollBtn.getAttribute('data-action');
             if (action === 'roll-check') {
                 const stat = rollBtn.getAttribute('data-stat');
-                if (stat) onRoll('ability', stat);
+                if (stat) triggerRollDialog('ability', stat);
             }
         }
     };

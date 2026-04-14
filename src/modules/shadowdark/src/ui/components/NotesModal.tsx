@@ -6,21 +6,20 @@ import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
 import { logger } from '@shared/utils/logger';
 
+import { useShadowdarkActor } from '../context/ShadowdarkActorContext';
+import { useShadowdarkUI } from '../context/ShadowdarkUIContext';
+
 interface NotesModalProps {
     isOpen: boolean;
     onClose: () => void;
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
-    token?: string | null;
 }
 
 export default function NotesModal({
     isOpen,
-    onClose,
-    actor,
-    onUpdate,
-    token
+    onClose
 }: NotesModalProps) {
+    const { token } = useShadowdarkUI();
+    const { actor, updateActor } = useShadowdarkActor();
     if (!isOpen) return null;
 
     const notesContent = actor.details?.notes || '';
@@ -41,7 +40,7 @@ export default function NotesModal({
             }
 
             // Update local state to reflect the change
-            onUpdate('details.notes', html);
+            updateActor('details.notes', html);
         } catch (error) {
             logger.error('Error saving notes:', error);
             throw error;

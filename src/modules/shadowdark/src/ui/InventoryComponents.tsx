@@ -7,21 +7,19 @@ import {
     formatDescription
 } from './sheet-utils';
 import { useConfig } from '@client/ui/context/ConfigContext';
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
 
 export interface QuantityControlProps {
+    itemId: string;
+    path: string;
     value: number;
     max: number;
-    onChange: (newValue: number) => void;
 }
 
-export function QuantityControl({ value, max, onChange }: QuantityControlProps) {
-    const [displayValue, setDisplayValue] = useState(value);
-
-    // Sync state with props (handles external updates and reversions)
-    useEffect(() => {
-        setDisplayValue(value);
-    }, [value]);
+export function QuantityControl({ itemId, path, value, max }: QuantityControlProps) {
+    const { updateActor, getDraftValue } = useShadowdarkActor();
+    const displayValue = getDraftValue(path, value);
 
     const handleUpdate = (e: React.MouseEvent, change: number) => {
         e.stopPropagation(); // Stop row expansion
@@ -36,11 +34,8 @@ export function QuantityControl({ value, max, onChange }: QuantityControlProps) 
 
         if (newValue === displayValue) return;
 
-        // Optimistic update
-        setDisplayValue(newValue);
-
-        // Trigger generic change
-        onChange(newValue);
+        // Trigger context update
+        updateActor(path, newValue);
     };
 
     return (
@@ -70,46 +65,35 @@ export interface ItemRowProps {
     item: any;
     expandedItems: Set<string>;
     toggleItem: (id: string) => void;
-    onUpdate: (path: string, value: any) => void;
-    onDelete?: (itemId: string) => void;
     isTreasure?: boolean;
     onSell?: (item: any) => void;
 }
 
-export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, isTreasure, onSell }: ItemRowProps) {
+export function ItemRow({ item, expandedItems, toggleItem, isTreasure, onSell }: ItemRowProps) {
     const { resolveImageUrl } = useConfig();
-    // Optimistic States
-    const [equipped, setEquipped] = useState(item.system?.equipped || false);
-    const [stashed, setStashed] = useState(item.system?.stashed || false);
-    const [lightActive, setLightActive] = useState(item.system?.light?.active || false);
+    const { updateActor, deleteItem, getDraftValue } = useShadowdarkActor();
 
-    // Sync from props
-    useEffect(() => { setEquipped(item.system?.equipped || false); }, [item.system?.equipped]);
-    useEffect(() => { setStashed(item.system?.stashed || false); }, [item.system?.stashed]);
-    useEffect(() => { setLightActive(item.system?.light?.active || false); }, [item.system?.light?.active]);
+    const itemId = item.id || item._id;
+
+    // Use Context for drafted states
+    const equipped = getDraftValue(`items.${itemId}.system.equipped`, item.system?.equipped || false);
+    const stashed = getDraftValue(`items.${itemId}.system.stashed`, item.system?.stashed || false);
+    const lightActive = getDraftValue(`items.${itemId}.system.light.active`, item.system?.light?.active || false);
 
     const handleToggleEquip = (e: React.MouseEvent) => {
         e.stopPropagation();
-        const newValue = !equipped;
-        setEquipped(newValue);
-        onUpdate(`items.${itemId}.system.equipped`, newValue);
+        updateActor(`items.${itemId}.system.equipped`, !equipped, { immediate: true });
     };
 
     const handleToggleStash = (e: React.MouseEvent) => {
         e.stopPropagation();
-        const newValue = !stashed;
-        setStashed(newValue);
-        onUpdate(`items.${itemId}.system.stashed`, newValue);
+        updateActor(`items.${itemId}.system.stashed`, !stashed, { immediate: true });
     };
 
     const handleToggleLight = (e: React.MouseEvent) => {
         e.stopPropagation();
-        const newValue = !lightActive;
-        setLightActive(newValue);
-        onUpdate(`items.${itemId}.system.light.active`, newValue);
+        updateActor(`items.${itemId}.system.light.active`, !lightActive, { immediate: true });
     };
-
-    const itemId = item.id || item._id;
     const isExpanded = expandedItems.has(itemId);
 
     // Attribute logic
@@ -212,9 +196,10 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                     ) : (
                         (item.system?.slots?.per_slot || 1) > 1 ? (
                             <QuantityControl
+                                itemId={itemId}
+                                path={`items.${itemId}.system.quantity`}
                                 value={item.system?.quantity ?? 1}
                                 max={item.system?.slots?.per_slot || 0}
-                                onChange={(val) => onUpdate(`items.${itemId}.system.quantity`, val)}
                             />
                         ) : (
                             item.showQuantity ? (item.system?.quantity || 1) : ''
@@ -284,11 +269,11 @@ export function ItemRow({ item, expandedItems, toggleItem, onUpdate, onDelete, i
                     )}
 
                     {/* Trash / Delete Item (Carried or Stashed only) */}
-                    {onDelete && !equipped && (
+                    {!equipped && (
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onDelete(itemId);
+                                deleteItem(itemId);
                             }}
                             title="Delete Item"
                             className="w-10 h-10 flex items-center justify-center rounded hover:bg-red-100 text-neutral-300 hover:text-red-600 transition-colors group/trash touch-manipulation"

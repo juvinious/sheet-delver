@@ -4,43 +4,21 @@ import { useState, useEffect } from 'react';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
-interface AbilitiesTabProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
-    triggerRollDialog: (type: string, key: string, options?: any) => void;
-    onRoll?: (type: string, key: string, options?: any) => void;
-}
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRoll }: AbilitiesTabProps) {
+export default function AbilitiesTab() {
     const { resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
+    const {
+        actor,
+        updateActor,
+        performRoll,
+        getDraftValue,
+        triggerRollDialog
+    } = useShadowdarkActor();
 
     // Common container style for standard sheet feel
     const cardStyle = "bg-white border-2 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative";
-
-    // Optimistic Logic
-    const [optimisticOverrides, setOptimisticOverrides] = useState<Record<string, any>>({});
-
-    // Clear overrides when actor data updates (server sync)
-    useEffect(() => {
-        setOptimisticOverrides({});
-    }, [actor]);
-
-    // HP State Sync
-    const [hpVal, setHpVal] = useState(actor.system?.attributes?.hp?.value || 0);
-
-    useEffect(() => {
-        setHpVal(actor.system?.attributes?.hp?.value || 0);
-    }, [actor.system?.attributes?.hp?.value]);
-
-    const handleOptimisticUpdate = (path: string, value: any) => {
-        setOptimisticOverrides(prev => ({ ...prev, [path]: value }));
-        onUpdate(path, value);
-    };
-
-    const getValue = (path: string, fallback: any) => {
-        return optimisticOverrides[path] !== undefined ? optimisticOverrides[path] : fallback;
-    };
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full overflow-hidden">
@@ -59,14 +37,12 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         <div className="flex justify-center items-baseline gap-2 font-serif text-3xl font-bold pt-2">
                             <input
                                 type="number"
-                                value={hpVal}
-                                onChange={(e) => setHpVal(parseInt(e.target.value) || 0)}
-                                onBlur={(e) => {
-                                    let val = parseInt(e.target.value);
+                                value={getDraftValue('system.attributes.hp.value', actor.system.attributes.hp.value)}
+                                onChange={(e) => {
+                                    let val = parseInt(e.target.value) || 0;
                                     const max = actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? 1;
                                     if (val > max) val = max;
-                                    if (val !== parseInt(e.target.value)) e.target.value = val.toString();
-                                    if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
+                                    updateActor('system.attributes.hp.value', val);
                                 }}
                                 onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                                 className="w-16 text-center bg-neutral-100 rounded border-b-2 border-neutral-300 focus:border-black outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -96,7 +72,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                         </div>
                         <div className="flex justify-center py-2 h-full items-center">
                             <button
-                                onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
+                                onClick={() => updateActor('system.luck.available', !actor.system?.luck?.available, { immediate: true })}
                                 className={`w-8 h-8 rounded border-2 border-black shadow-sm flex items-center justify-center transition-all bg-white hover:bg-neutral-100`}
                             >
                                 {actor.system?.luck?.available && (
@@ -329,16 +305,15 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
 
                                     <div className="divide-y divide-neutral-200">
                                         {items.map((item: any, idx) => {
-                                            // Prefer 'available' if present, otherwise 'value'
+                                            // Uses and Lost paths
                                             const usesKey = item.system?.uses?.available !== undefined ? 'available' : 'value';
                                             const usesPath = `items.${item.id}.system.uses.${usesKey}`;
                                             const lostPath = `items.${item.id}.system.lost`;
 
-                                            // Optimistic or Real values
                                             const realCurrent = item.system?.uses?.[usesKey] ?? 0;
-                                            const currentUses = getValue(usesPath, realCurrent);
+                                            const currentUses = getDraftValue(usesPath, realCurrent);
                                             const maxUses = item.system?.uses?.max || 0;
-                                            const isLost = getValue(lostPath, item.system?.lost || false);
+                                            const isLost = getDraftValue(lostPath, item.system?.lost || false);
 
                                             return (
                                                 <div
@@ -359,7 +334,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                                     <div className="w-24 flex items-center justify-center gap-1">
                                                         <button
                                                             onClick={() => {
-                                                                if (currentUses > 0) handleOptimisticUpdate(usesPath, currentUses - 1);
+                                                                if (currentUses > 0) updateActor(usesPath, currentUses - 1, { immediate: true });
                                                             }}
                                                             className="w-5 h-5 flex items-center justify-center hover:bg-neutral-200 rounded text-neutral-600 font-bold disabled:opacity-30"
                                                             disabled={currentUses <= 0 || isLost}
@@ -371,7 +346,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                                         </span>
                                                         <button
                                                             onClick={() => {
-                                                                if (currentUses < maxUses) handleOptimisticUpdate(usesPath, currentUses + 1);
+                                                                if (currentUses < maxUses) updateActor(usesPath, currentUses + 1, { immediate: true });
                                                             }}
                                                             className="w-5 h-5 flex items-center justify-center hover:bg-neutral-200 rounded text-neutral-600 font-bold disabled:opacity-30"
                                                             disabled={currentUses >= maxUses || isLost}
@@ -389,13 +364,8 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 if (currentUses > 0) {
-                                                                    if (onRoll) {
-                                                                        onRoll('use-item', item.id); // Direct call, bypass dialog
-                                                                    } else {
-                                                                        // Fallback if no direct roll provided (though it should be)
-                                                                        triggerRollDialog('use-item', item.id);
-                                                                    }
-                                                                    handleOptimisticUpdate(usesPath, currentUses - 1);
+                                                                    performRoll('use-item', item.id); // Direct call via context
+                                                                    updateActor(usesPath, currentUses - 1, { immediate: true });
                                                                 }
                                                             }}
                                                             disabled={currentUses <= 0 || isLost}
@@ -410,7 +380,7 @@ export default function AbilitiesTab({ actor, onUpdate, triggerRollDialog, onRol
                                                         <button
                                                             className={`transition-all flex items-center justify-center rounded-full w-6 h-6 border shadow-sm ${isLost ? 'bg-red-100 border-red-500 text-red-600 hover:scale-110' : 'bg-white border-neutral-300 text-neutral-300 hover:border-black hover:text-black hover:scale-110'}`}
                                                             title={isLost ? "Restore Ability" : "Mark as Lost"}
-                                                            onClick={() => handleOptimisticUpdate(lostPath, !isLost)}
+                                                            onClick={() => updateActor(lostPath, !isLost, { immediate: true })}
                                                         >
                                                             {isLost ? (
                                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">

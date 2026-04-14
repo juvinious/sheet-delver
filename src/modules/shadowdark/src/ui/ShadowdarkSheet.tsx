@@ -13,6 +13,7 @@ import { Menu, X, Check } from 'lucide-react';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import dynamic from 'next/dynamic';
 import { ShadowdarkUIProvider, useShadowdarkUI } from './context/ShadowdarkUIContext';
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
 // Sub-components
 import InventoryTab from './InventoryTab';
@@ -29,48 +30,34 @@ const LevelUpModal = dynamic(() => import('./components/LevelUpModal').then(mod 
 });
 
 import ShadowdarkPaperSheet from './ShadowdarkPaperSheet';
-import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 import { logger } from '@shared/utils/logger';
 
 interface ShadowdarkSheetProps {
-    actor: any;
     token?: string | null;
-    onRoll: (type: string, key: string, options?: any) => void;
-    onUpdate: (path: string, value: any) => void;
-    onToggleEffect: (effectId: string, enabled: boolean) => void;
-    onDeleteEffect: (effectId: string) => void;
-    onDeleteItem?: (itemId: string) => void;
-    onCreateItem?: (itemData: any) => Promise<void>;
-    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
-    onAddPredefinedEffect?: (effectId: string) => Promise<void>;
-
     onToggleDiceTray?: () => void;
     isDiceTrayOpen?: boolean;
 }
 
 export default function ShadowdarkSheet(props: ShadowdarkSheetProps) {
-    return (
-        <ShadowdarkUIProvider token={props.token}>
-            <ShadowdarkSheetInternal {...props} />
-        </ShadowdarkUIProvider>
-    );
-}
-
-function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
     const { 
-        actor, 
         token, 
-        onRoll, 
-        onUpdate, 
-        onToggleEffect, 
-        onDeleteEffect, 
-        onDeleteItem, 
-        onCreateItem, 
-        onUpdateItem, 
-        onAddPredefinedEffect, 
         onToggleDiceTray, 
         isDiceTrayOpen 
     } = props;
+
+    const { 
+        actor, 
+        getDraftValue, 
+        updateActor, 
+        rollDialog, 
+        closeRollDialog,
+        refreshActor,
+        // Level-up — single shared instance from ShadowdarkActorContext
+        triggerLevelUp,
+        showLevelUpModal,
+        levelUpData,
+        closeLevelUp
+    } = useShadowdarkActor();
     
     const { resolveImageUrl } = useConfig();
     const { systemData, loadingSystem, resolveName } = useShadowdarkUI();
@@ -80,9 +67,6 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const { notifications, addNotification, removeNotification } = useNotifications();
-
-    // Shadowdark Level-Up Logic (Consolidated)
-    const { showLevelUpModal, levelUpData, triggerLevelUp, closeLevelUp } = useShadowdarkLevelUp(actor, addNotification as any);
 
     const [viewMode, setViewMode] = useState<'simple' | 'advanced'>(() => {
         if (typeof window !== 'undefined') {
@@ -99,142 +83,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
         }
     };
 
-    const [rollDialog, setRollDialog] = useState<{
-        open: boolean;
-        title: string;
-        type: 'attack' | 'ability' | 'spell';
-        defaults: any;
-        callback: ((options: any) => void) | null;
-    }>({
-        open: false,
-        title: '',
-        type: 'attack',
-        defaults: {},
-        callback: null
-    });
-
-    const triggerRollDialog = (type: string, key: string, options: any = {}) => {
-        let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
-        let title = '';
-        const defaults: any = {};
-
-        if (options.handedness) defaults.handedness = options.handedness;
-
-        if (type === 'ability') {
-            dialogType = 'ability';
-            title = `${key.toUpperCase().replace('ABILITY', '')} Ability Check`;
-            const stat = actor.stats?.[key] || {};
-            defaults.abilityBonus = stat.mod || 0;
-        } else if (type === 'item') {
-            let item = actor.items?.find((i: any) => i.id === key || i._id === key);
-
-            // Fallback: Look in systemData (Compendium) for spells using centralized resolver
-            if (!item) {
-                const name = resolveName(key, 'spells');
-                if (name && name !== key) {
-                    // We found something! It's a "virtual" spell not on the actor
-                    item = { 
-                        name,
-                        uuid: key,
-                        type: 'Spell',
-                        system: { description: '' } // Placeholder, will be fetched if needed
-                    };
-                }
-            }
-
-            if (item) {
-                // Add itemData to defaults if it's a virtual item (not in actor.items)
-                // We check if it's NOT in actor's items
-                const itemRef = item.id || item._id;
-                const isVirtual = !actor.items?.some((i: any) => i.id === itemRef || i._id === itemRef);
-                if (isVirtual) {
-                    defaults.itemData = item;
-                }
-
-                if (item.type === 'Spell') {
-                    dialogType = 'spell';
-                    title = `Cast Spell: ${item.name}`;
-                    // Determine casting ability based on spell class
-                    // Wizard -> INT, Priest/Druid/Seer -> WIS, Bard/Warlock/Witch -> CHA
-                    const getAbilityForClass = (classes: string[] | string) => {
-                        const classArray = Array.isArray(classes) ? classes : [classes];
-                        const classNames = classArray.map(c => c?.toLowerCase() || "");
-
-                        const possibleAbilities: string[] = [];
-                        if (classNames.some(c => c.includes('wizard'))) possibleAbilities.push('int');
-                        if (classNames.some(c => c.includes('priest') || c.includes('druid') || c.includes('seer'))) possibleAbilities.push('wis');
-                        if (classNames.some(c => c.includes('bard') || c.includes('warlock') || c.includes('witch'))) possibleAbilities.push('cha');
-
-                        if (possibleAbilities.length === 0) return null;
-
-                        // If actor's casting ability is in the list of possible ones, use it
-                        const actorAbility = actor.computed?.spellcastingAbility?.toLowerCase();
-                        if (actorAbility && possibleAbilities.includes(actorAbility)) return actorAbility;
-
-                        // Otherwise pick the first one
-                        return possibleAbilities[0];
-                    };
-
-                    // Priority:
-                    // 1. Spell's explicit ability (if defined in system)
-                    // 2. Mapping from spell's class
-                    // 3. Actor's computed spellcasting ability
-                    // 4. Default to 'int'
-                    const spellClass = item.system?.class || item.class;
-                    const classAbility = spellClass ? getAbilityForClass(spellClass) : null;
-                    const statKey = item.system?.ability || classAbility || actor.computed?.spellcastingAbility || 'int';
-
-                    const stat = actor.stats?.[statKey.toLowerCase()] || {};
-                    defaults.abilityBonus = stat.mod || 0;
-
-                    const spellBonus = calculateSpellBonus(actor, item);
-                    defaults.talentBonus = spellBonus.bonus;
-                    // Note: advantage/disadvantage can be added to RollDialog later if needed
-
-                    defaults.showItemBonus = false;
-                } else {
-                    dialogType = 'attack';
-                    title = `Roll Attack with ${item.name}`;
-                    const isFinesse = item.system?.properties?.some((p: any) => p.toLowerCase().includes('finesse'));
-                    const isThrown = item.system?.properties?.some((p: any) => typeof p === 'string' && p.toLowerCase().includes('thrown'));
-                    const isRangedType = item.system?.type === 'ranged';
-                    const hasRange = item.system?.range === 'near' || item.system?.range === 'far';
-
-                    let isRanged = options.attackType === 'Ranged' || options.attackType === 'ranged';
-
-                    // Fallback logic if attackType wasn't explicitly provided
-                    if (options.attackType === undefined || options.attackType === null) {
-                        isRanged = isRangedType || hasRange || (item.system?.type === 'melee' && isThrown);
-                    }
-
-                    // title = `Roll ` + (isRanged ? 'Ranged' : isFinesse ? 'Finesse' : 'Melee') + ` Attack with ${item.name}`;
-
-                    const str = actor.stats?.str?.mod || actor.stats?.STR?.mod || 0;
-                    const dex = actor.stats?.dex?.mod || actor.stats?.DEX?.mod || 0;
-
-                    let statBonus = str;
-                    if (isRanged) statBonus = dex;
-                    else if (isFinesse) statBonus = Math.max(str, dex);
-
-                    defaults.abilityBonus = statBonus;
-                    defaults.itemBonus = item.system?.bonuses?.attackBonus || 0;
-                }
-            }
-        }
-
-        setRollDialog({
-            open: true,
-            title,
-            type: dialogType,
-            defaults,
-            callback: (rollOptions) => {
-                const finalOptions = { ...rollOptions };
-                if (defaults.itemData) finalOptions.itemData = defaults.itemData;
-                if (defaults.handedness) finalOptions.handedness = defaults.handedness;
-                onRoll(type, key, finalOptions);
-            }
-        });
-    };
+    // Session state for active tab and menu
 
     // System manifest fetching is now handled by ShadowdarkUIProvider.
 
@@ -345,11 +194,6 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
 
             {viewMode === 'simple' ? (
                 <ShadowdarkPaperSheet
-                    actor={actor}
-                    onUpdate={onUpdate}
-                    triggerRollDialog={triggerRollDialog}
-                    onRoll={onRoll}
-                    token={token}
                     onToggleView={() => {
                         handleToggleView('advanced');
                     }}
@@ -410,18 +254,14 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                                     <span className="text-neutral-500 text-[10px] uppercase font-bold tracking-widest">HP</span>
                                     <div className="flex items-center gap-1 font-serif font-bold text-xl md:text-2xl">
                                         <input
-                                            key={actor.system.attributes.hp.value} // Force remount to sync when other tabs update it
                                             type="number"
-                                            defaultValue={actor.system.attributes.hp.value}
-                                            onBlur={(e) => {
-                                                let val = parseInt(e.target.value);
+                                            value={getDraftValue('system.attributes.hp.value', actor.system.attributes.hp.value)}
+                                            onChange={(e) => {
+                                                let val = parseInt(e.target.value) || 0;
                                                 const max = actor.computed?.maxHp ?? actor.system?.attributes?.hp?.max ?? 1;
-                                                // Enforce Max HP Cap
                                                 if (val > max) val = max;
-                                                // Reset input display if it was capped
-                                                if (val !== parseInt(e.target.value)) e.target.value = val.toString();
-
-                                                if (val !== actor.system.attributes.hp.value) onUpdate('system.attributes.hp.value', val);
+                                                // Debounced update
+                                                updateActor('system.attributes.hp.value', val);
                                             }}
                                             onKeyDown={(e) => {
                                                 if (e.key === 'Enter') {
@@ -508,133 +348,45 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                     {/* Content Area */}
                     <div className="flex-1 px-4 max-w-5xl mx-auto w-full">
                         {activeTab === 'details' && (
-                            <DetailsTab
-                                actor={actor}
-                                onUpdate={onUpdate}
-                                onCreateItem={onCreateItem}
-                                onUpdateItem={onUpdateItem}
-                                onDeleteItem={onDeleteItem}
-                                onToggleEffect={onToggleEffect}
-                                triggerLevelUp={triggerLevelUp}
-                            />
+                            <DetailsTab />
                         )
                         }
 
                         {
                             activeTab === 'abilities' && (
-                                <AbilitiesTab
-                                    actor={actor}
-                                    onUpdate={onUpdate}
-                                    triggerRollDialog={triggerRollDialog}
-                                    onRoll={onRoll}
-                                />
+                                <AbilitiesTab />
                             )
                         }
 
                         {
                             activeTab === 'spells' && (
                                 <ErrorBoundary fallback={<div>Error loading Spells Tab. Check console.</div>}>
-                                    <SpellsTab
-                                        actor={actor}
-                                        onUpdate={onUpdate}
-                                        triggerRollDialog={triggerRollDialog}
-                                        onRoll={onRoll}
-                                        onDeleteItem={onDeleteItem}
-                                        addNotification={addNotification}
-                                        token={token}
-                                    />
+                                    <SpellsTab />
                                 </ErrorBoundary>
                             )
                         }
 
                         {
                             activeTab === 'talents' && (
-                                <TalentsTab
-                                    actor={actor}
-                                    onRoll={onRoll}
-                                />
+                                <TalentsTab />
                             )
                         }
 
                         {
                             activeTab === 'inventory' && (
-                                <InventoryTab
-                                    actor={actor}
-                                    onUpdate={onUpdate}
-                                    onRoll={onRoll}
-                                    onDeleteItem={onDeleteItem}
-                                    onCreateItem={onCreateItem}
-                                    onUpdateItem={onUpdateItem}
-                                />
+                                <InventoryTab />
                             )
                         }
 
                         {
                             activeTab === 'notes' && (
-                                <NotesTab
-                                    actor={actor}
-                                    onUpdate={onUpdate}
-                                    token={token}
-                                />
+                                <NotesTab />
                             )
                         }
 
                         {
                             activeTab === 'effects' && (
-                                <EffectsTab
-                                    actor={actor}
-                                    token={token}
-                                    onToggleEffect={onToggleEffect}
-                                    onDeleteEffect={onDeleteEffect}
-                                    onAddPredefinedEffect={onAddPredefinedEffect}
-                                    onCreateEffect={async (effectData) => {
-                                        try {
-                                            const id = actor.id || actor._id;
-                                            const headers: any = { 'Content-Type': 'application/json' };
-                                            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-                                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/create`, {
-                                                method: 'POST',
-                                                headers,
-                                                body: JSON.stringify(effectData)
-                                            });
-
-                                            if (!res.ok) {
-                                                const error = await res.json();
-                                                throw new Error(error.message || 'Failed to create effect');
-                                            }
-
-                                            addNotification('Effect created successfully', 'success');
-                                        } catch (error: any) {
-                                            logger.error('Failed to create effect:', error);
-                                            addNotification(`Failed to create effect: ${error.message}`, 'error');
-                                        }
-                                    }}
-                                    onUpdateEffect={async (effectData) => {
-                                        try {
-                                            const id = actor.id || actor._id;
-                                            const _effectId = effectData._id || effectData.id;
-                                            const headers: any = { 'Content-Type': 'application/json' };
-                                            if (token) headers['Authorization'] = `Bearer ${token}`;
-
-                                            const res = await fetch(`/api/modules/shadowdark/actors/${id}/effects/update`, {
-                                                method: 'POST',
-                                                headers,
-                                                body: JSON.stringify(effectData)
-                                            });
-
-                                            if (!res.ok) {
-                                                const error = await res.json();
-                                                throw new Error(error.message || 'Failed to update effect');
-                                            }
-
-                                            addNotification('Effect updated successfully', 'success');
-                                        } catch (error: any) {
-                                            logger.error('Failed to update effect:', error);
-                                            addNotification(`Failed to update effect: ${error.message}`, 'error');
-                                        }
-                                    }}
-                                />
+                                <EffectsTab />
                             )
                         }
 
@@ -659,9 +411,8 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                 theme={shadowdarkTheme.rollDialog}
                 onConfirm={(options) => {
                     if (rollDialog.callback) rollDialog.callback(options);
-                    setRollDialog(prev => ({ ...prev, open: false }));
                 }}
-                onClose={() => setRollDialog(prev => ({ ...prev, open: false }))}
+                onClose={closeRollDialog}
             />
 
             {/* Level-Up Modal */}
@@ -685,7 +436,7 @@ function ShadowdarkSheetInternal(props: ShadowdarkSheetProps) {
                         onComplete={async (_data: any) => {
                             // Backend finalize already handled data
                             addNotification('Level Up Successful! Updating sheet...', 'success');
-                            await new Promise(resolve => setTimeout(resolve, 800));
+                            await refreshActor();
                             closeLevelUp();
                         }}
                         onCancel={closeLevelUp}

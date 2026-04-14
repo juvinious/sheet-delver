@@ -30,8 +30,8 @@ export function resolveDocumentName(val: any, cachedSystemData: any): string {
 
         // Legacy/Fallback collections lookup
         const collections = [
-            'ancestries', 'classes', 'backgrounds', 'deities', 'patrons', 
-            'languages', 'spells', 'talents', 'gear', 'magicItems', 
+            'ancestries', 'classes', 'backgrounds', 'deities', 'patrons',
+            'languages', 'spells', 'talents', 'gear', 'magicItems',
             'conditions', 'spellEffects', 'properties', 'documentation', 'macros'
         ];
         for (const key of collections) {
@@ -207,7 +207,7 @@ export class ShadowdarkNormalizer {
                 deity: computed.resolvedNames?.deity || resolveDocumentName(s.deity, cachedSystemData),
                 languages: computed.resolvedNames?.languages || (Array.isArray(s.languages) ? s.languages.map((l: any) => resolveDocumentName(l, cachedSystemData)) : []),
                 biography: s.details?.biography?.value || '',
-                notes: s.details?.notes?.value || '',
+                notes: s.notes || s.details?.notes?.value || '',
                 title: (() => {
                     // 1. Level 0 Check - Characters advance from 0 to 1 manually and have no titles
                     const levelVal = Number(s.level?.value) || 0;
@@ -246,13 +246,13 @@ export class ShadowdarkNormalizer {
                         if (match) {
                             result = match[alignment] || "";
                             if (result) {
-                                logger.debug(`[Shadowdark] Title matched for level ${levelVal}/${alignment}: ${result}`);
+                                //logger.debug(`[Shadowdark] Title matched for level ${levelVal}/${alignment}: ${result}`);
                             }
                         }
                     }
 
 
-                    
+
                     return result;
                 })()
             },

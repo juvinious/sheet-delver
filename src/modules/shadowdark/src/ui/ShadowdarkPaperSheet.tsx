@@ -11,24 +11,17 @@ import { useShadowdarkLevelUp } from './hooks/useShadowdarkLevelUp';
 import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+
 interface ShadowdarkPaperSheetProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
     onToggleView: () => void;
-    triggerRollDialog: (type: string, key: string, options?: any) => void;
-    onRoll: (type: string, key: string, options?: any) => void;
-    token?: string | null;
 }
 
 export default function ShadowdarkPaperSheet({
-    actor,
-    onUpdate,
-    onToggleView,
-    triggerRollDialog,
-    onRoll,
-    token
+    onToggleView
 }: ShadowdarkPaperSheetProps) {
-    const { systemData, collections, resolveName } = useShadowdarkUI();
+    const { systemData, collections, resolveName, token } = useShadowdarkUI();
+    const { actor, updateActor, triggerRollDialog, refreshActor } = useShadowdarkActor();
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [notesModalOpen, setNotesModalOpen] = useState(false);
     const [viewMode, setViewMode] = useState<'paper' | 'list'>('paper');
@@ -141,7 +134,7 @@ export default function ShadowdarkPaperSheet({
                             key={actor.name}
                             type="text"
                             defaultValue={actor.name}
-                            onBlur={(e) => onUpdate('name', e.target.value)}
+                            onBlur={(e) => updateActor('name', e.target.value)}
                             className="w-full h-full text-2xl font-bold bg-transparent outline-none px-1"
                         />
                     </div>
@@ -203,7 +196,7 @@ export default function ShadowdarkPaperSheet({
                                         key={actor.system?.attributes?.hp?.value}
                                         type="number"
                                         defaultValue={actor.system?.attributes?.hp?.value ?? 0}
-                                        onBlur={(e) => onUpdate('system.attributes.hp.value', parseInt(e.target.value))}
+                                        onBlur={(e) => updateActor('system.attributes.hp.value', parseInt(e.target.value))}
                                         className="w-10 text-center bg-transparent outline-none border-b-2 border-black hover:bg-neutral-100 focus:bg-neutral-100 rounded"
                                     />
                                     <span className="text-neutral-400 mx-1 text-xl">/</span>
@@ -221,7 +214,7 @@ export default function ShadowdarkPaperSheet({
 
                         <div
                             className="border-2 border-black h-16 relative flex flex-col items-center justify-center cursor-pointer hover:bg-neutral-50 transition-colors"
-                            onClick={() => onUpdate('system.luck.available', !actor.system?.luck?.available)}
+                            onClick={() => updateActor('system.luck.available', !actor.system?.luck?.available)}
                         >
                             <div className="bg-black text-white text-xs font-black uppercase px-2 py-0.5 w-fit absolute top-0 left-0">Luck</div>
                             <div className="flex items-center justify-center">
@@ -303,7 +296,7 @@ export default function ShadowdarkPaperSheet({
                                     key={actor.system?.level?.xp}
                                     type="number"
                                     defaultValue={actor.system?.level?.xp || 0}
-                                    onBlur={(e) => onUpdate('system.level.xp', parseInt(e.target.value))}
+                                    onBlur={(e) => updateActor('system.level.xp', parseInt(e.target.value))}
                                     className="w-12 text-center bg-transparent outline-none border-b-2 border-black hover:bg-neutral-100 focus:bg-neutral-100 rounded"
                                 />
                                 <span className="text-neutral-400 mx-1">/</span>
@@ -465,7 +458,7 @@ export default function ShadowdarkPaperSheet({
                                         key={actor.system?.coins?.gp}
                                         type="number"
                                         defaultValue={actor.system?.coins?.gp || 0}
-                                        onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value))}
+                                        onBlur={(e) => updateActor('system.coins.gp', parseInt(e.target.value))}
                                         className="border-b-2 border-black w-14 text-center bg-transparent outline-none text-lg font-bold"
                                     />
                                 </div>
@@ -475,7 +468,7 @@ export default function ShadowdarkPaperSheet({
                                         key={actor.system?.coins?.sp}
                                         type="number"
                                         defaultValue={actor.system?.coins?.sp || 0}
-                                        onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value))}
+                                        onBlur={(e) => updateActor('system.coins.sp', parseInt(e.target.value))}
                                         className="border-b-2 border-black w-14 text-center bg-transparent outline-none text-lg font-bold"
                                     />
                                 </div>
@@ -485,7 +478,7 @@ export default function ShadowdarkPaperSheet({
                                         key={actor.system?.coins?.cp}
                                         type="number"
                                         defaultValue={actor.system?.coins?.cp || 0}
-                                        onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value))}
+                                        onBlur={(e) => updateActor('system.coins.cp', parseInt(e.target.value))}
                                         className="border-b-2 border-black w-14 text-center bg-transparent outline-none text-lg font-bold"
                                     />
                                 </div>
@@ -547,16 +540,11 @@ export default function ShadowdarkPaperSheet({
                 isOpen={!!selectedItem}
                 onClose={() => setSelectedItem(null)}
                 item={selectedItem}
-                onUpdate={onUpdate}
-                actor={actor}
             />
 
             <NotesModal
                 isOpen={notesModalOpen}
                 onClose={() => setNotesModalOpen(false)}
-                actor={actor}
-                onUpdate={onUpdate}
-                token={token}
             />
 
             {showLevelUpModal && levelUpData && (
@@ -577,7 +565,7 @@ export default function ShadowdarkPaperSheet({
                     availableLanguages={levelUpData.availableLanguages}
                     onComplete={async (_data: any) => {
                         addNotification('Level Up Successful! Updating sheet...', 'success');
-                        await new Promise(resolve => setTimeout(resolve, 800));
+                        await refreshActor();
                         closeLevelUp();
                     }}
                     onCancel={closeLevelUp}

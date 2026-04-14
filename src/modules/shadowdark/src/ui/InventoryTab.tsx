@@ -7,23 +7,27 @@ import {
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
 import { shadowdarkTheme } from './themes/shadowdark';
-import { useOptimisticOverrides } from '@client/ui/hooks/useOptimisticOverrides';
 import { ItemRow } from './InventoryComponents';
 import GemBagModal from './components/GemBagModal';
 import CreateTreasureModal from './components/CreateTreasureModal';
 import GearSelectionModal from './components/GearSelectionModal';
 import { Gem, Plus } from 'lucide-react';
 
+import { useShadowdarkActor } from './context/ShadowdarkActorContext';
+
 interface InventoryTabProps {
-    actor: any;
-    onUpdate: (path: string, value: any) => void;
-    onRoll: (type: string, key: string, options?: any) => void;
-    onDeleteItem?: (itemId: string) => void;
-    onCreateItem?: (itemData: any) => Promise<void>;
-    onUpdateItem?: (itemData: any) => Promise<void>;
 }
-export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDeleteItem, onCreateItem, onUpdateItem }: InventoryTabProps) {
+
+export default function InventoryTab({ }: InventoryTabProps) {
     const { resolveImageUrl } = useConfig();
+    const {
+        actor,
+        updateActor,
+        deleteItem,
+        createItem,
+        updateItem,
+        getDraftValue
+    } = useShadowdarkActor();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
     const [isGemModalOpen, setIsGemModalOpen] = useState(false);
     const [isCreateTreasureModalOpen, setIsCreateTreasureModalOpen] = useState(false);
@@ -39,25 +43,25 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
         setExpandedItems(newSet);
     };
 
+
     // Confirm Delete State
     const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-    // Use the generic hook for optimistic updates
-    const { applyOverrides, setOptimistic } = useOptimisticOverrides();
-
-    // Helper to apply optimistic overrides to a list of items
+    // Context-provided applyOverrides (Bridge if needed, but here we just use what we have)
+    // Actually, InventoryTab was using applyOverrides from useOptimisticOverrides.
+    // I should check if I can just use actor.derived?.inventory directly as context handles drafting.
     // This function is now provided by useOptimisticOverrides
 
     // Exclude non-inventory types
     const NON_INVENTORY_TYPES = ['Patron', 'Talent', 'Effect', 'Background', 'Ancestry', 'Class', 'Deity', 'Title', 'Language', 'Class Ability', 'Gem'];
     const filterInventory = (list: any[]) => list.filter((i: any) => !NON_INVENTORY_TYPES.includes(i.type));
 
-    const equippedItems = applyOverrides(filterInventory(actor.derived?.inventory?.equipped || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
-    const carriedItems = applyOverrides(filterInventory(actor.derived?.inventory?.carried || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
-    const stashedItems = applyOverrides(filterInventory(actor.derived?.inventory?.stashed || [])).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const equippedItems = filterInventory(actor.derived?.inventory?.equipped || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const carriedItems = filterInventory(actor.derived?.inventory?.carried || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
+    const stashedItems = filterInventory(actor.derived?.inventory?.stashed || []).sort((a: any, b: any) => a.name.localeCompare(b.name));
 
     // For slot calculation, we need to include gems specifically since they are excluded from the gear lists
-    const gems = applyOverrides((actor.items || []).filter((i: any) => i.type === 'Gem'));
+    const gems = (actor.items || []).filter((i: any) => i.type === 'Gem');
 
 
     // Separate treasure items from regular gear
@@ -92,58 +96,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
     const currentSlots = actor.computed?.slotsUsed ?? 0;
     const maxSlots = actor.computed?.maxSlots ?? actor.system?.slots?.max ?? 0;
 
-    // Coin Synced States
-    const [localGp, setLocalGp] = useState(actor.system?.coins?.gp || 0);
-    const [localSp, setLocalSp] = useState(actor.system?.coins?.sp || 0);
-    const [localCp, setLocalCp] = useState(actor.system?.coins?.cp || 0);
-
-    useEffect(() => {
-        setLocalGp(actor.system?.coins?.gp || 0);
-    }, [actor.system?.coins?.gp]);
-
-    useEffect(() => {
-        setLocalSp(actor.system?.coins?.sp || 0);
-    }, [actor.system?.coins?.sp]);
-
-    useEffect(() => {
-        setLocalCp(actor.system?.coins?.cp || 0);
-    }, [actor.system?.coins?.cp]);
-
-    const handleOptimisticUpdate = (path: string, value: any) => {
-        // Parse path: "items.<id>.system.<prop>"
-        // expected format: items.ItemId.system.equipped
-
-        const parts = path.split('.');
-        if (parts[0] === 'items' && parts[2] === 'system') {
-            const itemId = parts[1];
-            // Extract the prop name relative to system.
-            // e.g. "equipped" or "light.active"
-            // parts[3] is the first prop.
-
-            let prop = parts[3];
-            if (prop === 'light' && parts[4] === 'active') {
-                prop = 'light.active';
-            }
-
-            setOptimistic(itemId, prop, value);
-        }
-
-        // Call actual update
-        onUpdate(path, value);
-    };
-
-    const confirmDelete = (itemId: string) => {
-        setItemToDelete(itemId);
-    };
-
-    const handleDelete = () => {
-        if (!itemToDelete) return;
-
-        // Call parent handler
-        if (onDeleteItem) onDeleteItem(itemToDelete);
-
-        setItemToDelete(null);
-    };
+    // Coin Logic moved to context/getDraftValue
 
 
 
@@ -158,17 +111,13 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
         const currentSp = Number(actor.system?.coins?.sp) || 0;
         const currentCp = Number(actor.system?.coins?.cp) || 0;
 
-        const newGp = currentGp + gp;
-        const newSp = currentSp + sp;
-        const newCp = currentCp + cp;
+        // Update coins via context
+        if (gp > 0) updateActor('system.coins.gp', currentGp + gp, { immediate: true });
+        if (sp > 0) updateActor('system.coins.sp', currentSp + sp, { immediate: true });
+        if (cp > 0) updateActor('system.coins.cp', currentCp + cp, { immediate: true });
 
-        // Update coins
-        if (gp > 0) onUpdate('system.coins.gp', newGp);
-        if (sp > 0) onUpdate('system.coins.sp', newSp);
-        if (cp > 0) onUpdate('system.coins.cp', newCp);
-
-        // Delete the item
-        if (onDeleteItem) onDeleteItem(item.id);
+        // Delete the item via context
+        deleteItem(item.id);
     };
 
     return (
@@ -191,7 +140,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {displayEquipped.map((item: any, idx: number) => (
-                            <ItemRow key={item.id || item._id || `equipped-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                            <ItemRow key={item.id || item._id || `equipped-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} />
                         ))}
                         {(displayEquipped.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing equipped.</div>
@@ -219,7 +168,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {displayCarried.map((item: any, idx: number) => (
-                            <ItemRow key={item.id || item._id || `carried-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                            <ItemRow key={item.id || item._id || `carried-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} />
                         ))}
                         {(displayCarried.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing carried.</div>
@@ -247,7 +196,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {treasureItems.map((item: any, idx: number) => (
-                            <ItemRow key={item.id || item._id || `treasure-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} isTreasure={true} onSell={handleSellTreasure} />
+                            <ItemRow key={item.id || item._id || `treasure-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} isTreasure={true} onSell={handleSellTreasure} />
                         ))}
                         {(treasureItems.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">No treasure found.</div>
@@ -268,7 +217,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                     </div>
                     <div className="divide-y divide-neutral-300">
                         {displayStashed.map((item: any, idx: number) => (
-                            <ItemRow key={item.id || item._id || `stashed-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} onUpdate={handleOptimisticUpdate} onDelete={confirmDelete} />
+                            <ItemRow key={item.id || item._id || `stashed-${idx}`} item={item} expandedItems={expandedItems} toggleItem={toggleItem} />
                         ))}
                         {(displayStashed.length === 0) && (
                             <div className="text-center text-neutral-400 italic p-4 text-xs">Nothing stashed.</div>
@@ -320,9 +269,8 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                             <label className="font-bold text-amber-600 font-serif">GP</label>
                             <input
                                 type="number"
-                                value={localGp}
-                                onChange={(e) => setLocalGp(parseInt(e.target.value) || 0)}
-                                onBlur={(e) => onUpdate('system.coins.gp', parseInt(e.target.value) || 0)}
+                                value={getDraftValue('system.coins.gp', actor.system?.coins?.gp || 0)}
+                                onChange={(e) => updateActor('system.coins.gp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
@@ -330,9 +278,8 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                             <label className="font-bold text-neutral-500 font-serif">SP</label>
                             <input
                                 type="number"
-                                value={localSp}
-                                onChange={(e) => setLocalSp(parseInt(e.target.value) || 0)}
-                                onBlur={(e) => onUpdate('system.coins.sp', parseInt(e.target.value) || 0)}
+                                value={getDraftValue('system.coins.sp', actor.system?.coins?.sp || 0)}
+                                onChange={(e) => updateActor('system.coins.sp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
@@ -340,9 +287,8 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                             <label className="font-bold text-orange-700 font-serif">CP</label>
                             <input
                                 type="number"
-                                value={localCp}
-                                onChange={(e) => setLocalCp(parseInt(e.target.value) || 0)}
-                                onBlur={(e) => onUpdate('system.coins.cp', parseInt(e.target.value) || 0)}
+                                value={getDraftValue('system.coins.cp', actor.system?.coins?.cp || 0)}
+                                onChange={(e) => updateActor('system.coins.cp', parseInt(e.target.value) || 0)}
                                 className="w-20 text-right bg-neutral-100 border-b border-neutral-300 focus:border-black outline-none font-serif text-lg p-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
@@ -374,7 +320,10 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                 title="Delete Item"
                 message="Are you sure you want to delete this item? This action cannot be undone."
                 confirmLabel="Delete"
-                onConfirm={handleDelete}
+                onConfirm={() => {
+                    if (itemToDelete) deleteItem(itemToDelete);
+                    setItemToDelete(null);
+                }}
                 onCancel={() => setItemToDelete(null)}
                 theme={shadowdarkTheme.modal}
             />
@@ -384,17 +333,17 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                 isOpen={isGemModalOpen}
                 onClose={() => setIsGemModalOpen(false)}
                 actor={actor}
-                onUpdate={onUpdate}
-                onCreateItem={onCreateItem}
-                onUpdateItem={onUpdateItem}
-                onDeleteItem={onDeleteItem}
+                onUpdate={(path: string, value: any) => updateActor(path, value, { immediate: true })}
+                onCreateItem={createItem}
+                onUpdateItem={updateItem}
+                onDeleteItem={deleteItem}
             />
 
             {/* Create Treasure Modal */}
             <CreateTreasureModal
                 isOpen={isCreateTreasureModalOpen}
                 onClose={() => setIsCreateTreasureModalOpen(false)}
-                onCreate={(data) => onCreateItem && onCreateItem(data)}
+                onCreate={(data) => createItem(data)}
             />
 
             {/* Gear Selection Modal */}
@@ -403,7 +352,7 @@ export default function InventoryTab({ actor, onUpdate, onRoll: _onRoll, onDelet
                 onClose={() => setIsGearSelectionModalOpen(false)}
                 onCreate={(data) => {
                     setIsGearSelectionModalOpen(false);
-                    return onCreateItem ? onCreateItem(data) : Promise.resolve();
+                    return createItem(data);
                 }}
             />
         </div>
