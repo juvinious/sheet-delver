@@ -717,6 +717,8 @@ export const normalizeActorData = (actor: any, items: any[] = [], systemData: an
     // 5. Find Key Items (Class, Ancestry, etc.) - Moved up for leveling logic
     const lowerType = (i: any) => (i.type || "").toLowerCase();
     computed.classDetails = items.find((i: any) => lowerType(i) === 'class');
+    computed.spellcastingAbility = (computed.classDetails?.system?.spellcasting?.ability || 'int').toLowerCase();
+    
     computed.ancestryDetails = items.find((i: any) => lowerType(i) === 'ancestry');
     computed.backgroundDetails = items.find((i: any) => lowerType(i) === 'background');
     computed.patronDetails = items.find((i: any) => lowerType(i) === 'patron');

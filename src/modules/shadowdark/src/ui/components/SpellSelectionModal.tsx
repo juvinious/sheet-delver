@@ -85,16 +85,23 @@ export default function SpellSelectionModal({
             });
 
             return resolvedClasses.some(c => c.includes(filterLower));
-        }).map((s: any) => ({
-            name: s.name,
-            uuid: s.uuid || s._id,
-            tier: tier,
-            img: s.img,
-            description: s.description || s.system?.description?.value || s.system?.description,
-            system: s.system,
-            isInnate: !!s.isInnate
-        }));
-    }, [systemData, collections, tier, classKey]);
+        }).map((s: any) => {
+            const uuid = s.uuid || s._id;
+            const isInnate = !!s.isInnate || 
+                freeSpellUuids.has(uuid) || 
+                (typeof uuid === 'string' && Array.from(freeSpellUuids).some(id => uuid.endsWith(id)));
+
+            return {
+                name: s.name,
+                uuid: uuid,
+                tier: tier,
+                img: s.img,
+                description: s.description || s.system?.description?.value || s.system?.description,
+                system: s.system,
+                isInnate: isInnate
+            };
+        });
+    }, [systemData, collections, tier, classKey, freeSpellUuids]);
 
     const toggleExpand = (spell: SpellOption) => {
         if (isSaving) return;
@@ -147,7 +154,7 @@ export default function SpellSelectionModal({
         if (newSet.has(uuid)) {
             newSet.delete(uuid);
         } else {
-            if (maxSelections && newSet.size >= maxSelections) return;
+            if (maxSelections && selectableCount >= maxSelections) return;
             newSet.add(uuid);
         }
         setSelectedUuids(newSet);

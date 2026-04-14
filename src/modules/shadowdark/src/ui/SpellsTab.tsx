@@ -18,11 +18,17 @@ interface SpellsTabProps {
     triggerRollDialog: (type: string, key: string, options?: any) => void;
     onRoll: (type: string, key: string, options?: any) => void;
     onDeleteItem?: (itemId: string) => void;
-    addNotification?: (message: string, type: 'success' | 'error' | 'info') => void;
+    onUpdateItem?: (itemData: any, deletedEffectIds?: string[]) => Promise<void>;
+    addNotification: (message: string, type?: 'info' | 'success' | 'error', options?: any) => void;
+    /**
+     * Triggers a manual synchronization of actor data. 
+     * Essential for batch operations where automatic socket based updates may be missed or delayed.
+     */
+    onSync?: () => void;
     token?: string | null;
 }
 
-export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, addNotification, token }: SpellsTabProps) {
+export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, onDeleteItem, onUpdateItem, addNotification, onSync, token }: SpellsTabProps) {
     const { systemData, collections, fetchPack, resolveName } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
@@ -30,36 +36,58 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const [editingTier, setEditingTier] = useState<number | null>(null);
     const [modalFilterClass, setModalFilterClass] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    const [targetSpellNames, setTargetSpellNames] = useState<Set<string> | null>(null);
     const [optimisticLostState, setOptimisticLostState] = useState<Record<string, boolean>>({});
 
-    // Sync Verification: Monitor actor items and clear saving state only when they match our target
+
+    /**
+     * Helper to determine recursively if a spell belongs to a given class and tier.
+     * Accounts for primary class defaults and recently added normalization strings.
+     */
+    function isSpellMatching(item: any, tier: number, classKey: string) {
+        if (item.type !== 'Spell') return false;
+        
+        const iTier = Number(item.system?.tier !== undefined ? item.system.tier : item.tier);
+        if (iTier !== tier) return false;
+
+        const classData = item.system?.class || item.class || '';
+        const classArray = Array.isArray(classData) 
+            ? classData 
+            : (typeof classData === 'string' ? classData.split(',').map(s => s.trim()) : [classData]);
+
+        const filterLower = classKey.toLowerCase();
+        const source = spellSources.find((s: any) => s.classKey === filterLower);
+
+        // Resolve class names from UUIDs/IDs using context resolver
+        const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase());
+
+        // Primary class match: if spell has no class assigned, it belongs to the primary class source
+        const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
+
+        return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
+    }
+
+    // Sync "lost" state and clear optimistic overrides when confirmed by backend
     useEffect(() => {
-        if (!isSaving || !targetSpellNames || !editingTier || !modalFilterClass) return;
+        const optimisticIds = Object.keys(optimisticLostState);
+        if (optimisticIds.length === 0) return;
 
-        const currentSpells = (actor.items || []).filter((i: any) => {
-            if (i.type !== 'Spell') return false;
-            const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
-            if (iTier !== editingTier) return false;
+        const spells = (actor.items || []).filter((i: any) => i.type === 'Spell');
+        let hasChanges = false;
+        const newState = { ...optimisticLostState };
 
-            const classData = i.system?.class || i.class || '';
-            const spellClasses = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
-            return spellClasses.includes(modalFilterClass);
+        optimisticIds.forEach(id => {
+            const spell = spells.find((s: any) => (s.id || s._id) === id);
+            // If we found the spell and it now matches our optimistic state, clear the override
+            if (spell && spell.system?.lost === optimisticLostState[id]) {
+                delete newState[id];
+                hasChanges = true;
+            }
         });
 
-        const currentNames = new Set(currentSpells.map((s: any) => s.name));
-
-        // Check if current matches target exactly
-        const isSynced = targetSpellNames.size === currentNames.size &&
-            [...targetSpellNames].every(name => currentNames.has(name));
-
-        if (isSynced) {
-            setTargetSpellNames(null);
-            setIsSaving(false);
-            setIsAddModalOpen(false);
-            addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
+        if (hasChanges) {
+            setOptimisticLostState(newState);
         }
-    }, [actor.items, isSaving, targetSpellNames, editingTier, modalFilterClass, addNotification]);
+    }, [actor.items, optimisticLostState]);
 
     // Hydration: Ensure spells and classes are loaded
     useEffect(() => {
@@ -97,8 +125,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     };
 
     const isLost = (spell: any) => {
-        if (optimisticLostState[spell.id] !== undefined) {
-            return optimisticLostState[spell.id];
+        const id = spell.id || spell._id;
+        if (optimisticLostState[id] !== undefined) {
+            return optimisticLostState[id];
         }
         return spell.system?.lost;
     };
@@ -108,7 +137,15 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
             ...prev,
             [spellId]: !currentLost
         }));
-        onUpdate(`items.${spellId}.system.lost`, !currentLost);
+
+        if (onUpdateItem) {
+            onUpdateItem({
+                _id: spellId,
+                system: { lost: !currentLost }
+            });
+        } else {
+            onUpdate(`items.${spellId}.system.lost`, !currentLost);
+        }
     };
 
     const handleManageSpells = async (selectedSpells: any[]) => {
@@ -116,39 +153,35 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
 
         setIsSaving(true);
         try {
-            const currentItems = actor.items || [];
-            const currentSpells = currentItems.filter((i: any) => {
-                if (i.type !== 'Spell') return false;
-                const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
-                if (iTier !== editingTier) return false;
+            const currentSpells = (actor.items || []).filter((i: any) => 
+                isSpellMatching(i, editingTier, modalFilterClass)
+            );
 
-                const classData = i.system?.class || i.class || '';
-                const spellClasses = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
-                return spellClasses.includes(modalFilterClass);
-            }) || [];
+            // Filter out innate spells from the management logic entirely.
+            const managedSelectedSpells = selectedSpells.filter(s => !s.isInnate);
+            const managedCurrentSpells = currentSpells.filter(s => !s.computed?.isInnate);
 
-            const currentNames = new Set(currentSpells.map((s: { name: string }) => s.name));
-            const selectedNames = new Set(selectedSpells.map((s: { name: string }) => s.name));
+            const currentNames = new Set(managedCurrentSpells.map((s: { name: string }) => s.name));
+            const selectedNames = new Set(managedSelectedSpells.map((s: { name: string }) => s.name));
 
-            const toAdd = selectedSpells.filter((s: { name: string }) => !currentNames.has(s.name));
-            const toRemove = currentSpells.filter((s: { name: string; id: string; _id: string; computed?: any; }) => !selectedNames.has(s.name) && !s.computed?.isInnate);
-
-            setTargetSpellNames(selectedNames);
+            const toAdd = managedSelectedSpells.filter((s: { name: string }) => !currentNames.has(s.name));
+            const toRemove = managedCurrentSpells.filter((s: { name: string }) => !selectedNames.has(s.name));
 
             const tasks = [
                 ...toAdd.map((spell: any) => handleAddSpell(spell)),
                 ...(onDeleteItem ? toRemove.map((spell: any) => onDeleteItem(spell.id || spell._id)) : [])
             ];
 
+            // Fire updates and clear management state immediately (optimistic)
             await Promise.all(tasks);
 
-            setTimeout(() => {
-                if (isSaving) {
-                    setTargetSpellNames(null);
-                    setIsSaving(false);
-                    setIsAddModalOpen(false);
-                }
-            }, 5000);
+            // Manual synchronization ensures the UI reacts immediately to batch changes
+            // that might be missed by the standard socket relay.
+            onSync?.();
+            
+            setIsAddModalOpen(false);
+            addNotification?.(`Successfully updated ${modalFilterClass} spells.`, 'success');
+            setIsSaving(false);
 
         } catch (e) {
             logger.error("Failed to manage spells", e);
@@ -377,26 +410,9 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
     const knownSpellsForModal = useMemo(() => {
         if (!editingTier || !modalFilterClass) return [];
 
-        const source = spellSources.find((s: any) => s.classKey === modalFilterClass);
-
-        return (actor.items || []).filter((i: any) => {
-            if (i.type !== 'Spell') return false;
-            const iTier = Number(i.system?.tier !== undefined ? i.system.tier : i.tier);
-            if (iTier !== editingTier) return false;
-
-            const classData = i.system?.class || i.class || '';
-            const classArray = Array.isArray(classData) ? classData : (typeof classData === 'string' ? classData.split(',').map(s => s.trim()) : [classData]);
-
-            const filterLower = modalFilterClass.toLowerCase();
-
-            // Resolve class names from UUIDs/IDs
-            const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase());
-
-            // Primary class match: if spell has no class assigned, it belongs to the primary class
-            const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
-
-            return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
-        }).map((s: any) => ({
+        return (actor.items || []).filter((i: any) => 
+            isSpellMatching(i, editingTier, modalFilterClass)
+        ).map((s: any) => ({
             name: s.name,
             uuid: s.flags?.core?.sourceId || s.uuid || s._id,
             tier: editingTier,
@@ -546,7 +562,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                 <button
                                                     onClick={(e) => {
                                                         e.stopPropagation();
-                                                        handleLostToggle(spell.id, !!lost);
+                                                    handleLostToggle(spell.id || spell._id, !!lost);
                                                     }}
                                                     className={`w-10 h-10 flex items-center justify-center rounded border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:translate-y-[2px] active:shadow-none ${lost ? 'bg-red-100 text-red-600' : 'bg-white text-neutral-400 hover:text-black'}`}
                                                 >
@@ -644,10 +660,7 @@ export default function SpellsTab({ actor, onUpdate, triggerRollDialog, onRoll, 
                                                     const isFree = i.computed?.isInnate || (actor.computed?.freeSpellUuids || []).some((id: string) => sourceId === id || (typeof sourceId === 'string' && (sourceId.endsWith(id) || (i.uuid && i.uuid.endsWith(id)))));
                                                     if (isFree) return false;
 
-                                                    if (Number(i.system?.tier) !== tier) return false;
-                                                    const classData = i.system?.class || "";
-                                                    const spellClass = (Array.isArray(classData) ? classData.join(',') : String(classData)).toLowerCase();
-                                                    return spellClass.includes(source.classKey) || (spellClass === "" && source.type === 'class');
+                                                    return isSpellMatching(i, tier, source.classKey);
                                                 }).length;
 
                                                 return (

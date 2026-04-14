@@ -162,6 +162,16 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
         }
     };
 
+    /**
+     * Imperatively triggers a full synchronization of actor data from the server.
+     * This is intended for complex or batch operations where automatic socket-based
+     * synchronization might be insufficient, delayed, or missed.
+     */
+    const handleSync = useCallback(async () => {
+        if (!actorId) return;
+        await fetchActor(actorId, true);
+    }, [actorId, fetchActor]);
+
     // --- Shadowdark-specific: Effect handlers ---
 
     const handleToggleEffect = async (effectId: string, enabled: boolean) => {
@@ -319,6 +329,7 @@ export default function ShadowdarkActorPage({ actorId }: ShadowdarkActorPageProp
                         isOwner={actor?.isOwner ?? true}
                         onRoll={handleRoll}
                         onUpdate={handleUpdate}
+                        onSync={handleSync}
                         onToggleEffect={handleToggleEffect}
                         onDeleteEffect={handleDeleteEffect}
                         onDeleteItem={handleDeleteItem}
