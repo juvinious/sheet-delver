@@ -839,10 +839,14 @@ function GeneratorContent() {
                 // My deduplication logic will fix it regardless, but removing the logical redundancy is good too.
             }
 
-            // Collect Language UUIDs for system.languages array
-            const languageUuids: string[] = extraData.languages || [];
+            // Collect Language UUIDs for system.languages array.
+            // Use extraData.languages if it is a non-empty array (provided by the LevelUp modal or Generator injection).
+            // Fall back to knownLanguages state if the array is absent OR empty (e.g. modal was skipped).
+            const languageUuids: string[] = (extraData.languages && extraData.languages.length > 0)
+                ? [...extraData.languages]
+                : [];
 
-            if (!extraData.languages) {
+            if (!extraData.languages || extraData.languages.length === 0) {
                 // Fixed languages - handle both string UUIDs and objects with uuid property
                 for (const l of knownLanguages.fixed) {
                     if (typeof l === 'string') {
@@ -1814,8 +1818,20 @@ function GeneratorContent() {
                         spells={[]}
                         onComplete={(data) => {
                             setShowLevelUp(false);
-                            // Pass both items and the extra roll/language data
-                            createCharacter(data.items, data);
+                            // Since skipLanguageSelection=true the modal's selectedLanguages is always [].
+                            // Inject the Generator's already-resolved language UUIDs so createCharacter has them.
+                            const genLanguageUuids: string[] = [
+                                ...knownLanguages.fixed.map((l: any) => typeof l === 'string' ? l : l?.uuid).filter(Boolean),
+                                ...knownLanguages.selected.common,
+                                ...knownLanguages.selected.rare,
+                                ...knownLanguages.selected.ancestry,
+                                ...knownLanguages.selected.class,
+                                // Also include any extra fixed uuids from languageConfig that may not be resolved yet
+                                ...(languageConfig.fixed || []).filter((u: string) => u)
+                            ];
+                            // Deduplicate
+                            const uniqueLanguageUuids = [...new Set(genLanguageUuids)];
+                            createCharacter(data.items, { ...data, languages: uniqueLanguageUuids });
                         }}
                         onCancel={() => {
                             setShowLevelUp(false);

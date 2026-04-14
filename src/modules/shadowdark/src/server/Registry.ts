@@ -231,16 +231,20 @@ export class ShadowdarkRegistry {
 
         // Diagnostic: Log if the request seems to be a valid UUID but not found
         let found = null;
+        // Extract ID from UUID if possible for ID-based matching
+        const extractedId = uuid.includes('.') ? uuid.split('.').pop() : uuid;
+
         for (const key of ShadowdarkRegistry.COLLECTIONS) {
             found = collections[key]?.find((d: any) => {
-                if (d.uuid === uuid || d._id === uuid || d.id === uuid) return true;
+                const idMatch = d._id === extractedId || d.id === extractedId || d._id === uuid || d.id === uuid;
+                if (d.uuid === uuid || idMatch) return true;
                 
                 // Flexible UUID matching (handle missing .Item. or .RollTable. segment)
-                if (uuid.startsWith('Compendium.') && d.uuid.startsWith('Compendium.')) {
+                if (uuid.startsWith('Compendium.') && d.uuid?.startsWith('Compendium.')) {
                     const parts1 = uuid.split('.');
                     const parts2 = d.uuid.split('.');
                     // Basic sanity check: same pack
-                    if (parts1[1] === parts2[1] && parts1[2] === parts2[2]) {
+                    if (parts1[1] === parts2[1] && (parts1[2] === parts2[2] || parts1.length === parts2.length)) {
                         const id1 = parts1[parts1.length - 1];
                         const id2 = parts2[parts2.length - 1];
                         return id1 === id2;
@@ -297,7 +301,7 @@ export class ShadowdarkRegistry {
         }
 
         if (!table || (!table.results && !table.results?.length)) {
-            logger.warn(`[ShadowdarkRegistry] Draw failed: Table '${uuidOrName}' not found or empty.`);
+            logger.warn(`[ShadowdarkRegistry] Draw failed: Table '${uuidOrName}' not found or empty (extractedId: ${uuidOrName.includes('.') ? uuidOrName.split('.').pop() : 'none'}).`);
             return null;
         }
 
@@ -357,7 +361,15 @@ export class ShadowdarkRegistry {
                 const matchesName = (doc.name || "").toLowerCase() === normalized;
                 if (!matchesName) return false;
                 if (!type) return true;
-                return (doc.type || "").toLowerCase() === type.toLowerCase();
+
+                const docType = (doc.type || "").toLowerCase();
+                const targetType = type.toLowerCase();
+                
+                // Flexible matching for RollTables: match if category is tables and doc has results, 
+                // even if explicit 'type' string is missing or different.
+                if (targetType === 'rolltable' && (doc.results || key === 'tables')) return true;
+
+                return docType === targetType;
             });
             if (found) return JSON.parse(JSON.stringify(found));
         }

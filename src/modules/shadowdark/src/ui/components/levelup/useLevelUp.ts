@@ -914,7 +914,7 @@ export const useLevelUp = (props: LevelUpProps) => {
                     if (currentClass?.system?.classTalentTable) {
                         // Sanitize UUID - Foundry sometimes includes .RollTable incorrectly
                         let tableUuid = currentClass.system.classTalentTable;
-                        if (tableUuid.includes('.RollTable.')) {
+                        if (tableUuid.includes('Compendium.') && tableUuid.includes('.RollTable.')) {
                             tableUuid = tableUuid.replace('.RollTable.', '.');
                         }
                         setTalentTable(tableUuid);

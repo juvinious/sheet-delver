@@ -248,7 +248,23 @@ export class ShadowdarkAdapter implements SystemAdapter {
             currentXP,
             talentGained,
             classHitDie: classDoc?.system?.hitPoints || '1d4',
-            talentTable: classDoc?.system?.classTalentTable,
+            talentTable: await (async () => {
+                const tableRaw = classDoc?.system?.classTalentTable;
+                if (!tableRaw) return null;
+                
+                // If it's already a full UUID, return it
+                if (tableRaw.includes('Compendium.')) return tableRaw;
+
+                // Try to resolve Name or ID to a full UUID
+                const tableDoc = await this.resolveDocument(client, tableRaw);
+                if (tableDoc?.uuid) return tableDoc.uuid;
+                
+                // Final fallback: if it's a name that Registry can find, return that
+                const foundByName = await this.findDocumentByName(tableRaw, 'RollTable');
+                if (foundByName?.uuid) return foundByName.uuid;
+
+                return tableRaw;
+            })(),
             patronBoonTable: patronDoc?.system?.boonTable,
             canRollBoons: classDoc?.system?.patron?.required || false,
             startingBoons: (targetLevel === 1 && classDoc?.system?.patron?.startingBoons) || 0,
