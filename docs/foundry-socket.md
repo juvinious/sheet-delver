@@ -37,7 +37,7 @@ classDiagram
     *   Manages `socket.io` connection lifecycle.
     *   Handles cookie persistence and headers.
     *   Implements high-level `handshake` and `login` workflows.
-*   **Key Files**: `src/core/foundry/sockets/SocketBase.ts`
+*   **Key Files**: `@server/core/foundry/sockets/SocketBase.ts`
 
 ### 2. CoreSocket (Backend Singleton)
 *   **Role**: System-level Data Hub.
@@ -45,14 +45,14 @@ classDiagram
     *   **fetchByUuid(uuid)**: A high-level helper that resolves any Foundry UUID (World or Compendium) and returns the document data.
     *   **getGameData()**: Fetches World, System, and active User metadata.
     *   Maintains the `userMap` and `gameDataCache` used by the system Status Handler.
-*   **Key Files**: `src/core/foundry/sockets/CoreSocket.ts`
+*   **Key Files**: `@server/core/foundry/sockets/CoreSocket.ts`
 
 ### 3. ClientSocket (User Presence)
 *   **Role**: Authenticated User Anchor.
 *   **Responsibilities**:
     *   **dispatchDocumentSocket(type, action, data)**: The unified method for all CRUD operations. Emits `modifyDocument` (Standard) or `getDocuments` (Compendium) events.
     *   Receives user-specific events (e.g., `shareImage`, `showEntry`).
-*   **Key Files**: `src/core/foundry/sockets/ClientSocket.ts`
+*   **Key Files**: `@server/core/foundry/sockets/ClientSocket.ts`
 
 ## Socket Operations & Dispatch Model
 
@@ -93,11 +93,14 @@ SheetDelver relies on two primary methods within `CoreSocket` for communicating 
 *   **Payload**: `{ "type": "User", "action": "update", "result": [...] }`
 *   **Usage**: Real-time updates to user roles, avatars, and names. Also broadcasts document creations and updates to keep all clients in sync.
 
-## Real-Time Sync Strategy & Caching
+## Real-Time Sync Strategy & Multiplexed Proxy
 
-Because SheetDelver acts as a headless client, it mimics browser behavior to stay up-to-date.
-*   **User Sync**: `CoreSocket` acts as the master sync node. It listens for all documents of type `User` and updates its internal `userMap`. When the frontend polls `/api/status`, the `CoreSocket` provides the most recent "ground truth" for player counts and active status.
-*   **Document Cache**: When a document change occurs, `_updateActorCache` intercepts the `modifyDocument` broadcast and uses `_deepMerge` to silently patch the local memory representation. This avoids re-fetching the entire Actor on subsequent reads.
+SheetDelver uses a **Multiplexed Smart Proxy** to ensure data security and environment isolation.
+
+*   **Multiplexed Relay**: Unlike a standard browser client, the Backend Core maintains individual `ClientSocket` connections to Foundry for every authenticated user. 
+*   **Per-User Isolation**: Sensitive real-time events (e.g., `actorUpdate`, `combatUpdate`, `chatUpdate`) are intercepted at the server level. Instead of a global broadcast, the server identifies the specific `ClientSocket` the update belongs to and relays it only to the associated Socket.io connection in the frontend.
+*   **System Status**: The singleton `CoreSocket` remains the master source for global, non-sensitive world metadata (world title, status, active user counts).
+*   **Document Cache**: To optimize performance, the `CoreSocket` maintains a server-side representation of visible documents. When a change occurs, `_updateActorCache` intercepts the broadcast and uses `_deepMerge` to patch the local memory representation, ensuring subsequent API reads are near-instant.
 
 ## Limitations & Future Considerations
 

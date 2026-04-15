@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Warlock Level 12 Table Result
 const mockWarlockTable = {
@@ -54,7 +55,7 @@ const mockRollResult = {
 };
 
 export async function testRoll12() {
-    console.log('🧪 Test: Warlock Roll 12 Logic\n');
+    logger.info('🧪 Test: Warlock Roll 12 Logic\n');
 
     try {
         const { item, needsChoice, choiceOptions, choiceCount } = await processRollResult({
@@ -73,10 +74,10 @@ export async function testRoll12() {
         if (!hasPatronBoon) throw new Error("Missing 'Patron Boon' option");
         if (hasOriginalStat) throw new Error("Found filtered option '+2 to Intelligence'");
 
-        console.log('✅ Roll 12 Logic Verified');
+        logger.info('✅ Roll 12 Logic Verified');
         return { success: true };
     } catch (e: any) {
-        console.error('❌ Test failed:', e.message);
+        logger.error('❌ Test failed:', e.message);
         return { success: false, error: e.message };
     }
 }

@@ -1,12 +1,12 @@
 {
   "name": "sheet-delver",
-  "version": "0.6.6",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "ts-node src/scripts/start-server.ts dev",
-    "build": "ts-node src/scripts/start-server.ts build",
-    "start": "ts-node src/scripts/start-server.ts start",
+    "dev": "npx tsx src/scripts/start-server.ts dev",
+    "build": "npx tsx src/scripts/start-server.ts build",
+    "start": "npx tsx src/scripts/start-server.ts start",
     "setup": "npx tsx src/scripts/setup.ts",
     "lint": "eslint",
     "core": "npx tsx src/server/index.ts",

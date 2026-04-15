@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Fighter Table Result (No blanks, as user insisted)
 const mockFighterTable = {
@@ -24,7 +25,7 @@ const mockRollResult = {
 };
 
 export async function testFighter() {
-    console.log('🧪 Test: Fighter 12 Logic\n');
+    logger.info('🧪 Test: Fighter 12 Logic\n');
 
     try {
         const { choiceOptions } = await processRollResult({
@@ -33,7 +34,7 @@ export async function testFighter() {
         });
 
         const optionNames = choiceOptions.map(o => o.name || o.text);
-        console.log("Options:", optionNames);
+        logger.info("Options:", optionNames);
 
         // Assertions
         const hasHeader = choiceOptions.some(o => (o.text || "").includes("Choose one"));
@@ -42,30 +43,30 @@ export async function testFighter() {
 
         let passed = true;
 
-        if (hasHeader) { console.error("❌ FAILED: Header retained"); passed = false; }
+        if (hasHeader) { logger.error("❌ FAILED: Header retained"); passed = false; }
         // We expect EXACTLY ONE "Distribute to Stats" option after deduplication
         if (distributeCount > 1) {
-            console.error(`❌ FAILED: 'Distribute to Stats' duplicated ${distributeCount} times`);
+            logger.error(`❌ FAILED: 'Distribute to Stats' duplicated ${distributeCount} times`);
             passed = false;
         } else if (distributeCount === 0) {
-            console.error("❌ FAILED: 'Distribute to Stats' missing");
+            logger.error("❌ FAILED: 'Distribute to Stats' missing");
             passed = false;
         }
 
         // Verify no "Unknown Option" or blanks are present in the final list
         const hasUnknown = choiceOptions.some(o => o.name === "Unknown Option");
         const hasBlankName = choiceOptions.some(o => !o.name || o.name.trim() === "");
-        if (hasUnknown) { console.error("❌ FAILED: 'Unknown Option' present (should be real text)"); passed = false; }
-        if (hasBlankName) { console.error("❌ FAILED: Blank name present"); passed = false; }
+        if (hasUnknown) { logger.error("❌ FAILED: 'Unknown Option' present (should be real text)"); passed = false; }
+        if (hasBlankName) { logger.error("❌ FAILED: Blank name present"); passed = false; }
 
         if (passed) {
-            console.log('✅ Fighter Logic Verified');
+            logger.info('✅ Fighter Logic Verified');
             return { success: true };
         }
         return { success: false };
 
     } catch (e: any) {
-        console.error('❌ Error:', e.message);
+        logger.error('❌ Error:', e.message);
         return { success: false, error: e.message };
     }
 }

@@ -1,6 +1,7 @@
 
 import { processRollResult } from '../../modules/shadowdark/api/level-up-engine';
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 // Mock Patron Boon Table (Mugdulblub)
 // UUID matches value in roll-table-patterns.ts
@@ -55,7 +56,7 @@ const mockRollResult = {
 };
 
 export async function testPatronBoonFiltering() {
-    console.log('🧪 Test: Patron Boon (Mugdulblub 12) Logic\n');
+    logger.info('🧪 Test: Patron Boon (Mugdulblub 12) Logic\n');
 
     try {
         const { item, needsChoice, choiceOptions, choiceCount } = await processRollResult({
@@ -66,7 +67,7 @@ export async function testPatronBoonFiltering() {
         // Verification
         if (!needsChoice) throw new Error("Expected needsChoice to be true");
 
-        console.log("Generated Options:", choiceOptions.map(o => o.name || o.text));
+        logger.info("Generated Options:", choiceOptions.map(o => o.name || o.text));
 
         // 1. Verify Distribute Stats mapped from "+2 to Strength"
         const hasDistribute = choiceOptions.some((o: any) => o.name === "Distribute to Stats");
@@ -84,10 +85,10 @@ export async function testPatronBoonFiltering() {
         const hasUnique = choiceOptions.some((o: any) => o.text.includes("Gelatinous Skin"));
         if (!hasUnique) throw new Error("Missing 'Unique Boon' option");
 
-        console.log('✅ Patron Boon Logic Verified');
+        logger.info('✅ Patron Boon Logic Verified');
         return { success: true };
     } catch (e: any) {
-        console.error('❌ Test failed:', e.message);
+        logger.error('❌ Test failed:', e.message);
         return { success: false, error: e.message };
     }
 }

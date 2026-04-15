@@ -1,7 +1,8 @@
 
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 import * as readline from 'readline';
+import { logger } from '@shared/utils/logger';
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -11,7 +12,7 @@ const rl = readline.createInterface({
 const askQuestion = (query: string) => new Promise(resolve => rl.question(query, resolve));
 
 export async function testWorldTransition() {
-    console.log('🧪 Test 3: World State Transitions\n');
+    logger.info('🧪 Test 3: World State Transitions\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -22,11 +23,11 @@ export async function testWorldTransition() {
     const client = new CoreSocket(config.foundry);
 
     // Silence some logs for clarity if possible, or just let them flow
-    console.log('--- Step 1: Initial Setup Check ---');
-    console.log('Instructions: Ensure Foundry VTT is running and in "Setup" mode (World closed).');
+    logger.info('--- Step 1: Initial Setup Check ---');
+    logger.info('Instructions: Ensure Foundry VTT is running and in "Setup" mode (World closed).');
     // await askQuestion('Press ENTER when ready...');
 
-    console.log('Connecting...');
+    logger.info('Connecting...');
 
     // We expect connect() to detect Setup and potentially retry, but we want to inspect state.
     // CoreSocket.connect() is perpetual. We might want to just start it and peek.
@@ -35,48 +36,42 @@ export async function testWorldTransition() {
     // Give it a moment to probe
     await new Promise(r => setTimeout(r, 2000));
 
-    console.log(`Current World State: ${client.worldState}`);
+    logger.info(`Current World State: ${client.worldState}`);
     if (client.worldState === 'setup') {
-        console.log('✅  Detected Setup Mode correctly.');
+        logger.info('✅  Detected Setup Mode correctly.');
     } else {
-        console.log(`❌  Expected 'setup', got '${client.worldState}'`);
+        logger.info(`❌  Expected 'setup', got '${client.worldState}'`);
     }
 
-    console.log('\n--- Step 2: Start World ---');
-    console.log('Instructions: Launch your Foundry World now.');
+    logger.info('\n--- Step 2: Start World ---');
+    logger.info('Instructions: Launch your Foundry World now.');
     await askQuestion('Press ENTER after you have clicked "Launch World"...');
 
-    console.log('Waiting for "connect" event or state change...');
+    logger.info('Waiting for "connect" event or state change...');
 
     // Poll for state changes
     let attempts = 0;
     let startupLogged = false;
     while (client.worldState !== 'active' && attempts < 20) {
         if (!startupLogged && client.worldState === 'startup') {
-            console.log('✅  Detected Startup State (World Starting...)');
+            logger.info('✅  Detected Startup State (World Starting...)');
             startupLogged = true;
         }
         await new Promise(r => setTimeout(r, 1000));
         process.stdout.write('.');
         attempts++;
     }
-    console.log('');
+    logger.info('');
 
     if (client.worldState === 'active') {
-        console.log(`✅  Detected Active World: "${client.cachedWorldData?.worldTitle || 'Unknown'}"`);
+        logger.info(`✅  Detected Active World: "${client.cachedWorldData?.worldTitle || 'Unknown'}"`);
     } else {
-        const logger = {
-            info: (msg: string) => console.log(msg),
-            warn: (msg: string) => console.warn(msg),
-            error: (msg: string) => console.error(msg),
-            debug: (msg: string) => { /* console.debug(msg) */ } // Muted debug for standard run
-        };
         logger.error(`❌  Failed to detect active world. State: ${client.worldState}`);
     }
 
-    console.log('\n--- Step 3: Shutdown World ---');
-    console.log('Instructions: Return to Setup (Shutdown the world). Do NOT close Foundry entirely.');
-    console.log('Waiting for heartbeat/disconnect detection...');
+    logger.info('\n--- Step 3: Shutdown World ---');
+    logger.info('Instructions: Return to Setup (Shutdown the world). Do NOT close Foundry entirely.');
+    logger.info('Waiting for heartbeat/disconnect detection...');
 
     // We don't ask for Enter here, we just watch.
     // The heartbeat is 15s. We'll wait up to 30s.
@@ -89,12 +84,12 @@ export async function testWorldTransition() {
         process.stdout.write('.');
         attempts++;
     }
-    console.log('');
+    logger.info('');
 
     if (client.worldState === 'setup' || client.worldState === 'offline') {
-        console.log(`✅  Detected State Change to: ${client.worldState}`);
+        logger.info(`✅  Detected State Change to: ${client.worldState}`);
     } else {
-        console.log(`❌  Failed to detect shutdown. State remains: ${client.worldState}`);
+        logger.info(`❌  Failed to detect shutdown. State remains: ${client.worldState}`);
     }
 
     client.disconnect();
@@ -104,6 +99,6 @@ export async function testWorldTransition() {
 
 // Run immediately
 testWorldTransition().catch(e => {
-    console.error(e);
+    logger.error('World transition test failed:', e);
     process.exit(1);
 });

@@ -1,6 +1,6 @@
 import { DataManager } from '../modules/shadowdark/data/DataManager';
 import * as levelUpEngine from '../modules/shadowdark/api/level-up-engine';
-import { logger } from '../core/logger';
+import { logger } from '@shared/utils/logger';
 
 async function verifyMapping() {
     const dataManager = DataManager.getInstance();
@@ -40,7 +40,7 @@ async function verifyMapping() {
     ];
 
     for (const test of testCases) {
-        console.log(`\n>>> Testing: ${test.name}`);
+        logger.info(`\n>>> Testing: ${test.name}`);
         const result = await dataManager.draw(test.tableUuid, test.rollOverride);
 
         if (result) {
@@ -49,15 +49,15 @@ async function verifyMapping() {
                 table: result.table
             });
 
-            console.log(`Roll: ${processed.item?.name || 'Multiple'}`);
-            console.log(`- Action: ${processed.action}`);
-            console.log(`- Config: ${JSON.stringify(processed.config)}`);
-            console.log(`- Needs Choice: ${processed.needsChoice}`);
+            logger.info(`Roll: ${processed.item?.name || 'Multiple'}`);
+            logger.info(`- Action: ${processed.action}`);
+            logger.info(`- Config: ${JSON.stringify(processed.config)}`);
+            logger.info(`- Needs Choice: ${processed.needsChoice}`);
 
             if (processed.needsChoice) {
-                console.log(`- Choices (${processed.choiceOptions.length}):`);
+                logger.info(`- Choices (${processed.choiceOptions.length}):`);
                 processed.choiceOptions.forEach((o: any) => {
-                    console.log(`  * ${o.name || o.text || o.description} -> Action: ${o.action || 'none'}`);
+                    logger.info(`  * ${o.name || o.text || o.description} -> Action: ${o.action || 'none'}`);
                 });
             }
 
@@ -71,16 +71,16 @@ async function verifyMapping() {
             }
 
             if (success) {
-                console.log(`✅ SUCCESS: Mapping matches expectation`);
+                logger.info(`✅ SUCCESS: Mapping matches expectation`);
             } else {
-                console.error(`❌ FAILURE: Mapping did not match expectation`);
-                if (test.expectedAction) console.error(`  Expected Action: ${test.expectedAction}`);
-                if (test.expectedChoiceAction) console.error(`  Expected Choice Action: ${test.expectedChoiceAction}`);
+                logger.error(`❌ FAILURE: Mapping did not match expectation`);
+                if (test.expectedAction) logger.error(`  Expected Action: ${test.expectedAction}`);
+                if (test.expectedChoiceAction) logger.error(`  Expected Choice Action: ${test.expectedChoiceAction}`);
             }
         } else {
-            console.error(`Failed to draw from ${test.tableUuid}`);
+            logger.error(`Failed to draw from ${test.tableUuid}`);
         }
     }
 }
 
-verifyMapping().catch(console.error);
+verifyMapping().catch(logger.error);

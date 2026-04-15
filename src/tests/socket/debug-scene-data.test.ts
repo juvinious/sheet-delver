@@ -1,12 +1,12 @@
-import { CoreSocket } from '../../core/foundry/sockets/CoreSocket';
-import { loadConfig } from '../../core/config';
+import { CoreSocket } from '@core/foundry/sockets/CoreSocket';
+import { loadConfig } from '@core/config';
 
 /**
  * Debug Test: Scene Data Capture
  * Tests scene data retrieval and outputs captured data for debugging
  */
 export async function testSceneData() {
-    console.log('🧪 Debug Test: Scene Data Capture\n');
+    logger.info('🧪 Debug Test: Scene Data Capture\n');
 
     const config = await loadConfig();
     if (!config) {
@@ -17,29 +17,29 @@ export async function testSceneData() {
     const results: any = { tests: [] };
 
     try {
-        console.log('Connecting to Foundry...');
+        logger.info('Connecting to Foundry...');
         await client.connect();
-        console.log('✅ Connected\n');
+        logger.info('✅ Connected\n');
 
         // Test 1: Check if sceneDataCache is populated
-        console.log('1. Checking sceneDataCache...');
+        logger.info('1. Checking sceneDataCache...');
         const sceneData = client.getSceneData();
 
         if (sceneData) {
-            console.log('✅ Scene data cached!');
-            console.log(`   Type: ${typeof sceneData}`);
-            console.log(`   Keys: ${Object.keys(sceneData).length}`);
+            logger.info('✅ Scene data cached!');
+            logger.info(`   Type: ${typeof sceneData}`);
+            logger.info(`   Keys: ${Object.keys(sceneData).length}`);
 
             // List all scene IDs
             const sceneIds = Object.keys(sceneData);
-            console.log(`\n   Scene IDs found: ${sceneIds.join(', ')}`);
+            logger.info(`\n   Scene IDs found: ${sceneIds.join(', ')}`);
 
             // Check for NUEDEFAULTSCENE0
             if (sceneData.NUEDEFAULTSCENE0) {
-                console.log('\n✅ NUEDEFAULTSCENE0 found!');
+                logger.info('\n✅ NUEDEFAULTSCENE0 found!');
                 const defaultScene = sceneData.NUEDEFAULTSCENE0;
-                console.log(`   Name: ${defaultScene.name}`);
-                console.log(`   Background: ${defaultScene.background?.src || 'null'}`);
+                logger.info(`   Name: ${defaultScene.name}`);
+                logger.info(`   Background: ${defaultScene.background?.src || 'null'}`);
 
                 results.tests.push({
                     name: 'default-scene',
@@ -50,7 +50,7 @@ export async function testSceneData() {
                     }
                 });
             } else {
-                console.log('\n❌ NUEDEFAULTSCENE0 not found in scene data');
+                logger.info('\n❌ NUEDEFAULTSCENE0 not found in scene data');
                 results.tests.push({
                     name: 'default-scene',
                     success: false,
@@ -60,12 +60,12 @@ export async function testSceneData() {
             }
 
             // Output full scene data for debugging
-            console.log('\n📋 Full Scene Data:');
-            console.log(JSON.stringify(sceneData, null, 2));
+            logger.info('\n📋 Full Scene Data:');
+            logger.info(JSON.stringify(sceneData, null, 2));
 
         } else {
-            console.log('❌ Scene data is null/undefined');
-            console.log('   This means fetchSceneData() failed or returned null');
+            logger.info('❌ Scene data is null/undefined');
+            logger.info('   This means fetchSceneData() failed or returned null');
             results.tests.push({
                 name: 'scene-data-cache',
                 success: false,
@@ -74,25 +74,25 @@ export async function testSceneData() {
         }
 
         // Test 2: Try fetching scene data directly via socket
-        console.log('\n\n2. Testing direct socket scene fetch...');
+        logger.info('\n\n2. Testing direct socket scene fetch...');
         try {
             // @ts-ignore - accessing private method for debugging
             const directSceneData = await client.fetchSceneData();
 
             if (directSceneData) {
-                console.log('✅ Direct fetch succeeded!');
-                console.log(`   Type: ${typeof directSceneData}`);
-                console.log(`   Keys: ${Object.keys(directSceneData).length}`);
-                console.log('\n📋 Direct Fetch Data:');
-                console.log(JSON.stringify(directSceneData, null, 2));
+                logger.info('✅ Direct fetch succeeded!');
+                logger.info(`   Type: ${typeof directSceneData}`);
+                logger.info(`   Keys: ${Object.keys(directSceneData).length}`);
+                logger.info('\n📋 Direct Fetch Data:');
+                logger.info(JSON.stringify(directSceneData, null, 2));
 
                 results.tests.push({
                     name: 'direct-fetch',
                     success: true
                 });
             } else {
-                console.log('❌ Direct fetch returned null');
-                console.log('   The socket.emit("scene") call is not returning data');
+                logger.info('❌ Direct fetch returned null');
+                logger.info('   The socket.emit("scene") call is not returning data');
                 results.tests.push({
                     name: 'direct-fetch',
                     success: false,
@@ -100,7 +100,7 @@ export async function testSceneData() {
                 });
             }
         } catch (error: any) {
-            console.log(`❌ Direct fetch failed: ${error.message}`);
+            logger.info(`❌ Direct fetch failed: ${error.message}`);
             results.tests.push({
                 name: 'direct-fetch',
                 success: false,
@@ -109,34 +109,35 @@ export async function testSceneData() {
         }
 
         // Test 3: Check game data for comparison
-        console.log('\n\n3. Checking game data for comparison...');
+        logger.info('\n\n3. Checking game data for comparison...');
         const gameData = client.getGameData();
         if (gameData) {
-            console.log('✅ Game data available');
-            console.log(`   System: ${gameData.system?.id}`);
-            console.log(`   World: ${gameData.world?.title}`);
-            console.log(`   Background: ${gameData.system?.background || 'null'}`);
+            logger.info('✅ Game data available');
+            logger.info(`   System: ${gameData.system?.id}`);
+            logger.info(`   World: ${gameData.world?.title}`);
+            logger.info(`   Background: ${gameData.system?.background || 'null'}`);
         } else {
-            console.log('❌ Game data is null');
+            logger.info('❌ Game data is null');
         }
 
         const successCount = results.tests.filter((t: any) => t.success).length;
         results.success = successCount === results.tests.length;
 
-        console.log(`\n\n📊 ${successCount}/${results.tests.length} tests passed`);
+        logger.info(`\n\n📊 ${successCount}/${results.tests.length} tests passed`);
         return results;
 
     } catch (error: any) {
-        console.error('❌ Test suite failed:', error.message);
-        console.error(error.stack);
+        logger.error('❌ Test suite failed:', error.message);
+        logger.error(error.stack);
         return { success: false, error: error.message };
     } finally {
         await client.disconnect();
-        console.log('\n📡 Disconnected\n');
+        logger.info('\n📡 Disconnected\n');
     }
 }
 
 import { fileURLToPath } from 'url';
+import { logger } from '@shared/utils/logger';
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
     testSceneData().then(result => {

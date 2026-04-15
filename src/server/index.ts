@@ -2,24 +2,47 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 
-import { loadConfig, getConfig } from '../core/config';
-import { logger } from '../core/logger';
-import { getAdapter } from '../modules/core/registry';
+import { getMatchingAdapter } from '@modules/registry/server';
+import { loadConfig, getConfig } from '@core/config';
+import { logger } from '@shared/utils/logger';
+import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModules, getServerModule } from '@modules/registry/server';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
+import { systemService } from '@core/system/SystemService';
+import { SetupManager } from './core/foundry/SetupManager';
 
 async function startServer() {
     const config = await loadConfig();
     if (!config) {
-        console.error('Core Service | Could not load configuration. Exiting.');
+        logger.error('Core Service | Could not load configuration. Exiting.');
         process.exit(1);
+    }
+
+    // Initialize Universal Logger with configured level
+    logger.setLevel(config.debug.level);
+    logger.info(`Core Service | Logger initialized at level: ${config.debug.level}`);
+
+    // Boot-Time System Discovery
+    initializeRegistry();
+
+    // Global Error Handlers (Diagnostic for silent kills/crashes)
+    if (config.debug.level >= 4) {
+        process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+            logger.error(`\x1b[31m[FATAL] Unhandled Rejection at: ${promise} reason: ${reason?.stack || reason}\x1b[0m`);
+            process.exit(1);
+        });
+
+        process.on('uncaughtException', (err: Error) => {
+            logger.error(`\x1b[31m[FATAL] Uncaught Exception: ${err.stack || err}\x1b[0m`);
+            process.exit(1);
+        });
     }
 
     const { apiPort } = config.app;
     const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
 
     const app = express();
-    app.use(express.json());
+    app.use(express.json({ limit: config.security.bodyLimit }));
     app.use(cors());
 
     const httpServer = createServer(app);
@@ -59,172 +82,79 @@ async function startServer() {
     logger.info('Core Service | Socket.io server initialized with secure middleware');
 
     // Handle App Socket Connections
-    io.on('connection', (socket) => {
-        logger.debug(`App Socket | Client connected: ${socket.id} (Auth: ${socket.rooms.has('authenticated')})`);
-        socket.emit('systemStatus', getSystemStatusPayload());
+    io.on('connection', async (socket) => {
+        const clientCount = io.engine.clientsCount;
+        logger.debug(`App Socket | Client connected: ${socket.id} (Total: ${clientCount}, Auth: ${socket.rooms.has('authenticated')})`);
 
-        socket.on('disconnect', () => {
-            logger.debug(`App Socket | Client disconnected: ${socket.id}`);
-        });
+        // Inform SystemService of engagement for adaptive heartbeat
+        systemService.getSystemClient().updateActiveBrowserCount(clientCount);
+
+        // Initial setup for this specific socket connection
+        const payload = await getSystemStatusPayload();
+        socket.emit('systemStatus', payload);
+
+        // Attach listeners to individual foundry client for sensitive/per-user data
+        const foundryClient = (socket as any).foundryClient;
+        if (foundryClient) {
+            logger.info(`App Socket | Attaching per-user listeners for ${foundryClient.username} (${socket.id})`);
+
+            const handleCombatUpdate = (data: any) => socket.emit('combatUpdate', data);
+            const handleChatUpdate = (data: any) => socket.emit('chatUpdate', data);
+            const handleActorUpdate = (data: any) => socket.emit('actorUpdate', data);
+            const handleSharedUpdate = (data: any) => socket.emit('sharedContentUpdate', data);
+
+            foundryClient.on('combatUpdate', handleCombatUpdate);
+            foundryClient.on('chatUpdate', handleChatUpdate);
+            foundryClient.on('actorUpdate', handleActorUpdate);
+            foundryClient.on('sharedContentUpdate', handleSharedUpdate);
+
+            // New relays for world lifecycle and system status
+            foundryClient.on('systemStatusUpdate', broadcastSystemStatus);
+            foundryClient.on('worldShutdown', broadcastSystemStatus);
+            foundryClient.on('worldReload', broadcastSystemStatus);
+
+            socket.on('disconnect', () => {
+                const remaining = io.engine.clientsCount;
+                logger.debug(`App Socket | Client disconnected: ${socket.id}. Remaining: ${remaining}`);
+                systemService.getSystemClient().updateActiveBrowserCount(remaining);
+
+                foundryClient.off('combatUpdate', handleCombatUpdate);
+                foundryClient.off('chatUpdate', handleChatUpdate);
+                foundryClient.off('actorUpdate', handleActorUpdate);
+                foundryClient.off('sharedContentUpdate', handleSharedUpdate);
+                foundryClient.off('systemStatusUpdate', broadcastSystemStatus);
+                foundryClient.off('worldShutdown', broadcastSystemStatus);
+                foundryClient.off('worldReload', broadcastSystemStatus);
+            });
+        } else {
+            socket.on('disconnect', () => {
+                const remaining = io.engine.clientsCount;
+                logger.debug(`App Socket | Client disconnected: ${socket.id}. Remaining: ${remaining}`);
+                systemService.getSystemClient().updateActiveBrowserCount(remaining);
+            });
+        }
     });
 
     // DEBUG: Global Request Logger
     app.use((req, res, next) => {
-        console.error(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
+        logger.debug(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
         next();
     });
 
     // Initialize Session Manager with Service Account
-    const { SessionManager } = await import('../core/session/SessionManager');
-    const { UserRole } = await import('../shared/constants');
+    const { SessionManager } = await import('@core/session/SessionManager');
+    const { UserRole } = await import('@shared/constants');
     const sessionManager = new SessionManager({
         ...config.foundry
-        // Service account credentials from settings.yaml are used for system client
     });
 
-    // Start Service Account Client for World Verification
-    const systemClient = sessionManager.getSystemClient();
-
-    // Track world ID to detect world changes
-    let lastKnownWorldId: string | null = null;
-
-    // Service Initialization Hook
-    systemClient.on('connect', () => {
-        const currentWorldId = systemClient.getGameData()?.world?.id || null;
-
-        if (systemClient.worldState === 'setup') {
-            logger.warn('Core Service | World in Setup Mode. Clearing all sessions.');
-            sessionManager.clearAllSessions();
-            lastKnownWorldId = null;
-            return;
-        }
-
-        // Detect world change
-        if (lastKnownWorldId && currentWorldId && lastKnownWorldId !== currentWorldId) {
-            logger.warn(`Core Service | World changed from "${lastKnownWorldId}" to "${currentWorldId}". Clearing all sessions.`);
-            sessionManager.clearAllSessions();
-        }
-
-        lastKnownWorldId = currentWorldId;
-
-        if (systemClient.worldState !== 'active') return;
-
-        // Implementation Plan: Real-time Sync
-        // Broadcast sensitive data only to authenticated clients
-        systemClient.on('combatUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing combat update to clients...');
-            io.to('authenticated').emit('combatUpdate', data);
-        });
-
-        systemClient.on('chatUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing chat update to clients...');
-            io.to('authenticated').emit('chatUpdate', data);
-        });
-
-        systemClient.on('actorUpdate', (data: any) => {
-            logger.debug(`Core Service | Syncing actor update to clients for actor ${data.actorId}...`);
-            io.to('authenticated').emit('actorUpdate', data);
-        });
-
-        systemClient.on('sharedContentUpdate', (data: any) => {
-            logger.debug('Core Service | Syncing shared content update to clients...');
-            // In v13, shared content might need to reach specific users, but for now we broadcast to all authenticated
-            io.to('authenticated').emit('sharedContentUpdate', data);
-        });
-
-        logger.info('Core Service | Initializing Backend Services...');
-        (async () => {
-            try {
-                const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-                const cache = CompendiumCache.getInstance();
-                await cache.initialize(systemClient);
-                sessionManager.setCache(cache);
-            } catch (e: any) {
-                logger.error(`Core Service | Compendium Cache initialization failed: ${e.message}`);
-            }
-        })();
-    });
-
-    systemClient.on('disconnect', () => {
-        logger.info('Core Service | System Client Disconnected. Clearing Backend Services...');
-        lastKnownWorldId = null; // Reset world tracking on disconnect
-        (async () => {
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-            CompendiumCache.getInstance().reset();
-            sessionManager.setCache(null);
-        })();
-    });
-
-    // Initialize in background so Express can bind port immediately and answer /api/status 
-    sessionManager.initialize().catch(err => {
-        logger.error(`Core Service | SessionManager initialization failed: ${err.message}`);
-    });
-
-    // --- Middleware: Session Authentication ---
-    const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        // Exempt Socket.io handshake from REST middleware
-        if (req.url.includes('socket.io')) return next();
-
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
-        }
-
-        const sessionId = authHeader.split(' ')[1];
-
-        sessionManager.getOrRestoreSession(sessionId).then(session => {
-            if (!session || !session.client.userId) {
-                return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
-            }
-
-            // Attach client to request
-            (req as any).foundryClient = session.client;
-            (req as any).userSession = session;
-            next();
-        }).catch(err => {
-            logger.error(`Authentication Error: ${err.message}`);
-            res.status(500).json({ error: 'Internal Authentication Error' });
-        });
-    };
-
-    // --- Middleware: Optional Session Authentication (Try-Auth) ---
-    const tryAuthenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return next();
-        }
-
-        const sessionId = authHeader.split(' ')[1];
-
-        sessionManager.getOrRestoreSession(sessionId).then(session => {
-            if (session && session.client.userId) {
-                (req as any).foundryClient = session.client;
-                (req as any).userSession = session;
-            }
-            next();
-        }).catch(() => next());
-    };
-
-    // --- Rate Limiting (Configurable) ---
-    const loginLimiter = rateLimit({
-        windowMs: config.security.rateLimit.windowMinutes * 60 * 1000,
-        max: config.security.rateLimit.maxAttempts,
-        message: {
-            error: `Too many login attempts. Please try again after ${config.security.rateLimit.windowMinutes} minutes.`
-        },
-        standardHeaders: true,
-        legacyHeaders: false,
-        skip: (req) => !config.security.rateLimit.enabled,
-    });
-
-    // --- App API (Public/Proxy-bound) ---
-    // This API serves the frontend via the Next.js proxy
-    const appRouter = express.Router();
-
+    // Start System Provider
+    await systemService.initialize(config.foundry);
+    const systemClient = systemService.getSystemClient();
 
     // --- Global Status Payload Generator ---
-    const getSystemStatusPayload = () => {
-        const systemClient = sessionManager.getSystemClient();
+    const getSystemStatusPayload = async () => {
+        const systemClient = systemService.getSystemClient();
         let system: any = {
             id: null,
             status: systemClient.worldState,
@@ -274,7 +204,7 @@ async function startServer() {
 
             if (system.id) {
                 const sid = system.id.toLowerCase();
-                const adapter = getAdapter(sid);
+                const adapter = await getAdapter(sid);
                 if (adapter && typeof (adapter as any).getConfig === 'function') {
                     const cfg = (adapter as any).getConfig();
                     if (cfg) system.config = cfg;
@@ -300,6 +230,7 @@ async function startServer() {
             connected: systemClient.isConnected,
             worldId: systemClient.getGameData()?.world?.id || null,
             initialized: sessionManager.isCacheReady(),
+            isConfigured: !!(systemClient.cachedWorldData || (await SetupManager.loadCache()).currentWorldId),
             users: sanitizedUsers,
             system: system,
             url: config.foundry.url,
@@ -308,11 +239,116 @@ async function startServer() {
         };
     };
 
+    // Global System Status Broadcast System
+    // This pushes updates to ALL dashboard clients whenever the target world state changes.
+    const broadcastSystemStatus = async () => {
+        const payload = await getSystemStatusPayload();
+        io.emit('systemStatus', payload);
+    };
+
+    systemService.on('world:connected', (data) => {
+        logger.info(`Core Service | World Connected [${data.state}]. Broadcasting status to clients...`);
+        broadcastSystemStatus();
+    });
+
+    systemService.on('world:disconnected', () => {
+        logger.info('Core Service | World Disconnected. Broadcasting status to clients...');
+        broadcastSystemStatus();
+    });
+
+    systemService.on('world:ready', (data) => {
+        logger.info(`Core Service | World Ready [${data.systemId}]. Broadcasting status to clients...`);
+        broadcastSystemStatus();
+    });
+
+    // Initialize Session storage in background
+    sessionManager.initialize().catch(err => {
+        logger.error(`Core Service | SessionManager initialization failed: ${err.message}`);
+    });
+
     // --- Backend Status Polling Loop ---
-    setInterval(() => {
-        const payload = getSystemStatusPayload();
+    setInterval(async () => {
+        const payload = await getSystemStatusPayload();
         io.emit('systemStatus', payload);
     }, 4000);
+
+    // --- Middleware: Session Authentication ---
+    const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        // Exempt Socket.io handshake from REST middleware
+        if (req.url.includes('socket.io')) return next();
+
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
+        }
+
+        const token = authHeader.split(' ')[1];
+
+        // 1. Check for System Service Account (Point-of-Presence)
+        if (token === config.foundry.password) {
+            (req as any).foundryClient = systemService.getSystemClient();
+            (req as any).isSystem = true;
+            return next();
+        }
+
+        // 2. Fallback to Standard User Session
+        sessionManager.getOrRestoreSession(token).then(session => {
+            if (!session || !session.client.userId) {
+                return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
+            }
+
+            (req as any).foundryClient = session.client;
+            (req as any).userSession = session;
+            (req as any).isSystem = false;
+            next();
+        }).catch(err => {
+            logger.error(`Authentication Error: ${err.message}`);
+            res.status(500).json({ error: 'Internal Authentication Error' });
+        });
+    };
+
+    // --- Middleware: Optional Session Authentication (Try-Auth) ---
+    const tryAuthenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+            return next();
+        }
+
+        const token = authHeader.split(' ')[1];
+
+        // 1. Check for System Service Account
+        if (token === config.foundry.password) {
+            (req as any).foundryClient = systemService.getSystemClient();
+            (req as any).isSystem = true;
+            return next();
+        }
+
+        // 2. Fallback to User Session
+        sessionManager.getOrRestoreSession(token).then(session => {
+            if (session && session.client.userId) {
+                (req as any).foundryClient = session.client;
+                (req as any).userSession = session;
+                (req as any).isSystem = false;
+            }
+            next();
+        }).catch(() => next());
+    };
+
+    // --- Rate Limiting (Configurable) ---
+    const loginLimiter = rateLimit({
+        windowMs: config.security.rateLimit.windowMinutes * 60 * 1000,
+        max: config.security.rateLimit.maxAttempts,
+        message: {
+            error: `Too many login attempts. Please try again after ${config.security.rateLimit.windowMinutes} minutes.`
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: (req) => !config.security.rateLimit.enabled,
+    });
+
+    // --- App API (Public/Proxy-bound) ---
+    // This API serves the frontend via the Next.js proxy
+    const appRouter = express.Router();
 
     const statusHandler = async (req: express.Request, res: express.Response) => {
         try {
@@ -332,15 +368,7 @@ async function startServer() {
                 }
             }
 
-            if (process.env.NODE_ENV !== 'production') {
-                const systemClient = sessionManager.getSystemClient();
-                const sysState = { connected: systemClient.isConnected, worldState: systemClient.worldState };
-                const userState = userSession ? { connected: userSession.client.isConnected, userId: userSession.client.userId } : null;
-                // Quieter Dev Logging to prove backend loop is working instead of handling thousands of requests
-                // logger.debug(`Status REST | Auth: ${isAuthenticated} | World: ${sysState.worldState}`);
-            }
-
-            const basePayload = getSystemStatusPayload();
+            const basePayload = await getSystemStatusPayload();
 
             res.json({
                 ...basePayload,
@@ -353,7 +381,6 @@ async function startServer() {
         }
     };
 
-
     // Middleware to check if system is initialized
     const ensureInitialized = (req: express.Request, res: express.Response, next: express.NextFunction) => {
         if (!sessionManager.isCacheReady()) {
@@ -365,8 +392,37 @@ async function startServer() {
         next();
     };
 
+    const getSanitizedConfig = () => ({
+        app: { version: config.app.version },
+        foundry: {
+            url: config.foundry.url
+        }
+    });
+
     appRouter.get('/status', statusHandler);
     appRouter.get('/session/connect', statusHandler);
+
+    appRouter.get('/config', (req, res) => {
+        res.json(getSanitizedConfig());
+    });
+
+    /**
+     * Public endpoint to check if the application has been configured.
+     * Used by the frontend 'Configuration Required' overlay.
+     */
+    appRouter.get('/config/setup-status', async (req, res) => {
+        try {
+            const cache = await SetupManager.loadCache();
+            const isConfigured = !!(cache.currentWorldId && cache.worlds[cache.currentWorldId]);
+            res.json({ isConfigured });
+        } catch (err: any) {
+            logger.error(`Failed to check setup status: ${err.message}`);
+            res.status(500).json({ isConfigured: false, error: 'Failed to verify configuration status' });
+        }
+    });
+    appRouter.get('/registry/modules', (req, res) => {
+        res.json(getRegisteredModules());
+    });
 
     // --- System API (moved after middleware to avoid duplicate auth) ---
 
@@ -392,6 +448,41 @@ async function startServer() {
         res.json({ success: true });
     });
 
+    // --- Global Guard: Block API until bootstrap complete ---
+    appRouter.use(ensureInitialized);
+
+    // --- Normalized Data Helper ---
+    // Shared between /api/actors and /api/combats to ensure UI-ready data
+    const normalizeActors = async (actorList: any[], client: any) => {
+        const systemInfo = await client.getSystem();
+        const adapter = await getAdapter(systemInfo.id);
+        if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
+
+        const { CompendiumCache } = await import('@core/foundry/compendium-cache');
+        const cache = CompendiumCache.getInstance();
+
+        return Promise.all(actorList.map(async (actor: any) => {
+            if (!actor.computed) actor.computed = {};
+            if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
+            if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
+
+            // Resolve top-level image
+            if (actor.img) actor.img = client.resolveUrl(actor.img);
+            if (actor.prototypeToken?.texture?.src) {
+                actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
+            }
+
+            const normalized = adapter.normalizeActorData(actor, client);
+
+            // Compute derived data if adapter supports it (for Dashboard stats)
+            if (adapter.computeActorData) {
+                normalized.derived = adapter.computeActorData(normalized);
+            }
+
+            return normalized;
+        }));
+    };
+
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
@@ -399,22 +490,26 @@ async function startServer() {
     appRouter.get('/system', async (req, res) => {
         try {
             // Auth handled by middleware
-            const gameData = sessionManager.getSystemClient().getGameData();
+            const gameData = systemService.getSystemClient().getGameData();
             res.json(gameData?.system || {});
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
     });
 
-    appRouter.get('/system/data', ensureInitialized, async (req: any, res: any) => {
+    // System Data (Already has ensureInitialized via router.use)
+    appRouter.get('/system/data', async (req: any, res: any) => {
         try {
             // Auth handled by middleware
-            const systemClient = sessionManager.getSystemClient();
+            const systemClient = systemService.getSystemClient();
             const gameData = systemClient.getGameData();
-            const adapter = systemClient.getSystemAdapter();
+            const { getAdapter } = await import('@modules/registry/server');
+            const adapter = await getAdapter(gameData.system.id);
+            const adapterName = adapter?.constructor?.name || 'Unknown';
 
             if (adapter && typeof (adapter as any).getSystemData === 'function') {
                 const data = await (adapter as any).getSystemData(systemClient);
+                logger.debug(`[CoreService] [PID:${process.pid}] System data fetched (${adapterName}). Keys: ${Object.keys(data || {}).length}`);
                 res.json(data);
             } else {
                 // Fallback: Return raw scraper data if adapter doesn't provide more
@@ -428,7 +523,7 @@ async function startServer() {
     appRouter.get('/system/scenes', async (req, res) => {
         try {
             // Auth handled by middleware
-            const systemClient = sessionManager.getSystemClient();
+            const systemClient = systemService.getSystemClient();
             const sceneData = systemClient.getSceneData();
 
             if (!sceneData) {
@@ -447,7 +542,7 @@ async function startServer() {
             const client = (req as any).foundryClient;
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
             const rawActors = await client.getActors();
@@ -456,30 +551,7 @@ async function startServer() {
             // Yes, standard User can only see what they own/observe.
             // Client.getActors() returns what the socket gives.
 
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
-            const cache = CompendiumCache.getInstance();
-            // Note: CompendiumCache is now initialized by SessionManager on startup.
-
-            const normalize = async (actorList: any[]) => Promise.all(actorList.map(async (actor: any) => {
-                if (!actor.computed) actor.computed = {};
-                if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
-                if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
-
-                // Resolve top-level image
-                if (actor.img) actor.img = client.resolveUrl(actor.img);
-                if (actor.prototypeToken?.texture?.src) {
-                    actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
-                }
-
-                const normalized = adapter.normalizeActorData(actor, client);
-
-                // Compute derived data if adapter supports it (for Dashboard stats)
-                if (adapter.computeActorData) {
-                    normalized.derived = adapter.computeActorData(normalized);
-                }
-
-                return normalized;
-            }));
+            const normalize = async (actorList: any[]) => normalizeActors(actorList, client);
 
             // We treat all returned actors as "visible"
             // Filter by ownership and type
@@ -534,6 +606,51 @@ async function startServer() {
         }
     });
 
+    appRouter.get('/actors/cards', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const systemInfo = await client.getSystem();
+            const adapter = await getAdapter(systemInfo.id);
+            if (!adapter || !adapter.getActorCardData) {
+                return res.json({});
+            }
+
+            const rawActors = await client.getActors();
+            const cards: Record<string, any> = {};
+
+            for (const actor of rawActors) {
+                const id = actor._id || actor.id;
+                cards[id] = adapter.getActorCardData(actor);
+            }
+
+            res.json(cards);
+        } catch (error: any) {
+            logger.error(`Core Service | Actor cards bulk fetch failed: ${error.message}`);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
+    appRouter.get('/actors/:id/card', async (req, res) => {
+        try {
+            const client = (req as any).foundryClient;
+            const actor = await client.getActor(req.params.id);
+            if (!actor || actor.error) {
+                return res.status(actor?.error ? 503 : 404).json({ error: actor?.error || 'Actor not found' });
+            }
+
+            const systemInfo = await client.getSystem();
+            const adapter = await getAdapter(systemInfo.id);
+            if (!adapter || !adapter.getActorCardData) {
+                return res.json({});
+            }
+
+            res.json(adapter.getActorCardData(actor));
+        } catch (error: any) {
+            logger.error(`Core Service | Actor card fetch failed: ${error.message}`);
+            res.status(500).json({ error: error.message });
+        }
+    });
+
     appRouter.get('/actors/:id', async (req, res) => {
         try {
             const client = (req as any).foundryClient;
@@ -542,7 +659,7 @@ async function startServer() {
                 return res.status(actor?.error ? 503 : 404).json({ error: actor?.error || 'Actor not found' });
             }
 
-            const { CompendiumCache } = await import('../core/foundry/compendium-cache');
+            const { CompendiumCache } = await import('@core/foundry/compendium-cache');
             const cache = CompendiumCache.getInstance();
             // Note: CompendiumCache is now initialized by SessionManager on startup.
 
@@ -565,8 +682,17 @@ async function startServer() {
             };
 
             const resolvedActor = resolveUUIDs(actor);
-            const { getMatchingAdapter } = await import('../modules/core/registry');
-            const adapter = getMatchingAdapter(resolvedActor);
+
+            // Priority: Use the current world's system adapter to avoid cross-system contamination
+            const systemInfo = await client.getSystem();
+            let adapter = await getAdapter(systemInfo.id);
+
+            // Fallback: If world adapter doesn't match this specific actor, try heuristic matching
+            const { getMatchingAdapter } = await import('@modules/registry/server');
+            if (!adapter || (adapter.match && !adapter.match(resolvedActor))) {
+                adapter = await getMatchingAdapter(resolvedActor);
+            }
+
             const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
 
             // Call adapter.computeActorData if available (module-specific derived stats)
@@ -675,7 +801,7 @@ async function startServer() {
             if (!actor) return res.status(404).json({ error: 'Actor not found' });
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             if (type === 'use-item') {
@@ -856,7 +982,7 @@ async function startServer() {
     // Debug route - allow using system client if no session provided for easier dev access
     app.get('/api/debug/actor/:id', async (req, res) => {
         try {
-            let client = sessionManager.getSystemClient();
+            let client = systemService.getSystemClient();
 
             // Try to use user session if available for better data accuracy
             const authHeader = req.headers.authorization;
@@ -938,14 +1064,22 @@ async function startServer() {
                         const actor = await client.getActor(id);
                         if (actor) actorsMap[id] = actor;
                     } catch (e) {
-                        console.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
+                        logger.error(`Failed to fetch actor ${id} for combat ${combat._id}`);
                     }
                 }));
 
-                // Attach actor data to combatants
+                // Attach actor data to combatants (Normalized for HUD requirements)
+                const actorsToNormalize = Object.values(actorsMap).filter(Boolean);
+                const normalizedActors = await normalizeActors(actorsToNormalize, client);
+                const normalizedMap: Record<string, any> = {};
+                normalizedActors.forEach((a: any) => {
+                    const id = a._id || a.id;
+                    normalizedMap[id] = a;
+                });
+
                 const enrichedCombatants = (combat.combatants || []).map((c: any) => ({
                     ...c,
-                    actor: actorsMap[c.actorId] || null
+                    actor: normalizedMap[c.actorId] || null
                 }));
 
                 return { ...combat, combatants: enrichedCombatants };
@@ -1091,7 +1225,7 @@ async function startServer() {
             const { formula, advantageMode } = req.body;
 
             const systemInfo = await client.getSystem();
-            const adapter = getAdapter(systemInfo.id);
+            const adapter = await getAdapter(systemInfo.id);
             if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
             const combats = await client.getCombats();
@@ -1268,7 +1402,7 @@ async function startServer() {
         try {
             const client = (req as any).foundryClient;
             // Use System Client to fetch users (CoreSocket has the data methods)
-            const users = await sessionManager.getSystemClient().getUsers();
+            const users = await systemService.getSystemClient().getUsers();
             logger.debug(`[API] /session/users: Found ${users.length} users via System Client`);
 
             // Sanitize and Map (Consistent with statusHandler)
@@ -1298,7 +1432,7 @@ async function startServer() {
             // CRITICAL: Use the *User's* client to strip out shared content relevant to THEM.
             // If the GM shares with "User A", only User A's socket receives the event.
             // The System Client (Service Account) would miss it unless it was the target or it was a broadcast.
-            const client = (req as any).foundryClient || sessionManager.getSystemClient();
+            const client = (req as any).foundryClient || systemService.getSystemClient();
 
             // Note: SocketClient logic stores the last received 'shareImage'/'showEntry' event.
             // This works perfectly for the specific user's view.
@@ -1311,7 +1445,7 @@ async function startServer() {
 
             res.json(content || { type: null });
         } catch (error: any) {
-            console.error('Error fetching shared content:', error);
+            logger.error('Error fetching shared content:', error);
             res.status(500).json({ error: 'Internal server error' });
         }
     });
@@ -1331,18 +1465,23 @@ async function startServer() {
 
             if (!systemId) return res.status(404).json({ error: 'No system specified' });
 
-            const { serverModules } = await import('../modules/core/server-modules');
-            const sysModule = (serverModules as any)[systemId];
-
-            if (!sysModule || !sysModule.apiRoutes) {
-                logger.warn(`Module Routing | Module ${systemId} not found or missing apiRoutes. Registered modules: ${Object.keys(serverModules).join(', ')}`);
-                console.error(`[DEBUG] sysModule for ${systemId}:`, sysModule ? 'exists but missing routes' : 'not found');
+            // Hard Wall: Dynamically import the server module directly from its folder.
+            // Since this is in server/index.ts (run via ts-node), it is never bundled for the browser.
+            // Correctly resolve the server module via the registry manifest
+            const sysModule = await getServerModule(systemId);
+            if (!sysModule) {
+                logger.warn(`Module Routing | Module ${systemId} not found or missing server entry point.`);
                 return res.status(404).json({ error: `Module ${systemId} not found` });
             }
 
+            if (!sysModule || !sysModule.apiRoutes) {
+                logger.warn(`Module Routing | Module ${systemId} missing apiRoutes.`);
+                return res.status(404).json({ error: `Module ${systemId} API not available` });
+            }
+
             let matchedPattern: string | undefined;
-            // console.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
-            const routes = Object.keys(sysModule.apiRoutes || {});
+            // logger.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
+            const routes = Object.keys(sysModule.apiRoutes);
 
             for (const pattern of routes) {
                 const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
@@ -1355,7 +1494,7 @@ async function startServer() {
 
             if (!matchedPattern) {
                 logger.warn(`Module Routing | No handler found for ${systemId}/${routePath}. Available routes: ${routes.join(', ')}`);
-                console.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
+                logger.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
                 return res.status(404).json({ error: `Route ${routePath} not found` });
             }
 
@@ -1365,7 +1504,7 @@ async function startServer() {
                 method: req.method,
                 url: req.url,
                 headers: req.headers,
-                foundryClient: (req as any).foundryClient || sessionManager.getSystemClient(),
+                foundryClient: (req as any).foundryClient || systemService.getSystemClient(),
                 userSession: (req as any).userSession
             } as any;
             const nextParams = { params: Promise.resolve({ systemId, route: routePath.split('/') }) };
@@ -1400,8 +1539,10 @@ async function startServer() {
 
     adminRouter.get('/status', async (req, res) => {
         // Use system client for admin status
-        const client = sessionManager.getSystemClient();
+        const systemStatus = await getSystemStatusPayload();
+        const client = systemService.getSystemClient();
         res.json({
+            ...systemStatus,
             socket: client.isConnected,
             worldState: (client as any).worldState,
             userId: client.userId,
@@ -1413,9 +1554,9 @@ async function startServer() {
     adminRouter.get('/worlds', async (req, res) => {
         try {
             // Use system client
-            const client = sessionManager.getSystemClient();
+            const client = systemService.getSystemClient();
             // Try live system info first
-            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const { SetupManager } = await import('@core/foundry/SetupManager');
             let worlds: any[] = [];
 
             // If we have a URL, try to scrape available worlds
@@ -1443,7 +1584,7 @@ async function startServer() {
 
     adminRouter.get('/cache', async (req, res) => {
         try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
+            const { SetupManager } = await import('@core/foundry/SetupManager');
             const cache = await SetupManager.loadCache();
             res.json(cache);
         } catch (error: any) {
@@ -1456,8 +1597,8 @@ async function startServer() {
         if (!sessionCookie) return res.status(400).json({ error: 'Session cookie required' });
 
         try {
-            const { SetupManager } = await import('../core/foundry/SetupManager');
-            const client = sessionManager.getSystemClient();
+            const { SetupManager } = await import('@core/foundry/SetupManager');
+            const client = systemService.getSystemClient();
             logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
 
             // Scrape
@@ -1478,7 +1619,7 @@ async function startServer() {
     adminRouter.post('/world/launch', async (req, res) => {
         const { worldId } = req.body;
         try {
-            const client = sessionManager.getSystemClient();
+            const client = systemService.getSystemClient();
             await client.launchWorld(worldId);
             res.json({ success: true, message: `Request to launch world ${worldId} sent.` });
         } catch (error: any) {
@@ -1488,7 +1629,7 @@ async function startServer() {
 
     adminRouter.post('/world/shutdown', async (req, res) => {
         try {
-            const client = sessionManager.getSystemClient();
+            const client = systemService.getSystemClient();
             await client.shutdownWorld();
             res.json({ success: true, message: 'Request to shut down current world sent.' });
         } catch (error: any) {
@@ -1510,6 +1651,6 @@ async function startServer() {
 }
 
 startServer().catch(err => {
-    console.error('Core Service | Unhandled startup error:', err);
+    logger.error('Core Service | Unhandled startup error:', err);
     process.exit(1);
 });
