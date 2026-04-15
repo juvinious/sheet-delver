@@ -43,8 +43,6 @@ export class DnD5eAdapter implements SystemAdapter {
         const ac = s.attributes?.ac?.value || 10;
 
         // Abilities
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const abilities = s.abilities || {};
 
         return {
             id: actor.id || actor._id,
@@ -63,7 +61,6 @@ export class DnD5eAdapter implements SystemAdapter {
         return `1d20${sign}${Math.abs(dexMod)}`;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getRollData(actor: any, type: string, key: string, _options: any = {}): { formula: string; type: string; label: string } | null {
         if (type === 'ability') {
             const abilities = actor.system.abilities;

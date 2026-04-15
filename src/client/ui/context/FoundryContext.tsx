@@ -22,6 +22,7 @@ interface FoundryContextType {
     activeUIModule: UIModuleManifest | null;
     actorCards: Record<string, ActorCardData>;
     fetchActorCards: () => Promise<void>;
+    isConfigured: boolean;
 
     // Actions
     handleLogin: (username: string, password?: string) => Promise<void>;
@@ -70,6 +71,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
     const [combats, setCombats] = useState<Combat[]>([]);
     const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
+    const [isConfigured, setIsConfigured] = useState<boolean>(true);
 
     const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
 
@@ -113,6 +115,23 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const lastActorFetchTimeRef = useRef<number>(0);
     const FETCH_THROTTLE_MS = 2000;
 
+    const fetchActorCards = useCallback(async () => {
+        if (!token) return;
+        try {
+            const res = await fetch('/api/actors/cards', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 401) {
+                setToken(null);
+                return;
+            }
+            const data = await res.json();
+            setActorCards(data || {});
+        } catch (e) {
+            logger.error('FoundryProvider | Failed to fetch actor cards:', e);
+        }
+    }, [token, setToken]);
+
     const fetchActors = useCallback(async () => {
         if (!token) return;
 
@@ -145,24 +164,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         } catch (error: any) {
             logger.error('FoundryProvider | Fetch actors failed:', error.message);
         }
-    }, [token]);
-
-    const fetchActorCards = useCallback(async () => {
-        if (!token) return;
-        try {
-            const res = await fetch('/api/actors/cards', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json();
-            setActorCards(data || {});
-        } catch (e) {
-            logger.error('FoundryProvider | Failed to fetch actor cards:', e);
-        }
-    }, [token]);
+    }, [token, fetchActorCards, setToken]);
 
     const fetchCombats = useCallback(async () => {
         if (!token) return;
@@ -222,7 +224,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         } catch (error: any) {
             logger.error('FoundryProvider | Fetch combat failed:', error.message);
         }
-    }, [token]);
+    }, [token, setToken]);
 
     const handleLogin = useCallback(async (username: string, password?: string) => {
         try {
@@ -318,6 +320,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 if (!isMounted) return;
 
                 if (data.currentUserId) setCurrentUserId(data.currentUserId);
+                if (data.isConfigured !== undefined) setIsConfigured(data.isConfigured);
 
                 // Fetch initial shared content
                 if (token) {
@@ -376,13 +379,15 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!appSocket) return;
 
-        const determineStep = (data: any, currentStep: string) => {
+        const determineStep = (data: any, currentStep: string, configured: boolean) => {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
+
+            if (!configured) return 'setup';
             const worldTitle = data.system?.worldTitle;
 
             // Priority 1: Explicit System States (Setup/Offline/Startup)
-            if (status === 'setup') return 'setup';
+            if (status === 'setup') return 'world-closed';
             if (status === 'offline') {
                 // If we discovered a world title during the probe, we are in 'startup'
                 // If not, we are still 'initializing' or waiting for the server to wake up.
@@ -444,6 +449,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                     if (!isEqual(system, data.system)) setSystem(data.system);
                     if (data.connected && !isEqual(users, data.users)) setUsers(data.users || []);
                     if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
+                    if (data.isConfigured !== undefined && isConfigured !== data.isConfigured) setIsConfigured(data.isConfigured);
 
                     const newToken = data.system?.actorSyncToken;
                     if (data.connected && newToken && newToken !== lastActorSyncTokenRef.current) {
@@ -451,15 +457,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         if (token) fetchActors();
                     }
 
-                    const targetStep = determineStep(data, step);
+                    const targetStep = determineStep(data, step, isConfigured);
                     if (step !== targetStep) {
-                        // CRITICAL: Only clear token if we are explicitly in setup mode AND was in something else.
-                        // Or if we are in 'login' but previously thought we were authenticated.
-                        if (targetStep === 'setup' && step !== 'startup' && step !== 'initializing') {
-                            logger.warn('FoundryProvider | World explicitly in Setup mode. Clearing session.');
-                            if (token) setToken(null);
-                            setLastWorldId(null);
-                        }
                         setStep(targetStep as any, 'socket', `Status change: ${targetStep}`);
                         if (targetStep === 'dashboard' && data.connected) fetchActors();
                     }
@@ -480,7 +479,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('systemStatus', handleSystemStatus);
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
-    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, lastWorldId]);
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, setToken, lastWorldId]);
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {
@@ -537,6 +536,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         activeUIModule,
         actorCards,
         fetchActorCards,
+        isConfigured,
         handleLogin, handleChatSend, handleLogout, fetchActors,
         ownedActors, readOnlyActors,
         sharedContent,
@@ -545,8 +545,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     }), [
         step, setStep, token, users, currentUser, system, messages,
         appVersion, activeUIModule, actorCards, ownedActors, readOnlyActors,
-        sharedContent, combats, appSocket,
-        fetchActorCards, handleLogin, handleChatSend, handleLogout, fetchActors, fetchCombats
+        sharedContent, combats, appSocket, isConfigured,
+        fetchActorCards, handleLogin, handleChatSend, handleLogout, fetchActors, fetchCombats, setToken
     ]);
 
     return (

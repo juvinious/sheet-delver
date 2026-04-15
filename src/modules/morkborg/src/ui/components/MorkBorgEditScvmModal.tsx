@@ -50,7 +50,7 @@ export default function MorkBorgEditScvmModal({ isOpen, onClose, onUpdate, actor
                 silver: actor.system?.silver ?? 0
             });
         }
-    }, [isOpen]);
+    }, [isOpen, actor]);
 
     if (!isOpen || !actor) return null;
 

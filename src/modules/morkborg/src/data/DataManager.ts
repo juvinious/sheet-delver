@@ -221,7 +221,7 @@ export class MorkBorgDataManager {
         }
 
         // Select a random class from the allowed pool
-        let selectedClass: any = allowedClasses[Math.floor(Math.random() * allowedClasses.length)];
+        const selectedClass: any = allowedClasses[Math.floor(Math.random() * allowedClasses.length)];
 
         const isClassless = !selectedClass || selectedClass.name === 'Adventurer';
 

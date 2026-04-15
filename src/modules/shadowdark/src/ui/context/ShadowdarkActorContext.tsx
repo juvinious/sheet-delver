@@ -263,6 +263,10 @@ export function ShadowdarkActorProvider({
         return drafts[path] !== undefined ? drafts[path] : fallback;
     }, [drafts]);
 
+    const closeRollDialog = useCallback(() => {
+        setRollDialog(prev => ({ ...prev, open: false, callback: null }));
+    }, []);
+
     const triggerRollDialog = useCallback((type: string, key: string, options: any = {}) => {
         let dialogType: 'attack' | 'ability' | 'spell' = 'attack';
         let title = '';
@@ -371,11 +375,7 @@ export function ShadowdarkActorProvider({
                 closeRollDialog();
             }
         });
-    }, [actor, resolveName, performRoll]);
-
-    const closeRollDialog = useCallback(() => {
-        setRollDialog(prev => ({ ...prev, open: false, callback: null }));
-    }, []);
+    }, [actor, resolveName, performRoll, closeRollDialog]);
 
     // Filter optimistically deleted items to ensure immediate frontend reactivity
     // independent of network latency or stale responses

@@ -1,4 +1,4 @@
-'use client';
+// 'use client';
 
 import RichTextEditor from '@client/ui/components/RichTextEditor';
 import { shadowdarkTheme } from '@modules/shadowdark/src/ui/themes/shadowdark';
@@ -7,10 +7,7 @@ import { logger } from '@shared/utils/logger';
 import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
-interface NotesTabProps {
-}
-
-export default function NotesTab({ }: NotesTabProps) {
+export default function NotesTab() {
     const { token } = useShadowdarkUI();
     const { actor, updateActor, getDraftValue } = useShadowdarkActor();
 

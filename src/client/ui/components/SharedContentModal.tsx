@@ -45,7 +45,7 @@ export function SharedContentModal() {
                 }
             }
         }
-    }, [sharedContent, setActiveJournalId]);
+    }, [sharedContent, setActiveJournalId, setSharedJournalId]);
 
     if (!isVisible || !content || !content.type) return null;
 

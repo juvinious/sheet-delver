@@ -3,7 +3,6 @@ import { SystemAdapter, ActorSheetData } from '@shared/interfaces';
 export class GenericSystemAdapter implements SystemAdapter {
     systemId = 'generic';
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     match(actor: any): boolean {
         return false; // Generic never matches specifically, it is the fallback
     }
@@ -36,7 +35,6 @@ export class GenericSystemAdapter implements SystemAdapter {
         return {};
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getRollData(actor: any, type: string, key: string, options?: any): any {
         return null;
     }
@@ -54,7 +52,6 @@ export class GenericSystemAdapter implements SystemAdapter {
         };
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     getInitiativeFormula(actor: any): string {
         return '1d20';
     }

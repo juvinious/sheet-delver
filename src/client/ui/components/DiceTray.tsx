@@ -33,6 +33,52 @@ const defaultStyles = {
 
 import { useFoundry } from '@client/ui/context/FoundryContext';
 
+const getPrefix = (mode: RollMode) => {
+    switch (mode) {
+        case 'gmroll': return '/gmr';
+        case 'blindroll': return '/br';
+        case 'selfroll': return '/sr';
+        default: return '/r';
+    }
+};
+
+const DICE_REGEX = /(\d+)d(\d+)([a-z]*)/g;
+
+const updateFormulaForMode = (currentFormula: string, mode: 'normal' | 'adv' | 'dis') => {
+    if (!currentFormula) return currentFormula;
+
+    return currentFormula.replace(DICE_REGEX, (match, count, faces, suffix) => {
+        if (mode === 'normal') {
+            if (count === '2' && (suffix === 'kh' || suffix === 'kl')) {
+                return `1d${faces}`;
+            }
+            return match;
+        }
+
+        if (mode === 'adv') {
+            if (count === '1' && !suffix) {
+                return `2d${faces}kh`;
+            }
+            if (count === '2' && suffix === 'kl') {
+                return `2d${faces}kh`;
+            }
+            return match;
+        }
+
+        if (mode === 'dis') {
+            if (count === '1' && !suffix) {
+                return `2d${faces}kl`;
+            }
+            if (count === '2' && suffix === 'kh') {
+                return `2d${faces}kl`;
+            }
+            return match;
+        }
+
+        return match;
+    });
+};
+
 export default function DiceTray({ onSend, hideHeader = false, speaker }: DiceTrayProps) {
     const { system } = useFoundry();
     const [formula, setFormula] = useState('');
@@ -49,15 +95,6 @@ export default function DiceTray({ onSend, hideHeader = false, speaker }: DiceTr
     const updateRollMode = (mode: RollMode) => {
         setRollMode(mode);
         localStorage.setItem('sheetdelver_roll_mode', mode);
-    };
-
-    const getPrefix = (mode: RollMode) => {
-        switch (mode) {
-            case 'gmroll': return '/gmr';
-            case 'blindroll': return '/br';
-            case 'selfroll': return '/sr';
-            default: return '/r';
-        }
     };
 
     // Effect: Sync formula prefix when rollMode changes
@@ -85,62 +122,6 @@ export default function DiceTray({ onSend, hideHeader = false, speaker }: DiceTr
     const s = { ...defaultStyles, ...(system?.config?.componentStyles?.diceTray || {}) };
     // @ts-ignore - The theme might have this, but not in all adapters yet
     const themeStyles = system?.config?.componentStyles?.diceTray;
-
-    // --- Reactive Formula Logic ---
-
-    // Constants for regex
-    // Matches 1d20, 2d20kh, 2d20kl, 1d4, 2d4kh, etc.
-    const DICE_REGEX = /(\d+)d(\d+)([a-z]*)/g;
-
-    const updateFormulaForMode = (currentFormula: string, mode: 'normal' | 'adv' | 'dis') => {
-        if (!currentFormula) return currentFormula;
-
-        return currentFormula.replace(DICE_REGEX, (match, count, faces, suffix) => {
-            const facesInt = parseInt(faces);
-
-            // Only apply to d20? User said "1d4... advantage... /r 2d4kh".
-            // So applies to ALL dice.
-
-            if (mode === 'normal') {
-                // Revert to 1dX if it looks like an advantage roll (2dXkh/kl)
-                // Heuristic: If count is 2 and suffix is kh/kl, revert to 1.
-                // Or simply strip modifiers and reset count? 
-                // "1d4" -> "2d4kh" -> "1d4"
-                if (count === '2' && (suffix === 'kh' || suffix === 'kl')) {
-                    return `1d${faces}`;
-                }
-                // If it was already 1d4, leave it.
-                // If user typed 3d6 manually, we shouldn't touch it unless it fits our pattern.
-                return match;
-            }
-
-            if (mode === 'adv') {
-                // 1d4 -> 2d4kh
-                // 2d4kl -> 2d4kh
-                if (count === '1' && !suffix) {
-                    return `2d${faces}kh`;
-                }
-                if (count === '2' && suffix === 'kl') {
-                    return `2d${faces}kh`; // Switch from dis to adv
-                }
-                return match;
-            }
-
-            if (mode === 'dis') {
-                // 1d4 -> 2d4kl
-                // 2d4kh -> 2d4kl
-                if (count === '1' && !suffix) {
-                    return `2d${faces}kl`;
-                }
-                if (count === '2' && suffix === 'kh') {
-                    return `2d${faces}kl`; // Switch from adv to dis
-                }
-                return match;
-            }
-
-            return match;
-        });
-    };
 
     // Effect: Update formula when advMode changes
     useEffect(() => {

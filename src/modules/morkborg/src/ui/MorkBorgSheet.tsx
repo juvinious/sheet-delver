@@ -133,7 +133,7 @@ export default function MorkBorgSheet({ actor, onUpdate, onRoll, onDeleteItem, o
 
     useEffect(() => {
         logger.debug(`[MorkBorg] Initializing Sheet for actor: ${actor.name}`);
-    }, []);
+    }, [actor.name]);
 
     // Intercept onRoll for types that need the confirmation modal
     const handleAbilityRoll = useCallback((type: MorkBorgRollType, key: string, options: MorkBorgRollOptions = {}) => {

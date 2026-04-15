@@ -19,7 +19,7 @@ export default function ShutdownWatcher() {
     useEffect(() => {
         // Only trigger if we transition FROM a live state TO setup
         const wasLive = prevStepRef.current === 'dashboard' || prevStepRef.current === 'login' || prevStepRef.current === 'startup';
-        const isSetup = step === 'setup';
+        const isSetup = step === 'world-closed' || step === 'setup';
 
         if (wasLive && isSetup && !shutdownTriggeredRef.current && pathname !== '/') {
             logger.info(`[ShutdownWatcher] Shutdown detected via global state transition (${prevStepRef.current} -> ${step}). Starting countdown.`);

@@ -9,10 +9,7 @@ import { useConfig } from '@client/ui/context/ConfigContext';
 
 import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-interface TalentsTabProps {
-}
-
-export default function TalentsTab({ }: TalentsTabProps) {
+export default function TalentsTab() {
     const { resolveImageUrl } = useConfig();
     const { actor, triggerRollDialog } = useShadowdarkActor();
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());

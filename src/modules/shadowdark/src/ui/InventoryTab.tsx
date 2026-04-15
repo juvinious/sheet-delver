@@ -1,4 +1,4 @@
-'use client';
+// 'use client';
 
 import { useState, useEffect } from 'react';
 import {
@@ -15,10 +15,7 @@ import { Gem, Plus } from 'lucide-react';
 
 import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-interface InventoryTabProps {
-}
-
-export default function InventoryTab({ }: InventoryTabProps) {
+export default function InventoryTab() {
     const { resolveImageUrl } = useConfig();
     const {
         actor,

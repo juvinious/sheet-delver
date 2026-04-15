@@ -1,4 +1,4 @@
-'use client';
+// 'use client';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
@@ -15,9 +15,7 @@ import { useShadowdarkUI } from './context/ShadowdarkUIContext';
 
 import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-interface SpellsTabProps {}
-
-export default function SpellsTab({}: SpellsTabProps) {
+export default function SpellsTab() {
     const { addNotification } = useNotifications();
     const { systemData, collections, fetchPack, resolveName, token } = useShadowdarkUI();
     const { resolveImageUrl } = useConfig();
@@ -25,7 +23,7 @@ export default function SpellsTab({}: SpellsTabProps) {
         actor,
         updateActor,
         deleteItem,
-        updateItem, 
+        updateItem,
         getDraftValue,
         triggerRollDialog
     } = useShadowdarkActor();
@@ -35,38 +33,6 @@ export default function SpellsTab({}: SpellsTabProps) {
     const [modalFilterClass, setModalFilterClass] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
 
-
-    /**
-     * Helper to determine recursively if a spell belongs to a given class and tier.
-     * Accounts for primary class defaults and recently added normalization strings.
-     */
-    function isSpellMatching(item: any, tier: number, classKey: string) {
-        if (item.type !== 'Spell') return false;
-
-        const iTier = Number(item.system?.tier !== undefined ? item.system.tier : item.tier);
-        if (iTier !== tier) return false;
-
-        const classData = item.system?.class || item.class || '';
-        let classArray: any[] = [];
-        if (Array.isArray(classData)) {
-            classArray = classData;
-        } else if (typeof classData === 'string') {
-            classArray = classData.split(',').map(s => s.trim()).filter(Boolean);
-        } else if (classData && typeof classData === 'object') {
-            classArray = [classData.name || classData.label || String(classData)];
-        }
-
-        const filterLower = classKey.toLowerCase();
-        const source = spellSources.find((s: any) => s.classKey === filterLower);
-
-        // Resolve class names from UUIDs/IDs using context resolver
-        const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase()).filter(Boolean);
-
-        // Primary class match: if spell has no class assigned, it belongs to the primary class source
-        const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
-
-        return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
-    }
 
     // Optimistic "lost" state is now handled by getDraftValue in the render loop or handlers
 
@@ -182,6 +148,10 @@ export default function SpellsTab({}: SpellsTabProps) {
         setIsAddModalOpen(true);
     };
 
+    /**
+     * Helper to determine recursively if a spell belongs to a given class and tier.
+     * Accounts for primary class defaults and recently added normalization strings.
+     */
     const spellSources = useMemo(() => {
         const sources: Map<string, any> = new Map();
 
@@ -275,6 +245,34 @@ export default function SpellsTab({}: SpellsTabProps) {
         });
         return Array.from(sources.values());
     }, [actor.items, actor.computed?.classDetails, resolveName, actor.system, collections?.classes, systemData?.classes]);
+
+    const isSpellMatching = useCallback((item: any, tier: number, classKey: string) => {
+        if (item.type !== 'Spell') return false;
+
+        const iTier = Number(item.system?.tier !== undefined ? item.system.tier : item.tier);
+        if (iTier !== tier) return false;
+
+        const classData = item.system?.class || item.class || '';
+        let classArray: any[] = [];
+        if (Array.isArray(classData)) {
+            classArray = classData;
+        } else if (typeof classData === 'string') {
+            classArray = classData.split(',').map(s => s.trim()).filter(Boolean);
+        } else if (classData && typeof classData === 'object') {
+            classArray = [classData.name || classData.label || String(classData)];
+        }
+
+        const filterLower = classKey.toLowerCase();
+        const source = spellSources.find((s: any) => s.classKey === filterLower);
+
+        // Resolve class names from UUIDs/IDs using context resolver
+        const resolvedClasses = classArray.map(c => resolveName(c, 'classes').toLowerCase()).filter(Boolean);
+
+        // Primary class match: if spell has no class assigned, it belongs to the primary class source
+        const isPrimaryClassDefault = resolvedClasses.length === 0 && source?.type === 'class';
+
+        return resolvedClasses.some(c => c.includes(filterLower)) || isPrimaryClassDefault;
+    }, [spellSources, resolveName]);
 
     const getAccessibleTiers = (source: any) => {
         const level = Number(actor.level?.value || actor.system?.level?.value || 0);
@@ -382,7 +380,7 @@ export default function SpellsTab({}: SpellsTabProps) {
             system: s.system,
             isInnate: !!s.computed?.isInnate
         }));
-    }, [actor.items, editingTier, modalFilterClass, spellSources, resolveName]);
+    }, [actor.items, editingTier, modalFilterClass, isSpellMatching]);
 
     return (
         <div className="space-y-8 pb-20">

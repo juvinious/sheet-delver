@@ -230,6 +230,7 @@ async function startServer() {
             connected: systemClient.isConnected,
             worldId: systemClient.getGameData()?.world?.id || null,
             initialized: sessionManager.isCacheReady(),
+            isConfigured: !!(systemClient.cachedWorldData || (await SetupManager.loadCache()).currentWorldId),
             users: sanitizedUsers,
             system: system,
             url: config.foundry.url,

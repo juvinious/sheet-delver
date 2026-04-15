@@ -1,4 +1,4 @@
-'use client';
+// 'use client';
 
 import { useState } from 'react';
 import { ConfirmationModal } from '@client/ui/components/ConfirmationModal';
@@ -7,22 +7,16 @@ import { Plus, Edit2 } from 'lucide-react';
 import AddEffectsModal from './components/AddEffectsModal';
 
 
-interface EffectsTabProps {
-}
-
 import { useShadowdarkActor } from './context/ShadowdarkActorContext';
 
-interface EffectsTabProps {
-}
-
-export default function EffectsTab({ }: EffectsTabProps) {
+export default function EffectsTab() {
     const { resolveImageUrl } = useConfig();
-    const { 
-        actor, 
-        toggleEffect, 
-        deleteEffect, 
-        createEffect, 
-        updateEffect 
+    const {
+        actor,
+        toggleEffect,
+        deleteEffect,
+        createEffect,
+        updateEffect
     } = useShadowdarkActor();
     const [effectToDelete, setEffectToDelete] = useState<string | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
