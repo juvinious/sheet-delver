@@ -1,6 +1,7 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
+import { requireLocalhost } from '@server/security/policies';
 
 interface AdminRouterDeps {
     getSystemStatusPayload: () => Promise<any>;
@@ -15,14 +16,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     const adminService = createAdminService(deps);
 
     // Verify local request
-    adminRouter.use((req, res, next) => {
-        const remoteAddress = req.socket.remoteAddress;
-        if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1') {
-            logger.warn(`Core Service | Blocked non-local Admin API request from ${remoteAddress}`);
-            return res.status(403).json({ error: 'Admin access restricted to localhost' });
-        }
-        next();
-    });
+    adminRouter.use(requireLocalhost);
 
     adminRouter.get('/status', async (req, res) => {
         const payload = await adminService.getStatus();
