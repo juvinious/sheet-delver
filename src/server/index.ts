@@ -1,6 +1,9 @@
 import express from 'express';
 import cors from 'cors';
-import rateLimit from 'express-rate-limit';
+import { createAuthenticateSession } from './middleware/authenticateSession';
+import { createTryAuthenticateSession } from './middleware/tryAuthenticateSession';
+import { createEnsureInitialized } from './middleware/ensureInitialized';
+import { createLoginLimiter } from './middleware/rateLimiters';
 
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
@@ -273,78 +276,13 @@ async function startServer() {
     }, 4000);
 
     // --- Middleware: Session Authentication ---
-    const authenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        // Exempt Socket.io handshake from REST middleware
-        if (req.url.includes('socket.io')) return next();
-
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({ error: 'Unauthorized: Missing Session Token' });
-        }
-
-        const token = authHeader.split(' ')[1];
-
-        // 1. Check for System Service Account (Point-of-Presence)
-        if (token === config.foundry.password) {
-            (req as any).foundryClient = systemService.getSystemClient();
-            (req as any).isSystem = true;
-            return next();
-        }
-
-        // 2. Fallback to Standard User Session
-        sessionManager.getOrRestoreSession(token).then(session => {
-            if (!session || !session.client.userId) {
-                return res.status(401).json({ error: 'Unauthorized: Invalid or Expired Session' });
-            }
-
-            (req as any).foundryClient = session.client;
-            (req as any).userSession = session;
-            (req as any).isSystem = false;
-            next();
-        }).catch(err => {
-            logger.error(`Authentication Error: ${err.message}`);
-            res.status(500).json({ error: 'Internal Authentication Error' });
-        });
-    };
+    const authenticateSession = createAuthenticateSession(sessionManager, config);
 
     // --- Middleware: Optional Session Authentication (Try-Auth) ---
-    const tryAuthenticateSession = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        const authHeader = req.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return next();
-        }
-
-        const token = authHeader.split(' ')[1];
-
-        // 1. Check for System Service Account
-        if (token === config.foundry.password) {
-            (req as any).foundryClient = systemService.getSystemClient();
-            (req as any).isSystem = true;
-            return next();
-        }
-
-        // 2. Fallback to User Session
-        sessionManager.getOrRestoreSession(token).then(session => {
-            if (session && session.client.userId) {
-                (req as any).foundryClient = session.client;
-                (req as any).userSession = session;
-                (req as any).isSystem = false;
-            }
-            next();
-        }).catch(() => next());
-    };
+    const tryAuthenticateSession = createTryAuthenticateSession(sessionManager, config);
 
     // --- Rate Limiting (Configurable) ---
-    const loginLimiter = rateLimit({
-        windowMs: config.security.rateLimit.windowMinutes * 60 * 1000,
-        max: config.security.rateLimit.maxAttempts,
-        message: {
-            error: `Too many login attempts. Please try again after ${config.security.rateLimit.windowMinutes} minutes.`
-        },
-        standardHeaders: true,
-        legacyHeaders: false,
-        skip: (req) => !config.security.rateLimit.enabled,
-    });
+    const loginLimiter = createLoginLimiter(config);
 
     // --- App API (Public/Proxy-bound) ---
     // This API serves the frontend via the Next.js proxy
@@ -382,15 +320,7 @@ async function startServer() {
     };
 
     // Middleware to check if system is initialized
-    const ensureInitialized = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        if (!sessionManager.isCacheReady()) {
-            return res.status(503).json({
-                status: 'initializing',
-                message: 'Compendium cache is warming up, please wait.'
-            });
-        }
-        next();
-    };
+    const ensureInitialized = createEnsureInitialized(sessionManager);
 
     const getSanitizedConfig = () => ({
         app: { version: config.app.version },
