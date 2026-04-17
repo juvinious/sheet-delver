@@ -15,11 +15,11 @@ import { registerDebugRoutes } from './routes/debug/registerDebugRoutes';
 import { createModuleRouter } from './routes/modules/createModuleRouter';
 import { createAdminRouter } from './routes/admin/createAdminRouter';
 import { createStatusService } from './services/status/StatusService';
+import { createActorNormalizationService } from './services/actors/ActorNormalizationService';
 
-import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
-import { getAdapter, initializeRegistry, unloadSystemModules, getRegisteredModules, getServerModule } from '@modules/registry/server';
+import { initializeRegistry, unloadSystemModules, getRegisteredModules, getServerModule } from '@modules/registry/server';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
@@ -270,37 +270,9 @@ async function startServer() {
     // --- Global Guard: Block API until bootstrap complete ---
     appRouter.use(ensureInitialized);
 
-    // --- Normalized Data Helper ---
-    // Shared between /api/actors and /api/combats to ensure UI-ready data
-    const normalizeActors = async (actorList: any[], client: any) => {
-        const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
-        if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
-
-        const { CompendiumCache } = await import('@core/foundry/compendium-cache');
-        const cache = CompendiumCache.getInstance();
-
-        return Promise.all(actorList.map(async (actor: any) => {
-            if (!actor.computed) actor.computed = {};
-            if (!actor.computed.resolvedNames) actor.computed.resolvedNames = {};
-            if (adapter.resolveActorNames) await adapter.resolveActorNames(actor, cache);
-
-            // Resolve top-level image
-            if (actor.img) actor.img = client.resolveUrl(actor.img);
-            if (actor.prototypeToken?.texture?.src) {
-                actor.prototypeToken.texture.src = client.resolveUrl(actor.prototypeToken.texture.src);
-            }
-
-            const normalized = adapter.normalizeActorData(actor, client);
-
-            // Compute derived data if adapter supports it (for Dashboard stats)
-            if (adapter.computeActorData) {
-                normalized.derived = adapter.computeActorData(normalized);
-            }
-
-            return normalized;
-        }));
-    };
+    // Shared actor presentation service: centralizes normalization used across route domains.
+    const actorNormalizationService = createActorNormalizationService();
+    const { normalizeActors } = actorNormalizationService;
 
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
