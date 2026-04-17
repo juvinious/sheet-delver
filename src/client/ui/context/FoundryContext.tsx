@@ -9,6 +9,7 @@ import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useUI } from '@client/ui/context/UIContext';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
+import type { ActorDto, ActorListPayload, ActorCardsPayload } from '@shared/contracts/actors';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -29,11 +30,11 @@ interface FoundryContextType {
     handleLogin: (username: string, password?: string) => Promise<void>;
     handleChatSend: (message: string, options?: { rollMode?: string, speaker?: string }) => Promise<void>;
     handleLogout: () => Promise<void>;
-    fetchActors: () => Promise<any>;
+    fetchActors: () => Promise<ActorListPayload | void>;
 
     // Actors (Shared state)
-    ownedActors: any[];
-    readOnlyActors: any[];
+    ownedActors: ActorDto[];
+    readOnlyActors: ActorDto[];
     sharedContent: any | null;
 
     // Combats
@@ -65,8 +66,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
-    const [ownedActors, setOwnedActors] = useState<any[]>([]);
-    const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
+    const [ownedActors, setOwnedActors] = useState<ActorDto[]>([]);
+    const [readOnlyActors, setReadOnlyActors] = useState<ActorDto[]>([]);
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
@@ -126,7 +127,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 setToken(null);
                 return;
             }
-            const data = await res.json();
+            const data = await res.json() as ActorCardsPayload;
             setActorCards(data || {});
         } catch (e) {
             logger.error('FoundryProvider | Failed to fetch actor cards:', e);
@@ -153,7 +154,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 setToken(null);
                 return;
             }
-            const data = await res.json();
+            const data = await res.json() as ActorListPayload;
             if (data.ownedActors || data.actors) {
                 setOwnedActors(data.ownedActors || data.actors || []);
                 setReadOnlyActors(data.readOnlyActors || []);

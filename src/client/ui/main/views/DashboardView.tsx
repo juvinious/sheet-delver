@@ -5,6 +5,7 @@ import SystemTools from '@client/ui/components/SystemTools';
 import { useNotifications } from '@client/ui/components/NotificationSystem';
 import { Theme } from '../hooks/useTheme';
 import { ActorCard } from '../components/ActorCard';
+import type { ActorDto, ActorListPayload } from '@shared/contracts/actors';
 
 interface User {
     id?: string;
@@ -15,12 +16,12 @@ interface User {
 interface DashboardViewProps {
     system: any;
     user: User | null;
-    ownedActors: any[];
+    ownedActors: ActorDto[];
     token: string | null;
     theme: Theme;
     configUrl: string;
     appVersion: string;
-    fetchActors: () => Promise<void>;
+    fetchActors: () => Promise<ActorListPayload | void>;
     setLoading: (loading: boolean) => void;
     setLoginMessage: (msg: string) => void;
 }

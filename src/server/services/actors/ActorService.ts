@@ -8,8 +8,14 @@ import type {
     ActorRollPayload,
     ActorServiceClientLike,
 } from '@server/shared/types/actors';
+import type {
+    ActorListPayload,
+    ActorCardsPayload,
+    ActorDetailPayload,
+    ActorErrorPayload,
+} from '@shared/contracts/actors';
 
-interface ActorProjection {
+interface ActorProjection extends ActorDetailPayload {
     foundryUrl?: string;
     systemId?: string;
     debugLevel?: number;
@@ -42,7 +48,7 @@ interface ActorServiceDeps {
 
 export function createActorService(deps: ActorServiceDeps) {
     // Actor list projection: owned/read-only partition + normalized payload.
-    const listActors = async (client: ActorServiceClientLike) => {
+    const listActors = async (client: ActorServiceClientLike): Promise<ActorListPayload> => {
         const systemInfo = await client.getSystem();
         const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
@@ -89,7 +95,7 @@ export function createActorService(deps: ActorServiceDeps) {
     };
 
     // Actor card projections used by dashboard card views.
-    const getActorCards = async (client: ActorServiceClientLike) => {
+    const getActorCards = async (client: ActorServiceClientLike): Promise<ActorCardsPayload> => {
         const systemInfo = await client.getSystem();
         const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter || !adapter.getActorCardData) {
@@ -109,7 +115,10 @@ export function createActorService(deps: ActorServiceDeps) {
         return cards;
     };
 
-    const getActorCardById = async (client: ActorServiceClientLike, actorId: string) => {
+    const getActorCardById = async (
+        client: ActorServiceClientLike,
+        actorId: string
+    ): Promise<ActorCard | ActorErrorPayload | Record<string, never>> => {
         const actor = await client.getActor(actorId);
         if (!actor || actor.error) {
             return {
@@ -128,7 +137,10 @@ export function createActorService(deps: ActorServiceDeps) {
     };
 
     // Actor detail resolver: UUID resolution + adapter normalization + derived data.
-    const getActorById = async (client: ActorServiceClientLike, actorId: string) => {
+    const getActorById = async (
+        client: ActorServiceClientLike,
+        actorId: string
+    ): Promise<ActorDetailPayload | ActorErrorPayload> => {
         const actor = await client.getActor(actorId);
         if (!actor || actor.error) {
             return {
