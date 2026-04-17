@@ -14,18 +14,20 @@ interface StatusServiceDeps {
     sessionManager: Pick<SessionManagerLike, 'isCacheReady'>;
 }
 
+export const sanitizeStatusUser = (user: FoundryUserLike, client: FoundrySystemClientLike) => ({
+    _id: user._id || user.id,
+    name: user.name,
+    role: user.role,
+    isGM: (user.role || 0) >= UserRole.ASSISTANT,
+    active: user.active,
+    color: user.color,
+    characterId: user.character,
+    img: client.resolveUrl(user.avatar || user.img)
+});
+
 export function createStatusService(deps: StatusServiceDeps) {
     // Shared user projection used by status payload consumers.
-    const sanitizeUser = (user: FoundryUserLike, client: FoundrySystemClientLike) => ({
-        _id: user._id || user.id,
-        name: user.name,
-        role: user.role,
-        isGM: (user.role || 0) >= UserRole.ASSISTANT,
-        active: user.active,
-        color: user.color,
-        characterId: user.character,
-        img: client.resolveUrl(user.avatar || user.img)
-    });
+    const sanitizeUser = sanitizeStatusUser;
 
     // Builds the status contract consumed by REST status and socket broadcasts.
     const getSystemStatusPayload = async () => {
