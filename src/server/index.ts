@@ -16,6 +16,7 @@ import { createModuleRouter } from './routes/modules/createModuleRouter';
 import { createAdminRouter } from './routes/admin/createAdminRouter';
 import { createStatusService } from './services/status/StatusService';
 import { createActorNormalizationService } from './services/actors/ActorNormalizationService';
+import { createSystemStatusBroadcaster } from './realtime/SystemStatusBroadcaster';
 
 import { loadConfig, getConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
@@ -169,27 +170,10 @@ async function startServer() {
     const statusService = createStatusService({ config, sessionManager });
     const { getSystemStatusPayload } = statusService;
 
-    // Global System Status Broadcast System
-    // This pushes updates to ALL dashboard clients whenever the target world state changes.
-    const broadcastSystemStatus = async () => {
-        const payload = await getSystemStatusPayload();
-        io.emit('systemStatus', payload);
-    };
-
-    systemService.on('world:connected', (data) => {
-        logger.info(`Core Service | World Connected [${data.state}]. Broadcasting status to clients...`);
-        broadcastSystemStatus();
-    });
-
-    systemService.on('world:disconnected', () => {
-        logger.info('Core Service | World Disconnected. Broadcasting status to clients...');
-        broadcastSystemStatus();
-    });
-
-    systemService.on('world:ready', (data) => {
-        logger.info(`Core Service | World Ready [${data.systemId}]. Broadcasting status to clients...`);
-        broadcastSystemStatus();
-    });
+    // Realtime status broadcaster: centralizes event-driven and polled systemStatus pushes.
+    const systemStatusBroadcaster = createSystemStatusBroadcaster({ io, getSystemStatusPayload });
+    const { broadcastSystemStatus } = systemStatusBroadcaster;
+    systemStatusBroadcaster.registerLifecycleBroadcasts();
 
     // Initialize Session storage in background
     sessionManager.initialize().catch(err => {
@@ -197,10 +181,7 @@ async function startServer() {
     });
 
     // --- Backend Status Polling Loop ---
-    setInterval(async () => {
-        const payload = await getSystemStatusPayload();
-        io.emit('systemStatus', payload);
-    }, 4000);
+    systemStatusBroadcaster.startPolling(4000);
 
     // --- Middleware: Session Authentication ---
     const authenticateSession = createAuthenticateSession(sessionManager, config);
