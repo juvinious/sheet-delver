@@ -1,20 +1,35 @@
 import { logger } from '@shared/utils/logger';
 import { getAdapter } from '@modules/registry/server';
+import type { RawActor } from '@server/shared/types/actors';
+import type { CombatClientLike, RawCombat, RawCombatant } from '@server/shared/types/documents';
+
+interface InitiativeBody {
+    formula?: string;
+    advantageMode?: 'advantage' | 'disadvantage' | 'normal' | string;
+}
+
+interface CombatProjection extends RawCombat {
+    combatants?: Array<RawCombatant & { actor: RawActor | null }>;
+}
+
+interface AdapterWithInitiativeFormula {
+    getInitiativeFormula?: (actor: RawActor) => string;
+}
 
 interface CombatServiceDeps {
-    normalizeActors: (actorList: any[], client: any) => Promise<any[]>;
+    normalizeActors: (actorList: RawActor[], client: CombatClientLike) => Promise<RawActor[]>;
 }
 
 export function createCombatService(deps: CombatServiceDeps) {
     // Combat list projection with enriched/normalized combatant actor payloads.
-    const listCombats = async (client: any) => {
+    const listCombats = async (client: CombatClientLike) => {
         const combats = await client.getCombats();
 
-        const enrichedCombats = await Promise.all(combats.map(async (combat: any) => {
-            const actorIds = [...new Set((combat.combatants || []).map((c: any) => c.actorId).filter(Boolean))];
-            const actorsMap: Record<string, any> = {};
+        const enrichedCombats = await Promise.all(combats.map(async (combat): Promise<CombatProjection> => {
+            const actorIds = [...new Set((combat.combatants || []).map((c) => c.actorId).filter(Boolean) as string[])];
+            const actorsMap: Record<string, RawActor> = {};
 
-            await Promise.all(actorIds.map(async (id: any) => {
+            await Promise.all(actorIds.map(async (id) => {
                 try {
                     const actor = await client.getActor(id);
                     if (actor) actorsMap[id] = actor;
@@ -25,15 +40,15 @@ export function createCombatService(deps: CombatServiceDeps) {
 
             const actorsToNormalize = Object.values(actorsMap).filter(Boolean);
             const normalizedActors = await deps.normalizeActors(actorsToNormalize, client);
-            const normalizedMap: Record<string, any> = {};
-            normalizedActors.forEach((a: any) => {
+            const normalizedMap: Record<string, RawActor> = {};
+            normalizedActors.forEach((a) => {
                 const id = a._id || a.id;
-                normalizedMap[id] = a;
+                if (id) normalizedMap[id] = a;
             });
 
-            const enrichedCombatants = (combat.combatants || []).map((c: any) => ({
+            const enrichedCombatants = (combat.combatants || []).map((c) => ({
                 ...c,
-                actor: normalizedMap[c.actorId] || null
+                actor: c.actorId ? (normalizedMap[c.actorId] || null) : null
             }));
 
             return { ...combat, combatants: enrichedCombatants };
@@ -43,17 +58,19 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Authorization helper for turn advancement rules.
-    const isAuthorizedForCombatTurn = async (client: any, combat: any, userId: string): Promise<boolean> => {
+    const isAuthorizedForCombatTurn = async (client: CombatClientLike, combat: RawCombat, userId: string): Promise<boolean> => {
         const users = await client.getUsers();
-        const user = users.find((u: any) => (u._id || u.id) === userId);
-        const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+        const user = users.find((u) => (u._id || u.id) === userId);
+        const isGM = (user?.role || 0) >= 3;
         if (isGM) return true;
 
         const currentTurn = combat.turn ?? 0;
-        const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
             const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
             const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            return (ib - ia) || (a._id > b._id ? 1 : -1);
+            const aid = String(a._id || a.id || '');
+            const bid = String(b._id || b.id || '');
+            return (ib - ia) || (aid > bid ? 1 : -1);
         });
 
         const activeCombatant = sortedCombatants[currentTurn];
@@ -62,27 +79,29 @@ export function createCombatService(deps: CombatServiceDeps) {
         const actor = await client.getActor(activeCombatant.actorId);
         if (!actor) return false;
 
-        const ownership = actor.ownership?.[userId] || actor.permission?.[userId] || 0;
+        const ownership = actor.ownership?.[userId] || 0;
         return ownership >= 3;
     };
 
     // Turn advancement logic mirroring Foundry round/turn progression.
-    const advanceTurn = async (client: any, combatId: string) => {
+    const advanceTurn = async (client: CombatClientLike, combatId: string) => {
         const combats = await client.getCombats();
-        const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+        const combat = combats.find((c) => (c._id || c.id) === combatId);
 
         if (!combat) {
             return { error: 'Combat not found', status: 404 };
         }
 
-        if (!(await isAuthorizedForCombatTurn(client, combat, client.userId))) {
+        if (!client.userId || !(await isAuthorizedForCombatTurn(client, combat, client.userId))) {
             return { error: 'Unauthorized: You do not own the current combatant and are not a GM', status: 403 };
         }
 
-        const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
             const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
             const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            return (ib - ia) || (a._id > b._id ? 1 : -1);
+            const aid = String(a._id || a.id || '');
+            const bid = String(b._id || b.id || '');
+            return (ib - ia) || (aid > bid ? 1 : -1);
         });
 
         let currentRound = combat.round || 0;
@@ -107,26 +126,28 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Turn rewind logic gated to GM access only.
-    const previousTurn = async (client: any, combatId: string) => {
+    const previousTurn = async (client: CombatClientLike, combatId: string) => {
         const combats = await client.getCombats();
-        const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+        const combat = combats.find((c) => (c._id || c.id) === combatId);
 
         if (!combat) {
             return { error: 'Combat not found', status: 404 };
         }
 
         const users = await client.getUsers();
-        const user = users.find((u: any) => (u._id || u.id) === client.userId);
-        const isGM = (user?.role || user?.permissions?.role || 0) >= 3;
+        const user = users.find((u) => (u._id || u.id) === client.userId);
+        const isGM = (user?.role || 0) >= 3;
 
         if (!isGM) {
             return { error: 'Unauthorized: Only GMs can move to previous turns', status: 403 };
         }
 
-        const sortedCombatants = [...(combat.combatants || [])].sort((a: any, b: any) => {
+        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
             const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
             const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            return (ib - ia) || (a._id > b._id ? 1 : -1);
+            const aid = String(a._id || a.id || '');
+            const bid = String(b._id || b.id || '');
+            return (ib - ia) || (aid > bid ? 1 : -1);
         });
 
         let currentRound = combat.round || 0;
@@ -154,27 +175,29 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Initiative roll orchestration with adapter initiative formula fallback.
-    const rollInitiative = async (client: any, combatId: string, combatantId: string, body: any) => {
+    const rollInitiative = async (client: CombatClientLike, combatId: string, combatantId: string, body: InitiativeBody) => {
         const { formula, advantageMode } = body;
 
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
+        const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
         const combats = await client.getCombats();
-        const combat = combats.find((c: any) => (c._id || c.id) === combatId);
+        const combat = combats.find((c) => (c._id || c.id) === combatId);
         if (!combat) return { error: 'Combat not found', status: 404 };
 
-        const combatant = combat.combatants?.find((c: any) => (c._id || c.id) === combatantId);
+        const combatant = combat.combatants?.find((c) => (c._id || c.id) === combatantId);
         if (!combatant) return { error: 'Combatant not found', status: 404 };
+        if (!combatant.actorId) return { error: 'Actor not found', status: 404 };
 
         const actor = await client.getActor(combatant.actorId);
         if (!actor) return { error: 'Actor not found', status: 404 };
 
         let finalFormula = formula;
         if (!finalFormula) {
-            if (typeof (adapter as any).getInitiativeFormula === 'function') {
-                finalFormula = (adapter as any).getInitiativeFormula(actor);
+            const initiativeAdapter = adapter as AdapterWithInitiativeFormula;
+            if (typeof initiativeAdapter.getInitiativeFormula === 'function') {
+                finalFormula = initiativeAdapter.getInitiativeFormula(actor);
             } else {
                 finalFormula = '1d20';
             }
@@ -194,7 +217,7 @@ export function createCombatService(deps: CombatServiceDeps) {
         };
 
         const chatMessage = await client.roll(finalFormula, 'Initiative', { speaker });
-        const total = parseInt(chatMessage.content);
+        const total = parseInt(String(chatMessage.content));
 
         if (isNaN(total)) {
             throw new Error('Failed to parse roll total from chat message');
