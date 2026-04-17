@@ -1,7 +1,6 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
-import { systemService } from '@core/system/SystemService';
-import { SetupManager } from '@core/foundry/SetupManager';
+import { createAdminService } from '@server/services/admin/AdminService';
 
 interface AdminRouterDeps {
     getSystemStatusPayload: () => Promise<any>;
@@ -11,6 +10,9 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     // --- Admin API (Local-Only) ---
     // This API is used by the standalone CLI tool
     const adminRouter = express.Router();
+
+    // Admin domain service: displaced operational logic for status, worlds, cache, and world actions.
+    const adminService = createAdminService(deps);
 
     // Verify local request
     adminRouter.use((req, res, next) => {
@@ -23,36 +25,14 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     });
 
     adminRouter.get('/status', async (req, res) => {
-        // Use system client for admin status
-        const systemStatus = await deps.getSystemStatusPayload();
-        const client = systemService.getSystemClient();
-        res.json({
-            ...systemStatus,
-            socket: client.isConnected,
-            worldState: (client as any).worldState,
-            userId: client.userId,
-            isExplicit: (client as any).isExplicitSession,
-            discoveredUserId: (client as any).discoveredUserId
-        });
+        const payload = await adminService.getStatus();
+        res.json(payload);
     });
 
     adminRouter.get('/worlds', async (req, res) => {
         try {
-            // Use system client
-            const client = systemService.getSystemClient();
-            let worlds: any[] = [];
-
-            worlds = await SetupManager.scrapeAvailableWorlds(client.url || '');
-
-            // Also check local cache
-            if (worlds.length === 0) {
-                const cache = await SetupManager.loadCache();
-                if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
-                    worlds = [cache.worlds[cache.currentWorldId]];
-                }
-            }
-
-            res.json(worlds);
+            const payload = await adminService.listWorlds();
+            res.json(payload);
         } catch (error) {
             logger.error('Failed to list worlds', error);
             res.status(500).json({ error: 'Failed to list worlds' });
@@ -63,42 +43,29 @@ export function createAdminRouter(deps: AdminRouterDeps) {
 
     adminRouter.get('/cache', async (req, res) => {
         try {
-            const cache = await SetupManager.loadCache();
-            res.json(cache);
+            const payload = await adminService.getCache();
+            res.json(payload);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
     });
 
     adminRouter.post('/setup/scrape', async (req, res) => {
-        const { sessionCookie } = req.body;
-        if (!sessionCookie) return res.status(400).json({ error: 'Session cookie required' });
-
         try {
-            const client = systemService.getSystemClient();
-            logger.info('Core Service | Triggering manual deep-scrape via CLI...');
-
-            // Scrape
-            const result = await SetupManager.scrapeWorldData(client.url || '', sessionCookie);
-
-            // Save to Cache
-            await SetupManager.saveCache(result);
-
-            // Re-connect client logic if needed (optional)
-            // if (!client.isLoggedIn) client.connect();
-
-            res.json({ success: true, data: result });
+            const payload = await adminService.scrapeSetup(req.body?.sessionCookie);
+            if ((payload as any)?.error && (payload as any)?.status) {
+                return res.status((payload as any).status).json({ error: (payload as any).error });
+            }
+            res.json(payload);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
     });
 
     adminRouter.post('/world/launch', async (req, res) => {
-        const { worldId } = req.body;
         try {
-            const client = systemService.getSystemClient();
-            await client.launchWorld(worldId);
-            res.json({ success: true, message: `Request to launch world ${worldId} sent.` });
+            const payload = await adminService.launchWorld(req.body?.worldId);
+            res.json(payload);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
@@ -106,9 +73,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
 
     adminRouter.post('/world/shutdown', async (req, res) => {
         try {
-            const client = systemService.getSystemClient();
-            await client.shutdownWorld();
-            res.json({ success: true, message: 'Request to shut down current world sent.' });
+            const payload = await adminService.shutdownWorld();
+            res.json(payload);
         } catch (error: any) {
             res.status(500).json({ error: error.message });
         }
