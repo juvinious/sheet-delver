@@ -10,6 +10,9 @@ import { registerChatRoutes } from './routes/protected/registerChatRoutes';
 import { registerCombatRoutes } from './routes/protected/registerCombatRoutes';
 import { registerSystemRoutes } from './routes/protected/registerSystemRoutes';
 import { registerJournalRoutes } from './routes/protected/registerJournalRoutes';
+import { registerDebugRoutes } from './routes/debug/registerDebugRoutes';
+import { createModuleRouter } from './routes/modules/createModuleRouter';
+import { createAdminRouter } from './routes/admin/createAdminRouter';
 
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
@@ -391,24 +394,9 @@ async function startServer() {
     });
 
 
-    // Debug route - allow using system client if no session provided for easier dev access
-    app.get('/api/debug/actor/:id', async (req, res) => {
-        try {
-            let client = systemService.getSystemClient();
-
-            // Try to use user session if available for better data accuracy
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.split(' ')[1];
-                const session = await sessionManager.getOrRestoreSession(token);
-                if (session) client = session.client as any;
-            }
-
-            const actor = await client.getActor(req.params.id);
-            res.json(actor);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
+    registerDebugRoutes(app, {
+        getSystemClient: () => systemService.getSystemClient(),
+        getOrRestoreSession: (token) => sessionManager.getOrRestoreSession(token)
     });
 
 
@@ -487,192 +475,8 @@ async function startServer() {
         }
     });
 
-    // --- Module Router (Permissive Auth) ---
-    // Mounted before the global auth middleware to allow module-specific permissive routes
-    const moduleRouter = express.Router();
-    moduleRouter.use(tryAuthenticateSession);
-
-    // Express 5: String wildcards (*) must be named or used via RegExp. 
-    // Named capturing groups (?<name>) populate req.params.name
-    moduleRouter.all(/^(.*)$/, async (req, res) => {
-        try {
-            const parts = req.path.split('/').filter(Boolean);
-            const systemId = parts[0];
-            const routePath = parts.slice(1).join('/');
-
-            if (!systemId) return res.status(404).json({ error: 'No system specified' });
-
-            // Hard Wall: Dynamically import the server module directly from its folder.
-            // Since this is in server/index.ts (run via ts-node), it is never bundled for the browser.
-            // Correctly resolve the server module via the registry manifest
-            const sysModule = await getServerModule(systemId);
-            if (!sysModule) {
-                logger.warn(`Module Routing | Module ${systemId} not found or missing server entry point.`);
-                return res.status(404).json({ error: `Module ${systemId} not found` });
-            }
-
-            if (!sysModule || !sysModule.apiRoutes) {
-                logger.warn(`Module Routing | Module ${systemId} missing apiRoutes.`);
-                return res.status(404).json({ error: `Module ${systemId} API not available` });
-            }
-
-            let matchedPattern: string | undefined;
-            // logger.error(`[DEBUG] Module Router | systemId: ${systemId}, routePath: ${routePath}`);
-            const routes = Object.keys(sysModule.apiRoutes);
-
-            for (const pattern of routes) {
-                const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
-                const isMatch = regex.test(routePath);
-                if (isMatch) {
-                    matchedPattern = pattern;
-                    break;
-                }
-            }
-
-            if (!matchedPattern) {
-                logger.warn(`Module Routing | No handler found for ${systemId}/${routePath}. Available routes: ${routes.join(', ')}`);
-                logger.error(`[DEBUG] sysModule.apiRoutes keys for ${systemId}:`, Object.keys(sysModule.apiRoutes));
-                return res.status(404).json({ error: `Route ${routePath} not found` });
-            }
-
-            const handler = sysModule.apiRoutes[matchedPattern];
-            const nextRequest = {
-                json: async () => req.body,
-                method: req.method,
-                url: req.url,
-                headers: req.headers,
-                foundryClient: (req as any).foundryClient || systemService.getSystemClient(),
-                userSession: (req as any).userSession
-            } as any;
-            const nextParams = { params: Promise.resolve({ systemId, route: routePath.split('/') }) };
-
-            logger.info(`Module Router | Calling handler for ${matchedPattern} with actorId: ${routePath.split('/')[1]}`);
-            const result = await handler(nextRequest, nextParams);
-
-            if (result && result.json) {
-                const data = await result.json();
-                return res.status(result.status || 200).json(data);
-            }
-            return res.json(result);
-        } catch (error: any) {
-            logger.error(`Module Routing Error (${req.path}): ${error.message}`);
-            return res.status(500).json({ error: error.message });
-        }
-    });
-
-    // --- Admin API (Local-Only) ---
-    // This API is used by the standalone CLI tool
-    const adminRouter = express.Router();
-
-    // Verify local request
-    adminRouter.use((req, res, next) => {
-        const remoteAddress = req.socket.remoteAddress;
-        if (remoteAddress !== '127.0.0.1' && remoteAddress !== '::1') {
-            logger.warn(`Core Service | Blocked non-local Admin API request from ${remoteAddress}`);
-            return res.status(403).json({ error: 'Admin access restricted to localhost' });
-        }
-        next();
-    });
-
-    adminRouter.get('/status', async (req, res) => {
-        // Use system client for admin status
-        const systemStatus = await getSystemStatusPayload();
-        const client = systemService.getSystemClient();
-        res.json({
-            ...systemStatus,
-            socket: client.isConnected,
-            worldState: (client as any).worldState,
-            userId: client.userId,
-            isExplicit: (client as any).isExplicitSession,
-            discoveredUserId: (client as any).discoveredUserId
-        });
-    });
-
-    adminRouter.get('/worlds', async (req, res) => {
-        try {
-            // Use system client
-            const client = systemService.getSystemClient();
-            // Try live system info first
-            const { SetupManager } = await import('@core/foundry/SetupManager');
-            let worlds: any[] = [];
-
-            // If we have a URL, try to scrape available worlds
-            // Note: SetupManager.scrapeAvailableWorlds is currently a placeholder returning []
-            // but we keep the call structure for future expansion
-            worlds = await SetupManager.scrapeAvailableWorlds(client.url || '');
-
-            // Also check local cache
-            if (worlds.length === 0) {
-                const cache = await SetupManager.loadCache();
-                if (cache.currentWorldId && cache.worlds[cache.currentWorldId]) {
-                    worlds = [cache.worlds[cache.currentWorldId]];
-                }
-            }
-
-            res.json(worlds);
-        } catch (error) {
-            logger.error('Failed to list worlds', error);
-            res.status(500).json({ error: 'Failed to list worlds' });
-        }
-    });
-
-    // Setup endpoints removed - functionality migrated to CLI admin tool
-
-
-    adminRouter.get('/cache', async (req, res) => {
-        try {
-            const { SetupManager } = await import('@core/foundry/SetupManager');
-            const cache = await SetupManager.loadCache();
-            res.json(cache);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    adminRouter.post('/setup/scrape', async (req, res) => {
-        const { sessionCookie } = req.body;
-        if (!sessionCookie) return res.status(400).json({ error: 'Session cookie required' });
-
-        try {
-            const { SetupManager } = await import('@core/foundry/SetupManager');
-            const client = systemService.getSystemClient();
-            logger.info(`Core Service | Triggering manual deep-scrape via CLI...`);
-
-            // Scrape
-            const result = await SetupManager.scrapeWorldData(client.url || '', sessionCookie);
-
-            // Save to Cache
-            await SetupManager.saveCache(result);
-
-            // Re-connect client logic if needed (optional)
-            // if (!client.isLoggedIn) client.connect(); 
-
-            res.json({ success: true, data: result });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    adminRouter.post('/world/launch', async (req, res) => {
-        const { worldId } = req.body;
-        try {
-            const client = systemService.getSystemClient();
-            await client.launchWorld(worldId);
-            res.json({ success: true, message: `Request to launch world ${worldId} sent.` });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    adminRouter.post('/world/shutdown', async (req, res) => {
-        try {
-            const client = systemService.getSystemClient();
-            await client.shutdownWorld();
-            res.json({ success: true, message: 'Request to shut down current world sent.' });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
+    const moduleRouter = createModuleRouter(tryAuthenticateSession);
+    const adminRouter = createAdminRouter({ getSystemStatusPayload });
 
 
     // --- Mount Routers ---
