@@ -14,6 +14,7 @@ import { registerUtilityRoutes } from './routes/protected/registerUtilityRoutes'
 import { registerDebugRoutes } from './routes/debug/registerDebugRoutes';
 import { createModuleRouter } from './routes/modules/createModuleRouter';
 import { createAdminRouter } from './routes/admin/createAdminRouter';
+import { createStatusService } from './services/status/StatusService';
 
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
@@ -163,94 +164,10 @@ async function startServer() {
 
     // Start System Provider
     await systemService.initialize(config.foundry);
-    const systemClient = systemService.getSystemClient();
 
-    // --- Global Status Payload Generator ---
-    const getSystemStatusPayload = async () => {
-        const systemClient = systemService.getSystemClient();
-        let system: any = {
-            id: null,
-            status: systemClient.worldState,
-            worldTitle: 'Reconnecting...'
-        };
-        let users = [];
-        try {
-            const gameData = systemClient.getGameData();
-            if (gameData) {
-                const usersList = gameData.users || [];
-                const activeCount = usersList.filter((u: any) => u.active).length;
-                const totalCount = usersList.length;
-
-                system = {
-                    ...gameData.system,
-                    appVersion: config.app.version,
-                    worldTitle: gameData.world?.title || 'Foundry VTT',
-                    worldDescription: gameData.world?.description,
-                    worldBackground: systemClient.resolveUrl(gameData.world?.background),
-                    background: systemClient.resolveUrl(
-                        gameData.system?.background ||
-                        gameData.system?.worldBackground ||
-                        (() => {
-                            const sceneData = (systemClient as any).sceneDataCache;
-                            return sceneData?.NUEDEFAULTSCENE0?.background?.src;
-                        })()
-                    ),
-                    nextSession: gameData.world?.nextSession,
-                    status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
-                    actorSyncToken: (systemClient as any).lastActorChange,
-                    users: { active: activeCount, total: totalCount }
-                };
-                users = usersList;
-            } else {
-                // No full game data available yet.
-                // If the probe discovered the world (service account missing), surface that info.
-                const probeData = (systemClient as any).probeWorldData;
-                if (probeData) {
-                    system.worldTitle = probeData.title || system.worldTitle;
-                    system.worldDescription = probeData.description || null;
-                    // Surface user count discovered by the guest probe
-                    const userMapSize = (systemClient as any).userMap?.size || 0;
-                    system.users = { active: 0, total: userMapSize };
-                }
-                system.appVersion = config.app.version;
-            }
-
-            if (system.id) {
-                const sid = system.id.toLowerCase();
-                const adapter = await getAdapter(sid);
-                if (adapter && typeof (adapter as any).getConfig === 'function') {
-                    const cfg = (adapter as any).getConfig();
-                    if (cfg) system.config = cfg;
-                }
-            }
-        } catch { /* Suppress */ }
-
-        // Centralized User Sanitization Helper
-        const sanitizeUser = (u: any, client: any) => ({
-            _id: u._id || u.id,
-            name: u.name,
-            role: u.role,
-            isGM: u.role >= UserRole.ASSISTANT,
-            active: u.active,
-            color: u.color,
-            characterId: u.character,
-            img: client.resolveUrl(u.avatar || u.img)
-        });
-
-        const sanitizedUsers = users?.length > 0 ? users.map((u: any) => sanitizeUser(u, systemClient)) : [];
-
-        return {
-            connected: systemClient.isConnected,
-            worldId: systemClient.getGameData()?.world?.id || null,
-            initialized: sessionManager.isCacheReady(),
-            isConfigured: !!(systemClient.cachedWorldData || (await SetupManager.loadCache()).currentWorldId),
-            users: sanitizedUsers,
-            system: system,
-            url: config.foundry.url,
-            appVersion: config.app.version,
-            debug: config.debug
-        };
-    };
+    // Status read-model service: centralizes payload shaping used by REST and socket status flows.
+    const statusService = createStatusService({ config, sessionManager });
+    const { getSystemStatusPayload } = statusService;
 
     // Global System Status Broadcast System
     // This pushes updates to ALL dashboard clients whenever the target world state changes.
