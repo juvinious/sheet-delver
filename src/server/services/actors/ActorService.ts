@@ -1,33 +1,66 @@
 import type { AppConfig } from '@shared/interfaces';
 import { logger } from '@shared/utils/logger';
 import { getAdapter, getMatchingAdapter } from '@modules/registry/server';
+import type {
+    RawActor,
+    RawItem,
+    ActorCard,
+    ActorRollPayload,
+    ActorServiceClientLike,
+} from '@server/shared/types/actors';
+
+interface ActorProjection {
+    foundryUrl?: string;
+    systemId?: string;
+    debugLevel?: number;
+    derived?: Record<string, unknown>;
+    categorizedItems?: Record<string, unknown>;
+    img?: string;
+    prototypeToken?: {
+        texture?: {
+            src?: string;
+        };
+    };
+    [key: string]: unknown;
+}
+
+interface ActorRollData {
+    formula?: string;
+    label?: string;
+    flags?: unknown;
+    isAutomated?: boolean;
+    [key: string]: unknown;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
 
 interface ActorServiceDeps {
-    normalizeActors: (actorList: any[], client: any) => Promise<any[]>;
+    normalizeActors: (actorList: RawActor[], client: ActorServiceClientLike) => Promise<ActorProjection[]>;
     config: AppConfig;
 }
 
 export function createActorService(deps: ActorServiceDeps) {
     // Actor list projection: owned/read-only partition + normalized payload.
-    const listActors = async (client: any) => {
+    const listActors = async (client: ActorServiceClientLike) => {
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
+        const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
         const rawActors = await client.getActors();
-        const normalize = async (actorList: any[]) => deps.normalizeActors(actorList, client);
+        const normalize = async (actorList: RawActor[]) => deps.normalizeActors(actorList, client);
         const currentUserId = client.userId;
 
-        const actorTypes = new Set(rawActors.map((a: any) => a.type));
-        const actorFolders = new Set(rawActors.map((a: any) => a.folder).filter(Boolean));
+        const actorTypes = new Set(rawActors.map((a) => a.type));
+        const actorFolders = new Set(rawActors.map((a) => a.folder).filter(Boolean));
         logger.info(`Core Service | Actor types found: ${Array.from(actorTypes).join(', ')}`);
         logger.info(`Core Service | Actor folders found: ${Array.from(actorFolders).join(', ')}`);
 
-        const owned = rawActors.filter((a: any) =>
+        const owned = rawActors.filter((a) =>
             a.ownership?.[currentUserId!] === 3 || a.ownership?.default === 3
         );
 
-        const observable = rawActors.filter((a: any) => {
+        const observable = rawActors.filter((a) => {
             const isOwned = owned.includes(a);
             if (isOwned) return false;
 
@@ -39,7 +72,7 @@ export function createActorService(deps: ActorServiceDeps) {
             return isObservable && !isNPC;
         });
 
-        const ownedCharacters = owned.filter((a: any) => {
+        const ownedCharacters = owned.filter((a) => {
             const actorType = (a.type || '').toLowerCase();
             const isNPC = actorType === 'npc' || actorType === 'monster' || actorType === 'vehicle';
             return !isNPC;
@@ -56,25 +89,27 @@ export function createActorService(deps: ActorServiceDeps) {
     };
 
     // Actor card projections used by dashboard card views.
-    const getActorCards = async (client: any) => {
+    const getActorCards = async (client: ActorServiceClientLike) => {
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
+        const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter || !adapter.getActorCardData) {
             return {};
         }
 
         const rawActors = await client.getActors();
-        const cards: Record<string, any> = {};
+        const cards: Record<string, ActorCard> = {};
 
         for (const actor of rawActors) {
             const id = actor._id || actor.id;
-            cards[id] = adapter.getActorCardData(actor);
+            if (id) {
+                cards[id] = adapter.getActorCardData(actor) as ActorCard;
+            }
         }
 
         return cards;
     };
 
-    const getActorCardById = async (client: any, actorId: string) => {
+    const getActorCardById = async (client: ActorServiceClientLike, actorId: string) => {
         const actor = await client.getActor(actorId);
         if (!actor || actor.error) {
             return {
@@ -84,16 +119,16 @@ export function createActorService(deps: ActorServiceDeps) {
         }
 
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
+        const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter || !adapter.getActorCardData) {
             return {};
         }
 
-        return adapter.getActorCardData(actor);
+        return adapter.getActorCardData(actor) as ActorCard;
     };
 
     // Actor detail resolver: UUID resolution + adapter normalization + derived data.
-    const getActorById = async (client: any, actorId: string) => {
+    const getActorById = async (client: ActorServiceClientLike, actorId: string) => {
         const actor = await client.getActor(actorId);
         if (!actor || actor.error) {
             return {
@@ -105,7 +140,7 @@ export function createActorService(deps: ActorServiceDeps) {
         const { CompendiumCache } = await import('@core/foundry/compendium-cache');
         const cache = CompendiumCache.getInstance();
 
-        const resolveUUIDs = (obj: any): any => {
+        const resolveUUIDs = (obj: unknown): unknown => {
             if (typeof obj === 'string') {
                 if (obj.startsWith('Compendium.')) {
                     const name = cache.getName(obj);
@@ -114,34 +149,35 @@ export function createActorService(deps: ActorServiceDeps) {
                 return obj;
             }
             if (Array.isArray(obj)) return obj.map(item => resolveUUIDs(item));
-            if (typeof obj === 'object' && obj !== null) {
-                const newObj: any = {};
-                for (const key in obj) newObj[key] = resolveUUIDs(obj[key]);
+            if (isRecord(obj)) {
+                const newObj: Record<string, unknown> = {};
+                for (const key of Object.keys(obj)) newObj[key] = resolveUUIDs(obj[key]);
                 return newObj;
             }
             return obj;
         };
 
-        const resolvedActor = resolveUUIDs(actor);
+        const resolvedActor = resolveUUIDs(actor) as RawActor;
 
         const systemInfo = await client.getSystem();
-        let adapter = await getAdapter(systemInfo.id);
+        let adapter = await getAdapter(systemInfo.id.toLowerCase());
 
         if (!adapter || (adapter.match && !adapter.match(resolvedActor))) {
             adapter = await getMatchingAdapter(resolvedActor);
         }
+        if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
-        const normalizedActor = adapter.normalizeActorData(resolvedActor, client);
+        const normalizedActor: ActorProjection = adapter.normalizeActorData(resolvedActor, client);
 
         if (adapter.computeActorData) {
             normalizedActor.derived = {
                 ...(normalizedActor.derived || {}),
-                ...adapter.computeActorData(normalizedActor)
+                ...(adapter.computeActorData(normalizedActor) as Record<string, unknown>)
             };
         }
 
         if (adapter.categorizeItems) {
-            normalizedActor.categorizedItems = adapter.categorizeItems(normalizedActor);
+            normalizedActor.categorizedItems = adapter.categorizeItems(normalizedActor) as Record<string, unknown>;
         }
 
         if (normalizedActor.img) {
@@ -160,9 +196,9 @@ export function createActorService(deps: ActorServiceDeps) {
     };
 
     // Actor write operations and item mutation helpers.
-    const createActor = async (client: any, actorData: any) => {
+    const createActor = async (client: ActorServiceClientLike, actorData: Record<string, unknown>) => {
         if (actorData.items && Array.isArray(actorData.items)) {
-            actorData.items.forEach((item: any) => {
+            actorData.items.forEach((item: RawItem) => {
                 if (item.effects && Array.isArray(item.effects)) {
                     if (item.effects.length > 0 && typeof item.effects[0] === 'string') {
                         logger.warn(`Core Service | Clearing invalid string effects for ${item.name} during creation`);
@@ -187,47 +223,49 @@ export function createActorService(deps: ActorServiceDeps) {
         return { success: true, id: newActor._id || newActor.id, actor: newActor };
     };
 
-    const deleteActor = async (client: any, actorId: string) => {
+    const deleteActor = async (client: ActorServiceClientLike, actorId: string) => {
         await client.deleteActor(actorId);
         return { success: true };
     };
 
-    const updateActor = async (client: any, actorId: string, payload: any) => {
+    const updateActor = async (client: ActorServiceClientLike, actorId: string, payload: Record<string, unknown>) => {
         const result = await client.updateActor(actorId, payload);
         return { success: true, result };
     };
 
     // Roll orchestration with adapter-aware automated sequence fallback.
-    const rollActor = async (client: any, actorId: string, payload: any) => {
+    const rollActor = async (client: ActorServiceClientLike, actorId: string, payload: ActorRollPayload) => {
         const { type, key, options } = payload;
         const actor = await client.getActor(actorId);
         if (!actor) return { error: 'Actor not found', status: 404 };
 
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id);
+        const adapter = await getAdapter(systemInfo.id.toLowerCase());
         if (!adapter) throw new Error(`Adapter ${systemInfo.id} not found`);
 
         if (type === 'use-item') {
             let itemId = key;
-            const isId = actor.items?.some((i: any) => (i._id || i.id) === key);
+            const isId = actor.items?.some((i) => (i._id || i.id) === key);
             if (!isId) {
                 const allItems = [
                     ...(actor.items || []),
                     ...(actor.categorizedItems?.feats || []),
                     ...(actor.categorizedItems?.uncategorized || [])
                 ];
-                const found = allItems.find((i: any) => i.name === key);
-                if (found) itemId = found._id || found.id;
+                const found = allItems.find((i) => i.name === key);
+                const foundId = found?._id || found?.id;
+                if (foundId) itemId = foundId;
             }
+            if (!itemId) throw new Error('Could not resolve item id');
             const result = await client.useItem(actorId, itemId);
             return { success: true, result };
         }
 
-        let rollData;
+        let rollData: ActorRollData | undefined;
         if (type === 'formula') {
             rollData = { formula: key, label: 'Custom Roll' };
         } else {
-            rollData = adapter.getRollData(actor, type, key, options);
+            rollData = adapter.getRollData(actor, type, key, options) as ActorRollData;
         }
 
         if (!rollData) throw new Error('Cannot determine roll formula');
@@ -240,45 +278,46 @@ export function createActorService(deps: ActorServiceDeps) {
         if (!rollData.formula) {
             throw new Error(`No roll formula for type "${type}" key "${key}"`);
         }
+        const rollLabel = rollData.label || 'Roll';
 
         const speaker = options?.speaker || {
             actor: actor._id || actor.id,
             alias: actor.name
         };
 
-        const result = await client.roll(rollData.formula, rollData.label, {
+        const result = await client.roll(rollData.formula, rollLabel, {
             rollMode: options?.rollMode,
             speaker,
             flags: rollData.flags
         });
 
-        return { success: true, result, label: rollData.label };
+        return { success: true, result, label: rollLabel };
     };
 
-    const createActorItem = async (client: any, actorId: string, payload: any) => {
+    const createActorItem = async (client: ActorServiceClientLike, actorId: string, payload: Record<string, unknown>) => {
         const newItemId = await client.createActorItem(actorId, payload);
         return { success: true, id: newItemId };
     };
 
-    const updateActorItem = async (client: any, actorId: string, payload: any) => {
+    const updateActorItem = async (client: ActorServiceClientLike, actorId: string, payload: Record<string, unknown>) => {
         await client.updateActorItem(actorId, payload);
         return { success: true };
     };
 
-    const deleteActorItem = async (client: any, actorId: string, itemId: string) => {
+    const deleteActorItem = async (client: ActorServiceClientLike, actorId: string, itemId: string) => {
         if (!itemId) return { success: false, error: 'Missing itemId', status: 400 };
         await client.deleteActorItem(actorId, itemId);
         return { success: true };
     };
 
     // Unified update splitter for mixed actor/item patch payloads.
-    const updateActorAndItems = async (client: any, actorId: string, body: any) => {
-        const actorUpdates: any = {};
-        const itemUpdates: Map<string, any> = new Map();
+    const updateActorAndItems = async (client: ActorServiceClientLike, actorId: string, body: Record<string, unknown>) => {
+        const actorUpdates: Record<string, unknown> = {};
+        const itemUpdates: Map<string, Record<string, unknown>> = new Map();
 
-        let updatesToProcess: any = {};
+        let updatesToProcess: Record<string, unknown> = {};
         if (body.path !== undefined && body.value !== undefined) {
-            updatesToProcess[body.path] = body.value;
+            updatesToProcess[String(body.path)] = body.value;
         } else {
             updatesToProcess = body;
         }
