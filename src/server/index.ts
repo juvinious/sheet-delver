@@ -4,6 +4,7 @@ import { createAuthenticateSession } from './middleware/authenticateSession';
 import { createTryAuthenticateSession } from './middleware/tryAuthenticateSession';
 import { createEnsureInitialized } from './middleware/ensureInitialized';
 import { createLoginLimiter } from './middleware/rateLimiters';
+import { registerPublicRoutes } from './routes/public/registerPublicRoutes';
 
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
@@ -329,54 +330,15 @@ async function startServer() {
         }
     });
 
-    appRouter.get('/status', statusHandler);
-    appRouter.get('/session/connect', statusHandler);
-
-    appRouter.get('/config', (req, res) => {
-        res.json(getSanitizedConfig());
-    });
-
-    /**
-     * Public endpoint to check if the application has been configured.
-     * Used by the frontend 'Configuration Required' overlay.
-     */
-    appRouter.get('/config/setup-status', async (req, res) => {
-        try {
-            const cache = await SetupManager.loadCache();
-            const isConfigured = !!(cache.currentWorldId && cache.worlds[cache.currentWorldId]);
-            res.json({ isConfigured });
-        } catch (err: any) {
-            logger.error(`Failed to check setup status: ${err.message}`);
-            res.status(500).json({ isConfigured: false, error: 'Failed to verify configuration status' });
-        }
-    });
-    appRouter.get('/registry/modules', (req, res) => {
-        res.json(getRegisteredModules());
+    registerPublicRoutes(appRouter, {
+        statusHandler,
+        getSanitizedConfig,
+        loginLimiter,
+        createSession: (username, password) => sessionManager.createSession(username, password),
+        destroySession: (token) => sessionManager.destroySession(token)
     });
 
     // --- System API (moved after middleware to avoid duplicate auth) ---
-
-
-
-    appRouter.post('/login', loginLimiter, async (req, res) => {
-        const { username, password } = req.body;
-        try {
-            // Create a NEW session for this user
-            const session = await sessionManager.createSession(username, password);
-            res.json({ success: true, token: session.sessionId, userId: session.userId });
-        } catch (error: any) {
-            res.status(401).json({ success: false, error: error.message });
-        }
-    });
-
-    appRouter.post('/logout', async (req, res) => {
-        const authHeader = req.headers.authorization;
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-            const token = authHeader.split(' ')[1];
-            await sessionManager.destroySession(token);
-        }
-        res.json({ success: true });
-    });
 
     // --- Global Guard: Block API until bootstrap complete ---
     appRouter.use(ensureInitialized);
