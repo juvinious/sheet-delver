@@ -45,6 +45,7 @@
     "node_modules",
     "scripts",
     "src/scripts",
+    "src/tests/deprecated",
     "temp-shadowdark",
     "temp"
   ]
