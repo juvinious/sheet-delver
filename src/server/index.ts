@@ -8,6 +8,8 @@ import { registerPublicRoutes } from './routes/public/registerPublicRoutes';
 import { registerActorRoutes } from './routes/protected/registerActorRoutes';
 import { registerChatRoutes } from './routes/protected/registerChatRoutes';
 import { registerCombatRoutes } from './routes/protected/registerCombatRoutes';
+import { registerSystemRoutes } from './routes/protected/registerSystemRoutes';
+import { registerJournalRoutes } from './routes/protected/registerJournalRoutes';
 
 import { getMatchingAdapter } from '@modules/registry/server';
 import { loadConfig, getConfig } from '@core/config';
@@ -381,55 +383,7 @@ async function startServer() {
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
-    // --- System API (now protected by middleware) ---
-    appRouter.get('/system', async (req, res) => {
-        try {
-            // Auth handled by middleware
-            const gameData = systemService.getSystemClient().getGameData();
-            res.json(gameData?.system || {});
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    // System Data (Already has ensureInitialized via router.use)
-    appRouter.get('/system/data', async (req: any, res: any) => {
-        try {
-            // Auth handled by middleware
-            const systemClient = systemService.getSystemClient();
-            const gameData = systemClient.getGameData();
-            const { getAdapter } = await import('@modules/registry/server');
-            const adapter = await getAdapter(gameData.system.id);
-            const adapterName = adapter?.constructor?.name || 'Unknown';
-
-            if (adapter && typeof (adapter as any).getSystemData === 'function') {
-                const data = await (adapter as any).getSystemData(systemClient);
-                logger.debug(`[CoreService] [PID:${process.pid}] System data fetched (${adapterName}). Keys: ${Object.keys(data || {}).length}`);
-                res.json(data);
-            } else {
-                // Fallback: Return raw scraper data if adapter doesn't provide more
-                res.json(gameData?.data || {});
-            }
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.get('/system/scenes', async (req, res) => {
-        try {
-            // Auth handled by middleware
-            const systemClient = systemService.getSystemClient();
-            const sceneData = systemClient.getSceneData();
-
-            if (!sceneData) {
-                return res.status(404).json({ error: 'Scene data not available' });
-            }
-
-            res.json(sceneData);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
+    registerSystemRoutes(appRouter);
 
     registerActorRoutes(appRouter, {
         normalizeActors,
@@ -462,106 +416,7 @@ async function startServer() {
 
     registerCombatRoutes(appRouter, { normalizeActors });
 
-    appRouter.get('/journals', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const currentUserId = client.userId;
-            const allJournals = await client.getJournals();
-            const allFolders = await client.getFolders('JournalEntry');
-
-            const users = await client.getUsers();
-            const currentUser = users.find((u: any) => (u._id || u.id) === currentUserId);
-            const isGM = (currentUser?.role >= 3) || false;
-
-            const visibleJournals = allJournals.filter((j: any) => {
-                if (isGM) return true;
-                const level = j.ownership?.[currentUserId] ?? j.ownership?.default ?? 0;
-                return level >= 2; // Observer or better
-            });
-
-            // Filter folders: only show if they contain (directly or indirectly) a visible journal
-            const getFolderIdsWithVisibleJournals = (): Set<string> => {
-                const folderIds = new Set<string>();
-                visibleJournals.forEach((j: any) => {
-                    if (j.folder) {
-                        let currentFolderId = j.folder;
-                        while (currentFolderId) {
-                            folderIds.add(currentFolderId);
-                            const folder = allFolders.find((f: any) => f._id === currentFolderId);
-                            currentFolderId = folder?.folder || null;
-                        }
-                    }
-                });
-                return folderIds;
-            };
-
-            const visibleFolderIds = getFolderIdsWithVisibleJournals();
-            const visibleFolders = allFolders.filter((f: any) => isGM || visibleFolderIds.has(f._id));
-
-            res.json({ journals: visibleJournals, folders: visibleFolders });
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.post('/journals', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const { type, data } = req.body; // type: 'JournalEntry' | 'Folder'
-            const result = await client.dispatchDocumentSocket(type || 'JournalEntry', 'create', {
-                data: [data], // Wrap in array as required by DatabaseBackend#create
-                broadcast: true
-            });
-            res.json(result);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.get('/journals/:id', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const uuid = req.params.id;
-            const response = await client.dispatchDocumentSocket('JournalEntry', 'get', {
-                query: { _id: uuid },
-                broadcast: false
-            });
-            const doc = response.result?.[0];
-
-            if (!doc) return res.status(404).json({ error: 'Journal not found' });
-            res.json(doc);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.patch('/journals/:id', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const { type, data } = req.body;
-            const result = await client.dispatchDocumentSocket(type || 'JournalEntry', 'update', {
-                updates: [{ ...data, _id: req.params.id }],
-                broadcast: true
-            });
-            res.json(result);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
-
-    appRouter.delete('/journals/:id', async (req, res) => {
-        try {
-            const client = (req as any).foundryClient;
-            const { type } = req.query;
-            const result = await client.dispatchDocumentSocket((type as string) || 'JournalEntry', 'delete', {
-                ids: [req.params.id],
-                broadcast: true
-            });
-            res.json(result);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
-        }
-    });
+    registerJournalRoutes(appRouter);
 
     appRouter.get('/foundry/document', async (req, res) => {
         try {
