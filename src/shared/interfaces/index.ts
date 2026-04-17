@@ -2,14 +2,14 @@ import { ServerConnectionStatus } from '../types/connection';
 
 export type { ServerConnectionStatus };
 
-export interface SystemInfo {
-    id: string;
-    title: string;
-    version: string;
+export interface AppSystemInfo {
+    id: string | null;
+    title?: string;
+    version?: string;
     appVersion?: string;
     worldTitle?: string;
     worldBackground?: string;
-    worldDescription?: string;
+    worldDescription?: string | null;
     nextSession?: string | null;
     /**
      * Auth state is separate from connection status. 
@@ -19,11 +19,17 @@ export interface SystemInfo {
     isLoggedIn?: boolean;
     background?: string;
     users?: { active: number; total: number; list?: any[] };
-    status?: ServerConnectionStatus;
+    status?: string;
     worlds?: any[];
     theme?: any;
     config?: any;
     componentStyles?: SystemAdapter['componentStyles'];
+}
+
+export interface FoundrySystemMeta {
+    id: string;
+    title: string;
+    version: string;
 }
 
 export interface User {

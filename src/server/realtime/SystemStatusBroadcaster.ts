@@ -1,10 +1,11 @@
 import type { Server } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
 import { logger } from '@shared/utils/logger';
+import type { SystemStatusPayload } from '@shared/contracts/status';
 
 interface SystemStatusBroadcasterDeps {
     io: Server;
-    getSystemStatusPayload: () => Promise<any>;
+    getSystemStatusPayload: () => Promise<SystemStatusPayload>;
 }
 
 export function createSystemStatusBroadcaster(deps: SystemStatusBroadcasterDeps) {

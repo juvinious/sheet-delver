@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { registerAppSocketGateway } from '@server/realtime/AppSocketGateway';
 import { systemService } from '@core/system/SystemService';
+import type { SystemStatusPayload } from '@shared/contracts/status';
 
 type EventHandler = (...args: unknown[]) => void;
 
@@ -85,7 +86,17 @@ async function runGatewayTests() {
         registerAppSocketGateway({
             io: io as any,
             sessionManager,
-            getSystemStatusPayload: async () => ({ ok: true }),
+            getSystemStatusPayload: async () => ({
+                connected: true,
+                worldId: 'w1',
+                initialized: true,
+                isConfigured: true,
+                users: [],
+                system: { id: 'shadowdark', worldTitle: 'Test', status: 'active' },
+                url: 'http://localhost:30000',
+                appVersion: '0.0.0-test',
+                debug: { enabled: false, level: 1 },
+            } as SystemStatusPayload),
             broadcastSystemStatus: () => undefined,
         });
 

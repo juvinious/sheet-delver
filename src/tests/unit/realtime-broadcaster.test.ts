@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { createSystemStatusBroadcaster } from '@server/realtime/SystemStatusBroadcaster';
 import { systemService } from '@core/system/SystemService';
+import type { SystemStatusPayload } from '@shared/contracts/status';
 
 type ListenerMap = Record<string, Array<(...args: unknown[]) => void>>;
 
@@ -15,7 +16,17 @@ async function runBroadcasterTests() {
     let payloadCounter = 0;
     const broadcaster = createSystemStatusBroadcaster({
         io: io as any,
-        getSystemStatusPayload: async () => ({ seq: ++payloadCounter }),
+        getSystemStatusPayload: async () => ({
+            connected: true,
+            worldId: 'w1',
+            initialized: true,
+            isConfigured: true,
+            users: [],
+            system: { id: 'shadowdark', worldTitle: 'Test', status: 'active', actorSyncToken: String(++payloadCounter) },
+            url: 'http://localhost:30000',
+            appVersion: '0.0.0-test',
+            debug: { enabled: false, level: 1 },
+        } as SystemStatusPayload),
     });
 
     await broadcaster.broadcastSystemStatus();

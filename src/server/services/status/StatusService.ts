@@ -2,6 +2,7 @@ import { getAdapter } from '@modules/registry/server';
 import { systemService } from '@core/system/SystemService';
 import { SetupManager } from '@core/foundry/SetupManager';
 import { UserRole } from '@shared/constants';
+import type { SystemStatusPayload } from '@shared/contracts/status';
 import type {
     FoundryUserLike,
     FoundrySystemClientLike,
@@ -30,9 +31,9 @@ export function createStatusService(deps: StatusServiceDeps) {
     const sanitizeUser = sanitizeStatusUser;
 
     // Builds the status contract consumed by REST status and socket broadcasts.
-    const getSystemStatusPayload = async () => {
+    const getSystemStatusPayload = async (): Promise<SystemStatusPayload> => {
         const systemClient = systemService.getSystemClient() as unknown as FoundrySystemClientLike;
-        let system: Record<string, unknown> = {
+        let system: SystemStatusPayload['system'] = {
             id: null,
             status: systemClient.worldState,
             worldTitle: 'Reconnecting...'
@@ -48,6 +49,7 @@ export function createStatusService(deps: StatusServiceDeps) {
 
                 system = {
                     ...gameData.system,
+                    id: gameData.system?.id || null,
                     appVersion: deps.config.app.version,
                     worldTitle: gameData.world?.title || 'Foundry VTT',
                     worldDescription: gameData.world?.description,

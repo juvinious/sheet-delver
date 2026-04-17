@@ -2,12 +2,13 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '@shared/utils/logger';
-import { SystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@shared/interfaces';
+import { AppSystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
 import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useUI } from '@client/ui/context/UIContext';
+import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -16,7 +17,7 @@ interface FoundryContextType {
     setToken: (token: string | null) => void;
     users: User[];
     currentUser: User | null;
-    system: SystemInfo | null;
+    system: AppSystemInfo | null;
     messages: any[];
     appVersion: string | null;
     activeUIModule: UIModuleManifest | null;
@@ -57,10 +58,10 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     });
 
     const [users, setUsers] = useState<User[]>([]);
-    const [system, setSystem] = useState<SystemInfo | null>(null);
+    const [system, setSystem] = useState<AppSystemInfo | null>(null);
     const [messages, setMessages] = useState<any[]>([]);
     const [appVersion, setAppVersion] = useState<string | null>(null);
-    const lastActorSyncTokenRef = useRef<number>(0);
+    const lastActorSyncTokenRef = useRef<string | null>(null);
     const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
@@ -316,7 +317,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 const res = await fetch('/api/status', { headers, cache: 'no-store' });
                 if (!res.ok) return;
 
-                const data = await res.json();
+                const data = await res.json() as Partial<AuthenticatedStatusPayload>;
                 if (!isMounted) return;
 
                 if (data.currentUserId) setCurrentUserId(data.currentUserId);
@@ -379,7 +380,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         if (!appSocket) return;
 
-        const determineStep = (data: any, currentStep: string, configured: boolean) => {
+        const determineStep = (data: SystemStatusPayload, currentStep: string, configured: boolean) => {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
 
@@ -412,7 +413,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             return isAuthenticated ? 'dashboard' : 'login';
         };
 
-        const handleSystemStatus = (data: any) => {
+        const handleSystemStatus = (data: SystemStatusPayload) => {
             try {
                 if (data.debug?.level !== undefined) {
                     logger.setLevel(data.debug.level);
@@ -447,7 +448,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                     // Allow system data to update from probe data even when not fully connected.
                     // This ensures world title/description appear in the 'world-closed' state.
                     if (!isEqual(system, data.system)) setSystem(data.system);
-                    if (data.connected && !isEqual(users, data.users)) setUsers(data.users || []);
+                    if (data.connected && !isEqual(users, data.users)) setUsers((data.users || []) as User[]);
                     if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
                     if (data.isConfigured !== undefined && isConfigured !== data.isConfigured) setIsConfigured(data.isConfigured);
 

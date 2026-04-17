@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
 import { logger } from '@shared/utils/logger';
 import type { SessionManagerLike, UserSessionLike, FoundryClientLike } from '@server/shared/types/foundry';
+import type { SystemStatusPayload } from '@shared/contracts/status';
 
 type AppSocket = Socket & {
     userSession?: UserSessionLike;
@@ -11,7 +12,7 @@ type AppSocket = Socket & {
 interface AppSocketGatewayDeps {
     io: Server;
     sessionManager: SessionManagerLike;
-    getSystemStatusPayload: () => Promise<unknown>;
+    getSystemStatusPayload: () => Promise<SystemStatusPayload>;
     broadcastSystemStatus: () => void | Promise<void>;
 }
 

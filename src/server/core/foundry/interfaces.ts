@@ -1,11 +1,11 @@
 import { ServerConnectionStatus } from '@shared/types/connection';
-import { SystemInfo } from '@shared/interfaces';
+import { FoundrySystemMeta } from '@shared/interfaces';
 
-export type { SystemInfo };
+export type { FoundrySystemMeta };
 
 export interface FoundryMetadataClient {
     getAllCompendiumIndices(): Promise<any[]>;
-    getSystem(): Promise<SystemInfo>;
+    getSystem(): Promise<FoundrySystemMeta>;
     getUsers(): Promise<any[]>;
     url: string;
 }
@@ -31,7 +31,7 @@ export interface FoundryClient extends Partial<FoundryMetadataClient> {
 
     evaluate<T>(pageFunction: any, arg?: any): Promise<T>;
 
-    getSystem(): Promise<SystemInfo>;
+    getSystem(): Promise<FoundrySystemMeta>;
     getUsers(): Promise<any[]>;
     getUsersDetails(): Promise<any[]>;
     getCurrentUserId(): string | null;
