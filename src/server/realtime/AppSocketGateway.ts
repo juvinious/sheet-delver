@@ -1,12 +1,18 @@
-import type { Server } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
 import { logger } from '@shared/utils/logger';
+import type { SessionManagerLike, UserSessionLike, FoundryClientLike } from '@server/shared/types/foundry';
+
+type AppSocket = Socket & {
+    userSession?: UserSessionLike;
+    foundryClient?: FoundryClientLike;
+};
 
 interface AppSocketGatewayDeps {
     io: Server;
-    sessionManager: { getOrRestoreSession: (token: string) => Promise<any> };
-    getSystemStatusPayload: () => Promise<any>;
-    broadcastSystemStatus: () => void;
+    sessionManager: SessionManagerLike;
+    getSystemStatusPayload: () => Promise<unknown>;
+    broadcastSystemStatus: () => void | Promise<void>;
 }
 
 export function registerAppSocketGateway({
@@ -17,8 +23,9 @@ export function registerAppSocketGateway({
 }: AppSocketGatewayDeps): void {
 
     // Auth middleware: validate token, restore session, join authenticated room
-    io.use(async (socket, next) => {
-        const token = socket.handshake.auth.token;
+    io.use(async (rawSocket, next) => {
+        const socket = rawSocket as AppSocket;
+        const token = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
         if (!token) {
             // Unauthenticated connection (Guest) - only receives global system status
             return next();
@@ -31,8 +38,8 @@ export function registerAppSocketGateway({
                 return next();
             }
             // Attach session/client to socket for later use
-            (socket as any).userSession = session;
-            (socket as any).foundryClient = session.client;
+            socket.userSession = session;
+            socket.foundryClient = session.client;
 
             // Join authenticated room for sensitive updates (actors, chat, combat, shared content)
             socket.join('authenticated');
@@ -45,7 +52,8 @@ export function registerAppSocketGateway({
     logger.info('Core Service | Socket.io server initialized with secure middleware');
 
     // Per-connection lifecycle: initial push, per-user listener attach/detach, disconnect cleanup
-    io.on('connection', async (socket) => {
+    io.on('connection', async (rawSocket) => {
+        const socket = rawSocket as AppSocket;
         const clientCount = io.engine.clientsCount;
         logger.debug(`App Socket | Client connected: ${socket.id} (Total: ${clientCount}, Auth: ${socket.rooms.has('authenticated')})`);
 
@@ -57,14 +65,14 @@ export function registerAppSocketGateway({
         socket.emit('systemStatus', payload);
 
         // Attach listeners to individual foundry client for sensitive/per-user data
-        const foundryClient = (socket as any).foundryClient;
+        const foundryClient = socket.foundryClient;
         if (foundryClient) {
             logger.info(`App Socket | Attaching per-user listeners for ${foundryClient.username} (${socket.id})`);
 
-            const handleCombatUpdate = (data: any) => socket.emit('combatUpdate', data);
-            const handleChatUpdate = (data: any) => socket.emit('chatUpdate', data);
-            const handleActorUpdate = (data: any) => socket.emit('actorUpdate', data);
-            const handleSharedUpdate = (data: any) => socket.emit('sharedContentUpdate', data);
+            const handleCombatUpdate = (data: unknown) => socket.emit('combatUpdate', data);
+            const handleChatUpdate = (data: unknown) => socket.emit('chatUpdate', data);
+            const handleActorUpdate = (data: unknown) => socket.emit('actorUpdate', data);
+            const handleSharedUpdate = (data: unknown) => socket.emit('sharedContentUpdate', data);
 
             foundryClient.on('combatUpdate', handleCombatUpdate);
             foundryClient.on('chatUpdate', handleChatUpdate);

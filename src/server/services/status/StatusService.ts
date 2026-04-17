@@ -2,21 +2,25 @@ import { getAdapter } from '@modules/registry/server';
 import { systemService } from '@core/system/SystemService';
 import { SetupManager } from '@core/foundry/SetupManager';
 import { UserRole } from '@shared/constants';
+import type {
+    FoundryUserLike,
+    FoundrySystemClientLike,
+    SessionManagerLike,
+    StatusServiceConfigLike,
+} from '@server/shared/types/foundry';
 
 interface StatusServiceDeps {
-    config: any;
-    sessionManager: {
-        isCacheReady: () => boolean;
-    };
+    config: StatusServiceConfigLike;
+    sessionManager: Pick<SessionManagerLike, 'isCacheReady'>;
 }
 
 export function createStatusService(deps: StatusServiceDeps) {
     // Shared user projection used by status payload consumers.
-    const sanitizeUser = (user: any, client: any) => ({
+    const sanitizeUser = (user: FoundryUserLike, client: FoundrySystemClientLike) => ({
         _id: user._id || user.id,
         name: user.name,
         role: user.role,
-        isGM: user.role >= UserRole.ASSISTANT,
+        isGM: (user.role || 0) >= UserRole.ASSISTANT,
         active: user.active,
         color: user.color,
         characterId: user.character,
@@ -25,19 +29,19 @@ export function createStatusService(deps: StatusServiceDeps) {
 
     // Builds the status contract consumed by REST status and socket broadcasts.
     const getSystemStatusPayload = async () => {
-        const systemClient = systemService.getSystemClient();
-        let system: any = {
+        const systemClient = systemService.getSystemClient() as unknown as FoundrySystemClientLike;
+        let system: Record<string, unknown> = {
             id: null,
             status: systemClient.worldState,
             worldTitle: 'Reconnecting...'
         };
-        let users = [];
+        let users: FoundryUserLike[] = [];
 
         try {
             const gameData = systemClient.getGameData();
             if (gameData) {
                 const usersList = gameData.users || [];
-                const activeCount = usersList.filter((u: any) => u.active).length;
+                const activeCount = usersList.filter((u) => u.active).length;
                 const totalCount = usersList.length;
 
                 system = {
@@ -50,35 +54,36 @@ export function createStatusService(deps: StatusServiceDeps) {
                         gameData.system?.background ||
                         gameData.system?.worldBackground ||
                         (() => {
-                            const sceneData = (systemClient as any).sceneDataCache;
+                            const sceneData = systemClient.sceneDataCache;
                             return sceneData?.NUEDEFAULTSCENE0?.background?.src;
                         })()
                     ),
                     nextSession: gameData.world?.nextSession,
                     status: systemClient.worldState === 'active' ? 'active' : systemClient.worldState,
-                    actorSyncToken: (systemClient as any).lastActorChange,
+                    actorSyncToken: systemClient.lastActorChange,
                     users: { active: activeCount, total: totalCount }
                 };
                 users = usersList;
             } else {
                 // No full game data available yet.
                 // If the probe discovered the world (service account missing), surface that info.
-                const probeData = (systemClient as any).probeWorldData;
+                const probeData = systemClient.probeWorldData;
                 if (probeData) {
                     system.worldTitle = probeData.title || system.worldTitle;
                     system.worldDescription = probeData.description || null;
                     // Surface user count discovered by the guest probe.
-                    const userMapSize = (systemClient as any).userMap?.size || 0;
+                    const userMapSize = systemClient.userMap?.size || 0;
                     system.users = { active: 0, total: userMapSize };
                 }
                 system.appVersion = deps.config.app.version;
             }
 
             if (system.id) {
-                const sid = system.id.toLowerCase();
+                const sid = String(system.id).toLowerCase();
                 const adapter = await getAdapter(sid);
-                if (adapter && typeof (adapter as any).getConfig === 'function') {
-                    const cfg = (adapter as any).getConfig();
+                const configurableAdapter = adapter as unknown as { getConfig?: () => unknown };
+                if (configurableAdapter && typeof configurableAdapter.getConfig === 'function') {
+                    const cfg = configurableAdapter.getConfig();
                     if (cfg) system.config = cfg;
                 }
             }
@@ -87,7 +92,7 @@ export function createStatusService(deps: StatusServiceDeps) {
         }
 
         // Keep payload shape stable by always returning a sanitized user array.
-        const sanitizedUsers = users?.length > 0 ? users.map((u: any) => sanitizeUser(u, systemClient)) : [];
+        const sanitizedUsers = users?.length > 0 ? users.map((u) => sanitizeUser(u, systemClient)) : [];
 
         return {
             connected: systemClient.isConnected,
