@@ -19,13 +19,12 @@ import { createActorNormalizationService } from './services/actors/ActorNormaliz
 import { createSystemStatusBroadcaster } from './realtime/SystemStatusBroadcaster';
 import { registerAppSocketGateway } from './realtime/AppSocketGateway';
 
-import { loadConfig, getConfig } from '@core/config';
+import { loadConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
-import { initializeRegistry, unloadSystemModules, getRegisteredModules, getServerModule } from '@modules/registry/server';
+import { initializeRegistry } from '@modules/registry/server';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { systemService } from '@core/system/SystemService';
-import { SetupManager } from './core/foundry/SetupManager';
 
 async function startServer() {
     const config = await loadConfig();
@@ -69,8 +68,6 @@ async function startServer() {
         }
     });
 
-    // Socket auth middleware and per-connection lifecycle are handled by the gateway (registered after sessionManager is ready).
-
     // DEBUG: Global Request Logger
     app.use((req, res, next) => {
         logger.debug(`[CoreService] INCOMING REQUEST: ${req.method} ${req.url}`);
@@ -79,7 +76,6 @@ async function startServer() {
 
     // Initialize Session Manager with Service Account
     const { SessionManager } = await import('@core/session/SessionManager');
-    const { UserRole } = await import('@shared/constants');
     const sessionManager = new SessionManager({
         ...config.foundry
     });
