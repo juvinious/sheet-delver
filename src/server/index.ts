@@ -339,6 +339,7 @@ async function startServer() {
         }
     });
 
+    // Public endpoints: status, config, registry, and auth session lifecycle.
     registerPublicRoutes(appRouter, {
         statusHandler,
         getSanitizedConfig,
@@ -387,28 +388,37 @@ async function startServer() {
     // --- Protected Routes (Require Valid Session) ---
     appRouter.use(authenticateSession);
 
+    // Protected system endpoints used by the dashboard shell and scene/system bootstrap.
     registerSystemRoutes(appRouter);
 
+    // Protected actor endpoints for listing, cards, CRUD, rolls, and item operations.
     registerActorRoutes(appRouter, {
         normalizeActors,
         config
     });
 
-
+    // Debug endpoint for direct actor inspection with optional session token.
     registerDebugRoutes(app, {
         getSystemClient: () => systemService.getSystemClient(),
         getOrRestoreSession: (token) => sessionManager.getOrRestoreSession(token)
     });
 
-
+    // Protected chat endpoints for feed retrieval and message send operations.
     registerChatRoutes(appRouter, { config });
 
+    // Protected combat endpoints for combat state reads and initiative/turn controls.
     registerCombatRoutes(appRouter, { normalizeActors });
 
+    // Protected journal CRUD endpoints.
     registerJournalRoutes(appRouter);
+
+    // Protected utility endpoints shared by dashboard features.
     registerUtilityRoutes(appRouter);
 
+    // Module proxy router for system-specific API handlers with permissive try-auth.
     const moduleRouter = createModuleRouter(tryAuthenticateSession);
+
+    // Localhost-restricted admin router for status and world lifecycle operations.
     const adminRouter = createAdminRouter({ getSystemStatusPayload });
 
 
