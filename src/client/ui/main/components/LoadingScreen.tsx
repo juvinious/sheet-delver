@@ -1,10 +1,11 @@
 import React from 'react';
 import LoadingModal from '@client/ui/components/LoadingModal';
+import type { AppSystemInfo, ConnectionStep } from '@shared/interfaces';
 import { Theme } from '../hooks/useTheme';
 
 interface LoadingScreenProps {
-    step: string;
-    system: any;
+    step: ConnectionStep;
+    system: AppSystemInfo | null;
     theme: Theme;
 }
 

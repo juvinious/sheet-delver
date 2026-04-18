@@ -6,15 +6,10 @@ import { useNotifications } from '@client/ui/components/NotificationSystem';
 import { Theme } from '../hooks/useTheme';
 import { ActorCard } from '../components/ActorCard';
 import type { ActorDto, ActorListPayload } from '@shared/contracts/actors';
-
-interface User {
-    id?: string;
-    _id?: string;
-    name: string;
-}
+import type { AppSystemInfo, User } from '@shared/interfaces';
 
 interface DashboardViewProps {
-    system: any;
+    system: AppSystemInfo | null;
     user: User | null;
     ownedActors: ActorDto[];
     token: string | null;

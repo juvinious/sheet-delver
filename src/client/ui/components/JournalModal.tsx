@@ -69,7 +69,8 @@ export default function JournalModal() {
 
     const isShared = activeJournalId === sharedJournalId;
     const isGM = currentUser?.isGM || false;
-    const canEdit = !isShared && (isGM || (journal?.ownership?.[currentUser?.id || ''] || 0) >= 3);
+    const currentUserId = currentUser?._id || currentUser?.id || '';
+    const canEdit = !isShared && (isGM || (journal?.ownership?.[currentUserId] || 0) >= 3);
     const canShare = isGM && !isShared;
 
     const currentPage = journal?.pages?.[activePageIndex];
