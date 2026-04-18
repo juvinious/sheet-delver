@@ -12,7 +12,7 @@ export function registerChatRoutes(appRouter: express.Router, deps: ChatRouteDep
 
     appRouter.get('/chat', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await chatService.getChatLog(client, req.query.limit);
             res.json(payload);
         } catch (error: any) {
@@ -22,7 +22,7 @@ export function registerChatRoutes(appRouter: express.Router, deps: ChatRouteDep
 
     appRouter.post('/chat/send', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await chatService.sendChatMessage(client, req.body);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });

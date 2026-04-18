@@ -11,7 +11,7 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
 
     appRouter.get('/combats', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await combatService.listCombats(client);
             res.json(payload);
         } catch (error: any) {
@@ -21,7 +21,7 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
 
     appRouter.post('/combats/:id/next-turn', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await combatService.advanceTurn(client, req.params.id);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -34,7 +34,7 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
 
     appRouter.post('/combats/:id/previous-turn', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await combatService.previousTurn(client, req.params.id);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -47,7 +47,7 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
 
     appRouter.post('/combats/:id/combatants/:combatantId/roll-initiative', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await combatService.rollInitiative(client, req.params.id, req.params.combatantId, req.body);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });

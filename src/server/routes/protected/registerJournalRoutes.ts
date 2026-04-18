@@ -7,7 +7,7 @@ export function registerJournalRoutes(appRouter: express.Router) {
 
     appRouter.get('/journals', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await journalService.listJournals(client);
             res.json(payload);
         } catch (error: any) {
@@ -17,7 +17,7 @@ export function registerJournalRoutes(appRouter: express.Router) {
 
     appRouter.post('/journals', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await journalService.createJournal(client, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -27,7 +27,7 @@ export function registerJournalRoutes(appRouter: express.Router) {
 
     appRouter.get('/journals/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await journalService.getJournalById(client, req.params.id);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -40,7 +40,7 @@ export function registerJournalRoutes(appRouter: express.Router) {
 
     appRouter.patch('/journals/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await journalService.updateJournal(client, req.params.id, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -50,7 +50,7 @@ export function registerJournalRoutes(appRouter: express.Router) {
 
     appRouter.delete('/journals/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await journalService.deleteJournal(client, req.params.id, req.query);
             res.json(payload);
         } catch (error: any) {

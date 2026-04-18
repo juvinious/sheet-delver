@@ -21,8 +21,8 @@ export function createModuleRouter(tryAuthenticateSession: express.RequestHandle
                 url: req.url,
                 headers: req.headers,
                 body: req.body,
-                foundryClient: (req as any).foundryClient,
-                userSession: (req as any).userSession
+                foundryClient: req.foundryClient,
+                userSession: req.userSession
             });
 
             return res.status(result.status).json(result.payload);

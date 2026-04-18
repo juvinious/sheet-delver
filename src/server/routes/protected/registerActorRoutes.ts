@@ -14,7 +14,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.get('/actors', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.listActors(client);
             res.json(payload);
         } catch (error: any) {
@@ -25,7 +25,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.get('/actors/cards', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.getActorCards(client);
             res.json(payload);
         } catch (error: any) {
@@ -36,7 +36,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.get('/actors/:id/card', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.getActorCardById(client, req.params.id);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -50,7 +50,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.get('/actors/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.getActorById(client, req.params.id);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -65,7 +65,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
     // Create new actor
     appRouter.post('/actors', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.createActor(client, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -76,7 +76,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.delete('/actors/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.deleteActor(client, req.params.id);
             res.json(payload);
         } catch (error: any) {
@@ -90,7 +90,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.patch('/actors/:id', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.updateActor(client, req.params.id, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -100,7 +100,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.post('/actors/:id/roll', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.rollActor(client, req.params.id, req.body);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -113,7 +113,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.post('/actors/:id/items', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.createActorItem(client, req.params.id, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -123,7 +123,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.put('/actors/:id/items', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.updateActorItem(client, req.params.id, req.body);
             res.json(payload);
         } catch (error: any) {
@@ -133,7 +133,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.delete('/actors/:id/items', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const itemId = req.query.itemId as string;
             const payload = await actorService.deleteActorItem(client, req.params.id, itemId);
             if ((payload as any)?.error && (payload as any)?.status) {
@@ -147,7 +147,7 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
 
     appRouter.post('/actors/:id/update', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await actorService.updateActorAndItems(client, req.params.id, req.body);
             res.json(payload);
         } catch (error: any) {

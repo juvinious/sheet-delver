@@ -8,7 +8,7 @@ export function registerUtilityRoutes(appRouter: express.Router) {
 
     appRouter.get('/foundry/document', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await utilityService.getFoundryDocument(client, req.query.uuid as string);
             if ((payload as any)?.error && (payload as any)?.status) {
                 return res.status((payload as any).status).json({ error: (payload as any).error });
@@ -21,7 +21,7 @@ export function registerUtilityRoutes(appRouter: express.Router) {
 
     appRouter.get('/session/users', async (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             const payload = await utilityService.getSessionUsers(client);
             res.json(payload);
         } catch (error: any) {
@@ -33,7 +33,7 @@ export function registerUtilityRoutes(appRouter: express.Router) {
     // --- Shared Content API ---
     appRouter.get('/shared-content', (req, res) => {
         try {
-            const client = (req as any).foundryClient;
+            const client = req.foundryClient;
             utilityService.getSharedContent(client).then(payload => res.json(payload)).catch((error: any) => {
                 logger.error('Error fetching shared content:', error);
                 res.status(500).json({ error: 'Internal server error' });
