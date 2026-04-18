@@ -343,7 +343,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             socket.disconnect();
             setAppSocket(null);
         };
-    }, [token]);
+    }, [token, setToken]);
 
     // --- Real-time Socket Status Sync ---
     useEffect(() => {
@@ -449,7 +449,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('systemStatus', handleSystemStatus);
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
-    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, setToken, lastWorldId]);
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, setToken, lastWorldId, isConfigured]);
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {
