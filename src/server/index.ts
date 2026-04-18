@@ -187,9 +187,8 @@ async function startServer() {
         config
     });
 
-    // Debug endpoint for direct actor inspection with optional session token.
+    // Debug endpoint for direct actor inspection with required session token.
     registerDebugRoutes(app, {
-        getSystemClient: () => systemService.getSystemClient(),
         getOrRestoreSession: (token) => sessionManager.getOrRestoreSession(token)
     });
 

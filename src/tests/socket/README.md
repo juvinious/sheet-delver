@@ -33,6 +33,8 @@ npm run test:socket:users       # Test 4: Users & Compendia
 3. **Test User**: A valid user (e.g. Gamemaster or Assistant) must exist in the world
 4. **Safety Check Disabled**: Tests will temporarily disable the safety check in `SocketClient.connect()`
 
+Note: `security.service-token` / `APP_SERVICE_TOKEN` is for internal privileged API bearer flow and is not a replacement for Foundry user login credentials used by these socket tests.
+
 ## Test Categories
 
 ### Phase 1: Read-Only Operations (Safe)

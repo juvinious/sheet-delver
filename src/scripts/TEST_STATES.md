@@ -15,6 +15,8 @@ This test verifies the **backend state detection logic** in `SocketFoundryClient
 1. **Foundry VTT** must be running and accessible
 2. **settings.yaml** must be configured with your Foundry URL and credentials
 
+Note: `security.service-token` is for internal privileged API bearer flow and is not used as a Foundry login credential.
+
 ## Running the Test
 
 ```bash

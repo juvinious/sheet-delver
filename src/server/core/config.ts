@@ -46,6 +46,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const envProtocol = process.env.FOUNDRY_PROTOCOL;
             const envUsername = process.env.FOUNDRY_USERNAME;
             const envPassword = process.env.FOUNDRY_PASSWORD;
+            const envServiceToken = process.env.APP_SERVICE_TOKEN;
 
             const protocol = envProtocol || foundry.protocol;
             const host = envHost || foundry.host;
@@ -105,7 +106,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
                         windowMinutes: rateLimit['window-minutes'] ?? 15,
                         maxAttempts: rateLimit['max-attempts'] ?? 5,
                     },
-                    bodyLimit: security['body-limit'] ?? '10mb'
+                    bodyLimit: security['body-limit'] ?? '10mb',
+                    serviceToken: envServiceToken || security['service-token']
                 }
             };
             return _cachedConfig;

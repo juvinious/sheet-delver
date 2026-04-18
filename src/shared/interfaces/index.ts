@@ -153,6 +153,7 @@ export interface AppConfig {
             maxAttempts: number;
         };
         bodyLimit: string;
+        serviceToken?: string;
     };
 }
 

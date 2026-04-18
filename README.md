@@ -103,7 +103,22 @@ security:
         window-minutes: 15      # Time window in minutes
         max-attempts: 5         # Maximum login attempts per window
     body-limit: 10mb            # Maximum JSON request body size (for large character imports)
+    service-token: "replace-with-strong-random-token"  # Internal privileged bearer token (not a Foundry password)
 ```
+
+The `security.service-token` value is used only for internal privileged API bearer flows. Do not reuse your Foundry account password.
+
+You can generate a strong token with either command:
+
+```bash
+openssl rand -hex 32
+```
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+Environment override is supported via `APP_SERVICE_TOKEN`.
 
 ### Running Locally
 1.  **Install Dependencies**:
@@ -114,7 +129,7 @@ security:
     ```bash
     npm run setup
     ```
-    *Follow the prompts to configure your Foundry connection.*
+    *Follow the prompts to configure your Foundry connection. The setup wizard auto-generates `security.service-token` in `settings.yaml`.*
 
 3.  **Start the Application**:
     -   **Development**:

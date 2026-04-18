@@ -12,8 +12,8 @@ export function createTryAuthenticateSession(sessionManager: SessionManager, con
 
         const token = authHeader.split(' ')[1];
 
-        // 1. Check for System Service Account
-        if (token === config.foundry.password) {
+        // 1. Check for System Service Account using dedicated app service token
+        if (config.security.serviceToken && token === config.security.serviceToken) {
             (req as any).foundryClient = systemService.getSystemClient();
             (req as any).isSystem = true;
             return next();

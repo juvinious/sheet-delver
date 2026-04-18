@@ -29,6 +29,7 @@ Welcome to **SheetDelver**! We appreciate your interest in contributing to this 
 
 3.  **Configure connection:**
     Follow the [Configuration instructions in README.md](README.md#configuration) to create your `settings.yaml` file.
+    Ensure `security.service-token` is set (or export `APP_SERVICE_TOKEN`) for privileged internal bearer flows.
 
 4.  **Run the development server:**
     ```bash
