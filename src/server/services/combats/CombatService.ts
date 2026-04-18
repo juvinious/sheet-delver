@@ -2,13 +2,20 @@ import { logger } from '@shared/utils/logger';
 import { getAdapter } from '@modules/registry/server';
 import type { RawActor } from '@server/shared/types/actors';
 import type { CombatClientLike, RawCombat, RawCombatant } from '@server/shared/types/documents';
+import type {
+    CombatDto,
+    CombatListPayload,
+    CombatTurnSuccessPayload,
+    CombatInitiativeSuccessPayload,
+    CombatErrorPayload,
+} from '@shared/contracts/combats';
 
 interface InitiativeBody {
     formula?: string;
     advantageMode?: 'advantage' | 'disadvantage' | 'normal' | string;
 }
 
-interface CombatProjection extends RawCombat {
+interface CombatProjection extends CombatDto {
     combatants?: Array<RawCombatant & { actor: RawActor | null }>;
 }
 
@@ -22,7 +29,7 @@ interface CombatServiceDeps {
 
 export function createCombatService(deps: CombatServiceDeps) {
     // Combat list projection with enriched/normalized combatant actor payloads.
-    const listCombats = async (client: CombatClientLike) => {
+    const listCombats = async (client: CombatClientLike): Promise<CombatListPayload> => {
         const combats = await client.getCombats();
 
         const enrichedCombats = await Promise.all(combats.map(async (combat): Promise<CombatProjection> => {
@@ -84,7 +91,10 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Turn advancement logic mirroring Foundry round/turn progression.
-    const advanceTurn = async (client: CombatClientLike, combatId: string) => {
+    const advanceTurn = async (
+        client: CombatClientLike,
+        combatId: string
+    ): Promise<CombatTurnSuccessPayload | CombatErrorPayload> => {
         const combats = await client.getCombats();
         const combat = combats.find((c) => (c._id || c.id) === combatId);
 
@@ -126,7 +136,10 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Turn rewind logic gated to GM access only.
-    const previousTurn = async (client: CombatClientLike, combatId: string) => {
+    const previousTurn = async (
+        client: CombatClientLike,
+        combatId: string
+    ): Promise<CombatTurnSuccessPayload | CombatErrorPayload> => {
         const combats = await client.getCombats();
         const combat = combats.find((c) => (c._id || c.id) === combatId);
 
@@ -175,7 +188,12 @@ export function createCombatService(deps: CombatServiceDeps) {
     };
 
     // Initiative roll orchestration with adapter initiative formula fallback.
-    const rollInitiative = async (client: CombatClientLike, combatId: string, combatantId: string, body: InitiativeBody) => {
+    const rollInitiative = async (
+        client: CombatClientLike,
+        combatId: string,
+        combatantId: string,
+        body: InitiativeBody
+    ): Promise<CombatInitiativeSuccessPayload | CombatErrorPayload> => {
         const { formula, advantageMode } = body;
 
         const systemInfo = await client.getSystem();

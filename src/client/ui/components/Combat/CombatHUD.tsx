@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useFoundry } from '@client/ui/context/FoundryContext';
-import { Combat, Combatant } from '@shared/interfaces';
+import type { CombatDto } from '@shared/contracts/combats';
 import { resolveImage, getUIModule } from '@modules/registry/client';
 import { logger } from '@shared/utils/logger';
 import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, SkipForward, SkipBack } from 'lucide-react';
@@ -14,7 +14,7 @@ export default function CombatHUD() {
     const [isMinimized, setIsMinimized] = useState(false);
 
     // Optimistic State
-    const [optimisticCombat, setOptimisticCombat] = useState<Combat | null>(null);
+    const [optimisticCombat, setOptimisticCombat] = useState<CombatDto | null>(null);
 
     // Roll Dialog State
     const [isRollDialogOpen, setIsRollDialogOpen] = useState(false);
@@ -34,7 +34,8 @@ export default function CombatHUD() {
             let sId = 'generic';
             if (combats && combats.length > 0 && (combats[selectedCombatIndex] as any)?.combatants?.length > 0) {
                 const activeC = combats[selectedCombatIndex];
-                sId = activeC.combatants[0]?._stats?.systemId || sId;
+                const combatantStats = activeC.combatants?.[0]?._stats as Record<string, unknown> | undefined;
+                sId = (combatantStats?.systemId as string | undefined) || sId;
             }
             if (sId === 'generic') {
                 sId = system?.id || 'generic';
@@ -271,7 +272,7 @@ export default function CombatHUD() {
                                                 <div className="w-[2px] h-full bg-white/20 rounded-full"></div>
                                                 <div className="absolute top-1/2 left-1 -translate-y-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-black/90 border border-white/20 flex items-center justify-center shadow-md">
                                                     <span className="text-[10px] font-bold text-white/40">
-                                                        {activeCombat ? activeCombat.round + 1 : 2}
+                                                        {activeCombat ? (activeCombat.round ?? 0) + 1 : 2}
                                                     </span>
                                                 </div>
                                             </div>
@@ -362,7 +363,7 @@ export default function CombatHUD() {
                         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 z-[160] w-max">
                             {/* Previous Turn Button Slot */}
                             <div className="w-8 h-8 flex items-center justify-center">
-                                {currentUser?.isGM && activeCombat && (activeCombat.round > 1 || (activeCombat.round === 1 && activeCombat.turn > 0)) && (
+                                {currentUser?.isGM && activeCombat && ((activeCombat.round ?? 0) > 1 || ((activeCombat.round ?? 0) === 1 && (activeCombat.turn ?? 0) > 0)) && (
                                     <button
                                         onClick={handlePreviousTurn}
                                         className="bg-black/90 border border-white/20 rounded-full w-8 h-8 flex items-center justify-center text-white/40 hover:text-white hover:border-white/40 shadow-lg transition-all"

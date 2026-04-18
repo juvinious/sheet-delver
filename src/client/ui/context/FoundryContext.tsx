@@ -2,14 +2,15 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
 import { logger, LOG_LEVEL } from '@shared/utils/logger';
-import { AppSystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@shared/interfaces';
+import { AppSystemInfo, User, ConnectionStep, ActorCardData } from '@shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
 import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useUI } from '@client/ui/context/UIContext';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
-import type { ActorDto, ActorListPayload, ActorCardsPayload } from '@shared/contracts/actors';
+import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
+import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -38,8 +39,8 @@ interface FoundryContextType {
     sharedContent: any | null;
 
     // Combats
-    combats: Combat[];
-    fetchCombats: () => Promise<any>;
+    combats: CombatDto[];
+    fetchCombats: () => Promise<CombatListPayload | void>;
 
     // Real-time
     appSocket: Socket | null;
@@ -71,7 +72,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [sharedContent, setSharedContent] = useState<any | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
-    const [combats, setCombats] = useState<Combat[]>([]);
+    const [combats, setCombats] = useState<CombatDto[]>([]);
     const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
     const [isConfigured, setIsConfigured] = useState<boolean>(true);
 
@@ -178,40 +179,30 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 setToken(null);
                 return;
             }
-            const data = await res.json();
+            const data = await res.json() as CombatListPayload;
             if (data.combats) {
-                // Fetch actors for each combat
-                const resolvedCombats = await Promise.all(data.combats.map(async (combat: any) => {
-                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant: any) => {
-                        let actor = null;
+                const resolvedCombats = await Promise.all(data.combats.map(async (combat): Promise<CombatDto> => {
+                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant): Promise<CombatantDto> => {
+                        if (combatant.actor || !combatant.actorId) {
+                            return combatant;
+                        }
+
+                        let actor: ActorDetailPayload | null = null;
                         if (combatant.actorId) {
                             try {
                                 const actorRes = await fetch(`/api/actors/${combatant.actorId}`, {
                                     headers: { 'Authorization': `Bearer ${token}` }
                                 });
-                                actor = await actorRes.json();
+                                actor = await actorRes.json() as ActorDetailPayload;
                             } catch (e) {
                                 logger.error(`Failed fetching actor ${combatant.actorId}`, e);
                             }
                         }
 
-                        const serializedCombatant: Combatant = {
-                            tokenId: combatant.tokenId,
-                            sceneId: combatant.sceneId,
-                            actorId: combatant.actorId,
-                            _id: combatant._id,
-                            type: combatant.type,
-                            system: combatant.system,
-                            img: combatant.img,
-                            actor: actor,
-                            hidden: combatant.hidden,
-                            initiative: combatant.initiative,
-                            defeated: combatant.defeated,
-                            group: combatant.group,
-                            flags: combatant.flags,
-                            _stats: combatant.stats
+                        return {
+                            ...combatant,
+                            actor
                         };
-                        return serializedCombatant;
                     }));
 
                     return {
