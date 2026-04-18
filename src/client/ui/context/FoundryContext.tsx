@@ -12,6 +12,11 @@ import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/co
 import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
 import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
 import type { ChatMessageDto, ChatLogPayload } from '@shared/contracts/chat';
+import type {
+    RealtimeSharedContentPayload,
+    RealtimeCombatUpdatePayload,
+    RealtimeChatUpdatePayload,
+} from '@shared/contracts/realtime';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -37,7 +42,7 @@ interface FoundryContextType {
     // Actors (Shared state)
     ownedActors: ActorDto[];
     readOnlyActors: ActorDto[];
-    sharedContent: any | null;
+    sharedContent: RealtimeSharedContentPayload | null;
 
     // Combats
     combats: CombatDto[];
@@ -70,7 +75,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
     const [ownedActors, setOwnedActors] = useState<ActorDto[]>([]);
     const [readOnlyActors, setReadOnlyActors] = useState<ActorDto[]>([]);
-    const [sharedContent, setSharedContent] = useState<any | null>(null);
+    const [sharedContent, setSharedContent] = useState<RealtimeSharedContentPayload | null>(null);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
     const [combats, setCombats] = useState<CombatDto[]>([]);
@@ -320,7 +325,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                 if (token) {
                     const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
                     if (scRes.ok) {
-                        const scData = await scRes.json();
+                        const scData = await scRes.json() as RealtimeSharedContentPayload;
                         setSharedContent(scData);
                     }
                 }
@@ -462,7 +467,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             }
         };
 
-        const handleSharedContentUpdate = (scData: any) => {
+        const handleSharedContentUpdate = (scData: RealtimeSharedContentPayload) => {
             if (!isEqual(sharedContent, scData)) setSharedContent(scData);
         };
 
@@ -501,11 +506,11 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             fetchCombats(); // Initial fetch
 
             if (appSocket) {
-                const handleCombatUpdate = (data: any) => {
+                const handleCombatUpdate = (data: RealtimeCombatUpdatePayload) => {
                     //logger.debug('FoundryContext | Socket Combat Update received:', data);
                     fetchCombats();
                 };
-                const handleChatUpdate = (data: any) => {
+                const handleChatUpdate = (data: RealtimeChatUpdatePayload) => {
                     //logger.debug('FoundryContext | Socket Chat Update received:', data);
                     fetchChat();
                 };

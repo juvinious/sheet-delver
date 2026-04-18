@@ -3,6 +3,12 @@ import { systemService } from '@core/system/SystemService';
 import { logger } from '@shared/utils/logger';
 import type { SessionManagerLike, UserSessionLike, FoundryClientLike } from '@server/shared/types/foundry';
 import type { SystemStatusPayload } from '@shared/contracts/status';
+import type {
+    RealtimeActorUpdatePayload,
+    RealtimeChatUpdatePayload,
+    RealtimeCombatUpdatePayload,
+    RealtimeSharedContentPayload,
+} from '@shared/contracts/realtime';
 
 type AppSocket = Socket & {
     userSession?: UserSessionLike;
@@ -70,10 +76,22 @@ export function registerAppSocketGateway({
         if (foundryClient) {
             logger.info(`App Socket | Attaching per-user listeners for ${foundryClient.username} (${socket.id})`);
 
-            const handleCombatUpdate = (data: unknown) => socket.emit('combatUpdate', data);
-            const handleChatUpdate = (data: unknown) => socket.emit('chatUpdate', data);
-            const handleActorUpdate = (data: unknown) => socket.emit('actorUpdate', data);
-            const handleSharedUpdate = (data: unknown) => socket.emit('sharedContentUpdate', data);
+            const handleCombatUpdate = (...args: unknown[]) => {
+                const data = (args[0] || {}) as RealtimeCombatUpdatePayload;
+                socket.emit('combatUpdate', data);
+            };
+            const handleChatUpdate = (...args: unknown[]) => {
+                const data = (args[0] || {}) as RealtimeChatUpdatePayload;
+                socket.emit('chatUpdate', data);
+            };
+            const handleActorUpdate = (...args: unknown[]) => {
+                const data = (args[0] || {}) as RealtimeActorUpdatePayload;
+                socket.emit('actorUpdate', data);
+            };
+            const handleSharedUpdate = (...args: unknown[]) => {
+                const data = (args[0] || {}) as RealtimeSharedContentPayload;
+                socket.emit('sharedContentUpdate', data);
+            };
 
             foundryClient.on('combatUpdate', handleCombatUpdate);
             foundryClient.on('chatUpdate', handleChatUpdate);
