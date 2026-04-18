@@ -154,6 +154,10 @@ export interface AppConfig {
         };
         bodyLimit: string;
         serviceToken?: string;
+        cors: {
+            allowAllOrigins: boolean;
+            allowedOrigins: string[];
+        };
     };
 }
 

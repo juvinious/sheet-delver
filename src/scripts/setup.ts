@@ -14,6 +14,11 @@ function generateServiceToken(): string {
     return randomBytes(32).toString('hex');
 }
 
+function buildAppUrl(protocol: string, host: string, port: number): string {
+    const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
+    return `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
+}
+
 async function main() {
     logger.info('\x1b[36m%s\x1b[0m', '--- SheetDelver Configuration Setup ---');
 
@@ -152,6 +157,10 @@ async function main() {
                 "max-attempts": 5
             },
             "body-limit": "10mb",
+            cors: {
+                "allow-all-origins": false,
+                "allowed-origins": [buildAppUrl(answers.appProtocol, answers.appHost, answers.appPort)]
+            },
             "service-token": generateServiceToken()
         }
     };

@@ -55,15 +55,16 @@ async function startServer() {
 
     const { apiPort } = config.app;
     const corePort = process.env.PORT ? parseInt(process.env.PORT) : (process.env.API_PORT ? parseInt(process.env.API_PORT) : apiPort);
+    const corsOriginPolicy = config.security.cors.allowAllOrigins ? true : config.security.cors.allowedOrigins;
 
     const app = express();
     app.use(express.json({ limit: config.security.bodyLimit }));
-    app.use(cors());
+    app.use(cors({ origin: corsOriginPolicy }));
 
     const httpServer = createServer(app);
     const io = new Server(httpServer, {
         cors: {
-            origin: "*",
+            origin: corsOriginPolicy,
             methods: ["GET", "POST"]
         }
     });
@@ -187,10 +188,14 @@ async function startServer() {
         config
     });
 
-    // Debug endpoint for direct actor inspection with required session token.
-    registerDebugRoutes(app, {
-        getOrRestoreSession: (token) => sessionManager.getOrRestoreSession(token)
-    });
+    if (config.debug.enabled) {
+        // Debug endpoint for direct actor inspection with required session token.
+        registerDebugRoutes(app, {
+            getOrRestoreSession: (token) => sessionManager.getOrRestoreSession(token)
+        });
+    } else {
+        logger.info('Core Service | Debug routes disabled (debug.enabled=false).');
+    }
 
     // Protected chat endpoints for feed retrieval and message send operations.
     registerChatRoutes(appRouter, { config });

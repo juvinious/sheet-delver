@@ -8,6 +8,23 @@ import { logger } from '@shared/utils/logger';
 
 let _cachedConfig: AppConfig | null = null;
 
+function parseBoolean(value: string | undefined): boolean | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+    return undefined;
+}
+
+function parseCsv(value: string | undefined): string[] | undefined {
+    if (!value) return undefined;
+    const items = value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    return items.length > 0 ? items : undefined;
+}
+
 export async function loadConfig(): Promise<AppConfig | null> {
     if (_cachedConfig) return _cachedConfig;
 
@@ -47,6 +64,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const envUsername = process.env.FOUNDRY_USERNAME;
             const envPassword = process.env.FOUNDRY_PASSWORD;
             const envServiceToken = process.env.APP_SERVICE_TOKEN;
+            const envCorsAllowAllOrigins = parseBoolean(process.env.APP_CORS_ALLOW_ALL_ORIGINS);
+            const envCorsAllowedOrigins = parseCsv(process.env.APP_CORS_ALLOWED_ORIGINS);
 
             const protocol = envProtocol || foundry.protocol;
             const host = envHost || foundry.host;
@@ -74,6 +93,10 @@ export async function loadConfig(): Promise<AppConfig | null> {
 
             const security = doc.security || {};
             const rateLimit = security['rate-limit'] || {};
+            const corsConfig = security.cors || {};
+            const configuredAllowedOrigins = Array.isArray(corsConfig['allowed-origins'])
+                ? corsConfig['allowed-origins'].map((origin: unknown) => String(origin).trim()).filter(Boolean)
+                : undefined;
 
             _cachedConfig = {
                 app: {
@@ -107,7 +130,11 @@ export async function loadConfig(): Promise<AppConfig | null> {
                         maxAttempts: rateLimit['max-attempts'] ?? 5,
                     },
                     bodyLimit: security['body-limit'] ?? '10mb',
-                    serviceToken: envServiceToken || security['service-token']
+                    serviceToken: envServiceToken || security['service-token'],
+                    cors: {
+                        allowAllOrigins: envCorsAllowAllOrigins ?? corsConfig['allow-all-origins'] ?? false,
+                        allowedOrigins: envCorsAllowedOrigins || configuredAllowedOrigins || [appUrl]
+                    }
                 }
             };
             return _cachedConfig;

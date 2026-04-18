@@ -103,6 +103,10 @@ security:
         window-minutes: 15      # Time window in minutes
         max-attempts: 5         # Maximum login attempts per window
     body-limit: 10mb            # Maximum JSON request body size (for large character imports)
+    cors:
+        allow-all-origins: false
+        allowed-origins:
+            - http://localhost:3000
     service-token: "replace-with-strong-random-token"  # Internal privileged bearer token (not a Foundry password)
 ```
 
@@ -119,6 +123,17 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
 Environment override is supported via `APP_SERVICE_TOKEN`.
+
+CORS policy is allow-list based by default and shared by Express + Socket.io:
+- `security.cors.allowed-origins` controls allowed origins.
+- `security.cors.allow-all-origins` enables explicit permissive mode when set to `true`.
+- Environment overrides:
+    - `APP_CORS_ALLOWED_ORIGINS` as a comma-separated list (for example `https://app.example.com,https://admin.example.com`)
+    - `APP_CORS_ALLOW_ALL_ORIGINS=true|false`
+
+Debug API surface follows the existing debug switch:
+- `debug.enabled: true` enables debug routes.
+- `debug.enabled: false` disables debug routes (recommended outside active debug sessions).
 
 ### Running Locally
 1.  **Install Dependencies**:
