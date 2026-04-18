@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { RollMode } from '@shared/interfaces';
 import DiceTray from './DiceTray';
+import type { ChatMessageDto } from '@shared/contracts/chat';
 
 interface ChatTabProps {
-    messages: any[];
+    messages: ChatMessageDto[];
     onSend: (msg: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
     onRoll?: (type: string, key: string, options?: { rollMode?: RollMode; speaker?: string }) => void;
     foundryUrl?: string;
@@ -43,7 +44,7 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
     // However, if we reverse, new messages are at the very top.
     // If we are at the top, they just appear.
 
-    const [now, setNow] = useState<number>(() => messages.length > 0 ? messages[0].timestamp : Date.now());
+    const [now, setNow] = useState<number>(() => messages.length > 0 ? (messages[0].timestamp ?? Date.now()) : Date.now());
 
     useEffect(() => {
         setNow(Date.now());
@@ -186,13 +187,13 @@ export default function ChatTab({ messages, onSend, foundryUrl, onRoll, hideDice
                     onScroll={handleScroll}
                 >
                     {[...messages].reverse().map((msg, idx) => (
-                        <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(msg.isRoll) : defaultStyles.msgContainer(msg.isRoll)}>
+                        <div key={`${msg.id || msg._id || 'msg'}-${idx}`} className={s.msgContainer ? s.msgContainer(!!msg.isRoll) : defaultStyles.msgContainer(!!msg.isRoll)}>
                             <div className="flex justify-between items-center mb-1">
                                 <span className={s.user}>{msg.user}</span>
-                                <span className={s.time}>{getTimeAgo(msg.timestamp, now)}</span>
+                                <span className={s.time}>{getTimeAgo(msg.timestamp ?? now, now)}</span>
                             </div>
                             {msg.flavor && <div className={s.flavor} dangerouslySetInnerHTML={{ __html: msg.flavor }} />}
-                            <div className={s.content} dangerouslySetInnerHTML={{ __html: formatContent(msg.content) }} />
+                            <div className={s.content} dangerouslySetInnerHTML={{ __html: formatContent(msg.content || '') }} />
                             {msg.rollTotal !== undefined && (
                                 <div className="mt-2 space-y-1">
                                     <div className={s.rollResult}>

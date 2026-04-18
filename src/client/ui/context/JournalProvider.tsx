@@ -3,6 +3,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useFoundry } from './FoundryContext';
 import { logger } from '@shared/utils/logger';
+import type {
+    JournalEntryDto,
+    JournalFolderDto,
+    JournalListPayload,
+} from '@shared/contracts/journals';
 
 // Walkthrough/Changelog Notes:
 // - **Permissions**: "Edit" & "Share" buttons are now hidden for shared content and non-authorized users. Journals are now restricted to users with `Observer` level or higher.
@@ -10,24 +15,8 @@ import { logger } from '@shared/utils/logger';
 // - **Foundry Style**: Added a prominent "Chapter" header to pages (black bar with white text) matching the core Foundry VTT journal aesthetic.
 // - **Creation Fix**: Resolve backend errors when creating new journals or folders by correctly formatting the payload.
 
-export interface JournalEntry {
-    _id: string;
-    name: string;
-    folder: string | null;
-    content?: string;
-    pages?: any[];
-    ownership: Record<string, number>;
-}
-
-export interface Folder {
-    _id: string;
-    name: string;
-    type: string;
-    folder: string | null;
-    sort: number;
-    color: string | null;
-    ownership?: Record<string, number>;
-}
+export type JournalEntry = JournalEntryDto;
+export type Folder = JournalFolderDto;
 
 interface JournalContextType {
     journals: JournalEntry[];
@@ -65,7 +54,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
             // - [x] Implement Folder visibility logic (containment-based)
             // - [x] Fix Journal creation (array wrap fix)
             // - [x] Fix Folder creation (array wrap fix)
-            const data = await res.json();
+            const data = await res.json() as JournalListPayload;
             setJournals(data.journals || []);
             setFolders(data.folders || []);
         } catch (err: any) {
@@ -91,7 +80,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (!res.ok) throw new Error('Failed to fetch journal detail');
-            return await res.json();
+            return await res.json() as JournalEntry;
         } catch (err) {
             logger.error(`JournalProvider | Get detail failed for ${id}:`, err);
             return null;

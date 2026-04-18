@@ -1,5 +1,6 @@
 import type { AppConfig } from '@shared/interfaces';
 import type { ChatClientLike, ChatSendBody } from '@server/shared/types/documents';
+import type { ChatLogPayload, ChatSendSuccessPayload, ChatErrorPayload } from '@shared/contracts/chat';
 
 interface ChatServiceDeps {
     config: AppConfig;
@@ -7,14 +8,17 @@ interface ChatServiceDeps {
 
 export function createChatService(deps: ChatServiceDeps) {
     // Chat history read model used by the chat feed endpoint.
-    const getChatLog = async (client: ChatClientLike, limitParam: unknown) => {
+    const getChatLog = async (client: ChatClientLike, limitParam: unknown): Promise<ChatLogPayload> => {
         const limit = parseInt(limitParam as string) || deps.config.app.chatHistory || 100;
         const messages = await client.getChatLog(limit);
         return { messages };
     };
 
     // Chat send orchestration with slash-roll command detection and mode normalization.
-    const sendChatMessage = async (client: ChatClientLike, body: ChatSendBody) => {
+    const sendChatMessage = async (
+        client: ChatClientLike,
+        body: ChatSendBody
+    ): Promise<ChatSendSuccessPayload | ChatErrorPayload> => {
         const { message } = body;
         if (!message) return { error: 'Message is empty', status: 400 };
 

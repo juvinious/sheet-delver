@@ -11,6 +11,7 @@ import { useUI } from '@client/ui/context/UIContext';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
 import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
 import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
+import type { ChatMessageDto, ChatLogPayload } from '@shared/contracts/chat';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -20,7 +21,7 @@ interface FoundryContextType {
     users: User[];
     currentUser: User | null;
     system: AppSystemInfo | null;
-    messages: any[];
+    messages: ChatMessageDto[];
     appVersion: string | null;
     activeUIModule: UIModuleManifest | null;
     actorCards: Record<string, ActorCardData>;
@@ -61,7 +62,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
     const [users, setUsers] = useState<User[]>([]);
     const [system, setSystem] = useState<AppSystemInfo | null>(null);
-    const [messages, setMessages] = useState<any[]>([]);
+    const [messages, setMessages] = useState<ChatMessageDto[]>([]);
     const [appVersion, setAppVersion] = useState<string | null>(null);
     const lastActorSyncTokenRef = useRef<string | null>(null);
     const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
@@ -106,7 +107,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             const res = await fetch('/api/chat', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            const data = await res.json();
+            const data = await res.json() as ChatLogPayload;
             if (data.messages && Array.isArray(data.messages)) {
                 setMessages(data.messages);
             }

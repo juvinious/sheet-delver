@@ -6,10 +6,32 @@ import type {
     RawFolder,
     DocumentSocketResponse,
 } from '@server/shared/types/documents';
+import type {
+    JournalListPayload,
+    JournalEntryDto,
+    JournalErrorPayload,
+} from '@shared/contracts/journals';
 
 export function createJournalService() {
+    const toJournalDto = (journal: RawJournal): JournalEntryDto => ({
+        ...journal,
+        _id: String(journal._id || journal.id || ''),
+        name: String((journal as any).name || ''),
+        folder: (journal.folder ?? null) as string | null,
+    });
+
+    const toFolderDto = (folder: RawFolder) => ({
+        ...folder,
+        _id: String(folder._id || folder.id || ''),
+        name: String(folder.name || ''),
+        type: String(folder.type || ''),
+        folder: (folder.folder ?? null) as string | null,
+        sort: typeof (folder as any).sort === 'number' ? (folder as any).sort : 0,
+        color: ((folder as any).color ?? null) as string | null,
+    });
+
     // Journal list projection with Foundry visibility filtering and folder ancestry pruning.
-    const listJournals = async (client: JournalClientLike) => {
+    const listJournals = async (client: JournalClientLike): Promise<JournalListPayload> => {
         const currentUserId = client.userId;
         const allJournals = await client.getJournals();
         const allFolders = await client.getFolders('JournalEntry');
@@ -43,7 +65,10 @@ export function createJournalService() {
         const visibleFolderIds = getFolderIdsWithVisibleJournals();
         const visibleFolders = allFolders.filter((f) => isGM || (!!f._id && visibleFolderIds.has(f._id)));
 
-        return { journals: visibleJournals, folders: visibleFolders };
+        return {
+            journals: visibleJournals.map(toJournalDto),
+            folders: visibleFolders.map(toFolderDto),
+        };
     };
 
     // Journal create orchestration (JournalEntry and Folder document types).
@@ -57,7 +82,10 @@ export function createJournalService() {
     };
 
     // Journal detail fetch by document ID.
-    const getJournalById = async (client: JournalClientLike, journalId: string) => {
+    const getJournalById = async (
+        client: JournalClientLike,
+        journalId: string
+    ): Promise<JournalEntryDto | JournalErrorPayload> => {
         const response = await client.dispatchDocumentSocket('JournalEntry', 'get', {
             query: { _id: journalId },
             broadcast: false
@@ -65,7 +93,7 @@ export function createJournalService() {
         const doc = response.result?.[0];
 
         if (!doc) return { error: 'Journal not found', status: 404 };
-        return doc;
+        return toJournalDto(doc);
     };
 
     const updateJournal = async (client: JournalClientLike, journalId: string, body: JournalMutationBody) => {
