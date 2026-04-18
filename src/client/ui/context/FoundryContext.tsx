@@ -8,6 +8,8 @@ import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useUI } from '@client/ui/context/UIContext';
+import { UnauthorizedApiError } from '@client/ui/api/http';
+import * as foundryApi from '@client/ui/api/foundryApi';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
 import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
 import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
@@ -109,17 +111,18 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const fetchChat = useCallback(async () => {
         if (step !== 'dashboard' || !token) return;
         try {
-            const res = await fetch('/api/chat', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json() as ChatLogPayload;
+            const data = await foundryApi.fetchChatLog(token);
             if (data.messages && Array.isArray(data.messages)) {
                 setMessages(data.messages);
             }
         } catch (e) {
+            if (e instanceof UnauthorizedApiError) {
+                setToken(null);
+                return;
+            }
             logger.error('FoundryProvider | Failed to fetch chat:', e);
         }
-    }, [step, token]);
+    }, [step, token, setToken]);
 
     const lastActorFetchTimeRef = useRef<number>(0);
     const FETCH_THROTTLE_MS = 2000;
@@ -127,16 +130,13 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const fetchActorCards = useCallback(async () => {
         if (!token) return;
         try {
-            const res = await fetch('/api/actors/cards', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
+            const data = await foundryApi.fetchActorCards(token);
+            setActorCards(data || {});
+        } catch (e) {
+            if (e instanceof UnauthorizedApiError) {
                 setToken(null);
                 return;
             }
-            const data = await res.json() as ActorCardsPayload;
-            setActorCards(data || {});
-        } catch (e) {
             logger.error('FoundryProvider | Failed to fetch actor cards:', e);
         }
     }, [token, setToken]);
@@ -154,14 +154,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         lastActorFetchTimeRef.current = now;
 
         try {
-            const res = await fetch('/api/actors', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json() as ActorListPayload;
+            const data = await foundryApi.fetchActors(token);
             if (data.ownedActors || data.actors) {
                 setOwnedActors(data.ownedActors || data.actors || []);
                 setReadOnlyActors(data.readOnlyActors || []);
@@ -171,6 +164,10 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             }
             return data;
         } catch (error: any) {
+            if (error instanceof UnauthorizedApiError) {
+                setToken(null);
+                return;
+            }
             logger.error('FoundryProvider | Fetch actors failed:', error.message);
         }
     }, [token, fetchActorCards, setToken]);
@@ -178,14 +175,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     const fetchCombats = useCallback(async () => {
         if (!token) return;
         try {
-            const res = await fetch('/api/combats', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json() as CombatListPayload;
+            const data = await foundryApi.fetchCombats(token);
             if (data.combats) {
                 const resolvedCombats = await Promise.all(data.combats.map(async (combat): Promise<CombatDto> => {
                     const combatants = await Promise.all((combat.combatants || []).map(async (combatant): Promise<CombatantDto> => {
@@ -196,10 +186,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         let actor: ActorDetailPayload | null = null;
                         if (combatant.actorId) {
                             try {
-                                const actorRes = await fetch(`/api/actors/${combatant.actorId}`, {
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                actor = await actorRes.json() as ActorDetailPayload;
+                                actor = await foundryApi.fetchActorById(token, combatant.actorId);
                             } catch (e) {
                                 logger.error(`Failed fetching actor ${combatant.actorId}`, e);
                             }
@@ -221,20 +208,20 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             }
             return data;
         } catch (error: any) {
+            if (error instanceof UnauthorizedApiError) {
+                setToken(null);
+                return;
+            }
             logger.error('FoundryProvider | Fetch combat failed:', error.message);
         }
     }, [token, setToken]);
 
     const handleLogin = useCallback(async (username: string, password?: string) => {
         try {
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
+            const data = await foundryApi.login(username, password);
 
             if (data.success) {
+                if (!data.token) throw new Error('Login succeeded without token');
                 setToken(data.token);
                 setStep('authenticating', 'handleLogin', 'Login success');
             } else {
@@ -249,19 +236,11 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
     const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string, speaker?: string }) => {
         try {
-            const res = await fetch('/api/chat/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    message,
-                    rollMode: options?.rollMode,
-                    speaker: options?.speaker
-                })
+            const data = await foundryApi.sendChat(token, {
+                message,
+                rollMode: options?.rollMode,
+                speaker: options?.speaker,
             });
-            const data = await res.json();
             if (data.success) {
                 fetchChat();
             } else {
@@ -283,10 +262,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             setCombats([]);
             setMessages([]);
 
-            await fetch('/api/logout', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            await foundryApi.logout(token);
             setToken(null);
         } catch (e: any) {
             logger.error('FoundryProvider | Logout error:', e);
@@ -308,14 +284,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
         const initStatus = async () => {
             try {
-                const headers: any = {};
-                if (token) headers['Authorization'] = `Bearer ${token}`;
-
                 // Fetch initial status to seed specific user data like currentUserId
-                const res = await fetch('/api/status', { headers, cache: 'no-store' });
-                if (!res.ok) return;
-
-                const data = await res.json() as Partial<AuthenticatedStatusPayload>;
+                const data = await foundryApi.fetchStatus(token);
                 if (!isMounted) return;
 
                 if (data.currentUserId) setCurrentUserId(data.currentUserId);
@@ -323,13 +293,14 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
                 // Fetch initial shared content
                 if (token) {
-                    const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
-                    if (scRes.ok) {
-                        const scData = await scRes.json() as RealtimeSharedContentPayload;
-                        setSharedContent(scData);
-                    }
+                    const scData = await foundryApi.fetchSharedContent(token);
+                    setSharedContent(scData);
                 }
             } catch (e) {
+                if (e instanceof UnauthorizedApiError) {
+                    setToken(null);
+                    return;
+                }
                 logger.error('FoundryProvider | Initial status fetch failed', e);
             }
         };
