@@ -3,11 +3,13 @@ import { run as runLocalhostPolicy } from './localhost-policy.test';
 import { run as runRealtimeBroadcaster } from './realtime-broadcaster.test';
 import { run as runAppSocketGateway } from './app-socket-gateway.test';
 import { run as runAuthStatusSmoke } from './auth-status-smoke.test';
+import { run as runActorCombatSmoke } from './actor-combat-smoke.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
     runLocalhostPolicy();
     await runAuthStatusSmoke();
+    await runActorCombatSmoke();
     await runRealtimeBroadcaster();
     await runAppSocketGateway();
 }
