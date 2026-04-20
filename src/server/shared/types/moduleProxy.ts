@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import type { FoundryClientLike } from '@server/shared/types/foundry';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
 export interface ModuleProxyDispatchRequest {
     path: string;
@@ -7,7 +7,7 @@ export interface ModuleProxyDispatchRequest {
     url: string;
     headers: IncomingHttpHeaders;
     body: unknown;
-    foundryClient?: FoundryClientLike;
+    foundryClient?: RouteFoundryClient;
     userSession?: unknown;
 }
 
@@ -28,7 +28,7 @@ export interface ModuleRouteHandler {
             method: string;
             url: string;
             headers: IncomingHttpHeaders;
-            foundryClient: FoundryClientLike;
+            foundryClient: RouteFoundryClient;
             userSession?: unknown;
         },
         params: { params: Promise<{ systemId: string; route: string[] }> }

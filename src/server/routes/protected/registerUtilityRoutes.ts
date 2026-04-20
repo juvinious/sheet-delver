@@ -1,10 +1,17 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createUtilityService } from '@server/services/utility/UtilityService';
+import type { FoundryUserLike } from '@server/shared/types/foundry';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
-export function registerUtilityRoutes(appRouter: express.Router) {
+interface UtilityRouteDeps {
+    getSystemUsers: () => Promise<FoundryUserLike[]>;
+    getFallbackSharedContentClient: () => RouteFoundryClient;
+}
+
+export function registerUtilityRoutes(appRouter: express.Router, deps: UtilityRouteDeps) {
     // Utility domain service: displaced dashboard helper logic for documents, users, and shared content.
-    const utilityService = createUtilityService();
+    const utilityService = createUtilityService(deps);
 
     appRouter.get('/foundry/document', async (req, res) => {
         try {

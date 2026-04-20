@@ -1,14 +1,18 @@
 import { getServerModule } from '@modules/registry/server';
 import { logger } from '@shared/utils/logger';
-import { systemService } from '@core/system/SystemService';
 import type {
     ModuleProxyDispatchRequest,
     ModuleProxyDispatchResult,
     ModuleServerLike,
     NextLikeResponse,
 } from '@server/shared/types/moduleProxy';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
-export function createModuleProxyService() {
+interface ModuleProxyServiceDeps {
+    getFallbackFoundryClient: () => RouteFoundryClient;
+}
+
+export function createModuleProxyService(deps: ModuleProxyServiceDeps) {
     // Route matcher for module apiRoutes patterns such as [id] segments.
     const findMatchedPattern = (routes: string[], routePath: string): string | undefined => {
         for (const pattern of routes) {
@@ -52,7 +56,7 @@ export function createModuleProxyService() {
             method: request.method,
             url: request.url,
             headers: request.headers,
-            foundryClient: request.foundryClient || systemService.getSystemClient(),
+            foundryClient: request.foundryClient || deps.getFallbackFoundryClient(),
             userSession: request.userSession
         };
         const nextParams = { params: Promise.resolve({ systemId, route: routePath.split('/') }) };

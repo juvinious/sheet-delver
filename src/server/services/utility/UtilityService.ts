@@ -1,10 +1,15 @@
 import { UserRole } from '@shared/constants';
 import { logger } from '@shared/utils/logger';
-import { systemService } from '@core/system/SystemService';
 import type { UtilityClientLike, UtilitySystemClientLike } from '@server/shared/types/utility';
 import type { FoundryUserLike } from '@server/shared/types/foundry';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
-export function createUtilityService() {
+interface UtilityServiceDeps {
+    getSystemUsers: () => Promise<FoundryUserLike[]>;
+    getFallbackSharedContentClient: () => RouteFoundryClient;
+}
+
+export function createUtilityService(deps: UtilityServiceDeps) {
     // Generic Foundry document fetch used by dashboard links and drill-in flows.
     const getFoundryDocument = async (client: UtilityClientLike, uuid?: string) => {
         if (!uuid) return { error: 'Missing uuid', status: 400 };
@@ -17,7 +22,7 @@ export function createUtilityService() {
 
     // Session user projection mirrors the public status user shape for dashboard consumers.
     const getSessionUsers = async (client: UtilityClientLike) => {
-        const users = await (systemService.getSystemClient() as unknown as UtilitySystemClientLike).getUsers();
+        const users = await deps.getSystemUsers();
         logger.debug(`[API] /session/users: Found ${users.length} users via System Client`);
 
         const sanitizedUsers = users.map((u: FoundryUserLike) => ({
@@ -36,8 +41,8 @@ export function createUtilityService() {
 
     // Shared content projection resolves stored image URLs for the requesting user context.
     const getSharedContent = async (client?: UtilityClientLike) => {
-        const resolvedClient = (client || systemService.getSystemClient()) as UtilityClientLike & UtilitySystemClientLike;
-        const content = resolvedClient.getSharedContent();
+        const resolvedClient = client || deps.getFallbackSharedContentClient();
+        const content = resolvedClient.getSharedContent ? resolvedClient.getSharedContent() : null;
 
         if (content && content.type === 'image' && content.data?.url) {
             content.data.url = resolvedClient.resolveUrl(content.data.url);

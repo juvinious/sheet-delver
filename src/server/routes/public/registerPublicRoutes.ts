@@ -1,11 +1,11 @@
 import express from 'express';
-import { SetupManager } from '@core/foundry/SetupManager';
 import { logger } from '@shared/utils/logger';
 import { getRegisteredModules } from '@modules/registry/server';
 
 interface PublicRouteDeps {
     statusHandler: express.RequestHandler;
     getSanitizedConfig: () => unknown;
+    getSetupStatus: () => Promise<{ isConfigured: boolean }>;
     loginLimiter: express.RequestHandler;
     createSession: (username: string, password?: string) => Promise<{ sessionId: string; userId: string }>;
     destroySession: (token: string) => Promise<void>;
@@ -25,9 +25,7 @@ export function registerPublicRoutes(appRouter: express.Router, deps: PublicRout
      */
     appRouter.get('/config/setup-status', async (req, res) => {
         try {
-            const cache = await SetupManager.loadCache();
-            const isConfigured = !!(cache.currentWorldId && cache.worlds[cache.currentWorldId]);
-            res.json({ isConfigured });
+            res.json(await deps.getSetupStatus());
         } catch (err: any) {
             logger.error(`Failed to check setup status: ${err.message}`);
             res.status(500).json({ isConfigured: false, error: 'Failed to verify configuration status' });

@@ -1,6 +1,8 @@
 import express from 'express';
 import type { AppConfig } from '@shared/interfaces';
 import type { SessionManager } from '@core/session/SessionManager';
+import { systemService } from '@core/system/SystemService';
+import { SetupManager } from '@core/foundry/SetupManager';
 import { createAuthenticateSession } from '@server/middleware/authenticateSession';
 import { createTryAuthenticateSession } from '@server/middleware/tryAuthenticateSession';
 import { createEnsureInitialized } from '@server/middleware/ensureInitialized';
@@ -16,7 +18,9 @@ import { registerUtilityRoutes } from '@server/routes/protected/registerUtilityR
 import { createModuleRouter } from '@server/routes/modules/createModuleRouter';
 import { createAdminRouter } from '@server/routes/admin/createAdminRouter';
 import { createActorNormalizationService } from '@server/services/actors/ActorNormalizationService';
+import { createSystemRouteFoundryClient } from '@server/shared/utils/createRouteFoundryClient';
 import { logger } from '@shared/utils/logger';
+import { getAdapter } from '@modules/registry/server';
 
 type GetSystemStatusPayload = () => Promise<any>;
 
@@ -77,6 +81,10 @@ export function registerRoutes(deps: RegisterRoutesDeps): void {
     registerPublicRoutes(appRouter, {
         statusHandler,
         getSanitizedConfig,
+        getSetupStatus: async () => {
+            const cache = await SetupManager.loadCache();
+            return { isConfigured: !!(cache.currentWorldId && cache.worlds[cache.currentWorldId]) };
+        },
         loginLimiter,
         createSession: (username, password) => deps.sessionManager.createSession(username, password),
         destroySession: (token) => deps.sessionManager.destroySession(token)
@@ -90,7 +98,10 @@ export function registerRoutes(deps: RegisterRoutesDeps): void {
 
     appRouter.use(authenticateSession);
 
-    registerSystemRoutes(appRouter);
+    registerSystemRoutes(appRouter, {
+        getSystemClient: () => systemService.getSystemClient(),
+        getAdapter
+    });
 
     registerActorRoutes(appRouter, {
         normalizeActors,
@@ -109,9 +120,15 @@ export function registerRoutes(deps: RegisterRoutesDeps): void {
     registerChatRoutes(appRouter, { config: deps.config });
     registerCombatRoutes(appRouter, { normalizeActors });
     registerJournalRoutes(appRouter);
-    registerUtilityRoutes(appRouter);
+    registerUtilityRoutes(appRouter, {
+        getSystemUsers: async () => systemService.getSystemClient().getUsers(),
+        getFallbackSharedContentClient: () => createSystemRouteFoundryClient(systemService.getSystemClient())
+    });
 
-    const moduleRouter = createModuleRouter(tryAuthenticateSession);
+    const moduleRouter = createModuleRouter({
+        tryAuthenticateSession,
+        getFallbackFoundryClient: () => createSystemRouteFoundryClient(systemService.getSystemClient())
+    });
     const adminRouter = createAdminRouter({ getSystemStatusPayload: deps.getSystemStatusPayload });
 
     // Preserve mount order to avoid changing auth scope or module-router permissive behavior.

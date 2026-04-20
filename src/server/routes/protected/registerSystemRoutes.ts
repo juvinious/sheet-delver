@@ -1,13 +1,20 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
-import { systemService } from '@core/system/SystemService';
 
-export function registerSystemRoutes(appRouter: express.Router) {
+interface SystemRoutesDeps {
+    getSystemClient: () => {
+        getGameData: () => any;
+        getSceneData: () => any;
+    };
+    getAdapter: (systemId: string) => Promise<any>;
+}
+
+export function registerSystemRoutes(appRouter: express.Router, deps: SystemRoutesDeps) {
     // --- System API (now protected by middleware) ---
     appRouter.get('/system', async (req, res) => {
         try {
             // Auth handled by middleware
-            const gameData = systemService.getSystemClient().getGameData();
+            const gameData = deps.getSystemClient().getGameData();
             res.json(gameData?.system || {});
         } catch (error: any) {
             res.status(500).json({ error: error.message });
@@ -18,10 +25,9 @@ export function registerSystemRoutes(appRouter: express.Router) {
     appRouter.get('/system/data', async (req: any, res: any) => {
         try {
             // Auth handled by middleware
-            const systemClient = systemService.getSystemClient();
+            const systemClient = deps.getSystemClient();
             const gameData = systemClient.getGameData();
-            const { getAdapter } = await import('@modules/registry/server');
-            const adapter = await getAdapter(gameData.system.id);
+            const adapter = await deps.getAdapter(gameData.system.id);
             const adapterName = adapter?.constructor?.name || 'Unknown';
 
             if (adapter && typeof (adapter as any).getSystemData === 'function') {
@@ -40,7 +46,7 @@ export function registerSystemRoutes(appRouter: express.Router) {
     appRouter.get('/system/scenes', async (req, res) => {
         try {
             // Auth handled by middleware
-            const systemClient = systemService.getSystemClient();
+            const systemClient = deps.getSystemClient();
             const sceneData = systemClient.getSceneData();
 
             if (!sceneData) {

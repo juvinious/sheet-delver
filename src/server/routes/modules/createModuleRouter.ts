@@ -1,15 +1,23 @@
 import express from 'express';
 import { createModuleProxyService } from '@server/services/modules/ModuleProxyService';
 import { logger } from '@shared/utils/logger';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
-export function createModuleRouter(tryAuthenticateSession: express.RequestHandler) {
+interface ModuleRouterDeps {
+    tryAuthenticateSession: express.RequestHandler;
+    getFallbackFoundryClient: () => RouteFoundryClient;
+}
+
+export function createModuleRouter(deps: ModuleRouterDeps) {
     // --- Module Router (Permissive Auth) ---
     // Mounted before the global auth middleware to allow module-specific permissive routes
     const moduleRouter = express.Router();
-    moduleRouter.use(tryAuthenticateSession);
+    moduleRouter.use(deps.tryAuthenticateSession);
 
     // Module proxy service: displaced matching and dispatch orchestration for module api routes.
-    const moduleProxyService = createModuleProxyService();
+    const moduleProxyService = createModuleProxyService({
+        getFallbackFoundryClient: deps.getFallbackFoundryClient
+    });
 
     // Express 5: String wildcards (*) must be named or used via RegExp.
     // Named capturing groups (?<name>) populate req.params.name
