@@ -56,26 +56,30 @@ if (command !== 'build') {
 let coreProcess: ChildProcess | null = null;
 let shellProcess: ChildProcess | null = null;
 
-function cleanup() {
+// When the terminal sends a signal, all processes in the same group receive it.
+// Skip explicit child kills in that case to avoid sending a duplicate signal.
+function cleanup(skipChildSignals = false) {
     logger.info('\n[Manager] Shutting down services...');
-    if (coreProcess) {
-        logger.info('[Manager] Stopping Core Service...');
-        coreProcess.kill('SIGINT');
-    }
-    if (shellProcess) {
-        logger.info('[Manager] Stopping Shell Service...');
-        shellProcess.kill('SIGINT');
+    if (!skipChildSignals) {
+        if (coreProcess) {
+            logger.info('[Manager] Stopping Core Service...');
+            coreProcess.kill('SIGINT');
+        }
+        if (shellProcess) {
+            logger.info('[Manager] Stopping Shell Service...');
+            shellProcess.kill('SIGINT');
+        }
     }
 }
 
 // Handle termination signals
 process.on('SIGINT', () => {
-    cleanup();
+    cleanup(true);
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-    cleanup();
+    cleanup(true);
     process.exit(0);
 });
 
@@ -128,6 +132,7 @@ async function start() {
 
     // 2. Start Shell Service
     logger.info(`[Manager] Launching Shell Service (Next.js ${command}) on ${host}:${port}...`);
+    logger.info(`[Manager] Shell Service proxying API requests to Core Service on port ${apiPort}`);
     const nextCmd = path.join(process.cwd(), 'node_modules', '.bin', 'next');
 
     // Pass API_PORT to Next.js so it knows where to proxy

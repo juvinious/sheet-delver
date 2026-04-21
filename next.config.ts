@@ -6,8 +6,6 @@ const HOST = process.env.HOST || '127.0.0.1';
 // Read API port from environment variable (set by dev script) or default to 3001
 const API_PORT = process.env.API_PORT || '3001';
 
-console.log(`[Next.js] Configuring proxy to Core Service on port ${API_PORT}`);
-
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
   async rewrites() {
