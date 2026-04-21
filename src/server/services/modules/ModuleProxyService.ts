@@ -12,11 +12,33 @@ interface ModuleProxyServiceDeps {
     getFallbackFoundryClient: () => RouteFoundryClient;
 }
 
+function escapeRegexSegment(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function compileModuleRoutePattern(pattern: string): RegExp {
+    const tokenRegex = /\[.*?\]/g;
+    let compiled = '^';
+    let lastIndex = 0;
+
+    for (const match of pattern.matchAll(tokenRegex)) {
+        const matchIndex = match.index ?? 0;
+        compiled += escapeRegexSegment(pattern.slice(lastIndex, matchIndex));
+        compiled += '([^/]+)';
+        lastIndex = matchIndex + match[0].length;
+    }
+
+    compiled += escapeRegexSegment(pattern.slice(lastIndex));
+    compiled += '$';
+
+    return new RegExp(compiled);
+}
+
 export function createModuleProxyService(deps: ModuleProxyServiceDeps) {
     // Route matcher for module apiRoutes patterns such as [id] segments.
     const findMatchedPattern = (routes: string[], routePath: string): string | undefined => {
         for (const pattern of routes) {
-            const regex = new RegExp('^' + pattern.replace(/\[.*?\]/g, '([^/]+)') + '$');
+            const regex = compileModuleRoutePattern(pattern);
             if (regex.test(routePath)) return pattern;
         }
         return undefined;
