@@ -7,6 +7,7 @@ import { ConfigProvider } from "@client/ui/context/ConfigContext";
 import { NotificationProvider } from "@client/ui/components/NotificationSystem";
 import { FoundryProvider } from "@client/ui/context/FoundryContext";
 import { UIProvider } from "@client/ui/context/UIContext";
+import { SessionProvider } from "@client/ui/context/SessionContext";
 import GlobalChat from "@client/ui/components/GlobalChat";
 import PlayerList from "@client/ui/components/PlayerList";
 import FloatingHUD from "@client/ui/components/FloatingHUD";
@@ -84,21 +85,23 @@ export default function RootLayout({
         <ConfigProvider>
           <NotificationProvider>
             <UIProvider>
-              <FoundryProvider>
-                <JournalProvider>
-                  <VideoPlaysinlineFix />
-                  <div className="relative min-h-screen">
-                    <ShutdownWatcher />
-                    {children}
-                    <GlobalChat />
-                    <PlayerList />
-                    <FloatingHUD />
-                    <CombatHUD />
-                    <JournalBrowser />
-                    <JournalModal />
-                  </div>
-                </JournalProvider>
-              </FoundryProvider>
+              <SessionProvider>
+                <FoundryProvider>
+                  <JournalProvider>
+                    <VideoPlaysinlineFix />
+                    <div className="relative min-h-screen">
+                      <ShutdownWatcher />
+                      {children}
+                      <GlobalChat />
+                      <PlayerList />
+                      <FloatingHUD />
+                      <CombatHUD />
+                      <JournalBrowser />
+                      <JournalModal />
+                    </div>
+                  </JournalProvider>
+                </FoundryProvider>
+              </SessionProvider>
             </UIProvider>
           </NotificationProvider>
         </ConfigProvider>

@@ -1,13 +1,13 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { logger, LOG_LEVEL } from '@shared/utils/logger';
+import { logger } from '@shared/utils/logger';
 import { AppSystemInfo, User, ConnectionStep, ActorCardData } from '@shared/interfaces';
 import { useNotifications } from '../components/NotificationSystem';
 import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
-import { useUI } from '@client/ui/context/UIContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { UnauthorizedApiError } from '@client/ui/api/http';
 import * as foundryApi from '@client/ui/api/foundryApi';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
@@ -58,51 +58,35 @@ const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
 
 export function FoundryProvider({ children }: { children: ReactNode }) {
     const { addNotification } = useNotifications();
-    const { resetUI } = useUI();
-    const [step, setStepState] = useState<ConnectionStep>('init');
-    const [token, setTokenState] = useState<string | null>(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('sheet-delver-token');
-        }
-        return null;
-    });
+    const {
+        step,
+        setStep,
+        token,
+        setToken,
+        users,
+        setUsers,
+        currentUser,
+        setCurrentUserId,
+        appVersion,
+        setAppVersion,
+        isConfigured,
+        setIsConfigured,
+        handleLogin,
+        handleLogout,
+        registerLogoutCleanup,
+    } = useSession();
 
-    const [users, setUsers] = useState<User[]>([]);
     const [system, setSystem] = useState<AppSystemInfo | null>(null);
     const [messages, setMessages] = useState<ChatMessageDto[]>([]);
-    const [appVersion, setAppVersion] = useState<string | null>(null);
     const lastActorSyncTokenRef = useRef<string | null>(null);
-    const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
     const [ownedActors, setOwnedActors] = useState<ActorDto[]>([]);
     const [readOnlyActors, setReadOnlyActors] = useState<ActorDto[]>([]);
     const [sharedContent, setSharedContent] = useState<RealtimeSharedContentPayload | null>(null);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
     const [combats, setCombats] = useState<CombatDto[]>([]);
     const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
-    const [isConfigured, setIsConfigured] = useState<boolean>(true);
-
-    const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
-
-    const setToken = useCallback((newToken: string | null) => {
-        setTokenState(newToken);
-        if (typeof window !== 'undefined') {
-            if (newToken) {
-                localStorage.setItem('sheet-delver-token', newToken);
-            } else {
-                localStorage.removeItem('sheet-delver-token');
-            }
-        }
-    }, []);
-
-    const setStep = useCallback((newStep: ConnectionStep, origin: string = 'unknown', reason?: string) => {
-        if (step === newStep) return;
-        const timestamp = new Date().toISOString();
-        logger.debug(`[FoundryProvider] ${timestamp} | ${step} -> ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`);
-        setStepState(newStep);
-    }, [step]);
 
     const isEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -216,24 +200,6 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [token, setToken]);
 
-    const handleLogin = useCallback(async (username: string, password?: string) => {
-        try {
-            const data = await foundryApi.login(username, password);
-
-            if (data.success) {
-                if (!data.token) throw new Error('Login succeeded without token');
-                setToken(data.token);
-                setStep('authenticating', 'handleLogin', 'Login success');
-            } else {
-                addNotification('Login failed: ' + data.error, 'error');
-                throw new Error(data.error);
-            }
-        } catch (e: any) {
-            addNotification('Error: ' + e.message, 'error');
-            throw e;
-        }
-    }, [setToken, setStep, addNotification]);
-
     const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string, speaker?: string }) => {
         try {
             const data = await foundryApi.sendChat(token, {
@@ -251,32 +217,17 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [token, fetchChat, addNotification]);
 
-    const handleLogout = useCallback(async () => {
-        try {
-            resetUI();
-            setStep('login', 'handleLogout', 'User logged out');
+    useEffect(() => {
+        registerLogoutCleanup(() => {
             setCurrentUserId(null);
             setOwnedActors([]);
             setReadOnlyActors([]);
             setSharedContent(null);
             setCombats([]);
             setMessages([]);
-
-            await foundryApi.logout(token);
-            setToken(null);
-        } catch (e: any) {
-            logger.error('FoundryProvider | Logout error:', e);
-            resetUI();
-            setStep('login', 'handleLogout error', 'Force transition');
-            setCurrentUserId(null);
-            setOwnedActors([]);
-            setReadOnlyActors([]);
-            setSharedContent(null);
-            setCombats([]);
-            setMessages([]);
-            setToken(null);
-        }
-    }, [token, resetUI, setStep, setToken]);
+            setActorCards({});
+        });
+    }, [registerLogoutCleanup, setCurrentUserId]);
 
     // --- App Socket & State Initialization ---
     useEffect(() => {
@@ -343,7 +294,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             socket.disconnect();
             setAppSocket(null);
         };
-    }, [token, setToken]);
+    }, [token, setCurrentUserId, setIsConfigured, setToken]);
 
     // --- Real-time Socket Status Sync ---
     useEffect(() => {
@@ -449,7 +400,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('systemStatus', handleSystemStatus);
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
-    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, setToken, lastWorldId, isConfigured]);
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setAppVersion, setIsConfigured, setStep, setToken, setUsers, lastWorldId, isConfigured]);
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {

@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Users } from 'lucide-react';
 import type { User } from '@shared/interfaces';
 
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { useUI } from '@client/ui/context/UIContext';
 
 export default function PlayerList() {
-    const { users, currentUser, handleLogout, step } = useFoundry();
+    const { users, currentUser, handleLogout, step } = useSession();
     const currentUserId = currentUser?._id || currentUser?.id || null;
     const { isPlayerListOpen, setPlayerListOpen } = useUI();
     const isOpen = isPlayerListOpen;

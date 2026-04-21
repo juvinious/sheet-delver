@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useFoundry } from './FoundryContext';
+import { useSession } from './SessionContext';
 import { logger } from '@shared/utils/logger';
 import { UnauthorizedApiError } from '@client/ui/api/http';
 import * as journalApi from '@client/ui/api/journalApi';
@@ -36,7 +36,7 @@ interface JournalContextType {
 const JournalContext = createContext<JournalContextType | undefined>(undefined);
 
 export function JournalProvider({ children }: { children: React.ReactNode }) {
-    const { token, step } = useFoundry();
+    const { token, step } = useSession();
     const [journals, setJournals] = useState<JournalEntry[]>([]);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [loading, setLoading] = useState(false);
