@@ -27,7 +27,7 @@ interface CombatServiceDeps {
     normalizeActors: (actorList: RawActor[], client: CombatClientLike) => Promise<RawActor[]>;
 }
 
-function sortCombatants(combatants: RawCombatant[] = []): RawCombatant[] {
+export function sortCombatants(combatants: RawCombatant[] = []): RawCombatant[] {
     return [...combatants].sort((a, b) => {
         const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
         const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
