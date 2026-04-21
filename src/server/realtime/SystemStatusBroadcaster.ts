@@ -46,7 +46,7 @@ export function createSystemStatusBroadcaster(deps: SystemStatusBroadcasterDeps)
     };
 
     // Polling acts as a fallback to keep dashboard status aligned when no explicit event fires.
-    const startPolling = (intervalMs: number) => {
+    const startPolling = (intervalMs: number): ReturnType<typeof setInterval> => {
         return setInterval(async () => {
             const payload = await deps.getSystemStatusPayload();
             deps.io.emit('systemStatus', payload);

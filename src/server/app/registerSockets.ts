@@ -26,7 +26,7 @@ export function registerSockets(deps: RegisterSocketsDeps) {
     });
     const { broadcastSystemStatus } = systemStatusBroadcaster;
 
-    systemStatusBroadcaster.registerLifecycleBroadcasts();
+    const lifecycleRegistration = systemStatusBroadcaster.registerLifecycleBroadcasts();
     registerAppSocketGateway({
         io: deps.io,
         sessionManager: deps.sessionManager,
@@ -35,10 +35,48 @@ export function registerSockets(deps: RegisterSocketsDeps) {
     });
 
     // Preserve existing polling cadence used by status UI updates.
-    systemStatusBroadcaster.startPolling(4000);
+    const pollingInterval = systemStatusBroadcaster.startPolling(4000);
+
+    let isCleanedUp = false;
+    let isForwardingSignal = false;
+    const cleanup = () => {
+        if (isCleanedUp) {
+            return;
+        }
+
+        isCleanedUp = true;
+        clearInterval(pollingInterval);
+        lifecycleRegistration.dispose();
+        process.off('SIGTERM', handleSigterm);
+        process.off('SIGINT', handleSigint);
+    };
+
+    const forwardSignal = (signal: NodeJS.Signals) => {
+        cleanup();
+        if (isForwardingSignal) {
+            return;
+        }
+
+        isForwardingSignal = true;
+        setImmediate(() => {
+            process.kill(process.pid, signal);
+        });
+    };
+
+    const handleSigterm = () => {
+        forwardSignal('SIGTERM');
+    };
+
+    const handleSigint = () => {
+        forwardSignal('SIGINT');
+    };
+
+    process.on('SIGTERM', handleSigterm);
+    process.on('SIGINT', handleSigint);
 
     return {
         getSystemStatusPayload,
-        broadcastSystemStatus
+        broadcastSystemStatus,
+        cleanup
     };
 }
