@@ -6,15 +6,25 @@ interface NormalizedActor {
     [key: string]: unknown;
 }
 
-export function createActorNormalizationService() {
+interface ActorNormalizationDeps {
+    getAdapterBySystemId?: typeof getAdapter;
+    getCompendiumCache?: () => Promise<unknown>;
+}
+
+export function createActorNormalizationService(deps: ActorNormalizationDeps = {}) {
+    const getAdapterBySystemId = deps.getAdapterBySystemId || getAdapter;
+    const getCompendiumCache = deps.getCompendiumCache || (async () => {
+        const { CompendiumCache } = await import('@core/foundry/compendium-cache');
+        return CompendiumCache.getInstance();
+    });
+
     // Shared actor projection used by actor and combat services for UI-ready payloads.
     const normalizeActors = async (actorList: RawActor[], client: ActorServiceClientLike) => {
         const systemInfo = await client.getSystem();
-        const adapter = await getAdapter(systemInfo.id.toLowerCase());
+        const adapter = await getAdapterBySystemId(systemInfo.id.toLowerCase());
         if (!adapter) throw new Error(`Adapter for ${systemInfo.id} not found`);
 
-        const { CompendiumCache } = await import('@core/foundry/compendium-cache');
-        const cache = CompendiumCache.getInstance();
+        const cache = await getCompendiumCache();
 
         return Promise.all(actorList.map(async (actor) => {
             if (!actor.computed) actor.computed = {};
