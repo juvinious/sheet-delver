@@ -90,7 +90,7 @@ export class SystemService extends EventEmitter {
                 const sysInfo = await client.getSystem();
                 if (sysInfo?.id) {
                     const sysId = sysInfo.id.toLowerCase();
-                    const registered = getRegisteredModules();
+                    const registered = getRegisteredModules({ includeExperimental: true });
                     const moduleInfo = registered.find(m => m.id.toLowerCase() === sysId);
                     const adapter = await getAdapter(sysId);
 

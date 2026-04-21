@@ -1,6 +1,7 @@
 {
     "id": "dnd5e",
     "title": "D&D 5th Edition",
+    "experimental": true,
     "manifest": {
         "ui": "module/ui",
         "logic": "module/logic"
