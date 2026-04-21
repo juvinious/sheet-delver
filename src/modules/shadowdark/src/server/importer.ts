@@ -1,5 +1,6 @@
 import { logger } from '@shared/utils/logger';
 import { FoundryClient } from '@core/foundry';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import fs from 'fs';
 import path from 'path';
 import { findEffectUuid, SYSTEM_PREDEFINED_EFFECTS } from '../data/talent-effects';
@@ -36,7 +37,7 @@ export class ShadowdarkImporter {
         }
     }
 
-    public async importFromJSON(client: FoundryClient, json: any): Promise<ImportResult> {
+    public async importFromJSON(client: FoundryClient | RouteFoundryClient, json: any): Promise<ImportResult> {
         const debugLog: string[] = [];
         const log = (msg: string) => {
             debugLog.push(msg);

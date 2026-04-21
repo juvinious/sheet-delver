@@ -6,6 +6,9 @@ import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
 function createBaseRouteFoundryClient(client: CoreSocket | ClientSocket): Omit<RouteFoundryClient, 'sendMessage'> {
     return {
+        get isConnected() {
+            return client.isConnected;
+        },
         userId: client.userId,
         username: undefined,
         on: client.on.bind(client),
@@ -27,7 +30,10 @@ function createBaseRouteFoundryClient(client: CoreSocket | ClientSocket): Omit<R
             }
         ) => client.roll(formula, label, options),
         useItem: (actorId: string, itemId: string) => client.useItem(actorId, itemId),
-        createActorItem: (actorId: string, payload: Record<string, unknown>) => client.createActorItem(actorId, payload),
+        createActorItem: (
+            actorId: string,
+            payload: Record<string, unknown> | Array<Record<string, unknown>>
+        ) => client.createActorItem(actorId, payload),
         updateActorItem: (actorId: string, payload: Record<string, unknown>) => client.updateActorItem(actorId, payload),
         deleteActorItem: (actorId: string, itemId: string) => client.deleteActorItem(actorId, itemId),
         resolveUrl: (url?: string) => client.resolveUrl(url || ''),
@@ -42,6 +48,7 @@ function createBaseRouteFoundryClient(client: CoreSocket | ClientSocket): Omit<R
             payload: Record<string, unknown>
         ) => client.dispatchDocumentSocket(type, action, payload),
         fetchByUuid: (uuid: string) => client.fetchByUuid(uuid),
+        getAllCompendiumIndices: () => client.getAllCompendiumIndices(),
         getSharedContent: () => client.getSharedContent?.() || null,
     };
 }

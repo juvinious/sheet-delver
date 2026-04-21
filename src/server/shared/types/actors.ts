@@ -79,7 +79,10 @@ export interface ActorServiceClientLike extends FoundryClientLike {
     ): Promise<unknown>;
     useItem(actorId: string, itemId: string): Promise<unknown>;
 
-    createActorItem(actorId: string, payload: Record<string, unknown>): Promise<string>;
+    createActorItem(
+        actorId: string,
+        payload: Record<string, unknown> | Array<Record<string, unknown>>
+    ): Promise<unknown>;
     updateActorItem(actorId: string, payload: Record<string, unknown>): Promise<void>;
     deleteActorItem(actorId: string, itemId: string): Promise<void>;
 

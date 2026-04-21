@@ -1,13 +1,15 @@
 import { getClient } from '@core/foundry/instance';
 import { logger } from '@shared/utils/logger';
 import { getConfig } from '@core/config';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 
 /**
  * POST /api/modules/shadowdark/actors/[id]/spells/learn
  * Learn a spell by UUID or ID
  */
-export async function handleLearnSpell(actorId: string, request: Request, client?: any) {
+export async function handleLearnSpell(actorId: string, request: Request, client?: RouteFoundryClient | null) {
     try {
         const foundryClient = client || getClient();
         if (!foundryClient || !foundryClient.isConnected) {
@@ -43,9 +45,9 @@ export async function handleLearnSpell(actorId: string, request: Request, client
 
         return Response.json({ success: true, data: result });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Learn Spell Error:', error);
-        return Response.json({ error: error.message || 'Failed to learn spell' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to learn spell' }, { status: 500 });
     }
 }
 
@@ -186,9 +188,9 @@ export async function handleGetSpellsBySource(request: Request) {
 
         return Response.json({ success: true, spells: merged });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Fetch Spells Error:', error);
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 import { isSpellcaster, canUseMagicItems } from '../../logic/rules';
@@ -200,7 +202,7 @@ import { isSpellcaster, canUseMagicItems } from '../../logic/rules';
  * Uses the normalized actor from the adapter (which already handles caching and
  * name resolution internally) — no separate raw fetch is needed.
  */
-export async function handleGetSpellcasterInfo(actorId: string, clientOverride?: any) {
+export async function handleGetSpellcasterInfo(actorId: string, clientOverride?: RouteFoundryClient | null) {
     try {
         const client = clientOverride || getClient();
         if (!client || !client.isConnected) {
@@ -223,8 +225,8 @@ export async function handleGetSpellcasterInfo(actorId: string, clientOverride?:
             showSpellsTab: isCaster || magicItemCaster
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Spellcaster Info Error:', error);
-        return Response.json({ error: error.message || 'Failed to get spellcaster info' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to get spellcaster info' }, { status: 500 });
     }
 }

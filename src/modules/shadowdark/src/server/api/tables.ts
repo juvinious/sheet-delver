@@ -1,4 +1,6 @@
 import { shadowdarkAdapter } from '../ShadowdarkAdapter';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import { logger } from '@shared/utils/logger';
 
 /**
@@ -13,9 +15,9 @@ export async function handleListRollTables() {
             .map(([uuid, name]) => ({ uuid, name }));
 
         return Response.json({ success: true, tables });
-    } catch (e: any) {
-        logger.error('[Shadowdark API] List tables failed:', e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error('[Shadowdark API] List tables failed:', error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -23,7 +25,7 @@ export async function handleListRollTables() {
  * GET /api/roll-table/[id]
  * Get specific table
  */
-export async function handleGetRollTable(request: Request, id: string, client?: any) {
+export async function handleGetRollTable(_request: Request, id: string, client?: RouteFoundryClient | null) {
     try {
         let table = await shadowdarkAdapter.resolveDocument(client, id);
 
@@ -38,8 +40,8 @@ export async function handleGetRollTable(request: Request, id: string, client?: 
         }
 
         return Response.json({ success: true, table });
-    } catch (e: any) {
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -47,7 +49,7 @@ export async function handleGetRollTable(request: Request, id: string, client?: 
  * POST /api/roll-table/[id]/draw
  * Execute a draw
  */
-export async function handleDrawRollTable(request: Request, id: string, client?: any) {
+export async function handleDrawRollTable(_request: Request, id: string, client?: RouteFoundryClient | null) {
     try {
         const result = await shadowdarkAdapter.drawTable(id, client);
 
@@ -59,9 +61,9 @@ export async function handleDrawRollTable(request: Request, id: string, client?:
             success: true,
             ...result
         });
-    } catch (e: any) {
-        logger.error(`[Shadowdark API] Draw failed for ${id}:`, e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error(`[Shadowdark API] Draw failed for ${id}:`, error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -69,7 +71,7 @@ export async function handleDrawRollTable(request: Request, id: string, client?:
  * POST /api/roll-table/[id]/draw/[resultId]
  * Fetch a specific result pool for that range
  */
-export async function handleGetResultPool(request: Request, tableId: string, resultId: string, client?: any) {
+export async function handleGetResultPool(_request: Request, tableId: string, resultId: string, client?: RouteFoundryClient | null) {
     try {
         const table = await shadowdarkAdapter.resolveDocument(client, tableId);
         if (!table) return Response.json({ error: `Table not found: ${tableId}` }, { status: 404 });
@@ -89,7 +91,7 @@ export async function handleGetResultPool(request: Request, tableId: string, res
             roll: range[0], 
             results: pool
         });
-    } catch (e: any) {
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
