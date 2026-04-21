@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { FoundryClient } from '@core/foundry';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import fs from 'fs';
@@ -667,10 +668,16 @@ export class ShadowdarkImporter {
             log(`[Importer] Import Successful: ${createdActor._id}`);
             return { success: true, id: createdActor._id, errors: errors.length > 0 ? errors : undefined, warnings: warnings.length > 0 ? warnings : undefined, debug: debugLog };
 
-        } catch (e: any) {
-            log(`[Importer] CRITICAL ERROR: ${e.message}`);
-            logger.error('[ShadowdarkImporter] Critical Import Failure:', e);
-            return { success: false, errors: [e.message, e.stack], warnings: warnings, debug: debugLog };
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            log(`[Importer] CRITICAL ERROR: ${message}`);
+            logger.error('[ShadowdarkImporter] Critical Import Failure:', error);
+            return {
+                success: false,
+                errors: [message, error instanceof Error ? error.stack : undefined].filter((entry): entry is string => Boolean(entry)),
+                warnings: warnings,
+                debug: debugLog
+            };
         }
     }
 }

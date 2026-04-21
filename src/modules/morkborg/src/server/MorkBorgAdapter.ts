@@ -2,6 +2,7 @@ import { GenericSystemAdapter } from '@modules/generic/src/logic/adapter';
 import { ChatCards } from '../ui/components/chat/ChatCards';
 import { mbDataManager } from '../data/DataManager';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { 
     getRollData, 
     calculateMaxSlots, 
@@ -843,8 +844,8 @@ export class MorkBorgAdapter extends GenericSystemAdapter {
             try {
                 await client.createActorItem(actor._id || actor.id, itemsToCreate);
                 results.outcomes.push('<br><i>Items added to inventory.</i>');
-            } catch (e: any) {
-                logger.error("Failed to create decoction items:", e.message);
+            } catch (error: unknown) {
+                logger.error("Failed to create decoction items:", getErrorMessage(error));
                 results.outcomes.push('<br><i>Failed to add items to inventory.</i>');
             }
         }

@@ -4,6 +4,7 @@ import { shadowdarkTheme } from '../ui/themes/shadowdark';
 import { getInitiativeFormula, normalizeItemData, isClassSpellcaster } from '../logic/rules';
 import { TALENT_GRANTED_SPELLS } from '../data/talent-effects';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { SystemAdapter } from '@modules/registry/types';
 import { ActorSheetData } from '@shared/interfaces';
 
@@ -84,9 +85,10 @@ export class ShadowdarkAdapter implements SystemAdapter {
 
         try {
             actorData = await (client.getActorRaw ? client.getActorRaw(actorId) : client.getActor(actorId));
-        } catch (e: any) {
-            logger.error(`[ShadowdarkAdapter] Failed to fetch actor ${actorId}: ${e.message}`);
-            return { error: e.message };
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`[ShadowdarkAdapter] Failed to fetch actor ${actorId}: ${message}`);
+            return { error: message };
         }
 
         if (!actorData) return null;
