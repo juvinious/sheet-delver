@@ -19,6 +19,7 @@ import { createModuleRouter } from '@server/routes/modules/createModuleRouter';
 import { createAdminRouter } from '@server/routes/admin/createAdminRouter';
 import { createActorNormalizationService } from '@server/services/actors/ActorNormalizationService';
 import { createSystemRouteFoundryClient } from '@server/shared/utils/createRouteFoundryClient';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { logger } from '@shared/utils/logger';
 import { getAdapter } from '@modules/registry/server';
 
@@ -65,8 +66,8 @@ export function registerRoutes(deps: RegisterRoutesDeps): void {
                 isAuthenticated,
                 currentUserId: userSession?.userId || null
             });
-        } catch (error: any) {
-            logger.error(`Status Handler Error: ${error.message}`);
+        } catch (error: unknown) {
+            logger.error(`Status Handler Error: ${getErrorMessage(error)}`);
             res.status(500).json({ error: 'Failed to retrieve status' });
         }
     };

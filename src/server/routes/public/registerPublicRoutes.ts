@@ -1,6 +1,7 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { getRegisteredModules } from '@modules/registry/server';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 interface PublicRouteDeps {
     statusHandler: express.RequestHandler;
@@ -26,8 +27,8 @@ export function registerPublicRoutes(appRouter: express.Router, deps: PublicRout
     appRouter.get('/config/setup-status', async (req, res) => {
         try {
             res.json(await deps.getSetupStatus());
-        } catch (err: any) {
-            logger.error(`Failed to check setup status: ${err.message}`);
+        } catch (err: unknown) {
+            logger.error(`Failed to check setup status: ${getErrorMessage(err)}`);
             res.status(500).json({ isConfigured: false, error: 'Failed to verify configuration status' });
         }
     });
@@ -41,8 +42,8 @@ export function registerPublicRoutes(appRouter: express.Router, deps: PublicRout
         try {
             const session = await deps.createSession(username, password);
             res.json({ success: true, token: session.sessionId, userId: session.userId });
-        } catch (error: any) {
-            res.status(401).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            res.status(401).json({ success: false, error: getErrorMessage(error) });
         }
     });
 

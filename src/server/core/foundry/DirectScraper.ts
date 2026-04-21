@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 const isBrowser = typeof window !== 'undefined';
 let fs: any = null;
 let path: any = null;
@@ -151,9 +152,10 @@ export class DirectScraper {
                 // Attempt 1: Direct Open
                 db = new ClassicLevel(usersDbPath, { valueEncoding: 'json' });
                 await db.open();
-            } catch (err: any) {
+            } catch (err: unknown) {
                 // If locked, try Copy-and-Read strategy
-                if (err.code === 'LEVEL_LOCKED' || (err.cause && err.cause.code === 'LEVEL_LOCKED')) {
+                const errorWithCode = err as { code?: unknown; cause?: { code?: unknown } };
+                if (errorWithCode.code === 'LEVEL_LOCKED' || errorWithCode.cause?.code === 'LEVEL_LOCKED') {
                     // Close the failed instance (just in case)
                     try { await db.close(); } catch (e) { }
                     db = null;

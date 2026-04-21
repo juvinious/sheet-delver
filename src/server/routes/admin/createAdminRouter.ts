@@ -2,6 +2,7 @@ import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
 import { requireLocalhost } from '@server/security/policies';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface AdminRouterDeps {
@@ -40,8 +41,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         try {
             const payload = await adminService.getCache();
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -52,8 +53,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -61,8 +62,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         try {
             const payload = await adminService.launchWorld(req.body?.worldId);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -70,8 +71,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         try {
             const payload = await adminService.shutdownWorld();
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 

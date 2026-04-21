@@ -2,6 +2,7 @@ import express from 'express';
 import type { AppConfig } from '@shared/interfaces';
 import { logger } from '@shared/utils/logger';
 import { createActorService } from '@server/services/actors/ActorService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface ActorRouteDeps {
@@ -18,9 +19,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.listActors(client);
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Actors fetch failed: ${error.message}`);
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Actors fetch failed: ${message}`);
+            res.status(500).json({ error: message });
         }
     });
 
@@ -29,9 +31,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.getActorCards(client);
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Actor cards bulk fetch failed: ${error.message}`);
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Actor cards bulk fetch failed: ${message}`);
+            res.status(500).json({ error: message });
         }
     });
 
@@ -43,9 +46,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Actor card fetch failed: ${error.message}`);
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Actor card fetch failed: ${message}`);
+            res.status(500).json({ error: message });
         }
     });
 
@@ -57,9 +61,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Actor detail fetch failed: ${error.message}`);
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Actor detail fetch failed: ${message}`);
+            res.status(500).json({ error: message });
         }
     });
 
@@ -69,9 +74,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.createActor(client, req.body);
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Create Actor failed: ${error.message}`);
-            res.status(500).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Create Actor failed: ${message}`);
+            res.status(500).json({ success: false, error: message });
         }
     });
 
@@ -80,12 +86,12 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.deleteActor(client, req.params.id);
             res.json(payload);
-        } catch (error: any) {
-            const msg = error.message || error.toString();
+        } catch (error: unknown) {
+            const msg = getErrorMessage(error);
             if (msg.toLowerCase().includes('permission')) {
                 return res.json({ success: true, warning: 'Permission denied, actor may remain' });
             }
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: msg });
         }
     });
 
@@ -94,8 +100,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.updateActor(client, req.params.id, req.body);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -107,8 +113,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -117,8 +123,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.createActorItem(client, req.params.id, req.body);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ success: false, error: getErrorMessage(error) });
         }
     });
 
@@ -127,8 +133,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.updateActorItem(client, req.params.id, req.body);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ success: false, error: getErrorMessage(error) });
         }
     });
 
@@ -141,8 +147,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
                 return res.status(payload.status).json({ success: false, error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ success: false, error: getErrorMessage(error) });
         }
     });
 
@@ -151,9 +157,10 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const payload = await actorService.updateActorAndItems(client, req.params.id, req.body);
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`Core Service | Actor/Item update failed: ${error.message}`);
-            res.status(500).json({ success: false, error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Core Service | Actor/Item update failed: ${message}`);
+            res.status(500).json({ success: false, error: message });
         }
     });
 }

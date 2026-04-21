@@ -1,5 +1,6 @@
 import express from 'express';
 import { createCombatService } from '@server/services/combats/CombatService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface CombatRouteDeps {
@@ -15,8 +16,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
             const client = req.foundryClient;
             const payload = await combatService.listCombats(client);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -28,8 +29,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -41,8 +42,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -54,8 +55,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 

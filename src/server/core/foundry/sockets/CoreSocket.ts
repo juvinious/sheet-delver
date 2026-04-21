@@ -2,6 +2,7 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketBase } from './SocketBase';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { WorldData, CacheData, SetupManager } from '../SetupManager';
 import { FoundryConfig } from '../types';
 import { FoundryMetadataClient } from '../interfaces';
@@ -216,8 +217,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 return sceneMap;
             }
             return null;
-        } catch (error: any) {
-            logger.warn(`CoreSocket | Failed to fetch scene data: ${error.message}`);
+        } catch (error: unknown) {
+            logger.warn(`CoreSocket | Failed to fetch scene data: ${getErrorMessage(error)}`);
             return null;
         }
     }
@@ -744,7 +745,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
             }
 
             return result;
-        } catch (error: any) {
+        } catch (error: unknown) {
             if (failHard) this.consecutiveFailures++;
             throw error;
         }

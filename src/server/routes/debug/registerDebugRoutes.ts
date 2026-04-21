@@ -1,5 +1,6 @@
 import express from 'express';
 import { createDebugService } from '@server/services/debug/DebugService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 type GetOrRestoreSession = (token: string) => Promise<any>;
 
@@ -21,9 +22,11 @@ export function registerDebugRoutes(app: express.Express, deps: DebugRouteDeps) 
         try {
             const actor = await debugService.getActor(req.params.id, authHeader);
             res.json(actor);
-        } catch (error: any) {
-            const status = typeof error?.status === 'number' ? error.status : 500;
-            res.status(status).json({ error: error.message });
+        } catch (error: unknown) {
+            const status = typeof error === 'object' && error !== null && 'status' in error && typeof (error as { status?: unknown }).status === 'number'
+                ? (error as { status: number }).status
+                : 500;
+            res.status(status).json({ error: getErrorMessage(error) });
         }
     });
 }

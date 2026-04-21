@@ -1,5 +1,6 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 interface SystemRoutesDeps {
     getSystemClient: () => {
@@ -16,8 +17,8 @@ export function registerSystemRoutes(appRouter: express.Router, deps: SystemRout
             // Auth handled by middleware
             const gameData = deps.getSystemClient().getGameData();
             res.json(gameData?.system || {});
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -38,8 +39,8 @@ export function registerSystemRoutes(appRouter: express.Router, deps: SystemRout
                 // Fallback: Return raw scraper data if adapter doesn't provide more
                 res.json(gameData?.data || {});
             }
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -54,8 +55,8 @@ export function registerSystemRoutes(appRouter: express.Router, deps: SystemRout
             }
 
             res.json(sceneData);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 }

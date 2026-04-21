@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { persistentCache } from '../cache/PersistentCache';
 import { CoreSocket } from './sockets/CoreSocket';
 import { DiscoveryConfig, PackDiscoveryConfig } from '@shared/interfaces';
@@ -56,8 +57,8 @@ export class DiscoveryService {
             try {
                 const refreshed = await this.syncPack(client, systemId, packConfig, newManifest);
                 if (refreshed) updatedCount++;
-            } catch (err: any) {
-                logger.error(`DiscoveryService | Failed to sync pack ${packConfig.id}: ${err.message}`);
+            } catch (err: unknown) {
+                logger.error(`DiscoveryService | Failed to sync pack ${packConfig.id}: ${getErrorMessage(err)}`);
             }
         }
 

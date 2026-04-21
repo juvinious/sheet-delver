@@ -1,6 +1,7 @@
 import express from 'express';
 import type { AppConfig } from '@shared/interfaces';
 import { createChatService } from '@server/services/chat/ChatService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface ChatRouteDeps {
@@ -16,8 +17,8 @@ export function registerChatRoutes(appRouter: express.Router, deps: ChatRouteDep
             const client = req.foundryClient;
             const payload = await chatService.getChatLog(client, req.query.limit);
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -29,8 +30,8 @@ export function registerChatRoutes(appRouter: express.Router, deps: ChatRouteDep
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 }

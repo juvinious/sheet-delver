@@ -1,6 +1,7 @@
 import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createUtilityService } from '@server/services/utility/UtilityService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import type { FoundryUserLike } from '@server/shared/types/foundry';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
@@ -22,8 +23,8 @@ export function registerUtilityRoutes(appRouter: express.Router, deps: UtilityRo
                 return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
-        } catch (error: any) {
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            res.status(500).json({ error: getErrorMessage(error) });
         }
     });
 
@@ -32,8 +33,8 @@ export function registerUtilityRoutes(appRouter: express.Router, deps: UtilityRo
             const client = req.foundryClient;
             const payload = await utilityService.getSessionUsers(client);
             res.json(payload);
-        } catch (error: any) {
-            logger.error(`User Fetch Error: ${error.message}`);
+        } catch (error: unknown) {
+            logger.error(`User Fetch Error: ${getErrorMessage(error)}`);
             res.status(500).json({ error: 'Failed to retrieve users' });
         }
     });
@@ -42,11 +43,11 @@ export function registerUtilityRoutes(appRouter: express.Router, deps: UtilityRo
     appRouter.get('/shared-content', (req, res) => {
         try {
             const client = req.foundryClient;
-            utilityService.getSharedContent(client).then(payload => res.json(payload)).catch((error: any) => {
+            utilityService.getSharedContent(client).then(payload => res.json(payload)).catch((error: unknown) => {
                 logger.error('Error fetching shared content:', error);
                 res.status(500).json({ error: 'Internal server error' });
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             logger.error('Error fetching shared content:', error);
             res.status(500).json({ error: 'Internal server error' });
         }

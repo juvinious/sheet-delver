@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { CoreSocket } from '../foundry/sockets/CoreSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { getAdapter, getRegisteredModules } from '@modules/registry/server';
 import { discoveryService } from '../foundry/DiscoveryService';
 import { CompendiumCache } from '../foundry/compendium-cache';
@@ -118,8 +119,8 @@ export class SystemService extends EventEmitter {
                 this.initialized = true;
                 this.bootstrapPromise = null;
                 logger.info('SystemService | World bootstrap complete.');
-            } catch (err: any) {
-                logger.error(`SystemService | Bootstrap encountered error: ${err.message}`);
+            } catch (err: unknown) {
+                logger.error(`SystemService | Bootstrap encountered error: ${getErrorMessage(err)}`);
                 this.bootstrapPromise = null;
                 throw err;
             }

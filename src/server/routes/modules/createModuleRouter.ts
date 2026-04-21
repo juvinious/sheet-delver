@@ -1,5 +1,6 @@
 import express from 'express';
 import { createModuleProxyService } from '@server/services/modules/ModuleProxyService';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { logger } from '@shared/utils/logger';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
@@ -34,9 +35,10 @@ export function createModuleRouter(deps: ModuleRouterDeps) {
             });
 
             return res.status(result.status).json(result.payload);
-        } catch (error: any) {
-            logger.error(`Module Routing Error (${req.path}): ${error.message}`);
-            return res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = getErrorMessage(error);
+            logger.error(`Module Routing Error (${req.path}): ${message}`);
+            return res.status(500).json({ error: message });
         }
     });
 
