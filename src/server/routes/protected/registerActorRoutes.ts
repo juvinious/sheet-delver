@@ -2,6 +2,7 @@ import express from 'express';
 import type { AppConfig } from '@shared/interfaces';
 import { logger } from '@shared/utils/logger';
 import { createActorService } from '@server/services/actors/ActorService';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface ActorRouteDeps {
     normalizeActors: (actorList: any[], client: any) => Promise<any[]>;
@@ -38,8 +39,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
         try {
             const client = req.foundryClient;
             const payload = await actorService.getActorCardById(client, req.params.id);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
@@ -52,8 +53,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
         try {
             const client = req.foundryClient;
             const payload = await actorService.getActorById(client, req.params.id);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
@@ -102,8 +103,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
         try {
             const client = req.foundryClient;
             const payload = await actorService.rollActor(client, req.params.id, req.body);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
@@ -136,8 +137,8 @@ export function registerActorRoutes(appRouter: express.Router, deps: ActorRouteD
             const client = req.foundryClient;
             const itemId = req.query.itemId as string;
             const payload = await actorService.deleteActorItem(client, req.params.id, itemId);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ success: false, error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ success: false, error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {

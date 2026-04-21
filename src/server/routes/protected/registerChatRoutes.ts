@@ -1,6 +1,7 @@
 import express from 'express';
 import type { AppConfig } from '@shared/interfaces';
 import { createChatService } from '@server/services/chat/ChatService';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface ChatRouteDeps {
     config: AppConfig;
@@ -24,8 +25,8 @@ export function registerChatRoutes(appRouter: express.Router, deps: ChatRouteDep
         try {
             const client = req.foundryClient;
             const payload = await chatService.sendChatMessage(client, req.body);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {

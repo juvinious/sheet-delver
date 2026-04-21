@@ -1,5 +1,6 @@
 import express from 'express';
 import { createJournalService } from '@server/services/journals/JournalService';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 export function registerJournalRoutes(appRouter: express.Router) {
     // Journal domain service: displaced logic for visibility-filtered listing and CRUD operations.
@@ -29,8 +30,8 @@ export function registerJournalRoutes(appRouter: express.Router) {
         try {
             const client = req.foundryClient;
             const payload = await journalService.getJournalById(client, req.params.id);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {

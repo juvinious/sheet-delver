@@ -1,5 +1,6 @@
 import express from 'express';
 import { createCombatService } from '@server/services/combats/CombatService';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface CombatRouteDeps {
     normalizeActors: (actorList: any[], client: any) => Promise<any[]>;
@@ -23,8 +24,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
         try {
             const client = req.foundryClient;
             const payload = await combatService.advanceTurn(client, req.params.id);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
@@ -36,8 +37,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
         try {
             const client = req.foundryClient;
             const payload = await combatService.previousTurn(client, req.params.id);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
@@ -49,8 +50,8 @@ export function registerCombatRoutes(appRouter: express.Router, deps: CombatRout
         try {
             const client = req.foundryClient;
             const payload = await combatService.rollInitiative(client, req.params.id, req.params.combatantId, req.body);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {

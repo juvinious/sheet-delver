@@ -2,6 +2,7 @@ import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
 import { requireLocalhost } from '@server/security/policies';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface AdminRouterDeps {
     getSystemStatusPayload: () => Promise<any>;
@@ -47,8 +48,8 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     adminRouter.post('/setup/scrape', async (req, res) => {
         try {
             const payload = await adminService.scrapeSetup(req.body?.sessionCookie);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {

@@ -3,6 +3,7 @@ import { logger } from '@shared/utils/logger';
 import { createUtilityService } from '@server/services/utility/UtilityService';
 import type { FoundryUserLike } from '@server/shared/types/foundry';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
+import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
 
 interface UtilityRouteDeps {
     getSystemUsers: () => Promise<FoundryUserLike[]>;
@@ -17,8 +18,8 @@ export function registerUtilityRoutes(appRouter: express.Router, deps: UtilityRo
         try {
             const client = req.foundryClient;
             const payload = await utilityService.getFoundryDocument(client, req.query.uuid as string);
-            if ((payload as any)?.error && (payload as any)?.status) {
-                return res.status((payload as any).status).json({ error: (payload as any).error });
+            if (isErrorPayload(payload)) {
+                return res.status(payload.status).json({ error: payload.error });
             }
             res.json(payload);
         } catch (error: any) {
