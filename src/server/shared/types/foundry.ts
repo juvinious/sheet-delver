@@ -69,4 +69,4 @@ export interface SessionManagerLike {
     getOrRestoreSession(token: string): Promise<UserSessionLike | undefined>;
 }
 
-export interface StatusServiceConfigLike extends Pick<AppConfig, 'app' | 'foundry' | 'debug'> {}
+export type StatusServiceConfigLike = Pick<AppConfig, 'app' | 'foundry' | 'debug'>;
