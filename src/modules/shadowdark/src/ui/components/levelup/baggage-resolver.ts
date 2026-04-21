@@ -1,5 +1,13 @@
 import { logger } from '@shared/utils/logger';
 
+function getUuidRef(ref: unknown): string | null {
+    if (typeof ref === 'string') return ref;
+    if (!ref || typeof ref !== 'object') return null;
+
+    const uuid = Reflect.get(ref as object, 'uuid');
+    return typeof uuid === 'string' ? uuid : null;
+}
+
 export const resolveBaggage = async (doc: any, fetchDocument: (uuid: string) => Promise<any>): Promise<any[]> => {
     if (!doc || !doc.system) return [];
 
@@ -19,7 +27,7 @@ export const resolveBaggage = async (doc: any, fetchDocument: (uuid: string) => 
     // Fighter uses 'talents' and 'talentChoices'.
 
     for (const ref of refs) {
-        const uuid = (typeof ref === 'string') ? ref : (ref as any).uuid;
+        const uuid = getUuidRef(ref);
         if (uuid) {
             try {
                 const item = await fetchDocument(uuid);

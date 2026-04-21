@@ -37,6 +37,25 @@ export interface ScrapedWorldData {
     users: ScrapedUser[];
 }
 
+type RawScrapedUser = {
+    _id?: unknown;
+    name?: unknown;
+    role?: unknown;
+};
+
+function toScrapedUser(value: unknown): ScrapedUser | null {
+    if (!value || typeof value !== 'object') return null;
+
+    const user = value as RawScrapedUser;
+    if (typeof user.name !== 'string' || user.name.length === 0) return null;
+
+    return {
+        id: typeof user._id === 'string' ? user._id : '',
+        name: user.name,
+        role: typeof user.role === 'number' ? user.role : 0
+    };
+}
+
 export class DirectScraper {
     private worldPath: string;
 
@@ -199,14 +218,10 @@ export class DirectScraper {
             if (db) {
                 try {
                     // Iterate through the DB
-                    for await (const [key, value] of db.iterator()) {
-                        const user = value as any;
-                        if (user && user.name) {
-                            users.push({
-                                id: user._id,
-                                name: user.name,
-                                role: user.role
-                            });
+                    for await (const [_key, value] of db.iterator()) {
+                        const user = toScrapedUser(value);
+                        if (user) {
+                            users.push(user);
                         }
                     }
                 } catch (readErr) {

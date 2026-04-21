@@ -2,6 +2,14 @@ import { logger } from '@shared/utils/logger';
 import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { sanitizeItem } from '../../utils/Sanitizer';
 
+function getUuidRef(ref: unknown): string | null {
+    if (typeof ref === 'string') return ref;
+    if (!ref || typeof ref !== 'object') return null;
+
+    const uuid = Reflect.get(ref as object, 'uuid');
+    return typeof uuid === 'string' ? uuid : null;
+}
+
 /**
  * Resolves all associated documents (talents, features, gear) for a class or ancestry.
  */
@@ -27,7 +35,7 @@ export async function resolveBaggage(doc: any, client?: any): Promise<any[]> {
     ];
 
     for (const ref of refs) {
-        const uuid = (typeof ref === 'string') ? ref : (ref as any).uuid;
+        const uuid = getUuidRef(ref);
         if (uuid) {
             try {
                 const item = await shadowdarkAdapter.resolveDocument(client, uuid);
