@@ -4,6 +4,10 @@ import { FoundryConfig } from '../types';
 import { EventEmitter } from 'events';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
+type HeadersWithSetCookie = Headers & {
+    getSetCookie?: () => string[];
+};
+
 export abstract class SocketBase extends EventEmitter {
     protected socket: Socket | null = null;
     protected cookieMap = new Map<string, string>();
@@ -53,6 +57,15 @@ export abstract class SocketBase extends EventEmitter {
         this.sessionCookie = Array.from(this.cookieMap.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
     }
 
+    protected getSetCookieHeader(headers: Headers): string | string[] | null {
+        const headersWithSetCookie = headers as HeadersWithSetCookie;
+        if (typeof headersWithSetCookie.getSetCookie === 'function') {
+            return headersWithSetCookie.getSetCookie();
+        }
+
+        return headers.get('set-cookie');
+    }
+
     protected async performHandshake(baseUrl: string): Promise<{ csrfToken: string | null, isSetupMatch: boolean, pageTitle: string }> {
         logger.info(`[${this.constructor.name}] Performing Handshake (GET /api/status)...`);
 
@@ -78,9 +91,7 @@ export abstract class SocketBase extends EventEmitter {
         const status = await statusRes.json();
 
         // If the backend returned a set-cookie (less likely on /api/status, but just in case)
-        const setCookie = typeof (statusRes.headers as any).getSetCookie === 'function'
-            ? (statusRes.headers as any).getSetCookie()
-            : statusRes.headers.get('set-cookie');
+        const setCookie = this.getSetCookieHeader(statusRes.headers);
 
         if (setCookie) {
             this.updateCookies(setCookie);
@@ -128,9 +139,7 @@ export abstract class SocketBase extends EventEmitter {
             throw new Error(`Login failed with status ${loginResponse.status}: ${body.substring(0, 200)}`);
         }
 
-        const setCookie = typeof (loginResponse.headers as any).getSetCookie === 'function'
-            ? (loginResponse.headers as any).getSetCookie()
-            : loginResponse.headers.get('set-cookie');
+        const setCookie = this.getSetCookieHeader(loginResponse.headers);
 
         logger.debug(`[${this.constructor.name}] Set-Cookie from login: ${JSON.stringify(setCookie)}`);
         this.updateCookies(setCookie);

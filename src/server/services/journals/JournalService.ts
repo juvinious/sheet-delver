@@ -13,10 +13,14 @@ import type {
 } from '@shared/contracts/journals';
 
 export function createJournalService() {
+    const getStringField = (value: unknown, fallback = ''): string => typeof value === 'string' ? value : fallback;
+    const getNullableStringField = (value: unknown): string | null => typeof value === 'string' ? value : null;
+    const getNumberField = (value: unknown, fallback = 0): number => typeof value === 'number' ? value : fallback;
+
     const toJournalDto = (journal: RawJournal): JournalEntryDto => ({
         ...journal,
         _id: String(journal._id || journal.id || ''),
-        name: String((journal as any).name || ''),
+        name: getStringField(journal.name),
         folder: (journal.folder ?? null) as string | null,
     });
 
@@ -26,8 +30,8 @@ export function createJournalService() {
         name: String(folder.name || ''),
         type: String(folder.type || ''),
         folder: (folder.folder ?? null) as string | null,
-        sort: typeof (folder as any).sort === 'number' ? (folder as any).sort : 0,
-        color: ((folder as any).color ?? null) as string | null,
+        sort: getNumberField(folder['sort']),
+        color: getNullableStringField(folder['color']),
     });
 
     // Journal list projection with Foundry visibility filtering and folder ancestry pruning.

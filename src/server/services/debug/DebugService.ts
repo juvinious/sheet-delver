@@ -1,4 +1,11 @@
-type GetOrRestoreSession = (token: string) => Promise<any>;
+import type { ActorServiceClientLike } from '@server/shared/types/actors';
+import type { UserSessionLike } from '@server/shared/types/foundry';
+
+type DebugSession = UserSessionLike & {
+    client: ActorServiceClientLike;
+};
+
+type GetOrRestoreSession = (token: string) => Promise<DebugSession | undefined>;
 
 interface DebugServiceDeps {
     getOrRestoreSession: GetOrRestoreSession;
@@ -21,9 +28,7 @@ export function createDebugService(deps: DebugServiceDeps) {
             throw err;
         }
 
-        const client = session.client as any;
-
-        return client.getActor(actorId);
+        return session.client.getActor(actorId);
     };
 
     return {
