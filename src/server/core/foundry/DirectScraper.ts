@@ -157,7 +157,11 @@ export class DirectScraper {
                 const errorWithCode = err as { code?: unknown; cause?: { code?: unknown } };
                 if (errorWithCode.code === 'LEVEL_LOCKED' || errorWithCode.cause?.code === 'LEVEL_LOCKED') {
                     // Close the failed instance (just in case)
-                    try { await db.close(); } catch (e) { }
+                    try {
+                        await db.close();
+                    } catch (error) {
+                        logger.debug('DirectScraper | Ignored close error on locked DB handle:', error);
+                    }
                     db = null;
 
                     try {
@@ -210,7 +214,9 @@ export class DirectScraper {
                 } finally {
                     try {
                         await db.close();
-                    } catch (e) { /* ignore */ }
+                    } catch (error) {
+                        logger.debug('DirectScraper | Ignored close error during DB cleanup:', error);
+                    }
 
                     // Cleanup temp dir if created
                     if (tempDbPath && fs.existsSync(tempDbPath)) {

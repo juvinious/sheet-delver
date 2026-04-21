@@ -189,7 +189,12 @@ export class ClientSocket extends SocketBase {
                 return visible.map((msg: any) => {
                     const rolls = (msg.rolls || []).map((r: any) => {
                         if (typeof r === 'string') {
-                            try { return JSON.parse(r); } catch (e) { return r; }
+                            try {
+                                return JSON.parse(r);
+                            } catch (error) {
+                                logger.debug(`ClientSocket | Failed to parse chat roll JSON for message ${msg._id || msg.id || 'unknown'}. Returning raw roll value.`);
+                                return r;
+                            }
                         }
                         return r;
                     });
