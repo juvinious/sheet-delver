@@ -23,7 +23,7 @@ interface SessionContextType {
     setIsConfigured: React.Dispatch<React.SetStateAction<boolean>>;
     handleLogin: (username: string, password?: string) => Promise<void>;
     handleLogout: () => Promise<void>;
-    registerLogoutCleanup: (cleanup: () => void) => void;
+    registerLogoutCleanup: (cleanup: () => void) => () => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -44,7 +44,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [appVersion, setAppVersion] = useState<string | null>(null);
     const [isConfigured, setIsConfigured] = useState<boolean>(true);
-    const logoutCleanupRef = useRef<(() => void) | null>(null);
+    const logoutCleanupRef = useRef<Array<() => void>>([]);
 
     const currentUser = users.find((user) => (user._id || user.id) === currentUserId) || null;
 
@@ -95,9 +95,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             resetUI();
             setStep('login', 'handleLogout', 'User logged out');
 
-            if (logoutCleanupRef.current) {
-                logoutCleanupRef.current();
-            }
+            logoutCleanupRef.current.forEach((cleanup) => cleanup());
 
             await foundryApi.logout(token);
             setToken(null);
@@ -106,16 +104,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             resetUI();
             setStep('login', 'handleLogout error', 'Force transition');
 
-            if (logoutCleanupRef.current) {
-                logoutCleanupRef.current();
-            }
+            logoutCleanupRef.current.forEach((cleanup) => cleanup());
 
             setToken(null);
         }
     }, [resetUI, setStep, setToken, token]);
 
     const registerLogoutCleanup = useCallback((cleanup: () => void) => {
-        logoutCleanupRef.current = cleanup;
+        logoutCleanupRef.current.push(cleanup);
+        return () => {
+            logoutCleanupRef.current = logoutCleanupRef.current.filter((entry) => entry !== cleanup);
+        };
     }, []);
 
     const value = useMemo(() => ({

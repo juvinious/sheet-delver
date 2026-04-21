@@ -9,6 +9,8 @@ import { FoundryProvider } from "@client/ui/context/FoundryContext";
 import { UIProvider } from "@client/ui/context/UIContext";
 import { SessionProvider } from "@client/ui/context/SessionContext";
 import { ActorCombatProvider } from "@client/ui/context/ActorCombatContext";
+import { RealtimeProvider } from "@client/ui/context/RealtimeContext";
+import { ChatProvider } from "@client/ui/context/ChatContext";
 import GlobalChat from "@client/ui/components/GlobalChat";
 import PlayerList from "@client/ui/components/PlayerList";
 import FloatingHUD from "@client/ui/components/FloatingHUD";
@@ -87,23 +89,27 @@ export default function RootLayout({
           <NotificationProvider>
             <UIProvider>
               <SessionProvider>
-                <ActorCombatProvider>
-                  <FoundryProvider>
-                    <JournalProvider>
-                      <VideoPlaysinlineFix />
-                      <div className="relative min-h-screen">
-                        <ShutdownWatcher />
-                        {children}
-                        <GlobalChat />
-                        <PlayerList />
-                        <FloatingHUD />
-                        <CombatHUD />
-                        <JournalBrowser />
-                        <JournalModal />
-                      </div>
-                    </JournalProvider>
-                  </FoundryProvider>
-                </ActorCombatProvider>
+                <RealtimeProvider>
+                  <ActorCombatProvider>
+                    <ChatProvider>
+                      <FoundryProvider>
+                        <JournalProvider>
+                          <VideoPlaysinlineFix />
+                          <div className="relative min-h-screen">
+                            <ShutdownWatcher />
+                            {children}
+                            <GlobalChat />
+                            <PlayerList />
+                            <FloatingHUD />
+                            <CombatHUD />
+                            <JournalBrowser />
+                            <JournalModal />
+                          </div>
+                        </JournalProvider>
+                      </FoundryProvider>
+                    </ChatProvider>
+                  </ActorCombatProvider>
+                </RealtimeProvider>
               </SessionProvider>
             </UIProvider>
           </NotificationProvider>

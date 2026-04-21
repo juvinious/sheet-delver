@@ -1,0 +1,108 @@
+'use client';
+
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { logger } from '@shared/utils/logger';
+import { useNotifications } from '@client/ui/components/NotificationSystem';
+import { UnauthorizedApiError } from '@client/ui/api/http';
+import * as foundryApi from '@client/ui/api/foundryApi';
+import { useSession } from '@client/ui/context/SessionContext';
+import { useRealtime } from '@client/ui/context/RealtimeContext';
+import type { ChatMessageDto } from '@shared/contracts/chat';
+import type { RealtimeChatUpdatePayload } from '@shared/contracts/realtime';
+
+interface ChatContextType {
+    messages: ChatMessageDto[];
+    fetchChat: () => Promise<void>;
+    handleChatSend: (message: string, options?: { rollMode?: string; speaker?: string }) => Promise<void>;
+    resetChatState: () => void;
+}
+
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
+
+export function ChatProvider({ children }: { children: React.ReactNode }) {
+    const { token, setToken, step, registerLogoutCleanup } = useSession();
+    const { appSocket } = useRealtime();
+    const { addNotification } = useNotifications();
+    const [messages, setMessages] = useState<ChatMessageDto[]>([]);
+
+    const fetchChat = useCallback(async () => {
+        if (step !== 'dashboard' || !token) return;
+        try {
+            const data = await foundryApi.fetchChatLog(token);
+            if (Array.isArray(data.messages)) {
+                setMessages(data.messages);
+            }
+        } catch (error) {
+            if (error instanceof UnauthorizedApiError) {
+                setToken(null);
+                return;
+            }
+            logger.error('ChatContext | Failed to fetch chat:', error);
+        }
+    }, [step, token, setToken]);
+
+    const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string; speaker?: string }) => {
+        try {
+            const data = await foundryApi.sendChat(token, {
+                message,
+                rollMode: options?.rollMode,
+                speaker: options?.speaker,
+            });
+            if (data.success) {
+                await fetchChat();
+            } else {
+                addNotification('Failed: ' + data.error, 'error');
+            }
+        } catch (error: unknown) {
+            const messageText = error instanceof Error ? error.message : 'Unknown chat error';
+            addNotification('Error: ' + messageText, 'error');
+        }
+    }, [addNotification, fetchChat, token]);
+
+    const resetChatState = useCallback(() => {
+        setMessages([]);
+    }, []);
+
+    useEffect(() => {
+        const unregister = registerLogoutCleanup(() => {
+            resetChatState();
+        });
+        return unregister;
+    }, [registerLogoutCleanup, resetChatState]);
+
+    useEffect(() => {
+        if (step === 'dashboard' && token) {
+            fetchChat();
+        }
+    }, [fetchChat, step, token]);
+
+    useEffect(() => {
+        if (!appSocket) return;
+
+        const handleChatUpdate = (_data: RealtimeChatUpdatePayload) => {
+            fetchChat();
+        };
+
+        appSocket.on('chatUpdate', handleChatUpdate);
+        return () => {
+            appSocket.off('chatUpdate', handleChatUpdate);
+        };
+    }, [appSocket, fetchChat]);
+
+    const value = useMemo(() => ({
+        messages,
+        fetchChat,
+        handleChatSend,
+        resetChatState,
+    }), [messages, fetchChat, handleChatSend, resetChatState]);
+
+    return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+}
+
+export function useChat() {
+    const context = useContext(ChatContext);
+    if (!context) {
+        throw new Error('useChat must be used within a ChatProvider');
+    }
+    return context;
+}

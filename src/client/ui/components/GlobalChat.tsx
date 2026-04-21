@@ -9,6 +9,8 @@ import { SystemAdapter, RollMode } from '@shared/interfaces';
 
 
 
+import { useChat } from '@client/ui/context/ChatContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { useFoundry } from '@client/ui/context/FoundryContext';
 import { useUI } from '@client/ui/context/UIContext';
 import { useConfig } from '@client/ui/context/ConfigContext';
@@ -20,7 +22,9 @@ interface GlobalChatProps {
 
 export default function GlobalChat(props: GlobalChatProps) {
     const { hideDice, speaker } = props;
-    const { messages, handleChatSend: onSend, system } = useFoundry();
+    const { messages, handleChatSend: onSend } = useChat();
+    const { system } = useFoundry();
+    const { step } = useSession();
     const { isChatOpen, setChatOpen, isDiceTrayOpen, setDiceTrayOpen } = useUI();
     const { foundryUrl } = useConfig();
 
@@ -75,7 +79,11 @@ export default function GlobalChat(props: GlobalChatProps) {
     }, [isChatOpen, isDiceOpen, setChatOpen, setDiceTrayOpen]);
 
     return (
-        <div ref={containerRef} className={`fixed bottom-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-[100] flex flex-col items-center sm:items-end gap-4 pointer-events-none $"font-inter" `}>
+        <div
+            ref={containerRef}
+            data-step={step}
+            className={`fixed bottom-24 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:translate-x-0 z-[100] flex flex-col items-center sm:items-end gap-4 pointer-events-none $"font-inter" `}
+        >
 
             {/* --- WINDOWS --- */}
             <div className="flex flex-col-reverse items-center gap-4 pointer-events-none hud-panel">

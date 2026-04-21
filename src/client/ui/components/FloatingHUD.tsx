@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Home, MessageSquare, Users, Book, ChevronUp, ChevronDown, ChevronLeft, X } from 'lucide-react';
 import { useUI } from '@client/ui/context/UIContext';
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useChat } from '@client/ui/context/ChatContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { useRouter, usePathname } from 'next/navigation';
 
 export default function FloatingHUD() {
@@ -13,7 +14,8 @@ export default function FloatingHUD() {
         isJournalOpen, setJournalOpen,
         isPlayerListOpen, setPlayerListOpen
     } = useUI();
-    const { messages, users, step } = useFoundry();
+    const { messages } = useChat();
+    const { users, step } = useSession();
     const [isMinimized, setIsMinimized] = useState(true);
     const pathname = usePathname();
     const router = useRouter();
