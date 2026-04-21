@@ -28,6 +28,9 @@ export class SessionManager {
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
 
+    private readonly RESTORE_RETRY_BASE_DELAY_MS = 300;
+    private readonly RESTORE_RETRY_MAX_DELAY_MS = 2000;
+
     constructor(config: FoundryConfig) {
         this.config = config;
 
@@ -154,7 +157,9 @@ export class SessionManager {
             if (restored && restored.sessionId === sessionId) {
                 return this.sessions.get(sessionId);
             }
-            if (i < 2) await new Promise(r => setTimeout(r, 1000));
+            if (i < 2) {
+                await this.waitForRestoreBackoff(i);
+            }
         }
 
         return undefined;
@@ -204,7 +209,7 @@ export class SessionManager {
             if (!currentWorldId && (systemService.getSystemClient().worldState === 'startup' || systemService.getSystemClient().worldState === 'active')) {
                 logger.debug(`SessionManager | World not yet stable. Waiting for ID to restore session ${username}...`);
                 for (let i = 0; i < 5; i++) {
-                    await new Promise(r => setTimeout(r, 1000));
+                    await this.waitForRestoreBackoff(i);
                     currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
                     if (currentWorldId) break;
                 }
@@ -289,5 +294,13 @@ export class SessionManager {
         } finally {
             this.isSaving = false;
         }
+    }
+
+    private async waitForRestoreBackoff(attempt: number) {
+        const delay = Math.min(
+            this.RESTORE_RETRY_BASE_DELAY_MS * (2 ** attempt),
+            this.RESTORE_RETRY_MAX_DELAY_MS
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
     }
 }
