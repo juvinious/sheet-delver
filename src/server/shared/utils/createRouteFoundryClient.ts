@@ -16,9 +16,16 @@ function createBaseRouteFoundryClient(client: CoreSocket | ClientSocket): Omit<R
         getSystem: () => client.getSystem(),
         getActors: () => client.getActors(),
         getActor: (actorId: string) => client.getActor(actorId),
+        getActorRaw: (actorId: string) => client.getActorRaw(actorId),
         createActor: (actorData: Record<string, unknown>) => client.createActor(actorData),
         deleteActor: (actorId: string) => client.deleteActor(actorId),
         updateActor: (actorId: string, payload: Record<string, unknown>) => client.updateActor(actorId, payload),
+        dispatchDocument: (
+            type: string,
+            action: string,
+            operation?: unknown,
+            parent?: { type: string; id: string }
+        ) => client.dispatchDocument(type, action, operation, parent),
         roll: (
             formula: string,
             label?: string,

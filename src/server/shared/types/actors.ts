@@ -67,10 +67,17 @@ export interface ActorServiceClientLike extends FoundryClientLike {
     getSystem(): Promise<{ id: string }>;
     getActors(): Promise<RawActor[]>;
     getActor(actorId: string): Promise<(RawActor & { error?: string }) | null | undefined>;
+    getActorRaw(actorId: string): Promise<(RawActor & { error?: string }) | null | undefined>;
 
     createActor(actorData: Record<string, unknown>): Promise<RawActor | null | undefined>;
     deleteActor(actorId: string): Promise<void>;
     updateActor(actorId: string, payload: Record<string, unknown>): Promise<unknown>;
+    dispatchDocument(
+        type: string,
+        action: string,
+        operation?: unknown,
+        parent?: { type: string; id: string }
+    ): Promise<unknown>;
 
     roll(
         formula: string,

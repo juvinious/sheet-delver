@@ -1,4 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
+import type { UserSessionLike } from '@server/shared/types/foundry';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 
 export interface ModuleProxyDispatchRequest {
@@ -8,7 +9,20 @@ export interface ModuleProxyDispatchRequest {
     headers: IncomingHttpHeaders;
     body: unknown;
     foundryClient?: RouteFoundryClient;
-    userSession?: unknown;
+    userSession?: UserSessionLike;
+}
+
+export interface ModuleRouteParams {
+    params: Promise<{ systemId: string; route: string[] }>;
+}
+
+export interface ModuleRouteRequest {
+    json: () => Promise<unknown>;
+    method: string;
+    url: string;
+    headers: IncomingHttpHeaders;
+    foundryClient: RouteFoundryClient;
+    userSession?: UserSessionLike;
 }
 
 export interface ModuleProxyDispatchResult {
@@ -23,15 +37,8 @@ export interface NextLikeResponse {
 
 export interface ModuleRouteHandler {
     (
-        req: {
-            json: () => Promise<unknown>;
-            method: string;
-            url: string;
-            headers: IncomingHttpHeaders;
-            foundryClient: RouteFoundryClient;
-            userSession?: unknown;
-        },
-        params: { params: Promise<{ systemId: string; route: string[] }> }
+        req: ModuleRouteRequest,
+        params: ModuleRouteParams
     ): Promise<NextLikeResponse | unknown>;
 }
 

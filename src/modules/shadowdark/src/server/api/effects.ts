@@ -1,6 +1,32 @@
-import { FoundryClient } from '@core/foundry/interfaces';
+import type { RawActor, RawItem } from '@server/shared/types/actors';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import { logger } from '@shared/utils/logger';
 import { SYSTEM_PREDEFINED_EFFECTS } from '../../data/talent-effects';
+
+type EffectLike = Record<string, unknown> & {
+    _id?: string;
+    id?: string;
+    name?: string;
+    label?: string;
+    sourceName?: string;
+    source?: string;
+    origin?: string;
+    statuses?: string[];
+    flags?: {
+        core?: {
+            statusId?: string;
+        };
+    };
+};
+
+type ItemWithEffects = RawItem & {
+    effects?: EffectLike[];
+};
+
+type ActorWithEffects = RawActor & {
+    effects?: EffectLike[];
+    items?: ItemWithEffects[];
+};
 
 /**
  * Build the normalized effects array that the UI expects.
@@ -25,12 +51,12 @@ const PREDEFINED_EFFECTS_LIST = Object.entries(SYSTEM_PREDEFINED_EFFECTS).map(([
  */
 export async function handleEffects(
     actorId: string,
-    client: FoundryClient,
+    client: RouteFoundryClient,
     action: 'list' | 'toggle' | 'create' | 'update' | 'delete',
     data?: any
 ) {
     // Use getActorRaw to get un-normalized items/effects for CRUD operations.
-    const actor = await (client.getActorRaw ? client.getActorRaw(actorId) : client.getActor(actorId));
+    const actor = await (client.getActorRaw ? client.getActorRaw(actorId) : client.getActor(actorId)) as ActorWithEffects | null | undefined;
     if (!actor) throw new Error('Actor not found');
 
     switch (action) {
@@ -67,6 +93,8 @@ export async function handleEffects(
                     for (const effect of itemEffects) {
                         const eId = effect._id || effect.id;
                         const isDuplicate = allEffects.some(e => e._id === eId);
+                        const itemId = item._id || item.id;
+                        if (!itemId) continue;
                         if (!isDuplicate) {
                             allEffects.push({
                                 ...effect,
@@ -132,8 +160,10 @@ export async function handleEffects(
             if (actor.items) {
                 for (const item of actor.items) {
                     const itEffect = (item.effects || []).find((e: any) => (e._id || e.id) === effectId);
+                    const itemId = item._id || item.id;
+                    if (!itemId) continue;
                     if (itEffect) {
-                        return await client.dispatchDocument('ActiveEffect', 'update', { updates: [data] }, { type: `Actor.${actorId}.Item`, id: item._id || item.id });
+                        return await client.dispatchDocument('ActiveEffect', 'update', { updates: [data] }, { type: `Actor.${actorId}.Item`, id: itemId });
                     }
                 }
             }
@@ -150,8 +180,10 @@ export async function handleEffects(
             if (actor.items) {
                 for (const item of actor.items) {
                     const itEffect = (item.effects || []).find((e: any) => (e._id || e.id) === effectId);
+                    const itemId = item._id || item.id;
+                    if (!itemId) continue;
                     if (itEffect) {
-                        return await client.dispatchDocument('ActiveEffect', 'delete', { ids: [effectId] }, { type: `Actor.${actorId}.Item`, id: item._id || item.id });
+                        return await client.dispatchDocument('ActiveEffect', 'delete', { ids: [effectId] }, { type: `Actor.${actorId}.Item`, id: itemId });
                     }
                 }
             }
