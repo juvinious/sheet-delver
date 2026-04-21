@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
 import { ActorCardBlock } from '@shared/interfaces';
 import type { ActorDto } from '@shared/contracts/actors';
 
@@ -21,7 +21,7 @@ export const ActorCard = ({
     onDelete
 }: ActorCardProps) => {
 
-    const { actorCards } = useFoundry();
+    const { actorCards } = useActorCombat();
     const actorId = actor.id || actor._id || '';
     const actorName = actor.name || 'Unknown Actor';
     const actorRecord = actor as Record<string, any>;

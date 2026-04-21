@@ -8,11 +8,12 @@ import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
 import { io, Socket } from 'socket.io-client';
 import { useSession } from '@client/ui/context/SessionContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
 import { UnauthorizedApiError } from '@client/ui/api/http';
 import * as foundryApi from '@client/ui/api/foundryApi';
 import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
-import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
-import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
+import type { ActorDto, ActorListPayload, ActorCardsPayload } from '@shared/contracts/actors';
+import type { CombatDto, CombatListPayload } from '@shared/contracts/combats';
 import type { ChatMessageDto, ChatLogPayload } from '@shared/contracts/chat';
 import type {
     RealtimeSharedContentPayload,
@@ -32,7 +33,7 @@ interface FoundryContextType {
     appVersion: string | null;
     activeUIModule: UIModuleManifest | null;
     actorCards: Record<string, ActorCardData>;
-    fetchActorCards: () => Promise<void>;
+    fetchActorCards: () => Promise<ActorCardsPayload | void>;
     isConfigured: boolean;
 
     // Actions
@@ -76,17 +77,24 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         registerLogoutCleanup,
     } = useSession();
 
+    const {
+        ownedActors,
+        readOnlyActors,
+        actorCards,
+        combats,
+        fetchActorCards,
+        fetchActors,
+        fetchCombats,
+        resetActorCombatState,
+    } = useActorCombat();
+
     const [system, setSystem] = useState<AppSystemInfo | null>(null);
     const [messages, setMessages] = useState<ChatMessageDto[]>([]);
     const lastActorSyncTokenRef = useRef<string | null>(null);
     const [appSocket, setAppSocket] = useState<Socket | null>(null);
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
-    const [ownedActors, setOwnedActors] = useState<ActorDto[]>([]);
-    const [readOnlyActors, setReadOnlyActors] = useState<ActorDto[]>([]);
     const [sharedContent, setSharedContent] = useState<RealtimeSharedContentPayload | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
-    const [combats, setCombats] = useState<CombatDto[]>([]);
-    const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
 
     const isEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -108,98 +116,6 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         }
     }, [step, token, setToken]);
 
-    const lastActorFetchTimeRef = useRef<number>(0);
-    const FETCH_THROTTLE_MS = 2000;
-
-    const fetchActorCards = useCallback(async () => {
-        if (!token) return;
-        try {
-            const data = await foundryApi.fetchActorCards(token);
-            setActorCards(data || {});
-        } catch (e) {
-            if (e instanceof UnauthorizedApiError) {
-                setToken(null);
-                return;
-            }
-            logger.error('FoundryProvider | Failed to fetch actor cards:', e);
-        }
-    }, [token, setToken]);
-
-    const fetchActors = useCallback(async () => {
-        if (!token) return;
-
-        // Simple throttle to prevent rapid-fire requests from multiple socket events
-        const now = Date.now();
-        if (now - lastActorFetchTimeRef.current < FETCH_THROTTLE_MS) {
-            logger.debug('FoundryProvider | Skipping fetchActors (throttled)');
-            return;
-        }
-
-        lastActorFetchTimeRef.current = now;
-
-        try {
-            const data = await foundryApi.fetchActors(token);
-            if (data.ownedActors || data.actors) {
-                setOwnedActors(data.ownedActors || data.actors || []);
-                setReadOnlyActors(data.readOnlyActors || []);
-                
-                // Fetch corresponding actor cards for the dashboard
-                fetchActorCards();
-            }
-            return data;
-        } catch (error: any) {
-            if (error instanceof UnauthorizedApiError) {
-                setToken(null);
-                return;
-            }
-            logger.error('FoundryProvider | Fetch actors failed:', error.message);
-        }
-    }, [token, fetchActorCards, setToken]);
-
-    const fetchCombats = useCallback(async () => {
-        if (!token) return;
-        try {
-            const data = await foundryApi.fetchCombats(token);
-            if (data.combats) {
-                const resolvedCombats = await Promise.all(data.combats.map(async (combat): Promise<CombatDto> => {
-                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant): Promise<CombatantDto> => {
-                        if (combatant.actor || !combatant.actorId) {
-                            return combatant;
-                        }
-
-                        let actor: ActorDetailPayload | null = null;
-                        if (combatant.actorId) {
-                            try {
-                                actor = await foundryApi.fetchActorById(token, combatant.actorId);
-                            } catch (e) {
-                                logger.error(`Failed fetching actor ${combatant.actorId}`, e);
-                            }
-                        }
-
-                        return {
-                            ...combatant,
-                            actor
-                        };
-                    }));
-
-                    return {
-                        ...combat,
-                        combatants
-                    };
-                }));
-
-                setCombats(resolvedCombats);
-            }
-            return data;
-        } catch (error: any) {
-            if (error instanceof UnauthorizedApiError) {
-                setToken(null);
-                return;
-            }
-            logger.error('FoundryProvider | Fetch combat failed:', error.message);
-        }
-    }, [token, setToken]);
-
     const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string, speaker?: string }) => {
         try {
             const data = await foundryApi.sendChat(token, {
@@ -220,14 +136,11 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         registerLogoutCleanup(() => {
             setCurrentUserId(null);
-            setOwnedActors([]);
-            setReadOnlyActors([]);
+            resetActorCombatState();
             setSharedContent(null);
-            setCombats([]);
             setMessages([]);
-            setActorCards({});
         });
-    }, [registerLogoutCleanup, setCurrentUserId]);
+    }, [registerLogoutCleanup, resetActorCombatState, setCurrentUserId]);
 
     // --- App Socket & State Initialization ---
     useEffect(() => {
@@ -352,11 +265,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         
                         // Aggressive state purge to prevent cross-world contamination
                         if (token) setToken(null);
-                        setOwnedActors([]);
-                        setReadOnlyActors([]);
-                        setActorCards({});
+                        resetActorCombatState();
                         setUsers([]);
-                        setCombats([]);
                         setMessages([]);
                         setSharedContent(null);
                         
@@ -400,7 +310,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('systemStatus', handleSystemStatus);
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
-    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setAppVersion, setIsConfigured, setStep, setToken, setUsers, lastWorldId, isConfigured]);
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, resetActorCombatState, setAppVersion, setIsConfigured, setStep, setToken, setUsers, lastWorldId, isConfigured]);
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import type { CombatDto } from '@shared/contracts/combats';
 import { resolveImage, getUIModule } from '@modules/registry/client';
 import { logger } from '@shared/utils/logger';
@@ -9,7 +11,9 @@ import { Swords, Skull, Shield, ChevronLeft, ChevronRight, ChevronUp, ChevronDow
 import RollDialog from '../RollDialog';
 
 export default function CombatHUD() {
-    const { combats, step, currentUser, token, system } = useFoundry();
+    const { step, currentUser, system } = useFoundry();
+    const { combats } = useActorCombat();
+    const { token } = useSession();
     const [selectedCombatIndex, setSelectedCombatIndex] = useState(0);
     const [isMinimized, setIsMinimized] = useState(false);
 

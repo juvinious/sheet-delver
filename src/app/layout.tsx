@@ -8,6 +8,7 @@ import { NotificationProvider } from "@client/ui/components/NotificationSystem";
 import { FoundryProvider } from "@client/ui/context/FoundryContext";
 import { UIProvider } from "@client/ui/context/UIContext";
 import { SessionProvider } from "@client/ui/context/SessionContext";
+import { ActorCombatProvider } from "@client/ui/context/ActorCombatContext";
 import GlobalChat from "@client/ui/components/GlobalChat";
 import PlayerList from "@client/ui/components/PlayerList";
 import FloatingHUD from "@client/ui/components/FloatingHUD";
@@ -86,21 +87,23 @@ export default function RootLayout({
           <NotificationProvider>
             <UIProvider>
               <SessionProvider>
-                <FoundryProvider>
-                  <JournalProvider>
-                    <VideoPlaysinlineFix />
-                    <div className="relative min-h-screen">
-                      <ShutdownWatcher />
-                      {children}
-                      <GlobalChat />
-                      <PlayerList />
-                      <FloatingHUD />
-                      <CombatHUD />
-                      <JournalBrowser />
-                      <JournalModal />
-                    </div>
-                  </JournalProvider>
-                </FoundryProvider>
+                <ActorCombatProvider>
+                  <FoundryProvider>
+                    <JournalProvider>
+                      <VideoPlaysinlineFix />
+                      <div className="relative min-h-screen">
+                        <ShutdownWatcher />
+                        {children}
+                        <GlobalChat />
+                        <PlayerList />
+                        <FloatingHUD />
+                        <CombatHUD />
+                        <JournalBrowser />
+                        <JournalModal />
+                      </div>
+                    </JournalProvider>
+                  </FoundryProvider>
+                </ActorCombatProvider>
               </SessionProvider>
             </UIProvider>
           </NotificationProvider>

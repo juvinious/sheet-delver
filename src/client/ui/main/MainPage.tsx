@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { useConfig } from '@client/ui/context/ConfigContext';
 import { useTheme } from './hooks/useTheme';
 import { LoginView } from './views/LoginView';
@@ -22,11 +24,11 @@ export default function MainPage({ initialUrl }: MainPageProps) {
         system,
         currentUser,
         handleLogin: globalLogin,
-        fetchActors,
-        ownedActors,
-        token,
         appVersion
     } = useFoundry();
+
+    const { fetchActors, ownedActors } = useActorCombat();
+    const { token } = useSession();
 
     const { foundryUrl: configUrl } = useConfig();
     const { theme, bgStyle } = useTheme();
