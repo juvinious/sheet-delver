@@ -500,7 +500,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 });
 
                 this.socket.on('connect_error', (err) => {
-                    logger.error(`CoreSocket | Socket connection error: ${err.message}. State: connected=${this.socket?.connected}, active=${(this.socket as any).active}`);
+                    logger.error(`CoreSocket | Socket connection error: ${err.message}. State: connected=${this.socket?.connected}, active=${(this.socket as Socket & { active?: boolean })?.active}`);
                     clearTimeout(timeout);
                     reject(err);
                 });
@@ -585,8 +585,8 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 });
             });
 
-        } catch (e: any) {
-            logger.error(`CoreSocket | Connection flow failed: ${e.message}`);
+        } catch (error: unknown) {
+            logger.error(`CoreSocket | Connection flow failed: ${getErrorMessage(error)}`);
             this.worldState = 'offline';
             // Retry on error
             setTimeout(() => this.connect(), 5000);
@@ -596,10 +596,10 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
     }
 
 
-    private heartbeatInterval: NodeJS.Timeout | null = null;
+    private heartbeatInterval: ReturnType<typeof setTimeout> | null = null;
 
     private startHeartbeat(immediate: boolean = false) {
-        if (this.heartbeatInterval) clearTimeout(this.heartbeatInterval as any);
+        if (this.heartbeatInterval) clearTimeout(this.heartbeatInterval);
 
         const runHeartbeat = async () => {
             // Heartbeat can run while disconnected IF we are in setup or offline (acting as a Probe)
@@ -648,12 +648,12 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                     }
                 }
                 
-                this.heartbeatInterval = setTimeout(runHeartbeat, nextInterval) as any;
+                this.heartbeatInterval = setTimeout(runHeartbeat, nextInterval);
             }
         };
 
         // Start the recursive timeout chain
-        this.heartbeatInterval = setTimeout(runHeartbeat, immediate ? 0 : 5000) as any;
+        this.heartbeatInterval = setTimeout(runHeartbeat, immediate ? 0 : 5000);
     }
 
     private stopHeartbeat() {
@@ -709,7 +709,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 }
             });
             setTimeout(() => {
-                const state = `connected=${this.socket?.connected}, active=${(this.socket as any)?.active}`;
+                const state = `connected=${this.socket?.connected}, active=${(this.socket as Socket & { active?: boolean })?.active}`;
                 reject(new Error(`Timeout waiting for event: ${event}. Socket Context: ${state}, SID: ${sid}`));
             }, timeoutMs);
         });
@@ -853,7 +853,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 if (finalIndex.length > 0) {
                     return finalIndex;
                 }
-            } catch (e: any) {
+            } catch (_e) {
                 // Ignore packData errors
             }
 
@@ -898,7 +898,7 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 if (results.length > 0) {
                     return results;
                 }
-            } catch (e: any) {
+            } catch (_e) {
                 // Ignore errors
             }
 
@@ -1385,13 +1385,14 @@ export class CoreSocket extends SocketBase implements FoundryMetadataClient {
                 ...chatData,
                 _synthetic: true
             };
-        } catch (e: any) {
-            logger.error(`CoreSocket | Roll failed: ${e.message}`);
+        } catch (error: unknown) {
+            const msg = getErrorMessage(error);
+            logger.error(`CoreSocket | Roll failed: ${msg}`);
             if (options?.displayChat !== false) {
                 // Fallback to text message
-                return await this.sendMessage(`Rolling ${formula}: ${flavor || ''} (Error: ${e.message})`, options?.userId);
+                return await this.sendMessage(`Rolling ${formula}: ${flavor || ''} (Error: ${msg})`, options?.userId);
             }
-            throw e;
+            throw error;
         }
     }
 
