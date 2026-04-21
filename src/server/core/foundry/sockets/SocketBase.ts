@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@shared/utils/logger';
 import { FoundryConfig } from '../types';
 import { EventEmitter } from 'events';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 export abstract class SocketBase extends EventEmitter {
     protected socket: Socket | null = null;
@@ -253,8 +254,8 @@ export abstract class SocketBase extends EventEmitter {
             } else {
                 logger.warn(`[${this.constructor.name}] Logout returned ${response.status}`);
             }
-        } catch (e: any) {
-            logger.warn(`[${this.constructor.name}] Error during explicit logout: ${e.message}`);
+        } catch (error: unknown) {
+            logger.warn(`[${this.constructor.name}] Error during explicit logout: ${getErrorMessage(error)}`);
         }
     }
 
