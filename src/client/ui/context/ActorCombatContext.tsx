@@ -5,8 +5,8 @@ import { logger } from '@shared/utils/logger';
 import { useSession } from '@client/ui/context/SessionContext';
 import { UnauthorizedApiError } from '@client/ui/api/http';
 import * as foundryApi from '@client/ui/api/foundryApi';
-import type { ActorDto, ActorListPayload, ActorCardsPayload, ActorDetailPayload } from '@shared/contracts/actors';
-import type { CombatDto, CombatListPayload, CombatantDto } from '@shared/contracts/combats';
+import type { ActorDto, ActorListPayload, ActorCardsPayload } from '@shared/contracts/actors';
+import type { CombatDto, CombatListPayload } from '@shared/contracts/combats';
 import type { ActorCardData } from '@shared/interfaces';
 
 interface ActorCombatContextType {
@@ -79,34 +79,7 @@ export function ActorCombatProvider({ children }: { children: React.ReactNode })
         try {
             const data = await foundryApi.fetchCombats(token);
             if (data.combats) {
-                const resolvedCombats = await Promise.all(data.combats.map(async (combat): Promise<CombatDto> => {
-                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant): Promise<CombatantDto> => {
-                        if (combatant.actor || !combatant.actorId) {
-                            return combatant;
-                        }
-
-                        let actor: ActorDetailPayload | null = null;
-                        if (combatant.actorId) {
-                            try {
-                                actor = await foundryApi.fetchActorById(token, combatant.actorId);
-                            } catch (error) {
-                                logger.error(`ActorCombatContext | Failed fetching actor ${combatant.actorId}:`, error);
-                            }
-                        }
-
-                        return {
-                            ...combatant,
-                            actor,
-                        };
-                    }));
-
-                    return {
-                        ...combat,
-                        combatants,
-                    };
-                }));
-
-                setCombats(resolvedCombats);
+                setCombats(data.combats as CombatDto[]);
             }
             return data;
         } catch (error: any) {
