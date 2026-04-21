@@ -3,7 +3,10 @@
  * Handles actor property updates
  */
 
-export async function handleUpdateActor(actorId: string, request: Request, client: any) {
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
+
+export async function handleUpdateActor(actorId: string, request: Request, client: RouteFoundryClient | null) {
     if (!client) {
         return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -25,7 +28,7 @@ export async function handleUpdateActor(actorId: string, request: Request, clien
             success: true,
             actor: updatedActor
         });
-    } catch (error: any) {
-        return Response.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

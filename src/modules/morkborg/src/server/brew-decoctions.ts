@@ -9,8 +9,14 @@
 
 import { MorkBorgAdapter } from './MorkBorgAdapter';
 import { logger } from '@shared/utils/logger';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
-export async function handleBrewDecoctions(actorId: string, request: Request, client: any): Promise<Response> {
+export async function handleBrewDecoctions(actorId: string, request: Request, client: RouteFoundryClient | null): Promise<Response> {
+    if (!client) {
+        return Response.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+
     try {
         const body = request.method === 'POST' ? await request.json().catch(() => ({})) : {};
         const rollMode = body.rollMode || 'blindroll';
@@ -24,8 +30,8 @@ export async function handleBrewDecoctions(actorId: string, request: Request, cl
         const result = await adapter.createDecoctions(actor, client, { rollMode });
 
         return Response.json({ success: true, result });
-    } catch (e: any) {
-        logger.error(`[brew-decoctions] Failed: ${e.message}`);
-        return Response.json({ success: false, error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error(`[brew-decoctions] Failed: ${getErrorMessage(error)}`);
+        return Response.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
     }
 }

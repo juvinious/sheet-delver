@@ -1,17 +1,19 @@
 import { shadowdarkAdapter } from '../ShadowdarkAdapter';
+import { getModuleFoundryClient } from '@server/shared/utils/getModuleFoundryClient';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { logger } from '@shared/utils/logger';
 
 export async function handleIndex(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
         const systemData = await shadowdarkAdapter.getSystemData(client);
         
         logger.debug(`[ShadowdarkAPI] Responding with system data. Keys: ${Object.keys(systemData || {}).join(', ')}, IndexSize: ${Object.keys(systemData?.nameIndex || {}).length}`);
         
         return Response.json(systemData);
-    } catch (e: any) {
-        logger.error('Failed to get Shadowdark system data', e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error('Failed to get Shadowdark system data', error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -32,7 +34,7 @@ export async function handleDebugRegistry(request: Request) {
             lastFetch: state.lastFetch,
             isFresh: (Date.now() - state.lastFetch) < 300000 
         });
-    } catch (e: any) {
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

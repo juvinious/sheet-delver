@@ -4,8 +4,10 @@
  */
 
 import { MorkBorgAdapter } from './MorkBorgAdapter';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
-export async function handleGetActorData(actorId: string, client: any) {
+export async function handleGetActorData(actorId: string, client: RouteFoundryClient | null) {
     if (!client) {
         throw new Error('Client context is required for handleGetActorData');
     }
@@ -34,7 +36,7 @@ export async function handleGetActorData(actorId: string, client: any) {
                 items
             }
         });
-    } catch (error: any) {
-        return Response.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
