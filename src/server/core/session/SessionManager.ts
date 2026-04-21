@@ -1,6 +1,7 @@
 import { ClientSocket } from '../foundry/sockets/ClientSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -96,7 +97,7 @@ export class SessionManager {
                 username,
                 lastActive: Date.now(),
                 worldId: systemService.getSystemClient().getGameData()?.world?.id, // Get from System Provider
-                cookie: (client as any).sessionCookie
+                cookie: client.getSessionCookie() ?? undefined
             };
             this.sessions.set(sessionId, session);
 
@@ -105,10 +106,10 @@ export class SessionManager {
             logger.info(`SessionManager | Session created: ${sessionId} (User: ${username}, ID: ${userId})`);
             return { sessionId, userId };
 
-        } catch (e: any) {
-            logger.error(`SessionManager | Failed to create session: ${e.message}`);
+        } catch (error: unknown) {
+            logger.error(`SessionManager | Failed to create session: ${getErrorMessage(error)}`);
             client.disconnect();
-            throw e;
+            throw error;
         }
     }
 
@@ -258,7 +259,7 @@ export class SessionManager {
             sessions[key] = {
                 username: foundryUsername || key,
                 userId: client.userId,
-                cookie: (client as any).sessionCookie,
+                cookie: client.getSessionCookie() ?? undefined,
                 worldId: systemService.getSystemClient().getGameData()?.world?.id,
                 lastSaved: Date.now()
             };

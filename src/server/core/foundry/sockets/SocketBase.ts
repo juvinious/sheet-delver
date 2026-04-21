@@ -17,6 +17,10 @@ export abstract class SocketBase extends EventEmitter {
         this.config = config;
     }
 
+    public getSessionCookie(): string | null {
+        return this.sessionCookie;
+    }
+
     protected getBaseUrl(): string {
         if (this.config.url) {
             return this.config.url.endsWith('/') ? this.config.url.slice(0, -1) : this.config.url;

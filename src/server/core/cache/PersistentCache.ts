@@ -132,7 +132,7 @@ export class PersistentCache {
         if (isBrowser) return;
         const filePath = await this.getFilePath(namespace, key);
         if (filePath && fs && fs.existsSync(filePath)) {
-            await fs.promises.unlink(filePath).catch((err: any) => {
+            await fs.promises.unlink(filePath).catch((err: unknown) => {
                 logger.error(`PersistentCache | Failed to remove ${namespace}/${key}:`, err);
             });
         }
@@ -143,7 +143,7 @@ export class PersistentCache {
         if (isBrowser || !this.baseDir || !fs || !path) return;
         const nsDir = path.join(this.baseDir, namespace);
         if (fs.existsSync(nsDir)) {
-            await fs.promises.rm(nsDir, { recursive: true, force: true }).catch((err: any) => {
+            await fs.promises.rm(nsDir, { recursive: true, force: true }).catch((err: unknown) => {
                 logger.error(`PersistentCache | Failed to clear namespace ${namespace}:`, err);
             });
         }
