@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { CoreSocket } from '../foundry/sockets/CoreSocket';
 import { FoundryConfig } from '../foundry/types';
+import { hasDiscoveryConfig, hasInitialize } from '@modules/registry/types';
 import { logger } from '@shared/utils/logger';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { getAdapter, getRegisteredModules } from '@modules/registry/server';
@@ -95,11 +96,11 @@ export class SystemService extends EventEmitter {
                     const moduleInfo = registered.find(m => m.id.toLowerCase() === sysId);
                     const adapter = await getAdapter(sysId);
 
-                    let discoveryConfig = (moduleInfo as any)?.discovery;
+                    let discoveryConfig = moduleInfo?.discovery;
 
                     // Fallback to adapter hook
-                    if (!discoveryConfig && adapter?.getDiscoveryConfig) {
-                        discoveryConfig = (adapter as any).getDiscoveryConfig();
+                    if (!discoveryConfig && hasDiscoveryConfig(adapter)) {
+                        discoveryConfig = adapter.getDiscoveryConfig();
                     }
 
                     if (discoveryConfig) {
@@ -108,7 +109,7 @@ export class SystemService extends EventEmitter {
                     }
 
                     // 3. Adapter Initialization
-                    if (adapter?.initialize) {
+                    if (hasInitialize(adapter)) {
                         logger.info(`SystemService | Initializing adapter for ${sysInfo.id}...`);
                         await adapter.initialize(client);
                     }

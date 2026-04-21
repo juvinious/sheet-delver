@@ -1,4 +1,5 @@
 import express from 'express';
+import type { SystemAdapter } from '@modules/registry/types';
 import { logger } from '@shared/utils/logger';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
@@ -7,7 +8,7 @@ interface SystemRoutesDeps {
         getGameData: () => any;
         getSceneData: () => any;
     };
-    getAdapter: (systemId: string) => Promise<any>;
+    getAdapter: (systemId: string) => Promise<SystemAdapter | null>;
 }
 
 export function registerSystemRoutes(appRouter: express.Router, deps: SystemRoutesDeps) {
@@ -31,8 +32,8 @@ export function registerSystemRoutes(appRouter: express.Router, deps: SystemRout
             const adapter = await deps.getAdapter(gameData.system.id);
             const adapterName = adapter?.constructor?.name || 'Unknown';
 
-            if (adapter && typeof (adapter as any).getSystemData === 'function') {
-                const data = await (adapter as any).getSystemData(systemClient);
+            if (adapter) {
+                const data = await adapter.getSystemData(systemClient);
                 logger.debug(`[CoreService] [PID:${process.pid}] System data fetched (${adapterName}). Keys: ${Object.keys(data || {}).length}`);
                 res.json(data);
             } else {

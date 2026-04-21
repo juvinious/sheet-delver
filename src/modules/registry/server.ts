@@ -1,4 +1,4 @@
-import { SystemAdapter, SystemModuleInfo, SystemPlugin } from './types';
+import { hasInitialize, SystemAdapter, SystemModuleInfo, SystemPlugin } from './types';
 export * from './utils';
 import { logger } from '@shared/utils/logger';
 import path from 'node:path';
@@ -130,8 +130,8 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
         const adapter = new AdapterClass();
 
         // Optional initialization hook for adapters (e.g., cache warming)
-        if (typeof (adapter as any).initialize === 'function') {
-            await (adapter as any).initialize();
+        if (hasInitialize(adapter)) {
+            await adapter.initialize();
         }
 
         adapterInstances.set(id, adapter);
