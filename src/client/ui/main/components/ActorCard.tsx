@@ -1,11 +1,12 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { Theme } from '../hooks/useTheme';
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
 import { ActorCardBlock } from '@shared/interfaces';
+import type { ActorDto } from '@shared/contracts/actors';
 
 interface ActorCardProps {
-    actor: any;
+    actor: ActorDto;
     index: number;
     theme: Theme;
     clickable?: boolean;
@@ -20,12 +21,15 @@ export const ActorCard = ({
     onDelete
 }: ActorCardProps) => {
 
-    const { actorCards } = useFoundry();
-    const customData = actorCards[actor.id || actor._id] || {};
+    const { actorCards } = useActorCombat();
+    const actorId = actor.id || actor._id || '';
+    const actorName = actor.name || 'Unknown Actor';
+    const actorRecord = actor as Record<string, any>;
+    const customData = actorId ? (actorCards[actorId] || {}) : {};
 
     const handleClick = () => {
-        if (!clickable) return;
-        window.location.href = `/actors/${actor.id}`;
+        if (!clickable || !actorId) return;
+        window.location.href = `/actors/${actorId}`;
     };
 
     const activeAdapter = null; // No adapter in frontend per architectural goal
@@ -36,7 +40,7 @@ export const ActorCard = ({
 
     return (
         <div
-            key={actor.id}
+            key={actorId || `actor-${index}`}
             onClick={handleClick}
             className={`
           ${theme.panelBg}/40 backdrop-blur-md p-4 rounded-xl shadow-lg border border-white/5 
@@ -63,7 +67,7 @@ export const ActorCard = ({
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            onDelete(actor.id, actor.name);
+                            onDelete(actorId, actorName);
                         }}
                         className="absolute -top-1 -right-1 p-2 rounded-lg bg-black/20 hover:bg-red-500/20 text-white/20 hover:text-red-500 backdrop-blur-md border border-white/5 hover:border-red-500/50 transition-all duration-300 group/delete z-10"
                         title="Delete Character"
@@ -99,9 +103,9 @@ export const ActorCard = ({
                                         <span className="opacity-50 text-[10px] uppercase tracking-tighter block">HP</span>
                                         <div className="flex items-baseline gap-1">
                                             <span className="font-mono font-bold text-green-400">
-                                                {actor.hp?.value ?? actor.derived?.hp?.value ?? '?'}
+                                                {actorRecord.hp?.value ?? actorRecord.derived?.hp?.value ?? '?'}
                                             </span>
-                                            <span className="opacity-30 text-xs">/ {actor.hp?.max ?? actor.derived?.hp?.max ?? '?'}</span>
+                                            <span className="opacity-30 text-xs">/ {actorRecord.hp?.max ?? actorRecord.derived?.hp?.max ?? '?'}</span>
                                         </div>
                                     </div>
                                 )}
@@ -109,7 +113,7 @@ export const ActorCard = ({
                                     <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
                                         <span className="opacity-50 text-[10px] uppercase tracking-tighter block">AC</span>
                                         <span className="font-mono font-bold text-blue-400">
-                                            {actor.ac ?? actor.derived?.ac ?? '?'}
+                                            {String(actorRecord.ac ?? actorRecord.derived?.ac ?? '?')}
                                         </span>
                                     </div>
                                 )}

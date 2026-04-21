@@ -7,6 +7,7 @@ import SheetRouter from '@client/ui/components/SheetRouter';
 import { useFoundry } from '@client/ui/context/FoundryContext';
 import { useUI } from '@client/ui/context/UIContext';
 import { useConfig } from '@client/ui/context/ConfigContext';
+import type { RealtimeActorUpdatePayload } from '@shared/contracts/realtime';
 import { processHtmlContent } from '@modules/registry/client';
 import { useNotifications } from '@client/ui/components/NotificationSystem';
 import LoadingModal from '@client/ui/components/LoadingModal';
@@ -90,7 +91,7 @@ export default function MorkBorgActorPage({ actorId }: MorkBorgActorPageProps) {
         fetchActor(actorId);
 
         if (appSocket) {
-            const handleActorUpdate = (data: any) => {
+            const handleActorUpdate = (data: RealtimeActorUpdatePayload) => {
                 if (data.actorId === actorId) {
                     fetchActor(actorId, true);
                 }

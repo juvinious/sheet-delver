@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { logger } from '@shared/utils/logger';
 
+const getErrorMessage = (error: unknown, fallback = 'Failed to fetch custom maps'): string => {
+    if (error instanceof Error) return error.message;
+    return typeof error === 'string' ? error : fallback;
+};
+
 interface CustomMaps {
     PREDEFINED_EFFECTS: Record<string, any>;
     BOON_TYPES: Record<string, string>;
@@ -31,10 +36,10 @@ export function useShadowdarkCustomMaps() {
                     setMaps(data);
                     setLoading(false);
                 }
-            } catch (err: any) {
-                logger.error('[useShadowdarkCustomMaps] Fetch failed:', err);
+            } catch (error: unknown) {
+                logger.error('[useShadowdarkCustomMaps] Fetch failed:', error);
                 if (isMounted) {
-                    setError(err.message);
+                    setError(getErrorMessage(error));
                     setLoading(false);
                 }
             }

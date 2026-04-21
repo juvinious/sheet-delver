@@ -20,6 +20,7 @@
     "test:socket:rolling": "tsx src/tests/socket/09-rolling.test.ts",
     "test:socket:batch": "tsx src/tests/socket/10-batch-operations.test.ts",
     "test:socket:all": "tsx src/tests/socket/run-all.ts",
+    "test:unit": "npx tsx src/tests/unit/run.ts",
     "test:states": "npx tsx src/scripts/test-states.ts"
   },
   "dependencies": {

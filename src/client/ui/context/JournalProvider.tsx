@@ -1,8 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useFoundry } from './FoundryContext';
+import { useSession } from './SessionContext';
 import { logger } from '@shared/utils/logger';
+import { UnauthorizedApiError } from '@client/ui/api/http';
+import * as journalApi from '@client/ui/api/journalApi';
+import type {
+    JournalEntryDto,
+    JournalFolderDto,
+    JournalListPayload,
+} from '@shared/contracts/journals';
 
 // Walkthrough/Changelog Notes:
 // - **Permissions**: "Edit" & "Share" buttons are now hidden for shared content and non-authorized users. Journals are now restricted to users with `Observer` level or higher.
@@ -10,24 +17,8 @@ import { logger } from '@shared/utils/logger';
 // - **Foundry Style**: Added a prominent "Chapter" header to pages (black bar with white text) matching the core Foundry VTT journal aesthetic.
 // - **Creation Fix**: Resolve backend errors when creating new journals or folders by correctly formatting the payload.
 
-export interface JournalEntry {
-    _id: string;
-    name: string;
-    folder: string | null;
-    content?: string;
-    pages?: any[];
-    ownership: Record<string, number>;
-}
-
-export interface Folder {
-    _id: string;
-    name: string;
-    type: string;
-    folder: string | null;
-    sort: number;
-    color: string | null;
-    ownership?: Record<string, number>;
-}
+export type JournalEntry = JournalEntryDto;
+export type Folder = JournalFolderDto;
 
 interface JournalContextType {
     journals: JournalEntry[];
@@ -45,7 +36,7 @@ interface JournalContextType {
 const JournalContext = createContext<JournalContextType | undefined>(undefined);
 
 export function JournalProvider({ children }: { children: React.ReactNode }) {
-    const { token, step } = useFoundry();
+    const { token, step } = useSession();
     const [journals, setJournals] = useState<JournalEntry[]>([]);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [loading, setLoading] = useState(false);
@@ -55,20 +46,13 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
         if (!token) return;
         setLoading(true);
         try {
-            const res = await fetch('/api/journals', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Failed to fetch journals | ' + res.statusText);
-            // Completed Tasks:
-            // - [x] Journal Permissions & Creation Fix <!-- id: 102 -->
-            // - [x] Restrict Journal visibility to Observer+ (Backend)
-            // - [x] Implement Folder visibility logic (containment-based)
-            // - [x] Fix Journal creation (array wrap fix)
-            // - [x] Fix Folder creation (array wrap fix)
-            const data = await res.json();
+            const data = await journalApi.fetchJournals(token);
             setJournals(data.journals || []);
             setFolders(data.folders || []);
         } catch (err: any) {
+            if (err instanceof UnauthorizedApiError) {
+                return;
+            }
             logger.error('JournalProvider | Fetch failed:', err);
             setError(err.message);
         } finally {
@@ -87,11 +71,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     const getJournal = useCallback(async (id: string) => {
         if (!token) return null;
         try {
-            const res = await fetch(`/api/journals/${id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Failed to fetch journal detail');
-            return await res.json();
+            return await journalApi.fetchJournalById(token, id);
         } catch (err) {
             logger.error(`JournalProvider | Get detail failed for ${id}:`, err);
             return null;
@@ -100,18 +80,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
     const createJournal = async (name: string, folderId?: string) => {
         try {
-            const res = await fetch('/api/journals', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    type: 'JournalEntry',
-                    data: { name, folder: folderId || null }
-                })
-            });
-            if (!res.ok) throw new Error('Failed to create journal');
+            await journalApi.createJournalEntry(token, name, folderId);
             await fetchJournals();
         } catch (err) {
             logger.error('JournalProvider | Create failed:', err);
@@ -120,18 +89,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
     const updateJournal = async (id: string, data: Partial<JournalEntry>) => {
         try {
-            const res = await fetch(`/api/journals/${id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    type: 'JournalEntry',
-                    data
-                })
-            });
-            if (!res.ok) throw new Error('Failed to update journal');
+            await journalApi.updateJournalEntry(token, id, data);
             await fetchJournals();
         } catch (err) {
             logger.error(`JournalProvider | Update failed for ${id}:`, err);
@@ -140,11 +98,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
     const deleteJournal = async (id: string) => {
         try {
-            const res = await fetch(`/api/journals/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Failed to delete journal');
+            await journalApi.deleteJournalEntry(token, id);
             await fetchJournals();
         } catch (err) {
             logger.error(`JournalProvider | Delete failed for ${id}:`, err);
@@ -153,22 +107,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
 
     const createFolder = async (name: string, parentId?: string) => {
         try {
-            const res = await fetch('/api/journals', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    type: 'Folder',
-                    data: {
-                        name,
-                        type: 'JournalEntry',
-                        folder: parentId || null
-                    }
-                })
-            });
-            if (!res.ok) throw new Error('Failed to create folder');
+            await journalApi.createJournalFolder(token, name, parentId);
             await fetchJournals();
         } catch (err) {
             logger.error('JournalProvider | Create folder failed:', err);

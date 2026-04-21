@@ -1,11 +1,23 @@
 
+/// <reference types="node" />
+
 import inquirer from 'inquirer';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import yaml from 'js-yaml';
-import { logger } from '@shared/utils/logger';
+import { logger } from '../shared/utils/logger';
 
 const SETTINGS_PATH = path.join(process.cwd(), 'settings.yaml');
+
+function generateServiceToken(): string {
+    return randomBytes(32).toString('hex');
+}
+
+function buildAppUrl(protocol: string, host: string, port: number): string {
+    const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
+    return `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
+}
 
 async function main() {
     logger.info('\x1b[36m%s\x1b[0m', '--- SheetDelver Configuration Setup ---');
@@ -144,7 +156,12 @@ async function main() {
                 "window-minutes": 15,
                 "max-attempts": 5
             },
-            "body-limit": "10mb"
+            "body-limit": "10mb",
+            cors: {
+                "allow-all-origins": false,
+                "allowed-origins": [buildAppUrl(answers.appProtocol, answers.appHost, answers.appPort)]
+            },
+            "service-token": generateServiceToken()
         }
     };
 

@@ -3,6 +3,7 @@ import { SocketBase } from './SocketBase';
 import { logger } from '@shared/utils/logger';
 import { systemService } from '../../system/SystemService';
 import { FoundryConfig } from '../types';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 export class ClientSocket extends SocketBase {
     public userId: string | null = null;
@@ -112,9 +113,9 @@ export class ClientSocket extends SocketBase {
                 });
             });
 
-        } catch (e: any) {
-            logger.error(`ClientSocket | Connection failed: ${e.message}`);
-            throw e;
+        } catch (error: unknown) {
+            logger.error(`ClientSocket | Connection failed: ${getErrorMessage(error)}`);
+            throw error;
         }
     }
 
@@ -189,7 +190,12 @@ export class ClientSocket extends SocketBase {
                 return visible.map((msg: any) => {
                     const rolls = (msg.rolls || []).map((r: any) => {
                         if (typeof r === 'string') {
-                            try { return JSON.parse(r); } catch (e) { return r; }
+                            try {
+                                return JSON.parse(r);
+                            } catch (error) {
+                                logger.debug(`ClientSocket | Failed to parse chat roll JSON for message ${msg._id || msg.id || 'unknown'}. Returning raw roll value.`);
+                                return r;
+                            }
                         }
                         return r;
                     });
@@ -216,8 +222,8 @@ export class ClientSocket extends SocketBase {
                         flavor: msg.flavor
                     };
                 });
-            } catch (e: any) {
-                logger.warn(`ClientSocket | Failed to fetch chat via user socket: ${e.message}. Falling back to proxy.`);
+            } catch (error: unknown) {
+                logger.warn(`ClientSocket | Failed to fetch chat via user socket: ${getErrorMessage(error)}. Falling back to proxy.`);
             }
         }
 
@@ -360,9 +366,9 @@ export class ClientSocket extends SocketBase {
 
             try {
                 return await this.emitSocketEvent('modifyDocument', { type, action, operation }, 5000);
-            } catch (e: any) {
-                logger.warn(`ClientSocket | Dispatch failed on user socket: ${e.message}`);
-                throw e;
+            } catch (error: unknown) {
+                logger.warn(`ClientSocket | Dispatch failed on user socket: ${getErrorMessage(error)}`);
+                throw error;
             }
         }
 

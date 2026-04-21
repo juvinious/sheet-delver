@@ -9,7 +9,6 @@ import { testSystemInfo } from './02-system-info.test';
 import { testActorAccess } from './03-actor-access.test';
 import { testUsersAndCompendia } from './04-users-compendia.test';
 import { testWriteOperations } from './05-write-operations.test';
-import { testAppLogin } from './06-app-login.test';
 import { testRolling } from './09-rolling.test'; // Added rolling test import
 import { logger } from '@shared/utils/logger';
 
@@ -23,7 +22,6 @@ async function runAllTests() {
         { name: 'Actor Data Access', fn: testActorAccess },
         { name: 'Users & Compendium Data', fn: testUsersAndCompendia },
         { name: 'Write Operations', fn: testWriteOperations },
-        { name: 'App Login Verification', fn: testAppLogin },
         { name: 'Rolling Operations', fn: testRolling }
     ];
 

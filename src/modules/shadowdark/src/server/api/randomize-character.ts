@@ -1,4 +1,6 @@
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../../server/ShadowdarkAdapter';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
+import { getModuleFoundryClient } from '@server/shared/utils/getModuleFoundryClient';
 import { logger } from '@shared/utils/logger';
 
 // --- Logic Helpers ---
@@ -304,90 +306,99 @@ async function getRandomLanguages(client: any, ancestryDoc: any, classDoc: any, 
 
 export async function handleRandomizeName(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const body = await request.json().catch(() => ({}));
         const name = await getRandomName(client, body.ancestryUuid);
         return Response.json({ name });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeAncestry(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const ancestry = await getRandomAncestry(client);
         return Response.json({ ancestry });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeClass(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const cls = await getRandomClass(client);
         return Response.json({ class: cls });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeBackground(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const bg = await getRandomBackground(client);
         return Response.json({ background: bg });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeAlignment(request: Request) {
     try {
         const alignment = getRandomAlignment();
         return Response.json({ alignment });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeDeity(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const deity = await getRandomDeity(client);
         return Response.json({ deity });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizePatron(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const patron = await getRandomPatron(client);
         return Response.json({ patron });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeStats(request: Request) {
     try {
         const stats = getRandomStats();
         return Response.json({ stats });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeGear(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const body = await request.json().catch(() => ({}));
         const gear = await getRandomGear(client, body.level0 === true);
         return Response.json({ gear });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeTalents(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const body = await request.json().catch(() => ({}));
         const ancestry = body.ancestryUuid ? await client.fetchByUuid(body.ancestryUuid) : null;
         const cls = body.classUuid ? await client.fetchByUuid(body.classUuid) : null;
         const talents = getRandomTalents(ancestry, cls);
         return Response.json({ talents });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 export async function handleRandomizeLanguages(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
+        if (!client) throw new Error('Not authenticated');
         const body = await request.json().catch(() => ({}));
 
         const ancestry = body.ancestryUuid ? await client.fetchByUuid(body.ancestryUuid) : null;
@@ -396,7 +407,7 @@ export async function handleRandomizeLanguages(request: Request) {
 
         const languages = await getRandomLanguages(client, ancestry, cls, intMod);
         return Response.json({ languages });
-    } catch (e: any) { return Response.json({ error: e.message }, { status: 500 }); }
+    } catch (error: unknown) { return Response.json({ error: getErrorMessage(error) }, { status: 500 }); }
 }
 
 
@@ -404,7 +415,7 @@ export async function handleRandomizeLanguages(request: Request) {
 
 export async function handleRandomizeCharacter(request: Request) {
     try {
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
         if (!client) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await request.json().catch(() => ({}));
@@ -458,9 +469,9 @@ export async function handleRandomizeCharacter(request: Request) {
 
         return Response.json(result);
 
-    } catch (e: any) {
-        logger.error(`Randomize Character Error: ${e.message}`);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error(`Randomize Character Error: ${getErrorMessage(error)}`);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 

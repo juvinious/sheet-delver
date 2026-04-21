@@ -4,12 +4,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { logger } from '@shared/utils/logger';
 
-import { useFoundry } from '../context/FoundryContext';
+import { useSession } from '../context/SessionContext';
 
 export default function ShutdownWatcher() {
     const router = useRouter();
     const pathname = usePathname();
-    const { step } = useFoundry();
+    const { step } = useSession();
     const [shutdownDetected, setShutdownDetected] = useState(false);
     const [countDown, setCountDown] = useState(3);
 

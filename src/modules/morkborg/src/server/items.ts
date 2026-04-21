@@ -4,8 +4,10 @@
  */
 
 import { MorkBorgAdapter } from './MorkBorgAdapter';
+import type { RouteFoundryClient } from '@server/shared/types/requestContext';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
-export async function handleGetItems(actorId: string, client: any) {
+export async function handleGetItems(actorId: string, client: RouteFoundryClient | null) {
     if (!client) {
         return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }
@@ -20,22 +22,22 @@ export async function handleGetItems(actorId: string, client: any) {
         const items = adapter.categorizeItems(rawActor);
 
         return Response.json({ items });
-    } catch (error: any) {
-        return Response.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
-export async function handleDeleteItem(actorId: string, itemId: string, client: any) {
+export async function handleDeleteItem(actorId: string, itemId: string, client: RouteFoundryClient | null) {
     if (!client) {
         return Response.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
     try {
         // Delete item from actor
-        await client.deleteItem(actorId, itemId);
+        await client.deleteActorItem(actorId, itemId);
 
         return Response.json({ success: true });
-    } catch (error: any) {
-        return Response.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

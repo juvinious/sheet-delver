@@ -1,5 +1,6 @@
 import { SYSTEM_PREDEFINED_EFFECTS, BOON_TYPE_MAP, EFFECT_TRANSLATIONS_MAP } from '../../data/talent-effects';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 /**
  * API handler to serve static Shadowdark rule mappings and predefined effects.
@@ -16,8 +17,8 @@ export async function handleGetCustomMaps(request: Request) {
         };
 
         return Response.json(payload);
-    } catch (e: any) {
-        logger.error('Failed to generate Shadowdark custom maps', e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error('Failed to generate Shadowdark custom maps', error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

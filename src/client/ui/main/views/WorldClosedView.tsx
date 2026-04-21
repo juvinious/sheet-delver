@@ -1,8 +1,9 @@
 import React from 'react';
+import type { AppSystemInfo } from '@shared/interfaces';
 import { Theme } from '../hooks/useTheme';
 
 interface WorldClosedViewProps {
-    system: any;
+    system: AppSystemInfo | null;
     appVersion: string;
     theme: Theme;
 }

@@ -18,6 +18,25 @@ export async function testWriteOperations() {
     let tempActorId: string | null = null;
     let tempItemId: string | null = null;
 
+    const resolveValidActorType = async (): Promise<string> => {
+        const existingActors = await client.getActors();
+        const actorTypeFromWorld = existingActors.find((actor: any) => typeof actor?.type === 'string' && actor.type.length > 0)?.type;
+        if (actorTypeFromWorld) return actorTypeFromWorld;
+
+        try {
+            const systemData = await client.getSystem();
+            const actorTypeKeys = Object.keys(systemData?.documentTypes?.Actor || {});
+            if (actorTypeKeys.length > 0) {
+                return actorTypeKeys[0];
+            }
+        } catch (error: any) {
+            logger.warn(`Could not inspect system documentTypes.Actor for actor type fallback: ${error.message}`);
+        }
+
+        logger.warn('Falling back to default actor type "character" because no active actor type footprint was discovered.');
+        return 'character';
+    };
+
     try {
         await client.connect();
         logger.info('✅ Connected\n');
@@ -25,9 +44,11 @@ export async function testWriteOperations() {
         // Test 5a: Create Temporary Actor
         logger.info('5a. Creating temporary actor...');
         try {
+            const actorType = await resolveValidActorType();
             const actorData = {
                 name: "TEMP_TEST_ACTOR_" + Date.now(),
-                type: "character", // Mork Borg uses character type
+                // Use a type known to the active system/world to avoid schema validation drift.
+                type: actorType,
                 img: "icons/svg/mystery-man.svg"
             };
             const createdActor = await client.createActor(actorData);

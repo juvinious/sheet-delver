@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import { useJournals, Folder, JournalEntry } from '@client/ui/context/JournalProvider';
 import { useUI } from '@client/ui/context/UIContext';
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { Folder as FolderIcon, FileText, ChevronRight, ChevronDown, Plus, Search, Trash2, Book, X } from 'lucide-react';
 
 export default function JournalBrowser() {
@@ -12,7 +12,7 @@ export default function JournalBrowser() {
         createJournal, createFolder, deleteJournal
     } = useJournals();
     const { isJournalOpen, setJournalOpen, setActiveJournalId } = useUI();
-    const { currentUser } = useFoundry();
+    const { currentUser } = useSession();
     const [search, setSearch] = useState('');
     const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 

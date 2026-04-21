@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 const isBrowser = typeof window !== 'undefined';
 let fs: any = null;
 let path: any = null;
@@ -34,6 +35,25 @@ export interface ScrapedWorldData {
     background: string;
     description: string;
     users: ScrapedUser[];
+}
+
+type RawScrapedUser = {
+    _id?: unknown;
+    name?: unknown;
+    role?: unknown;
+};
+
+function toScrapedUser(value: unknown): ScrapedUser | null {
+    if (!value || typeof value !== 'object') return null;
+
+    const user = value as RawScrapedUser;
+    if (typeof user.name !== 'string' || user.name.length === 0) return null;
+
+    return {
+        id: typeof user._id === 'string' ? user._id : '',
+        name: user.name,
+        role: typeof user.role === 'number' ? user.role : 0
+    };
 }
 
 export class DirectScraper {
@@ -151,11 +171,16 @@ export class DirectScraper {
                 // Attempt 1: Direct Open
                 db = new ClassicLevel(usersDbPath, { valueEncoding: 'json' });
                 await db.open();
-            } catch (err: any) {
+            } catch (err: unknown) {
                 // If locked, try Copy-and-Read strategy
-                if (err.code === 'LEVEL_LOCKED' || (err.cause && err.cause.code === 'LEVEL_LOCKED')) {
+                const errorWithCode = err as { code?: unknown; cause?: { code?: unknown } };
+                if (errorWithCode.code === 'LEVEL_LOCKED' || errorWithCode.cause?.code === 'LEVEL_LOCKED') {
                     // Close the failed instance (just in case)
-                    try { await db.close(); } catch (e) { }
+                    try {
+                        await db.close();
+                    } catch (error) {
+                        logger.debug('DirectScraper | Ignored close error on locked DB handle:', error);
+                    }
                     db = null;
 
                     try {
@@ -193,14 +218,10 @@ export class DirectScraper {
             if (db) {
                 try {
                     // Iterate through the DB
-                    for await (const [key, value] of db.iterator()) {
-                        const user = value as any;
-                        if (user && user.name) {
-                            users.push({
-                                id: user._id,
-                                name: user.name,
-                                role: user.role
-                            });
+                    for await (const [_key, value] of db.iterator()) {
+                        const user = toScrapedUser(value);
+                        if (user) {
+                            users.push(user);
                         }
                     }
                 } catch (readErr) {
@@ -208,7 +229,9 @@ export class DirectScraper {
                 } finally {
                     try {
                         await db.close();
-                    } catch (e) { /* ignore */ }
+                    } catch (error) {
+                        logger.debug('DirectScraper | Ignored close error during DB cleanup:', error);
+                    }
 
                     // Cleanup temp dir if created
                     if (tempDbPath && fs.existsSync(tempDbPath)) {

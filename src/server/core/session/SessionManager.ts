@@ -1,6 +1,7 @@
 import { ClientSocket } from '../foundry/sockets/ClientSocket';
 import { FoundryConfig } from '../foundry/types';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,6 +28,9 @@ export class SessionManager {
     private LEGACY_SESSIONS_FILE = '';
     private readonly SYSTEM_SESSION_KEY = 'SYSTEM_SERVICE_ACCOUNT';
     private isSaving: boolean = false;
+
+    private readonly RESTORE_RETRY_BASE_DELAY_MS = 300;
+    private readonly RESTORE_RETRY_MAX_DELAY_MS = 2000;
 
     constructor(config: FoundryConfig) {
         this.config = config;
@@ -93,7 +97,7 @@ export class SessionManager {
                 username,
                 lastActive: Date.now(),
                 worldId: systemService.getSystemClient().getGameData()?.world?.id, // Get from System Provider
-                cookie: (client as any).sessionCookie
+                cookie: client.getSessionCookie() ?? undefined
             };
             this.sessions.set(sessionId, session);
 
@@ -102,10 +106,10 @@ export class SessionManager {
             logger.info(`SessionManager | Session created: ${sessionId} (User: ${username}, ID: ${userId})`);
             return { sessionId, userId };
 
-        } catch (e: any) {
-            logger.error(`SessionManager | Failed to create session: ${e.message}`);
+        } catch (error: unknown) {
+            logger.error(`SessionManager | Failed to create session: ${getErrorMessage(error)}`);
             client.disconnect();
-            throw e;
+            throw error;
         }
     }
 
@@ -154,7 +158,9 @@ export class SessionManager {
             if (restored && restored.sessionId === sessionId) {
                 return this.sessions.get(sessionId);
             }
-            if (i < 2) await new Promise(r => setTimeout(r, 1000));
+            if (i < 2) {
+                await this.waitForRestoreBackoff(i);
+            }
         }
 
         return undefined;
@@ -204,7 +210,7 @@ export class SessionManager {
             if (!currentWorldId && (systemService.getSystemClient().worldState === 'startup' || systemService.getSystemClient().worldState === 'active')) {
                 logger.debug(`SessionManager | World not yet stable. Waiting for ID to restore session ${username}...`);
                 for (let i = 0; i < 5; i++) {
-                    await new Promise(r => setTimeout(r, 1000));
+                    await this.waitForRestoreBackoff(i);
                     currentWorldId = systemService.getSystemClient().getGameData()?.world?.id;
                     if (currentWorldId) break;
                 }
@@ -253,7 +259,7 @@ export class SessionManager {
             sessions[key] = {
                 username: foundryUsername || key,
                 userId: client.userId,
-                cookie: (client as any).sessionCookie,
+                cookie: client.getSessionCookie() ?? undefined,
                 worldId: systemService.getSystemClient().getGameData()?.world?.id,
                 lastSaved: Date.now()
             };
@@ -289,5 +295,13 @@ export class SessionManager {
         } finally {
             this.isSaving = false;
         }
+    }
+
+    private async waitForRestoreBackoff(attempt: number) {
+        const delay = Math.min(
+            this.RESTORE_RETRY_BASE_DELAY_MS * (2 ** attempt),
+            this.RESTORE_RETRY_MAX_DELAY_MS
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
     }
 }

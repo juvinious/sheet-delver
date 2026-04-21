@@ -1,5 +1,6 @@
 import { shadowdarkAdapter } from '../ShadowdarkAdapter';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 
 /**
  * Generic handler to fetch a categorized collection from the warmed system cache.
@@ -26,8 +27,8 @@ export async function handleGetCollection(request: Request, id: string, client: 
         }
 
         return Response.json(collection);
-    } catch (e: any) {
-        logger.error(`Shadowdark API | Failed to get collection ${id}`, e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error(`Shadowdark API | Failed to get collection ${id}`, error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

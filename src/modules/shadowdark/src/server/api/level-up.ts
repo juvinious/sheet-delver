@@ -1,6 +1,8 @@
 import { getClient } from '@core/foundry/instance';
 import { logger } from '@shared/utils/logger';
 import { getConfig } from '@core/config';
+import type { UserSessionLike } from '@server/shared/types/foundry';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { shadowdarkAdapter, ShadowdarkAdapter } from '../../server/ShadowdarkAdapter';
 import { calculateAdvancement, assembleFinalItems, validateState } from './level-up-engine';
 import * as levelUpEngine from './level-up-engine';
@@ -34,9 +36,9 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
 
         return Response.json({ success: true, data });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Level-Up Data Error:', error);
-        return Response.json({ error: error.message || 'Failed to fetch level-up data' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to fetch level-up data' }, { status: 500 });
     }
 }
 
@@ -44,7 +46,7 @@ export async function handleGetLevelUpData(actorId: string | undefined, request:
  * POST /api/shadowdark/actors/[id]/level-up/roll-hp
  * Roll HP for level-up
  */
-export async function handleRollHP(actorId: string | undefined, request: Request, client: any, userSession?: any) {
+export async function handleRollHP(actorId: string | undefined, request: Request, client: any, userSession?: UserSessionLike) {
     logger.info(`[API] handleRollHP called for actorId: ${actorId}`);
     try {
         if (!client || !client.isConnected) {
@@ -145,13 +147,13 @@ export async function handleRollHP(actorId: string | undefined, request: Request
             }
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Roll HP Error:', error);
-        return Response.json({ error: error.message || 'Failed to roll HP' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to roll HP' }, { status: 500 });
     }
 }
 
-export async function handleRollGold(actorId: string | undefined, request: Request, client: any, userSession?: any) {
+export async function handleRollGold(actorId: string | undefined, request: Request, client: any, userSession?: UserSessionLike) {
     if (!client || !client.isConnected) {
         return Response.json({ error: 'Not connected to Foundry' }, { status: 503 });
     }
@@ -211,9 +213,9 @@ export async function handleRollGold(actorId: string | undefined, request: Reque
         }
 
         return Response.json({ success: true, roll: { total } });
-    } catch (e: any) {
-        logger.error("Gold Roll Failed", e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error("Gold Roll Failed", error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -343,9 +345,9 @@ export async function handleRollTalent(actorId: string | undefined, request: Req
             config
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Roll Talent Error:', error);
-        return Response.json({ error: error.message || 'Failed to roll talent' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to roll talent' }, { status: 500 });
     }
 }
 
@@ -369,8 +371,8 @@ export async function handleResolveChoice(actorId: string | undefined, request: 
         // This might just return structured data for the frontend to store until finalize
         return Response.json({ success: true, selection });
 
-    } catch (error: any) {
-        return Response.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }
 
@@ -481,8 +483,8 @@ export async function handleFinalizeLevelUp(actorId: string, request: Request, c
             goldRoll: gold
         });
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         logger.error('[API] Finalize Level-Up Error:', error);
-        return Response.json({ error: error.message || 'Failed to finalize level-up' }, { status: 500 });
+        return Response.json({ error: getErrorMessage(error) || 'Failed to finalize level-up' }, { status: 500 });
     }
 }

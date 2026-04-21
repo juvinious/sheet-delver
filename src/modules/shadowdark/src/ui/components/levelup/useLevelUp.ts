@@ -29,6 +29,10 @@ export interface LevelUpProps {
 
 export type SectionStatus = 'IDLE' | 'LOADING' | 'READY' | 'ERROR' | 'COMPLETE' | 'DISABLED';
 const EMPTY_ARRAY: any[] = [];
+const getErrorMessage = (error: unknown, fallback = 'An unexpected error occurred'): string => {
+    if (error instanceof Error) return error.message;
+    return typeof error === 'string' ? error : fallback;
+};
 
 export const useLevelUp = (props: LevelUpProps) => {
     const {
@@ -276,8 +280,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 setError(json.error || "Failed to roll HP");
                 setStatuses(prev => ({ ...prev, hp: 'ERROR' }));
             }
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error));
             setStatuses(prev => ({ ...prev, hp: 'ERROR' }));
         }
     };
@@ -304,8 +308,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 setError(json.error || "Failed to roll Gold");
                 setStatuses(prev => ({ ...prev, gold: 'ERROR' }));
             }
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error));
             setStatuses(prev => ({ ...prev, gold: 'ERROR' }));
         }
     };
@@ -353,8 +357,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 setError("Rolled an invalid result (likely 'OR' or empty). Please roll again.");
                 setStatuses(prev => ({ ...prev, talents: 'READY' }));
             }
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error));
             setStatuses(prev => ({ ...prev, talents: 'ERROR' }));
         }
     };
@@ -401,8 +405,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 setError("Rolled an invalid boon result. Please roll again.");
                 setStatuses(prev => ({ ...prev, boons: 'READY' }));
             }
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error));
             setStatuses(prev => ({ ...prev, boons: 'ERROR' }));
         }
     };
@@ -604,8 +608,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 }
             }
 
-        } catch (e: any) {
-            setError(e.message || "Failed to resolve choice");
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Failed to resolve choice'));
         } finally {
             setStatuses(prev => ({
                 ...prev,
@@ -670,8 +674,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                     }
                 }
             }
-        } catch (e: any) {
-            setError(e.message || "Failed to resolve nested table");
+        } catch (error: unknown) {
+            setError(getErrorMessage(error, 'Failed to resolve nested table'));
         } finally {
             setStatuses(prev => ({
                 ...prev,
@@ -773,8 +777,8 @@ export const useLevelUp = (props: LevelUpProps) => {
                 patronUuid: selectedPatronUuid
             });
 
-        } catch (e: any) {
-            setError(e.message);
+        } catch (error: unknown) {
+            setError(getErrorMessage(error));
             setStatuses(prev => ({ ...prev, class: 'ERROR' }));
         } finally {
             setIsSubmitting(false);

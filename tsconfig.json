@@ -1,6 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
     "target": "ES2018",
     "lib": [
       "dom",
@@ -45,6 +44,7 @@
     "node_modules",
     "scripts",
     "src/scripts",
+    "src/tests/deprecated",
     "temp-shadowdark",
     "temp"
   ]

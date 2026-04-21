@@ -1,4 +1,4 @@
-import { SystemAdapter, SystemPlugin } from './types';
+import { hasInitialize, SystemAdapter, SystemModuleInfo, SystemPlugin } from './types';
 export * from './utils';
 import { logger } from '@shared/utils/logger';
 import path from 'node:path';
@@ -29,6 +29,8 @@ const pluginMap = _state.pluginMap;
 const adapterInstances = _state.adapterInstances;
 const isInitialized = () => _state.isInitialized;
 const setInitialized = (val: boolean) => { _state.isInitialized = val; };
+
+const getUniquePlugins = () => Array.from(new Set(pluginMap.values()));
 
 /**
  * Boot-Time Scanner: Discovers all modules in src/modules/
@@ -61,7 +63,7 @@ export function initializeRegistry() {
             }
 
             try {
-                const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
+                const info = JSON.parse(fs.readFileSync(infoPath, 'utf8')) as SystemModuleInfo;
                 const plugin: SystemPlugin = {
                     info,
                     directory: entry.name,
@@ -74,6 +76,9 @@ export function initializeRegistry() {
                 const primaryId = info.id.toLowerCase();
                 pluginMap.set(primaryId, plugin);
                 logger.info(`Registry [PID:${process.pid}] | Discovered module: ${info.title} (${primaryId})`);
+                if (info.experimental) {
+                    logger.warn(`Registry [PID:${process.pid}] | Experimental module hidden from public registry: ${info.title} (${primaryId})`);
+                }
             } catch (err) {
                 logger.error(`Registry | Failed to parse manifest for "${entry.name}":`, err);
             }
@@ -89,11 +94,12 @@ export function initializeRegistry() {
  * Returns all discovered system manifests.
  * Used by the Core Service to expose available systems to the frontend.
  */
-export function getRegisteredModules() {
+export function getRegisteredModules(options?: { includeExperimental?: boolean }) {
     if (!isInitialized()) initializeRegistry();
-    // Return unique plugin info objects by converting values to a Set then back to an Array
-    const uniquePlugins = Array.from(new Set(pluginMap.values()));
-    return uniquePlugins.map(p => p.info);
+
+    return getUniquePlugins()
+        .map((plugin) => plugin.info)
+        .filter((info) => options?.includeExperimental || !info.experimental);
 }
 
 /**
@@ -124,8 +130,8 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
         const adapter = new AdapterClass();
 
         // Optional initialization hook for adapters (e.g., cache warming)
-        if (typeof (adapter as any).initialize === 'function') {
-            await (adapter as any).initialize();
+        if (hasInitialize(adapter)) {
+            await adapter.initialize();
         }
 
         adapterInstances.set(id, adapter);

@@ -2,21 +2,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Users } from 'lucide-react';
+import type { User } from '@shared/interfaces';
 
-interface UserDetail {
-    id: string;
-    name: string;
-    isGM: boolean;
-    active: boolean;
-    color: string;
-    characterName?: string;
-}
-
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { useUI } from '@client/ui/context/UIContext';
 
 export default function PlayerList() {
-    const { users, currentUser, handleLogout, step } = useFoundry();
+    const { users, currentUser, handleLogout, step } = useSession();
     const currentUserId = currentUser?._id || currentUser?.id || null;
     const { isPlayerListOpen, setPlayerListOpen } = useUI();
     const isOpen = isPlayerListOpen;
@@ -50,7 +42,7 @@ export default function PlayerList() {
     const activeGMCount = gamemasters.filter(u => u.active).length;
     const activePlayerCount = players.filter(u => u.active).length;
 
-    const renderUserRow = (u: any) => {
+    const renderUserRow = (u: User) => {
         const isSelf = (u._id || u.id) === currentUserId;
         const shouldHighlight = isSelf;
 
@@ -58,7 +50,7 @@ export default function PlayerList() {
             <li key={u._id || u.id || u.name} className={`flex items-center gap-2 px-2 py-1.5 rounded transition-all ${u.active ? 'opacity-100' : 'opacity-40'} ${shouldHighlight ? 'ring-1 ring-white/20 bg-white/10' : ''}`}>
                 <div
                     className={`w-2.5 h-2.5 rounded-full ring-2 ring-black/50 ${shouldHighlight ? 'ring-white/30' : ''}`}
-                    style={{ backgroundColor: u.color, boxShadow: u.active ? `0 0 8px ${u.color}` : 'none' }}
+                    style={{ backgroundColor: u.color || '#9ca3af', boxShadow: u.active && u.color ? `0 0 8px ${u.color}` : 'none' }}
                 />
                 <div className="flex flex-col leading-tight min-w-0">
                     <span className={`text-sm font-bold flex items-center gap-1.5 truncate ${shouldHighlight ? 'text-white' : 'text-neutral-200'}`}>

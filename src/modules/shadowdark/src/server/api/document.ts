@@ -1,4 +1,6 @@
 import { shadowdarkAdapter } from '../../server/ShadowdarkAdapter';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
+import { getModuleFoundryClient } from '@server/shared/utils/getModuleFoundryClient';
 import { logger } from '@shared/utils/logger';
 
 export async function handleGetDocument(request: Request, { params }: any) {
@@ -10,7 +12,7 @@ export async function handleGetDocument(request: Request, { params }: any) {
             return Response.json({ error: 'Missing UUID' }, { status: 400 });
         }
 
-        const client = (request as any).foundryClient;
+        const client = getModuleFoundryClient(request);
         const document = await shadowdarkAdapter.resolveDocument(client, uuid);
 
         if (!document) {
@@ -18,8 +20,8 @@ export async function handleGetDocument(request: Request, { params }: any) {
         }
 
         return Response.json(document);
-    } catch (e: any) {
-        logger.error('Failed to get Shadowdark document', e);
-        return Response.json({ error: e.message }, { status: 500 });
+    } catch (error: unknown) {
+        logger.error('Failed to get Shadowdark document', error);
+        return Response.json({ error: getErrorMessage(error) }, { status: 500 });
     }
 }

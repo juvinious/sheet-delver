@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
+import type { AppSystemInfo, User } from '@shared/interfaces';
 import { Theme } from '../hooks/useTheme';
-
-interface User {
-    id?: string;
-    _id?: string;
-    name: string;
-    active?: boolean;
-    isGM?: boolean;
-}
 
 interface LoginViewProps {
     users: User[];
-    system: any;
+    system: AppSystemInfo | null;
     theme: Theme;
     onLogin: (user: string, password: string) => Promise<void>;
     loading: boolean;

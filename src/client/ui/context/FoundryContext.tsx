@@ -1,13 +1,25 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode, useRef } from 'react';
-import { logger, LOG_LEVEL } from '@shared/utils/logger';
-import { SystemInfo, User, Combat, Combatant, ConnectionStep, ActorCardData } from '@shared/interfaces';
-import { useNotifications } from '../components/NotificationSystem';
+import { logger } from '@shared/utils/logger';
+import { AppSystemInfo, User, ConnectionStep, ActorCardData } from '@shared/interfaces';
 import { getUIModule } from '@modules/registry/client';
 import { UIModuleManifest } from '@shared/interfaces';
-import { io, Socket } from 'socket.io-client';
-import { useUI } from '@client/ui/context/UIContext';
+import { Socket } from 'socket.io-client';
+import { useSession } from '@client/ui/context/SessionContext';
+import { useActorCombat } from '@client/ui/context/ActorCombatContext';
+import { useRealtime } from '@client/ui/context/RealtimeContext';
+import { useChat } from '@client/ui/context/ChatContext';
+import { UnauthorizedApiError } from '@client/ui/api/http';
+import * as foundryApi from '@client/ui/api/foundryApi';
+import type { AuthenticatedStatusPayload, SystemStatusPayload } from '@shared/contracts/status';
+import type { ActorDto, ActorListPayload, ActorCardsPayload } from '@shared/contracts/actors';
+import type { CombatDto, CombatListPayload } from '@shared/contracts/combats';
+import type { ChatMessageDto } from '@shared/contracts/chat';
+import type {
+    RealtimeSharedContentPayload,
+    RealtimeCombatUpdatePayload,
+} from '@shared/contracts/realtime';
 
 interface FoundryContextType {
     step: ConnectionStep;
@@ -16,28 +28,28 @@ interface FoundryContextType {
     setToken: (token: string | null) => void;
     users: User[];
     currentUser: User | null;
-    system: SystemInfo | null;
-    messages: any[];
+    system: AppSystemInfo | null;
+    messages: ChatMessageDto[];
     appVersion: string | null;
     activeUIModule: UIModuleManifest | null;
     actorCards: Record<string, ActorCardData>;
-    fetchActorCards: () => Promise<void>;
+    fetchActorCards: () => Promise<ActorCardsPayload | void>;
     isConfigured: boolean;
 
     // Actions
     handleLogin: (username: string, password?: string) => Promise<void>;
     handleChatSend: (message: string, options?: { rollMode?: string, speaker?: string }) => Promise<void>;
     handleLogout: () => Promise<void>;
-    fetchActors: () => Promise<any>;
+    fetchActors: () => Promise<ActorListPayload | void>;
 
     // Actors (Shared state)
-    ownedActors: any[];
-    readOnlyActors: any[];
-    sharedContent: any | null;
+    ownedActors: ActorDto[];
+    readOnlyActors: ActorDto[];
+    sharedContent: RealtimeSharedContentPayload | null;
 
     // Combats
-    combats: Combat[];
-    fetchCombats: () => Promise<any>;
+    combats: CombatDto[];
+    fetchCombats: () => Promise<CombatListPayload | void>;
 
     // Real-time
     appSocket: Socket | null;
@@ -46,277 +58,65 @@ interface FoundryContextType {
 const FoundryContext = createContext<FoundryContextType | undefined>(undefined);
 
 export function FoundryProvider({ children }: { children: ReactNode }) {
-    const { addNotification } = useNotifications();
-    const { resetUI } = useUI();
-    const [step, setStepState] = useState<ConnectionStep>('init');
-    const [token, setTokenState] = useState<string | null>(() => {
-        if (typeof window !== 'undefined') {
-            return localStorage.getItem('sheet-delver-token');
-        }
-        return null;
-    });
+    const {
+        step,
+        setStep,
+        token,
+        setToken,
+        users,
+        setUsers,
+        currentUser,
+        setCurrentUserId,
+        appVersion,
+        setAppVersion,
+        isConfigured,
+        setIsConfigured,
+        handleLogin,
+        handleLogout,
+        registerLogoutCleanup,
+    } = useSession();
 
-    const [users, setUsers] = useState<User[]>([]);
-    const [system, setSystem] = useState<SystemInfo | null>(null);
-    const [messages, setMessages] = useState<any[]>([]);
-    const [appVersion, setAppVersion] = useState<string | null>(null);
-    const lastActorSyncTokenRef = useRef<number>(0);
-    const [combatSyncToken, setCombatSyncToken] = useState<number>(0);
-    const [appSocket, setAppSocket] = useState<Socket | null>(null);
+    const { appSocket } = useRealtime();
+
+    const {
+        ownedActors,
+        readOnlyActors,
+        actorCards,
+        combats,
+        fetchActorCards,
+        fetchActors,
+        fetchCombats,
+        resetActorCombatState,
+    } = useActorCombat();
+
+    const { messages, handleChatSend, resetChatState } = useChat();
+
+    const [system, setSystem] = useState<AppSystemInfo | null>(null);
+    const lastActorSyncTokenRef = useRef<string | null>(null);
     const [activeUIModule, setActiveUIModule] = useState<UIModuleManifest | null>(null);
-    const [ownedActors, setOwnedActors] = useState<any[]>([]);
-    const [readOnlyActors, setReadOnlyActors] = useState<any[]>([]);
-    const [sharedContent, setSharedContent] = useState<any | null>(null);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [sharedContent, setSharedContent] = useState<RealtimeSharedContentPayload | null>(null);
     const [lastWorldId, setLastWorldId] = useState<string | null>(null);
-    const [combats, setCombats] = useState<Combat[]>([]);
-    const [actorCards, setActorCards] = useState<Record<string, ActorCardData>>({});
-    const [isConfigured, setIsConfigured] = useState<boolean>(true);
-
-    const currentUser = users.find(u => (u._id || u.id) === currentUserId) || null;
-
-    const setToken = useCallback((newToken: string | null) => {
-        setTokenState(newToken);
-        if (typeof window !== 'undefined') {
-            if (newToken) {
-                localStorage.setItem('sheet-delver-token', newToken);
-            } else {
-                localStorage.removeItem('sheet-delver-token');
-            }
-        }
-    }, []);
-
-    const setStep = useCallback((newStep: ConnectionStep, origin: string = 'unknown', reason?: string) => {
-        if (step === newStep) return;
-        const timestamp = new Date().toISOString();
-        logger.debug(`[FoundryProvider] ${timestamp} | ${step} -> ${newStep} | Origin: ${origin}${reason ? ` | Reason: ${reason}` : ''}`);
-        setStepState(newStep);
-    }, [step]);
 
     const isEqual = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
 
-    // --- Core Data Fetching ---
-
-    const fetchChat = useCallback(async () => {
-        if (step !== 'dashboard' || !token) return;
-        try {
-            const res = await fetch('/api/chat', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const data = await res.json();
-            if (data.messages && Array.isArray(data.messages)) {
-                setMessages(data.messages);
-            }
-        } catch (e) {
-            logger.error('FoundryProvider | Failed to fetch chat:', e);
-        }
-    }, [step, token]);
-
-    const lastActorFetchTimeRef = useRef<number>(0);
-    const FETCH_THROTTLE_MS = 2000;
-
-    const fetchActorCards = useCallback(async () => {
-        if (!token) return;
-        try {
-            const res = await fetch('/api/actors/cards', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json();
-            setActorCards(data || {});
-        } catch (e) {
-            logger.error('FoundryProvider | Failed to fetch actor cards:', e);
-        }
-    }, [token, setToken]);
-
-    const fetchActors = useCallback(async () => {
-        if (!token) return;
-
-        // Simple throttle to prevent rapid-fire requests from multiple socket events
-        const now = Date.now();
-        if (now - lastActorFetchTimeRef.current < FETCH_THROTTLE_MS) {
-            logger.debug('FoundryProvider | Skipping fetchActors (throttled)');
-            return;
-        }
-
-        lastActorFetchTimeRef.current = now;
-
-        try {
-            const res = await fetch('/api/actors', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json();
-            if (data.ownedActors || data.actors) {
-                setOwnedActors(data.ownedActors || data.actors || []);
-                setReadOnlyActors(data.readOnlyActors || []);
-                
-                // Fetch corresponding actor cards for the dashboard
-                fetchActorCards();
-            }
-            return data;
-        } catch (error: any) {
-            logger.error('FoundryProvider | Fetch actors failed:', error.message);
-        }
-    }, [token, fetchActorCards, setToken]);
-
-    const fetchCombats = useCallback(async () => {
-        if (!token) return;
-        try {
-            const res = await fetch('/api/combats', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.status === 401) {
-                setToken(null);
-                return;
-            }
-            const data = await res.json();
-            if (data.combats) {
-                // Fetch actors for each combat
-                const resolvedCombats = await Promise.all(data.combats.map(async (combat: any) => {
-                    const combatants = await Promise.all((combat.combatants || []).map(async (combatant: any) => {
-                        let actor = null;
-                        if (combatant.actorId) {
-                            try {
-                                const actorRes = await fetch(`/api/actors/${combatant.actorId}`, {
-                                    headers: { 'Authorization': `Bearer ${token}` }
-                                });
-                                actor = await actorRes.json();
-                            } catch (e) {
-                                logger.error(`Failed fetching actor ${combatant.actorId}`, e);
-                            }
-                        }
-
-                        const serializedCombatant: Combatant = {
-                            tokenId: combatant.tokenId,
-                            sceneId: combatant.sceneId,
-                            actorId: combatant.actorId,
-                            _id: combatant._id,
-                            type: combatant.type,
-                            system: combatant.system,
-                            img: combatant.img,
-                            actor: actor,
-                            hidden: combatant.hidden,
-                            initiative: combatant.initiative,
-                            defeated: combatant.defeated,
-                            group: combatant.group,
-                            flags: combatant.flags,
-                            _stats: combatant.stats
-                        };
-                        return serializedCombatant;
-                    }));
-
-                    return {
-                        ...combat,
-                        combatants
-                    };
-                }));
-
-                setCombats(resolvedCombats);
-            }
-            return data;
-        } catch (error: any) {
-            logger.error('FoundryProvider | Fetch combat failed:', error.message);
-        }
-    }, [token, setToken]);
-
-    const handleLogin = useCallback(async (username: string, password?: string) => {
-        try {
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                setToken(data.token);
-                setStep('authenticating', 'handleLogin', 'Login success');
-            } else {
-                addNotification('Login failed: ' + data.error, 'error');
-                throw new Error(data.error);
-            }
-        } catch (e: any) {
-            addNotification('Error: ' + e.message, 'error');
-            throw e;
-        }
-    }, [setToken, setStep, addNotification]);
-
-    const handleChatSend = useCallback(async (message: string, options?: { rollMode?: string, speaker?: string }) => {
-        try {
-            const res = await fetch('/api/chat/send', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    message,
-                    rollMode: options?.rollMode,
-                    speaker: options?.speaker
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                fetchChat();
-            } else {
-                addNotification('Failed: ' + data.error, 'error');
-            }
-        } catch (e: any) {
-            addNotification('Error: ' + e.message, 'error');
-        }
-    }, [token, fetchChat, addNotification]);
-
-    const handleLogout = useCallback(async () => {
-        try {
-            resetUI();
-            setStep('login', 'handleLogout', 'User logged out');
+    useEffect(() => {
+        const unregister = registerLogoutCleanup(() => {
             setCurrentUserId(null);
-            setOwnedActors([]);
-            setReadOnlyActors([]);
+            resetActorCombatState();
+            resetChatState();
             setSharedContent(null);
-            setCombats([]);
-            setMessages([]);
+        });
+        return unregister;
+    }, [registerLogoutCleanup, resetActorCombatState, resetChatState, setCurrentUserId]);
 
-            await fetch('/api/logout', {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            setToken(null);
-        } catch (e: any) {
-            logger.error('FoundryProvider | Logout error:', e);
-            resetUI();
-            setStep('login', 'handleLogout error', 'Force transition');
-            setCurrentUserId(null);
-            setOwnedActors([]);
-            setReadOnlyActors([]);
-            setSharedContent(null);
-            setCombats([]);
-            setMessages([]);
-            setToken(null);
-        }
-    }, [token, resetUI, setStep, setToken]);
-
-    // --- App Socket & State Initialization ---
+    // --- Initial Status Bootstrap ---
     useEffect(() => {
         let isMounted = true;
 
         const initStatus = async () => {
             try {
-                const headers: any = {};
-                if (token) headers['Authorization'] = `Bearer ${token}`;
-
                 // Fetch initial status to seed specific user data like currentUserId
-                const res = await fetch('/api/status', { headers, cache: 'no-store' });
-                if (!res.ok) return;
-
-                const data = await res.json();
+                const data = await foundryApi.fetchStatus(token);
                 if (!isMounted) return;
 
                 if (data.currentUserId) setCurrentUserId(data.currentUserId);
@@ -324,62 +124,30 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
 
                 // Fetch initial shared content
                 if (token) {
-                    const scRes = await fetch('/api/shared-content', { headers, cache: 'no-store' });
-                    if (scRes.ok) {
-                        const scData = await scRes.json();
-                        setSharedContent(scData);
-                    }
+                    const scData = await foundryApi.fetchSharedContent(token);
+                    setSharedContent(scData);
                 }
             } catch (e) {
+                if (e instanceof UnauthorizedApiError) {
+                    setToken(null);
+                    return;
+                }
                 logger.error('FoundryProvider | Initial status fetch failed', e);
             }
         };
 
         initStatus();
 
-        // Connect socket unconditionally to receive global system statuses (Guest Mode)
-        // If auth token is present, server joins us to the 'authenticated' room
-        const socket = io({
-            auth: token ? { token } : {},
-            reconnectionAttempts: 10,
-            reconnectionDelay: 2000,
-            reconnectionDelayMax: 5000,
-            randomizationFactor: 0.5,
-            timeout: 10000,
-            transports: ['polling', 'websocket']
-        });
-
-        socket.on('connect', () => {
-            logger.debug('FoundryContext | App Socket Connected');
-        });
-
-        socket.on('connect_error', (err) => {
-            const isNoisyError = err.message === 'xhr poll error' || 
-                                err.message === 'websocket error' ||
-                                err.message.includes('timeout');
-
-            if (isNoisyError) {
-                // Log as debug during reconnection attempts to avoid console red spray
-                logger.debug('FoundryContext | App Socket Reconnection attempt failed:', err.message);
-            } else {
-                logger.error('FoundryContext | App Socket Connection Error:', err.message);
-            }
-        });
-
-        setAppSocket(socket);
-
         return () => {
             isMounted = false;
-            socket.disconnect();
-            setAppSocket(null);
         };
-    }, [token]);
+    }, [token, setCurrentUserId, setIsConfigured, setToken]);
 
     // --- Real-time Socket Status Sync ---
     useEffect(() => {
         if (!appSocket) return;
 
-        const determineStep = (data: any, currentStep: string, configured: boolean) => {
+        const determineStep = (data: SystemStatusPayload, currentStep: string, configured: boolean) => {
             const status = data.system?.status || (data.connected ? 'active' : 'offline');
             const isAuthenticated = !!token;
 
@@ -412,7 +180,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             return isAuthenticated ? 'dashboard' : 'login';
         };
 
-        const handleSystemStatus = (data: any) => {
+        const handleSystemStatus = (data: SystemStatusPayload) => {
             try {
                 if (data.debug?.level !== undefined) {
                     logger.setLevel(data.debug.level);
@@ -431,12 +199,8 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         
                         // Aggressive state purge to prevent cross-world contamination
                         if (token) setToken(null);
-                        setOwnedActors([]);
-                        setReadOnlyActors([]);
-                        setActorCards({});
+                        resetActorCombatState();
                         setUsers([]);
-                        setCombats([]);
-                        setMessages([]);
                         setSharedContent(null);
                         
                         setLastWorldId(currentWorldId);
@@ -447,7 +211,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                     // Allow system data to update from probe data even when not fully connected.
                     // This ensures world title/description appear in the 'world-closed' state.
                     if (!isEqual(system, data.system)) setSystem(data.system);
-                    if (data.connected && !isEqual(users, data.users)) setUsers(data.users || []);
+                    if (data.connected && !isEqual(users, data.users)) setUsers((data.users || []) as User[]);
                     if (data.appVersion && appVersion !== data.appVersion) setAppVersion(data.appVersion);
                     if (data.isConfigured !== undefined && isConfigured !== data.isConfigured) setIsConfigured(data.isConfigured);
 
@@ -457,9 +221,9 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
                         if (token) fetchActors();
                     }
 
-                    const targetStep = determineStep(data, step, isConfigured);
+                    const targetStep = determineStep(data, step, isConfigured) as ConnectionStep;
                     if (step !== targetStep) {
-                        setStep(targetStep as any, 'socket', `Status change: ${targetStep}`);
+                        setStep(targetStep, 'socket', `Status change: ${targetStep}`);
                         if (targetStep === 'dashboard' && data.connected) fetchActors();
                     }
                 }
@@ -468,7 +232,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             }
         };
 
-        const handleSharedContentUpdate = (scData: any) => {
+        const handleSharedContentUpdate = (scData: RealtimeSharedContentPayload) => {
             if (!isEqual(sharedContent, scData)) setSharedContent(scData);
         };
 
@@ -479,7 +243,7 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
             appSocket.off('systemStatus', handleSystemStatus);
             appSocket.off('sharedContentUpdate', handleSharedContentUpdate);
         };
-    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, setStep, setToken, lastWorldId]);
+    }, [appSocket, step, token, system, users, appVersion, sharedContent, fetchActors, resetActorCombatState, setAppVersion, setIsConfigured, setStep, setToken, setUsers, lastWorldId, isConfigured]);
 
     // Hydrate activeAdapter and activeUIModule when system changes
     useEffect(() => {
@@ -500,32 +264,25 @@ export function FoundryProvider({ children }: { children: ReactNode }) {
         return () => { isMounted = false; };
     }, [system?.id]);
 
-    // Chat and Combat Real-time Sync
+    // Combat real-time sync
     useEffect(() => {
         if (step === 'dashboard' && token) {
-            fetchChat();
             fetchCombats(); // Initial fetch
 
             if (appSocket) {
-                const handleCombatUpdate = (data: any) => {
+                const handleCombatUpdate = (data: RealtimeCombatUpdatePayload) => {
                     //logger.debug('FoundryContext | Socket Combat Update received:', data);
                     fetchCombats();
                 };
-                const handleChatUpdate = (data: any) => {
-                    //logger.debug('FoundryContext | Socket Chat Update received:', data);
-                    fetchChat();
-                };
 
                 appSocket.on('combatUpdate', handleCombatUpdate);
-                appSocket.on('chatUpdate', handleChatUpdate);
 
                 return () => {
                     appSocket.off('combatUpdate', handleCombatUpdate);
-                    appSocket.off('chatUpdate', handleChatUpdate);
                 };
             }
         }
-    }, [step, token, fetchChat, fetchCombats, appSocket]);
+    }, [step, token, fetchCombats, appSocket]);
 
     const contextValue = React.useMemo(() => ({
         step, setStep,

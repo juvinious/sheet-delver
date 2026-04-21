@@ -6,14 +6,14 @@ import { useUI } from '@client/ui/context/UIContext';
 import { X, Edit, Book, ChevronLeft, ChevronRight, Share2, Loader2 } from 'lucide-react';
 import RichTextEditor from './RichTextEditor';
 import { useConfig } from '@client/ui/context/ConfigContext';
-import { useFoundry } from '@client/ui/context/FoundryContext';
+import { useSession } from '@client/ui/context/SessionContext';
 import { logger } from '@shared/utils/logger';
 
 export default function JournalModal() {
     const { activeJournalId, setActiveJournalId, sharedJournalId, setSharedJournalId } = useUI();
     const { getJournal, updateJournal } = useJournals();
     const { foundryUrl } = useConfig();
-    const { currentUser } = useFoundry();
+    const { currentUser } = useSession();
 
     const [journal, setJournal] = useState<JournalEntry | null>(null);
     const [loading, setLoading] = useState(false);
@@ -69,7 +69,8 @@ export default function JournalModal() {
 
     const isShared = activeJournalId === sharedJournalId;
     const isGM = currentUser?.isGM || false;
-    const canEdit = !isShared && (isGM || (journal?.ownership?.[currentUser?.id || ''] || 0) >= 3);
+    const currentUserId = currentUser?._id || currentUser?.id || '';
+    const canEdit = !isShared && (isGM || (journal?.ownership?.[currentUserId] || 0) >= 3);
     const canShare = isGM && !isShared;
 
     const currentPage = journal?.pages?.[activePageIndex];

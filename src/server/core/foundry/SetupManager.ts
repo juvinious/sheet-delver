@@ -1,5 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@shared/utils/logger';
+import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { persistentCache } from '../cache/PersistentCache';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -201,8 +202,8 @@ export class SetupManager {
             } else {
                 logger.warn(`!!! SetupManager | PROBE FAILED: No world found. Title from HTML: ${worldTitleFromHtml}`);
             }
-        } catch (e: any) {
-            logger.warn(`!!! SetupManager | PROBE EXCEPTION: ${e.message}`);
+        } catch (error: unknown) {
+            logger.warn(`!!! SetupManager | PROBE EXCEPTION: ${getErrorMessage(error)}`);
         }
         return null;
     }
