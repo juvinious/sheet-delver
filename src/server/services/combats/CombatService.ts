@@ -27,6 +27,16 @@ interface CombatServiceDeps {
     normalizeActors: (actorList: RawActor[], client: CombatClientLike) => Promise<RawActor[]>;
 }
 
+function sortCombatants(combatants: RawCombatant[] = []): RawCombatant[] {
+    return [...combatants].sort((a, b) => {
+        const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
+        const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
+        const aid = String(a._id || a.id || '');
+        const bid = String(b._id || b.id || '');
+        return (ib - ia) || (aid > bid ? 1 : -1);
+    });
+}
+
 export function createCombatService(deps: CombatServiceDeps) {
     // Combat list projection with enriched/normalized combatant actor payloads.
     const listCombats = async (client: CombatClientLike): Promise<CombatListPayload> => {
@@ -72,13 +82,7 @@ export function createCombatService(deps: CombatServiceDeps) {
         if (isGM) return true;
 
         const currentTurn = combat.turn ?? 0;
-        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
-            const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
-            const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            const aid = String(a._id || a.id || '');
-            const bid = String(b._id || b.id || '');
-            return (ib - ia) || (aid > bid ? 1 : -1);
-        });
+        const sortedCombatants = sortCombatants(combat.combatants || []);
 
         const activeCombatant = sortedCombatants[currentTurn];
         if (!activeCombatant || !activeCombatant.actorId) return false;
@@ -106,13 +110,7 @@ export function createCombatService(deps: CombatServiceDeps) {
             return { error: 'Unauthorized: You do not own the current combatant and are not a GM', status: 403 };
         }
 
-        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
-            const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
-            const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            const aid = String(a._id || a.id || '');
-            const bid = String(b._id || b.id || '');
-            return (ib - ia) || (aid > bid ? 1 : -1);
-        });
+        const sortedCombatants = sortCombatants(combat.combatants || []);
 
         let currentRound = combat.round || 0;
         let currentTurn = combat.turn ?? -1;
@@ -155,13 +153,7 @@ export function createCombatService(deps: CombatServiceDeps) {
             return { error: 'Unauthorized: Only GMs can move to previous turns', status: 403 };
         }
 
-        const sortedCombatants = [...(combat.combatants || [])].sort((a, b) => {
-            const ia = typeof a.initiative === 'number' && !isNaN(a.initiative) ? a.initiative : -Infinity;
-            const ib = typeof b.initiative === 'number' && !isNaN(b.initiative) ? b.initiative : -Infinity;
-            const aid = String(a._id || a.id || '');
-            const bid = String(b._id || b.id || '');
-            return (ib - ia) || (aid > bid ? 1 : -1);
-        });
+        const sortedCombatants = sortCombatants(combat.combatants || []);
 
         let currentRound = combat.round || 0;
         let currentTurn = combat.turn ?? 0;
