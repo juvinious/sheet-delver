@@ -108,9 +108,12 @@ security:
         allowed-origins:
             - http://localhost:3000
     service-token: "replace-with-strong-random-token"  # Internal privileged bearer token (not a Foundry password)
+    admin-setup-token: "replace-with-strong-random-bootstrap-token"  # One-time token for creating the initial /admin account
 ```
 
 The `security.service-token` value is used only for internal privileged API bearer flows. Do not reuse your Foundry account password.
+
+The `security.admin-setup-token` value is used only for first-time admin bootstrap at `/admin`. It is not the admin password. You choose this token, then enter it once in the admin setup form along with the password you want to create.
 
 You can generate a strong token with either command:
 
@@ -123,6 +126,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
 Environment override is supported via `APP_SERVICE_TOKEN`.
+
+Environment override is also supported via `APP_ADMIN_SETUP_TOKEN`.
 
 CORS policy is allow-list based by default and shared by Express + Socket.io:
 - `security.cors.allowed-origins` controls allowed origins.
@@ -144,7 +149,7 @@ Debug API surface follows the existing debug switch:
     ```bash
     npm run setup
     ```
-    *Follow the prompts to configure your Foundry connection. The setup wizard auto-generates `security.service-token` in `settings.yaml`.*
+    *Follow the prompts to configure your Foundry connection. The setup wizard auto-generates both `security.service-token` and `security.admin-setup-token` in `settings.yaml`.*
 
 3.  **Start the Application**:
     -   **Development**:
@@ -156,7 +161,13 @@ Debug API surface follows the existing debug switch:
         npm run build && npm start
         ```
 
-4.  **Deployment (PM2)**:
+4.  **Create the Admin Account**:
+    Open `/admin` after the app starts. On first run you will see the setup form instead of the login form.
+    Enter:
+    - the value from `security.admin-setup-token` (or `APP_ADMIN_SETUP_TOKEN`)
+    - the admin password you want to create
+
+5.  **Deployment (PM2)**:
     For production environments, use [PM2](https://pm2.keymetrics.io/) with the provided ecosystem file to ensure the application runs from the correct directory.
 
     ```bash
@@ -171,7 +182,7 @@ Debug API surface follows the existing debug switch:
     pm2 save
     ```
 
-5.  **Open**: Navigate to the URL shown in the setup output (typically [http://localhost:3000](http://localhost:3000)).
+6.  **Open**: Navigate to the URL shown in the setup output (typically [http://localhost:3000](http://localhost:3000)).
 
 *Note: The startup process automatically manages both the backend service and the frontend web server.*
 

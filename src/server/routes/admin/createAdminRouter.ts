@@ -100,11 +100,20 @@ export function createAdminRouter(deps: AdminRouterDeps) {
             const account = await createAdminAccount(password);
             logger.info(`Admin account created with ID: ${account.adminId}`);
 
-            res.json({
-                success: true,
-                message: 'Admin account created successfully',
-                adminId: account.adminId,
-            });
+                // Issue admin session token (same as login)
+                const sessionDurationMs = 15 * 60 * 1000; // 15 minutes
+                const claims = createAdminSessionClaims(account.adminId, sessionDurationMs);
+                const token = adminSessionManager.storeSession(claims);
+
+                // Return token so user is immediately authenticated
+                res.json({
+                    success: true,
+                    message: 'Admin account created successfully',
+                    adminId: account.adminId,
+                    token,
+                    csrfToken: claims.csrfToken,
+                    expiresIn: sessionDurationMs,
+                });
         } catch (error: unknown) {
             logger.error('Admin setup failed', error);
             res.status(500).json({ error: getErrorMessage(error) });
@@ -225,6 +234,24 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     // Existing Admin Routes (guarded by account existence check + admin auth)
     // ============
 
+        /**
+         * GET /admin/auth/status
+         * Check if admin account exists (used to determine setup vs login flow)
+         * No auth required - public endpoint to determine app state
+         */
+        adminRouter.get('/auth/status', async (req, res) => {
+            try {
+                const account = await loadAdminAccount();
+                res.json({
+                    success: true,
+                    accountExists: !!account,
+                });
+            } catch (error: unknown) {
+                logger.error('Failed to check admin account status', error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        });
+
     // Apply auth middleware to mutation endpoints
     // Order: localhost -> account exists -> admin auth -> csrf -> audit
     adminRouter.post('/setup/scrape', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction);
@@ -294,28 +321,33 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     /**
      * GET /admin/api/lifecycle
      * List all modules with their lifecycle state (enabled/disabled, status, compatibility)
-     * No auth required for GET (read-only)
+     * Requires admin auth
      */
-    adminRouter.get('/lifecycle', async (req, res) => {
-        try {
-            const { listModules } = await import('@modules/registry/server');
-            const modules = listModules({ includeExperimental: true, includeDisabled: true });
-            res.json({
-                success: true,
-                modules: modules.map((m) => ({
-                    moduleId: m.info.id,
-                    title: m.info.title,
-                    enabled: m.enabled,
-                    status: m.status,
-                    experimental: m.info.experimental,
-                    reason: m.reason,
-                })),
-            });
-        } catch (error: unknown) {
-            logger.error('Failed to list module lifecycle', error);
-            res.status(500).json({ error: getErrorMessage(error) });
+    adminRouter.get(
+        '/lifecycle',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        async (req, res) => {
+            try {
+                const { listModules } = await import('@modules/registry/server');
+                const modules = listModules({ includeExperimental: true, includeDisabled: true });
+                res.json({
+                    success: true,
+                    modules: modules.map((m) => ({
+                        moduleId: m.info.id,
+                        title: m.info.title,
+                        enabled: m.enabled,
+                        status: m.status,
+                        experimental: m.info.experimental,
+                        reason: m.reason,
+                    })),
+                });
+            } catch (error: unknown) {
+                logger.error('Failed to list module lifecycle', error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
         }
-    });
+    );
 
     /**
      * POST /admin/api/lifecycle/:moduleId/enable

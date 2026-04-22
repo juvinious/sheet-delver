@@ -14,6 +14,10 @@ function generateServiceToken(): string {
     return randomBytes(32).toString('hex');
 }
 
+function generateAdminSetupToken(): string {
+    return randomBytes(32).toString('hex');
+}
+
 function buildAppUrl(protocol: string, host: string, port: number): string {
     const isStandardPort = (protocol === 'http' && port === 80) || (protocol === 'https' && port === 443);
     return `${protocol}://${host}${isStandardPort ? '' : `:${port}`}`;
@@ -161,7 +165,8 @@ async function main() {
                 "allow-all-origins": false,
                 "allowed-origins": [buildAppUrl(answers.appProtocol, answers.appHost, answers.appPort)]
             },
-            "service-token": generateServiceToken()
+            "service-token": generateServiceToken(),
+            "admin-setup-token": generateAdminSetupToken()
         }
     };
 

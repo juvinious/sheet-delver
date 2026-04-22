@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
       ],
       afterFiles: [
         {
+          source: '/api/admin/:path*',
+          destination: `http://${HOST}:${API_PORT}/admin/:path*`
+        },
+        {
           source: '/api/:path*',
           destination: `http://${HOST}:${API_PORT}/api/:path*`
         }

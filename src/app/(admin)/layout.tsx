@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import AdminProviders from './components/AdminProviders';
 
 export const metadata: Metadata = {
   title: 'Admin',
@@ -10,8 +11,10 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      {children}
-    </div>
+    <AdminProviders>
+      <div>
+        {children}
+      </div>
+    </AdminProviders>
   );
 }
