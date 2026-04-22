@@ -123,7 +123,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     /**
      * Admin login endpoint - issues admin session token.
      * Only available if admin account exists.
-     * Localhost-only. Rate-limited by dedicated middleware (to be added in Slice 2).
+        * Localhost-only and rate-limited by dedicated admin middleware.
      */
     adminRouter.post('/auth/login', adminLoginLimiter, async (req, res) => {
         try {
@@ -352,6 +352,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     /**
      * POST /admin/api/lifecycle/:moduleId/enable
      * Enable a module. Requires admin auth.
+     * Returns 409 Conflict if dependencies are not met or conflicts exist.
      */
     adminRouter.post(
         '/lifecycle/:moduleId/enable',
@@ -364,7 +365,18 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 const moduleId = Array.isArray(req.params.moduleId)
                     ? req.params.moduleId[0]
                     : req.params.moduleId;
-                const { enableModule } = await import('@modules/registry/server');
+                const { enableModule, checkCanEnableModule } = await import('@modules/registry/server');
+
+                // Check dependencies and conflicts
+                const depCheck = checkCanEnableModule(moduleId);
+                if (!depCheck.canEnable) {
+                    logger.warn(`Admin attempted to enable ${moduleId} with unmet constraints`, depCheck.violations);
+                    return res.status(409).json({
+                        success: false,
+                        error: 'Cannot enable module due to dependency or conflict constraints',
+                        violations: depCheck.violations || [],
+                    });
+                }
 
                 const success = enableModule(moduleId);
                 if (!success) {
@@ -390,6 +402,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     /**
      * POST /admin/api/lifecycle/:moduleId/disable
      * Disable a module. Requires admin auth.
+     * Returns 409 Conflict if other modules depend on this one.
      */
     adminRouter.post(
         '/lifecycle/:moduleId/disable',
@@ -402,8 +415,19 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 const moduleId = Array.isArray(req.params.moduleId)
                     ? req.params.moduleId[0]
                     : req.params.moduleId;
-                const { disableModule } = await import('@modules/registry/server');
+                const { disableModule, checkCanDisableModule } = await import('@modules/registry/server');
                 const reason = req.body?.reason || 'Module disabled by admin';
+
+                // Check if other modules depend on this one
+                const depCheck = checkCanDisableModule(moduleId);
+                if (!depCheck.canDisable) {
+                    logger.warn(`Admin attempted to disable ${moduleId} with active dependents`, depCheck.violations);
+                    return res.status(409).json({
+                        success: false,
+                        error: 'Cannot disable module because other modules depend on it',
+                        violations: depCheck.violations || [],
+                    });
+                }
 
                 const success = disableModule(moduleId, reason);
                 if (!success) {

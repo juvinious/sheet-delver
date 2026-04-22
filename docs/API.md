@@ -202,11 +202,112 @@ Launches a specific world from setup.
 ### `POST /admin/world/shutdown`
 Shuts down the currently active world.
 
+## Module Lifecycle
+
 ### `GET /admin/lifecycle`
 Returns module lifecycle state for all discovered modules. Requires admin authentication.
+
+**Response:**
+```json
+{
+  "success": true,
+  "modules": [
+    {
+      "moduleId": "shadowdark",
+      "title": "Shadowdark System",
+      "enabled": true,
+      "status": "validated",
+      "experimental": false,
+      "reason": null
+    }
+  ]
+}
+```
 
 ### `POST /admin/lifecycle/:moduleId/enable`
 Enables the target module. Requires admin authentication and a valid admin CSRF token.
 
+If the module has unmet dependencies or conflicts with already-enabled modules, returns **409 Conflict** with violation details.
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Module shadowdark enabled",
+  "moduleId": "shadowdark"
+}
+```
+
+**Conflict Response (409):**
+```json
+{
+  "success": false,
+  "error": "Cannot enable module due to dependency or conflict constraints",
+  "violations": [
+    {
+      "type": "unmet-dependency",
+      "moduleId": "shadowdark",
+      "affectedModule": "generic",
+      "reason": "Required dependency \"generic\" is not enabled. Enable it first."
+    },
+    {
+      "type": "conflicting-module",
+      "moduleId": "shadowdark",
+      "affectedModule": "dnd5e",
+      "reason": "Module \"Shadowdark System\" conflicts with enabled module \"D&D 5e System\". Disable it first."
+    }
+  ]
+}
+```
+
 ### `POST /admin/lifecycle/:moduleId/disable`
 Disables the target module. Requires admin authentication and a valid admin CSRF token.
+
+If other modules depend on this one, returns **409 Conflict** with dependent module details.
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "message": "Module shadowdark disabled",
+  "moduleId": "shadowdark",
+  "reason": "Module disabled by admin"
+}
+```
+
+**Conflict Response (409):**
+```json
+{
+  "success": false,
+  "error": "Cannot disable module because other modules depend on it",
+  "violations": [
+    {
+      "type": "has-dependents",
+      "moduleId": "generic",
+      "affectedModule": "shadowdark",
+      "reason": "Module \"Shadowdark System\" requires \"Generic\" to be enabled. Disable \"Shadowdark System\" first."
+    }
+  ]
+}
+```
+
+## Module Dependencies & Conflicts
+
+Module manifests (`info.json`) can declare:
+
+- **`dependencies`** (string[]): List of module IDs that must be enabled for this module to function.
+- **`conflicts`** (string[]): List of module IDs that cannot be enabled at the same time.
+
+Example `src/shadowdark/info.json`:
+```json
+{
+  "id": "shadowdark",
+  "title": "Shadowdark System",
+  "dependencies": ["generic"],
+  "conflicts": ["dnd5e", "morkborg"]
+}
+```
+
+When enabling or disabling a module:
+- **Enable**: Validates all dependencies exist and are enabled. Rejects if any conflicts are currently enabled.
+- **Disable**: Validates no other enabled modules depend on this one. Rejects with a list of dependent modules if necessary.

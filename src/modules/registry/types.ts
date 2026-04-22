@@ -18,6 +18,8 @@ export interface SystemModuleInfo {
         server?: string;
     };
     discovery?: import('@shared/interfaces').DiscoveryConfig;
+    dependencies?: string[];
+    conflicts?: string[];
 }
 
 /**
