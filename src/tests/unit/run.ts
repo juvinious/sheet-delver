@@ -13,6 +13,7 @@ import { run as runModuleManifestValidation } from './module-manifest-validation
 import { run as runModuleRegistryManager } from './module-registry-manager.test';
 import { run as runAdminCredentialStore } from './admin-credential-store.test';
 import { run as runAdminSessionService } from './admin-session-service.test';
+import { run as runAdminAuthMiddleware } from './admin-auth-middleware.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -30,6 +31,7 @@ async function runAllUnitTests() {
     await runAppSocketGateway();
     await runAdminCredentialStore();
     await runAdminSessionService();
+    await runAdminAuthMiddleware();
 }
 
 runAllUnitTests()

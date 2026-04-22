@@ -2,6 +2,7 @@ import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
 import { requireLocalhost } from '@server/security/policies';
+import { requireAdminAuth, auditAdminAction } from '@server/middleware/requireAdminAuth';
 import {
     loadAdminAccount,
     createAdminAccount,
@@ -154,12 +155,13 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     });
 
     // ============
-    // Existing Admin Routes (guarded by account existence check)
+    // Existing Admin Routes (guarded by account existence check + admin auth)
     // ============
 
     /**
      * Guard middleware for existing mutation endpoints.
      * Blocks requests if admin account does not exist.
+     * Applied before requireAdminAuth so it provides better error messaging.
      */
     const requireAdminAccountExists = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
         try {
@@ -176,10 +178,11 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         }
     };
 
-    // Apply guard to mutation endpoints
-    adminRouter.post('/setup/scrape', requireAdminAccountExists);
-    adminRouter.post('/world/launch', requireAdminAccountExists);
-    adminRouter.post('/world/shutdown', requireAdminAccountExists);
+    // Apply auth middleware to mutation endpoints
+    // Order: localhost -> account exists -> admin auth -> audit
+    adminRouter.post('/setup/scrape', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
+    adminRouter.post('/world/launch', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
+    adminRouter.post('/world/shutdown', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
 
     adminRouter.get('/status', async (req, res) => {
         const payload = await adminService.getStatus();
