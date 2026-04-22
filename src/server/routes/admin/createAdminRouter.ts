@@ -365,6 +365,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                         status: m.status,
                         experimental: m.info.experimental,
                         reason: m.reason,
+                        health: m.lifecycle.health,
                     })),
                 });
             } catch (error: unknown) {

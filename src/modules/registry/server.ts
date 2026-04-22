@@ -11,6 +11,7 @@ import {
     ModuleLifecycleRecord,
     ModuleLifecycleStatus,
     ModuleLifecycleStore,
+    recordLifecycleRuntimeFailure,
     saveLifecycleStore,
     upsertDiscoveredModule
 } from './lifecycle';
@@ -498,6 +499,8 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
 
         if (!AdapterClass) {
             logger.error(`Registry | No Adapter class found for ${id}`);
+            recordLifecycleRuntimeFailure(lifecycleStore, pluginId, 'No Adapter class found in logic module export');
+            saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
             return null;
         }
 
@@ -512,6 +515,9 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
         return adapter;
     } catch (e) {
         logger.error(`Registry | Failed to JIT load adapter for ${id}:`, e);
+        const message = e instanceof Error ? e.message : 'Unknown adapter load error';
+        recordLifecycleRuntimeFailure(lifecycleStore, pluginId, message);
+        saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
         return null;
     }
 }

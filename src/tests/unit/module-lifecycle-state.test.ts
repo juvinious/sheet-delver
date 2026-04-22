@@ -6,6 +6,7 @@ import {
     createEmptyLifecycleStore,
     getLifecycleRecords,
     loadLifecycleStore,
+    recordLifecycleRuntimeFailure,
     saveLifecycleStore,
     upsertDiscoveredModule,
 } from '@modules/registry/lifecycle';
@@ -49,14 +50,41 @@ export function run() {
         assert.equal(updated.lastSeenAt, 2000);
         assert.equal(updated.title, 'Shadowdark RPG Updated');
 
+        const failed = recordLifecycleRuntimeFailure(
+            store,
+            'shadowdark',
+            'Adapter initialize failed in test',
+            3000
+        );
+        assert.ok(failed);
+        assert.equal(failed?.status, 'errored');
+        assert.equal(failed?.enabled, false);
+        assert.equal(failed?.health?.errorCount, 1);
+        assert.equal(failed?.health?.lastError, 'Adapter initialize failed in test');
+        assert.equal(failed?.health?.lastErrorAt, 3000);
+
+        const failedAgain = recordLifecycleRuntimeFailure(
+            store,
+            'shadowdark',
+            'Second adapter failure in test',
+            4000
+        );
+        assert.ok(failedAgain);
+        assert.equal(failedAgain?.health?.errorCount, 2);
+        assert.equal(failedAgain?.health?.lastError, 'Second adapter failure in test');
+        assert.equal(failedAgain?.health?.lastErrorAt, 4000);
+
         saveLifecycleStore(store, stateFilePath);
         const reloaded = loadLifecycleStore(stateFilePath);
         const records = getLifecycleRecords(reloaded);
         assert.equal(records.length, 1);
         assert.equal(records[0].moduleId, 'shadowdark');
-        assert.equal(records[0].status, 'disabled');
+        assert.equal(records[0].status, 'errored');
         assert.equal(records[0].enabled, false);
         assert.equal(records[0].title, 'Shadowdark RPG Updated');
+        assert.equal(records[0].health?.errorCount, 2);
+        assert.equal(records[0].health?.lastError, 'Second adapter failure in test');
+        assert.equal(records[0].health?.lastErrorAt, 4000);
     } finally {
         if (fs.existsSync(stateFilePath)) {
             fs.unlinkSync(stateFilePath);

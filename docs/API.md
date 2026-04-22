@@ -246,7 +246,12 @@ Returns module lifecycle state for all discovered modules. Requires admin authen
       "enabled": true,
       "status": "validated",
       "experimental": false,
-      "reason": null
+      "reason": null,
+      "health": {
+        "errorCount": 0,
+        "lastError": "",
+        "lastErrorAt": 0
+      }
     }
   ]
 }

@@ -23,6 +23,11 @@ export interface ModuleLifecycleRecord {
         coreVersion: string;
         requiredCoreVersion?: string;
     };
+    health?: {
+        errorCount: number;
+        lastError: string;
+        lastErrorAt: number;
+    };
     firstSeenAt: number;
     lastSeenAt: number;
     updatedAt: number;
@@ -68,6 +73,16 @@ function isValidRecord(value: unknown): value is ModuleLifecycleRecord {
         && typeof record.directory === 'string'
         && isValidStatus(record.status)
         && typeof record.enabled === 'boolean'
+        && (
+            record.health === undefined
+            || (
+                typeof record.health === 'object'
+                && record.health !== null
+                && typeof record.health.errorCount === 'number'
+                && typeof record.health.lastError === 'string'
+                && typeof record.health.lastErrorAt === 'number'
+            )
+        )
         && typeof record.firstSeenAt === 'number'
         && typeof record.lastSeenAt === 'number'
         && typeof record.updatedAt === 'number';
@@ -189,4 +204,32 @@ export function applyLifecycleClassification(
 
 export function getLifecycleRecords(store: ModuleLifecycleStore): ModuleLifecycleRecord[] {
     return Object.values(store.modules).sort((a, b) => a.moduleId.localeCompare(b.moduleId));
+}
+
+export function recordLifecycleRuntimeFailure(
+    store: ModuleLifecycleStore,
+    moduleId: string,
+    errorMessage: string,
+    now = Date.now()
+): ModuleLifecycleRecord | null {
+    const id = moduleId.toLowerCase();
+    const existing = store.modules[id];
+    if (!existing) return null;
+
+    const previousErrorCount = existing.health?.errorCount || 0;
+    const next: ModuleLifecycleRecord = {
+        ...existing,
+        status: 'errored',
+        enabled: false,
+        reason: `Runtime failure: ${errorMessage}`,
+        health: {
+            errorCount: previousErrorCount + 1,
+            lastError: errorMessage,
+            lastErrorAt: now,
+        },
+        updatedAt: now,
+    };
+
+    store.modules[id] = next;
+    return next;
 }
