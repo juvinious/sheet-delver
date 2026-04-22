@@ -8,11 +8,24 @@ import {
     createEmptyLifecycleStore,
     getLifecycleRecords,
     loadLifecycleStore,
+    ModuleLifecycleRecord,
+    ModuleLifecycleStatus,
     ModuleLifecycleStore,
     saveLifecycleStore,
     upsertDiscoveredModule
 } from './lifecycle';
 import { evaluateModuleCompatibility, validateModuleInfoShape } from './validation';
+
+const LIFECYCLE_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_STATE_FILE';
+
+export interface RegisteredModuleRuntimeInfo {
+    info: SystemModuleInfo;
+    directory: string;
+    lifecycle: ModuleLifecycleRecord;
+    enabled: boolean;
+    status: ModuleLifecycleStatus;
+    reason?: string;
+}
 
 interface RegistryState {
     pluginMap: Map<string, SystemPlugin>;
@@ -45,6 +58,22 @@ const setInitialized = (val: boolean) => { _state.isInitialized = val; };
 
 const getUniquePlugins = () => Array.from(new Set(pluginMap.values()));
 
+function getLifecycleStateFilePathOverride(): string | undefined {
+    const value = process.env[LIFECYCLE_STATE_FILE_ENV];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function getLifecycleRecord(moduleId: string): ModuleLifecycleRecord | undefined {
+    return lifecycleStore.modules[moduleId.toLowerCase()];
+}
+
+function isModuleEnabledForRuntime(moduleId: string): boolean {
+    const record = getLifecycleRecord(moduleId);
+    if (!record) return true;
+    if (!record.enabled) return false;
+    return record.status !== 'incompatible' && record.status !== 'errored';
+}
+
 function getCoreVersion(): string {
     try {
         const packagePath = path.join(process.cwd(), 'package.json');
@@ -63,7 +92,8 @@ export function initializeRegistry() {
     if (typeof window !== 'undefined' || isInitialized()) return;
 
     try {
-        const loadedStore = loadLifecycleStore();
+        const stateFilePath = getLifecycleStateFilePathOverride();
+        const loadedStore = loadLifecycleStore(stateFilePath);
         lifecycleStore.version = loadedStore.version;
         lifecycleStore.modules = loadedStore.modules;
         const coreVersion = getCoreVersion();
@@ -196,7 +226,7 @@ export function initializeRegistry() {
             }
         }
 
-        saveLifecycleStore(lifecycleStore);
+        saveLifecycleStore(lifecycleStore, stateFilePath);
         setInitialized(true);
     } catch (err) {
         logger.error('Registry | Fatal error during boot-time discovery:', err);
@@ -208,16 +238,100 @@ export function getModuleLifecycleState() {
     return getLifecycleRecords(lifecycleStore);
 }
 
+export function listModules(options?: { includeExperimental?: boolean; includeDisabled?: boolean }): RegisteredModuleRuntimeInfo[] {
+    if (!isInitialized()) initializeRegistry();
+
+    return getUniquePlugins()
+        .filter((plugin) => options?.includeExperimental || !plugin.info.experimental)
+        .map((plugin) => {
+            const moduleId = plugin.info.id.toLowerCase();
+            const fallbackLifecycle: ModuleLifecycleRecord = {
+                moduleId,
+                title: plugin.info.title,
+                directory: plugin.directory,
+                status: 'discovered',
+                enabled: true,
+                firstSeenAt: 0,
+                lastSeenAt: 0,
+                updatedAt: 0
+            };
+            const lifecycle = getLifecycleRecord(moduleId) || fallbackLifecycle;
+
+            return {
+                info: plugin.info,
+                directory: plugin.directory,
+                lifecycle,
+                enabled: lifecycle.enabled,
+                status: lifecycle.status,
+                reason: lifecycle.reason
+            };
+        })
+        .filter((entry) => options?.includeDisabled || entry.enabled);
+}
+
+export function disableModule(moduleId: string, reason = 'Module disabled by operator'): boolean {
+    if (!isInitialized()) initializeRegistry();
+    const id = moduleId.toLowerCase();
+
+    if (id === 'generic') {
+        logger.warn('Registry | Refusing to disable generic module');
+        return false;
+    }
+
+    const record = getLifecycleRecord(id);
+    if (!record) return false;
+
+    record.enabled = false;
+    record.status = 'disabled';
+    record.reason = reason;
+    record.updatedAt = Date.now();
+
+    unloadSystemModules(id);
+    saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+    return true;
+}
+
+export function enableModule(moduleId: string): boolean {
+    if (!isInitialized()) initializeRegistry();
+    const id = moduleId.toLowerCase();
+    const record = getLifecycleRecord(id);
+    if (!record) return false;
+
+    if (record.validation && (!record.validation.manifestValid || !record.validation.compatible)) {
+        record.enabled = false;
+        record.status = record.validation.manifestValid ? 'incompatible' : 'errored';
+        record.reason = record.validation.manifestValid
+            ? 'Cannot enable incompatible module'
+            : 'Cannot enable invalid module manifest';
+        record.updatedAt = Date.now();
+        saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+        return false;
+    }
+
+    record.enabled = true;
+    record.status = 'validated';
+    record.reason = undefined;
+    record.updatedAt = Date.now();
+
+    saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+    return true;
+}
+
+export function __resetRegistryForTests() {
+    pluginMap.clear();
+    adapterInstances.clear();
+    lifecycleStore.version = 1;
+    lifecycleStore.modules = {};
+    setInitialized(false);
+}
+
 /**
  * Returns all discovered system manifests.
  * Used by the Core Service to expose available systems to the frontend.
  */
 export function getRegisteredModules(options?: { includeExperimental?: boolean }) {
-    if (!isInitialized()) initializeRegistry();
-
-    return getUniquePlugins()
-        .map((plugin) => plugin.info)
-        .filter((info) => options?.includeExperimental || !info.experimental);
+    return listModules({ includeExperimental: options?.includeExperimental, includeDisabled: true })
+        .map((entry) => entry.info);
 }
 
 /**
@@ -227,6 +341,11 @@ export function getRegisteredModules(options?: { includeExperimental?: boolean }
 export async function getAdapter(systemId: string): Promise<SystemAdapter | null> {
     const id = systemId.toLowerCase();
 
+    if (!isModuleEnabledForRuntime(id) && pluginMap.has(id)) {
+        logger.warn(`Registry | Module ${id} is disabled or unavailable due to lifecycle state`);
+        return null;
+    }
+
     // Return cached instance if available
     if (adapterInstances.has(id)) return adapterInstances.get(id)!;
 
@@ -235,6 +354,12 @@ export async function getAdapter(systemId: string): Promise<SystemAdapter | null
 
     const plugin = pluginMap.get(id) || pluginMap.get('generic');
     if (!plugin) return null;
+
+    const pluginId = plugin.info.id.toLowerCase();
+    if (!isModuleEnabledForRuntime(pluginId)) {
+        logger.warn(`Registry | Refusing to instantiate disabled/incompatible module ${pluginId}`);
+        return null;
+    }
 
     try {
         const logicModule = await plugin.getLogic();
@@ -269,6 +394,10 @@ export async function getServerModule(systemId: string) {
 
     const plugin = pluginMap.get(systemId.toLowerCase());
     if (!plugin || !plugin.getServer) return null;
+    if (!isModuleEnabledForRuntime(systemId.toLowerCase())) {
+        logger.warn(`Registry | Refusing to load server module for disabled/incompatible system ${systemId}`);
+        return null;
+    }
 
     try {
         return await plugin.getServer();

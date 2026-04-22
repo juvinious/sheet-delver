@@ -10,6 +10,7 @@ import { run as runJournalSmoke } from './journal-smoke.test';
 import { run as runModuleProxyMatcher } from './module-proxy-matcher.test';
 import { run as runModuleLifecycleState } from './module-lifecycle-state.test';
 import { run as runModuleManifestValidation } from './module-manifest-validation.test';
+import { run as runModuleRegistryManager } from './module-registry-manager.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -20,6 +21,7 @@ async function runAllUnitTests() {
     runModuleProxyMatcher();
     runModuleLifecycleState();
     runModuleManifestValidation();
+    await runModuleRegistryManager();
     await runActorNormalization();
     await runJournalSmoke();
     await runRealtimeBroadcaster();
