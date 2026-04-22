@@ -64,6 +64,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const envUsername = process.env.FOUNDRY_USERNAME;
             const envPassword = process.env.FOUNDRY_PASSWORD;
             const envServiceToken = process.env.APP_SERVICE_TOKEN;
+            const envAdminSetupToken = process.env.APP_ADMIN_SETUP_TOKEN;
+            const envAdminPepper = process.env.APP_ADMIN_PEPPER;
             const envCorsAllowAllOrigins = parseBoolean(process.env.APP_CORS_ALLOW_ALL_ORIGINS);
             const envCorsAllowedOrigins = parseCsv(process.env.APP_CORS_ALLOWED_ORIGINS);
 
@@ -131,6 +133,8 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     },
                     bodyLimit: security['body-limit'] ?? '10mb',
                     serviceToken: envServiceToken || security['service-token'],
+                    adminSetupToken: envAdminSetupToken || security['admin-setup-token'],
+                    adminPepper: envAdminPepper || security['admin-pepper'],
                     cors: {
                         allowAllOrigins: envCorsAllowAllOrigins ?? corsConfig['allow-all-origins'] ?? false,
                         allowedOrigins: envCorsAllowedOrigins || configuredAllowedOrigins || [appUrl]

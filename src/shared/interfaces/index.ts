@@ -154,6 +154,8 @@ export interface AppConfig {
         };
         bodyLimit: string;
         serviceToken?: string;
+        adminSetupToken?: string; // One-time token for bootstrap setup
+        adminPepper?: string; // Optional pepper for admin password hashing
         cors: {
             allowAllOrigins: boolean;
             allowedOrigins: string[];

@@ -2,6 +2,7 @@ import { loadConfig } from '@core/config';
 import { logger } from '@shared/utils/logger';
 import { initializeRegistry } from '@modules/registry/server';
 import { systemService } from '@core/system/SystemService';
+import { initAdminCredentialStore } from '@server/security/adminCredentialStore';
 import { createApp } from '@server/app/createApp';
 import { registerMiddleware } from '@server/app/registerMiddleware';
 import { registerSockets } from '@server/app/registerSockets';
@@ -17,6 +18,9 @@ async function startServer() {
     // Initialize Universal Logger with configured level
     logger.setLevel(config.debug.level);
     logger.info(`Core Service | Logger initialized at level: ${config.debug.level}`);
+
+    // Initialize Admin Credential Store with optional pepper
+    initAdminCredentialStore(config.security.adminPepper);
 
     // Boot-Time System Discovery
     initializeRegistry();

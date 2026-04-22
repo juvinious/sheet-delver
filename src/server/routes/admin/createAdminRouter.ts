@@ -2,8 +2,19 @@ import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
 import { requireLocalhost } from '@server/security/policies';
+import {
+    loadAdminAccount,
+    createAdminAccount,
+    verifyPassword,
+    recordFailedLogin,
+    recordSuccessfulLogin,
+    isAccountLocked,
+    getRemainingLockoutMs,
+} from '@server/security/adminCredentialStore';
+import { getConfig } from '@server/core/config';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
+import type { AdminLoginRequest } from '@server/security/types/admin-auth.types';
 
 interface AdminRouterDeps {
     getSystemStatusPayload: () => Promise<any>;
@@ -19,6 +30,146 @@ export function createAdminRouter(deps: AdminRouterDeps) {
 
     // Verify local request
     adminRouter.use(requireLocalhost);
+
+    // ============
+    // Auth Endpoints (setup/login)
+    // ============
+
+    /**
+     * Bootstrap setup endpoint - creates the initial admin account.
+     * Only available on first run when no account exists.
+     * Requires one-time setup token from config/env.
+     * Localhost-only.
+     */
+    adminRouter.post('/auth/setup', async (req, res) => {
+        try {
+            const existingAccount = await loadAdminAccount();
+            if (existingAccount) {
+                return res.status(403).json({ error: 'Admin account already exists' });
+            }
+
+            const config = getConfig();
+            const setupToken = config.security.adminSetupToken;
+            if (!setupToken) {
+                return res.status(503).json({
+                    error: 'Bootstrap not configured. Set APP_ADMIN_SETUP_TOKEN environment variable.',
+                });
+            }
+
+            const { setupToken: clientToken, password } = req.body as {
+                setupToken?: string;
+                password?: string;
+            };
+
+            // Verify setup token
+            if (clientToken !== setupToken) {
+                logger.warn('Admin setup attempted with invalid setup token');
+                return res.status(401).json({ error: 'Invalid setup token' });
+            }
+
+            // Validate password
+            if (!password || typeof password !== 'string' || password.length < 8) {
+                return res.status(400).json({ error: 'Password must be at least 8 characters' });
+            }
+
+            // Create the account
+            const account = await createAdminAccount(password);
+            logger.info(`Admin account created with ID: ${account.adminId}`);
+
+            res.json({
+                success: true,
+                message: 'Admin account created successfully',
+                adminId: account.adminId,
+            });
+        } catch (error: unknown) {
+            logger.error('Admin setup failed', error);
+            res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    /**
+     * Admin login endpoint - issues admin session token.
+     * Only available if admin account exists.
+     * Localhost-only. Rate-limited by dedicated middleware (to be added in Slice 2).
+     */
+    adminRouter.post('/auth/login', async (req, res) => {
+        try {
+            const account = await loadAdminAccount();
+            if (!account) {
+                return res.status(503).json({
+                    error: 'Admin account not initialized. Run setup first.',
+                });
+            }
+
+            // Check if account is locked
+            if (isAccountLocked(account)) {
+                const remainingMs = getRemainingLockoutMs(account);
+                const remainingSeconds = Math.ceil(remainingMs / 1000);
+                logger.warn(`Admin login attempt on locked account. Unlock in ${remainingSeconds}s`);
+                return res.status(403).json({
+                    error: `Account locked. Try again in ${remainingSeconds} seconds.`,
+                    lockedUntilMs: remainingMs,
+                });
+            }
+
+            const { password } = req.body as AdminLoginRequest;
+            if (!password) {
+                await recordFailedLogin(account);
+                return res.status(400).json({ error: 'Password required' });
+            }
+
+            // Verify password
+            const isValid = await verifyPassword(password, account.passwordHash);
+            if (!isValid) {
+                await recordFailedLogin(account);
+                logger.warn('Admin login failed with invalid password');
+                return res.status(401).json({ error: 'Invalid password' });
+            }
+
+            // Success: reset failed count and issue token
+            await recordSuccessfulLogin(account);
+
+            // ** TODO: Issue admin session token (Slice 2) **
+            // For now, return success indication
+            res.json({
+                success: true,
+                message: 'Login successful',
+                adminId: account.adminId,
+                // token will be added in Slice 2
+            });
+        } catch (error: unknown) {
+            logger.error('Admin login failed', error);
+            res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    // ============
+    // Existing Admin Routes (guarded by account existence check)
+    // ============
+
+    /**
+     * Guard middleware for existing mutation endpoints.
+     * Blocks requests if admin account does not exist.
+     */
+    const requireAdminAccountExists = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        try {
+            const account = await loadAdminAccount();
+            if (!account) {
+                return res.status(503).json({
+                    error: 'Admin account not initialized. Admin mutations unavailable.',
+                });
+            }
+            next();
+        } catch (error: unknown) {
+            logger.error('Failed to check admin account existence', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
+
+    // Apply guard to mutation endpoints
+    adminRouter.post('/setup/scrape', requireAdminAccountExists);
+    adminRouter.post('/world/launch', requireAdminAccountExists);
+    adminRouter.post('/world/shutdown', requireAdminAccountExists);
 
     adminRouter.get('/status', async (req, res) => {
         const payload = await adminService.getStatus();

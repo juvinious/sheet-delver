@@ -1,0 +1,130 @@
+import { strict as assert } from 'node:assert';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import {
+    initAdminCredentialStore,
+    loadAdminAccount,
+    saveAdminAccount,
+    hashPassword,
+    verifyPassword,
+    createAdminAccount,
+    recordFailedLogin,
+    recordSuccessfulLogin,
+    isAccountLocked,
+    getRemainingLockoutMs,
+} from '@server/security/adminCredentialStore';
+import type { AdminAccount } from '@server/security/types/admin-auth.types';
+
+// Use a test directory for temp files
+const TEST_TEMP_DIR = path.join(process.cwd(), '.test-temp');
+
+// Override the admin auth file location for testing
+const testFilePath = path.join(TEST_TEMP_DIR, 'admin-auth.json');
+
+async function cleanupTestFiles(): Promise<void> {
+    try {
+        await fs.rm(TEST_TEMP_DIR, { recursive: true, force: true });
+    } catch {
+        // Ignore errors
+    }
+}
+
+async function runCredentialStoreTests(): Promise<void> {
+    console.log('Running admin credential store tests...');
+
+    // Test 1: Hash and verify password
+    console.log('  Test 1: Hash and verify password');
+    initAdminCredentialStore(); // No pepper
+    const password = 'test-password-123';
+    const hash = await hashPassword(password);
+    assert(hash.length > 0, 'Hash should be non-empty');
+    assert(hash !== password, 'Hash should not equal plaintext password');
+
+    const isValid = await verifyPassword(password, hash);
+    assert.equal(isValid, true, 'Valid password should verify correctly');
+
+    const isInvalid = await verifyPassword('wrong-password', hash);
+    assert.equal(isInvalid, false, 'Invalid password should not verify');
+
+    // Test 2: Hash with pepper
+    console.log('  Test 2: Hash and verify with pepper');
+    initAdminCredentialStore('my-secret-pepper');
+    const hashWithPepper = await hashPassword(password);
+    assert(hashWithPepper !== hash, 'Hash with pepper should differ from hash without pepper');
+
+    const isValidWithPepper = await verifyPassword(password, hashWithPepper);
+    assert.equal(isValidWithPepper, true, 'Valid password with pepper should verify');
+
+    const isInvalidWithoutPepper = await verifyPassword(password, hash);
+    assert.equal(isInvalidWithoutPepper, false, 'Password without pepper should not verify hash made with pepper');
+
+    // Test 3: Create admin account
+    console.log('  Test 3: Create admin account');
+    await cleanupTestFiles();
+    initAdminCredentialStore(); // Reset pepper
+
+    const account = await createAdminAccount('initial-password');
+    assert(account.adminId, 'Account should have adminId');
+    assert(account.passwordHash, 'Account should have passwordHash');
+    assert.equal(account.failedLoginCount, 0, 'New account should have 0 failed logins');
+    assert.equal(account.lockedUntil, undefined, 'New account should not be locked');
+
+    // Check that second create fails
+    try {
+        await createAdminAccount('another-password');
+        assert.fail('Should not allow creating second admin account');
+    } catch (error: any) {
+        assert(error.message.includes('already exists'), 'Should throw error about existing account');
+    }
+
+    // Test 4: Record failed login and lockout
+    console.log('  Test 4: Record failed login and lockout');
+    const testAccount: AdminAccount = {
+        adminId: 'test-admin',
+        passwordHash: await hashPassword('test'),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        passwordChangedAt: Date.now(),
+        failedLoginCount: 0,
+    };
+
+    for (let i = 0; i < 5; i++) {
+        await recordFailedLogin(testAccount);
+    }
+
+    assert.equal(testAccount.failedLoginCount, 5, 'Should have 5 failed logins');
+    assert(testAccount.lockedUntil !== undefined, 'Account should be locked after 5 attempts');
+    assert(isAccountLocked(testAccount), 'isAccountLocked should return true');
+
+    const remainingMs = getRemainingLockoutMs(testAccount);
+    assert(remainingMs > 0, 'Should have remaining lockout time');
+    assert(remainingMs <= 15 * 60 * 1000, 'Lockout should be 15 minutes or less');
+
+    // Test 5: Record successful login
+    console.log('  Test 5: Record successful login and reset counters');
+    await recordSuccessfulLogin(testAccount);
+    assert.equal(testAccount.failedLoginCount, 0, 'Failed login count should reset to 0');
+    assert.equal(testAccount.lockedUntil, undefined, 'Lock should be cleared');
+    assert(!isAccountLocked(testAccount), 'isAccountLocked should return false');
+
+    // Test 6: Expired lockout
+    console.log('  Test 6: Check expired lockout');
+    const expiredLockAccount: AdminAccount = {
+        adminId: 'expired-lock',
+        passwordHash: 'fake',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        passwordChangedAt: Date.now(),
+        failedLoginCount: 5,
+        lockedUntil: Date.now() - 1000, // 1 second ago
+    };
+    assert(!isAccountLocked(expiredLockAccount), 'Expired lock should not be active');
+    assert.equal(getRemainingLockoutMs(expiredLockAccount), 0, 'Expired lock should have 0 remaining time');
+
+    await cleanupTestFiles();
+    console.log('  All credential store tests passed!');
+}
+
+export function run(): Promise<void> {
+    return runCredentialStoreTests();
+}
