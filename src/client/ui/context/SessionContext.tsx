@@ -1,11 +1,12 @@
 'use client';
 
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState, useEffect } from 'react';
 import { logger } from '@shared/utils/logger';
 import { ConnectionStep, User } from '@shared/interfaces';
 import { useNotifications } from '@client/ui/components/NotificationSystem';
 import { useUI } from '@client/ui/context/UIContext';
 import * as foundryApi from '@client/ui/api/foundryApi';
+import { assertPlayerSurface } from '@client/hooks/useRuntimeSurface';
 
 interface SessionContextType {
     step: ConnectionStep;
@@ -47,6 +48,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const logoutCleanupRef = useRef<Array<() => void>>([]);
 
     const currentUser = users.find((user) => (user._id || user.id) === currentUserId) || null;
+
+    // Defensive guard: warn if SessionProvider mounts on non-player surface
+    useEffect(() => {
+        assertPlayerSurface();
+    }, []);
 
     const setToken = useCallback((newToken: string | null) => {
         setTokenState(newToken);
