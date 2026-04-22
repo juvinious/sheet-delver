@@ -3,11 +3,20 @@ export * from './utils';
 import { logger } from '@shared/utils/logger';
 import path from 'node:path';
 import fs from 'node:fs';
+import {
+    createEmptyLifecycleStore,
+    getLifecycleRecords,
+    loadLifecycleStore,
+    ModuleLifecycleStore,
+    saveLifecycleStore,
+    upsertDiscoveredModule
+} from './lifecycle';
 
 interface RegistryState {
     pluginMap: Map<string, SystemPlugin>;
     adapterInstances: Map<string, any>;
     isInitialized: boolean;
+    lifecycleStore: ModuleLifecycleStore;
 }
 
 // In-Memory Cache for Discovered Modules & Active Adapters
@@ -18,7 +27,8 @@ const getGlobalState = (): RegistryState => {
         g.__coreRegistry = {
             pluginMap: new Map<string, SystemPlugin>(),
             adapterInstances: new Map<string, any>(),
-            isInitialized: false
+            isInitialized: false,
+            lifecycleStore: createEmptyLifecycleStore()
         };
     }
     return g.__coreRegistry;
@@ -27,6 +37,7 @@ const getGlobalState = (): RegistryState => {
 const _state = getGlobalState();
 const pluginMap = _state.pluginMap;
 const adapterInstances = _state.adapterInstances;
+const lifecycleStore = _state.lifecycleStore;
 const isInitialized = () => _state.isInitialized;
 const setInitialized = (val: boolean) => { _state.isInitialized = val; };
 
@@ -40,6 +51,10 @@ export function initializeRegistry() {
     if (typeof window !== 'undefined' || isInitialized()) return;
 
     try {
+        const loadedStore = loadLifecycleStore();
+        lifecycleStore.version = loadedStore.version;
+        lifecycleStore.modules = loadedStore.modules;
+
         const modulesDir = path.join(process.cwd(), 'src', 'modules');
         logger.info(`Registry [PID:${process.pid}] | Scanning modules directory: ${modulesDir} (CWD: ${process.cwd()})`);
 
@@ -75,6 +90,11 @@ export function initializeRegistry() {
 
                 const primaryId = info.id.toLowerCase();
                 pluginMap.set(primaryId, plugin);
+                upsertDiscoveredModule(lifecycleStore, {
+                    moduleId: primaryId,
+                    title: info.title,
+                    directory: entry.name
+                });
                 logger.info(`Registry [PID:${process.pid}] | Discovered module: ${info.title} (${primaryId})`);
                 if (info.experimental) {
                     logger.warn(`Registry [PID:${process.pid}] | Experimental module hidden from public registry: ${info.title} (${primaryId})`);
@@ -84,10 +104,16 @@ export function initializeRegistry() {
             }
         }
 
+        saveLifecycleStore(lifecycleStore);
         setInitialized(true);
     } catch (err) {
         logger.error('Registry | Fatal error during boot-time discovery:', err);
     }
+}
+
+export function getModuleLifecycleState() {
+    if (!isInitialized()) initializeRegistry();
+    return getLifecycleRecords(lifecycleStore);
 }
 
 /**

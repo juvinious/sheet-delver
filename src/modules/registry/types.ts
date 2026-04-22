@@ -1,5 +1,6 @@
 import { SystemAdapter, UIModuleManifest } from '@shared/interfaces';
 import type { DiscoveryConfig } from '@shared/interfaces';
+export type { ModuleLifecycleRecord, ModuleLifecycleStatus, ModuleLifecycleStore } from './lifecycle';
 
 export interface SystemModuleInfo {
     id: string;

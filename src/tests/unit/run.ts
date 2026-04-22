@@ -8,6 +8,7 @@ import { run as runCombatSort } from './combat-sort.test';
 import { run as runActorNormalization } from './actor-normalization.test';
 import { run as runJournalSmoke } from './journal-smoke.test';
 import { run as runModuleProxyMatcher } from './module-proxy-matcher.test';
+import { run as runModuleLifecycleState } from './module-lifecycle-state.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -16,6 +17,7 @@ async function runAllUnitTests() {
     await runActorCombatSmoke();
     runCombatSort();
     runModuleProxyMatcher();
+    runModuleLifecycleState();
     await runActorNormalization();
     await runJournalSmoke();
     await runRealtimeBroadcaster();
