@@ -55,3 +55,6 @@ sheet-delver-bridge
 .data
 cookies.txt
 .pids
+
+#Temporary until we are ready to use
+.github/workflows/release.yml
