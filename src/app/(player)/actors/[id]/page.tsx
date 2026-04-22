@@ -52,10 +52,9 @@ export default function ActorPageRouter({ params }: { params: Promise<{ id: stri
                     return;
                 }
 
-                // Resolve the component from the thunk and wrap in React.lazy if it's not already a component
                 const actorPageEntry = manifest.actorPage;
-                const ResolvedComponent = typeof actorPageEntry === 'function' 
-                    ? React.lazy(actorPageEntry as any) 
+                const ResolvedComponent = typeof actorPageEntry === 'function'
+                    ? React.lazy(actorPageEntry as any)
                     : actorPageEntry;
 
                 setActorPage(() => ResolvedComponent as any);
