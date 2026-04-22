@@ -9,6 +9,7 @@ import { run as runActorNormalization } from './actor-normalization.test';
 import { run as runJournalSmoke } from './journal-smoke.test';
 import { run as runModuleProxyMatcher } from './module-proxy-matcher.test';
 import { run as runModuleLifecycleState } from './module-lifecycle-state.test';
+import { run as runModuleManifestValidation } from './module-manifest-validation.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -18,6 +19,7 @@ async function runAllUnitTests() {
     runCombatSort();
     runModuleProxyMatcher();
     runModuleLifecycleState();
+    runModuleManifestValidation();
     await runActorNormalization();
     await runJournalSmoke();
     await runRealtimeBroadcaster();

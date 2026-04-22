@@ -4,6 +4,7 @@ import { logger } from '@shared/utils/logger';
 import path from 'node:path';
 import fs from 'node:fs';
 import {
+    applyLifecycleClassification,
     createEmptyLifecycleStore,
     getLifecycleRecords,
     loadLifecycleStore,
@@ -11,6 +12,7 @@ import {
     saveLifecycleStore,
     upsertDiscoveredModule
 } from './lifecycle';
+import { evaluateModuleCompatibility, validateModuleInfoShape } from './validation';
 
 interface RegistryState {
     pluginMap: Map<string, SystemPlugin>;
@@ -43,6 +45,16 @@ const setInitialized = (val: boolean) => { _state.isInitialized = val; };
 
 const getUniquePlugins = () => Array.from(new Set(pluginMap.values()));
 
+function getCoreVersion(): string {
+    try {
+        const packagePath = path.join(process.cwd(), 'package.json');
+        const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { version?: unknown };
+        return typeof packageJson.version === 'string' ? packageJson.version : '0.0.0';
+    } catch {
+        return '0.0.0';
+    }
+}
+
 /**
  * Boot-Time Scanner: Discovers all modules in src/modules/
  * Uses Node.js 'fs' to build the initial system index.
@@ -54,6 +66,7 @@ export function initializeRegistry() {
         const loadedStore = loadLifecycleStore();
         lifecycleStore.version = loadedStore.version;
         lifecycleStore.modules = loadedStore.modules;
+        const coreVersion = getCoreVersion();
 
         const modulesDir = path.join(process.cwd(), 'src', 'modules');
         logger.info(`Registry [PID:${process.pid}] | Scanning modules directory: ${modulesDir} (CWD: ${process.cwd()})`);
@@ -74,11 +87,84 @@ export function initializeRegistry() {
 
             if (!fs.existsSync(infoPath)) {
                 logger.warn(`Registry | Skipping folder "${entry.name}": Missing info.json manifest.`);
+                const moduleId = entry.name.toLowerCase();
+                upsertDiscoveredModule(lifecycleStore, {
+                    moduleId,
+                    title: entry.name,
+                    directory: entry.name
+                });
+                applyLifecycleClassification(lifecycleStore, moduleId, {
+                    status: 'errored',
+                    enabled: false,
+                    reason: 'Missing info.json manifest',
+                    manifestValid: false,
+                    validationErrors: ['Missing info.json manifest'],
+                    compatible: false,
+                    coreVersion
+                });
                 continue;
             }
 
             try {
-                const info = JSON.parse(fs.readFileSync(infoPath, 'utf8')) as SystemModuleInfo;
+                const rawInfo = JSON.parse(fs.readFileSync(infoPath, 'utf8')) as unknown;
+                const shapeValidation = validateModuleInfoShape(rawInfo);
+
+                const fallbackId = entry.name.toLowerCase();
+                const fallbackTitle = entry.name;
+                const inferredId = (
+                    typeof rawInfo === 'object'
+                    && rawInfo !== null
+                    && 'id' in rawInfo
+                    && typeof (rawInfo as { id?: unknown }).id === 'string'
+                )
+                    ? String((rawInfo as { id: string }).id).toLowerCase()
+                    : fallbackId;
+                const inferredTitle = (
+                    typeof rawInfo === 'object'
+                    && rawInfo !== null
+                    && 'title' in rawInfo
+                    && typeof (rawInfo as { title?: unknown }).title === 'string'
+                )
+                    ? String((rawInfo as { title: string }).title)
+                    : fallbackTitle;
+
+                upsertDiscoveredModule(lifecycleStore, {
+                    moduleId: inferredId,
+                    title: inferredTitle,
+                    directory: entry.name
+                });
+
+                if (!shapeValidation.valid) {
+                    applyLifecycleClassification(lifecycleStore, inferredId, {
+                        status: 'errored',
+                        enabled: false,
+                        reason: shapeValidation.errors.join('; '),
+                        manifestValid: false,
+                        validationErrors: shapeValidation.errors,
+                        compatible: false,
+                        coreVersion
+                    });
+                    logger.error(`Registry | Invalid manifest for "${entry.name}": ${shapeValidation.errors.join('; ')}`);
+                    continue;
+                }
+
+                const info = rawInfo as SystemModuleInfo;
+                const compatibility = evaluateModuleCompatibility(info, coreVersion);
+
+                if (!compatibility.compatible) {
+                    applyLifecycleClassification(lifecycleStore, inferredId, {
+                        status: 'incompatible',
+                        enabled: false,
+                        reason: compatibility.reason || 'Incompatible with current core version',
+                        manifestValid: true,
+                        compatible: false,
+                        coreVersion: compatibility.coreVersion,
+                        requiredCoreVersion: compatibility.requiredCoreVersion
+                    });
+                    logger.warn(`Registry | Module "${entry.name}" is incompatible: ${compatibility.reason || 'unknown reason'}`);
+                    continue;
+                }
+
                 const plugin: SystemPlugin = {
                     info,
                     directory: entry.name,
@@ -90,10 +176,16 @@ export function initializeRegistry() {
 
                 const primaryId = info.id.toLowerCase();
                 pluginMap.set(primaryId, plugin);
-                upsertDiscoveredModule(lifecycleStore, {
-                    moduleId: primaryId,
-                    title: info.title,
-                    directory: entry.name
+                const existingLifecycle = lifecycleStore.modules[primaryId];
+                const enabled = existingLifecycle ? existingLifecycle.enabled : true;
+                applyLifecycleClassification(lifecycleStore, primaryId, {
+                    status: enabled ? 'validated' : 'disabled',
+                    enabled,
+                    reason: enabled ? undefined : 'Module disabled in persisted lifecycle state',
+                    manifestValid: true,
+                    compatible: true,
+                    coreVersion,
+                    requiredCoreVersion: compatibility.requiredCoreVersion
                 });
                 logger.info(`Registry [PID:${process.pid}] | Discovered module: ${info.title} (${primaryId})`);
                 if (info.experimental) {

@@ -1,12 +1,17 @@
 import { SystemAdapter, UIModuleManifest } from '@shared/interfaces';
 import type { DiscoveryConfig } from '@shared/interfaces';
 export type { ModuleLifecycleRecord, ModuleLifecycleStatus, ModuleLifecycleStore } from './lifecycle';
+export type { ModuleCompatibilityResult, ModuleValidationResult } from './validation';
 
 export interface SystemModuleInfo {
     id: string;
     title: string;
     aliases?: string[];
     experimental?: boolean;
+    compatibility?: {
+        coreVersion?: string;
+        apiContracts?: Record<string, string>;
+    };
     manifest: {
         ui: string;
         logic: string;

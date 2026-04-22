@@ -16,6 +16,13 @@ export interface ModuleLifecycleRecord {
     status: ModuleLifecycleStatus;
     enabled: boolean;
     reason?: string;
+    validation?: {
+        manifestValid: boolean;
+        validationErrors?: string[];
+        compatible: boolean;
+        coreVersion: string;
+        requiredCoreVersion?: string;
+    };
     firstSeenAt: number;
     lastSeenAt: number;
     updatedAt: number;
@@ -64,6 +71,17 @@ function isValidRecord(value: unknown): value is ModuleLifecycleRecord {
         && typeof record.firstSeenAt === 'number'
         && typeof record.lastSeenAt === 'number'
         && typeof record.updatedAt === 'number';
+}
+
+export interface ModuleLifecycleClassificationInput {
+    status: ModuleLifecycleStatus;
+    enabled: boolean;
+    reason?: string;
+    manifestValid: boolean;
+    validationErrors?: string[];
+    compatible: boolean;
+    coreVersion: string;
+    requiredCoreVersion?: string;
 }
 
 export function loadLifecycleStore(stateFilePath = getDefaultLifecycleStateFilePath()): ModuleLifecycleStore {
@@ -139,6 +157,34 @@ export function upsertDiscoveredModule(
 
     store.modules[discovered.moduleId] = created;
     return created;
+}
+
+export function applyLifecycleClassification(
+    store: ModuleLifecycleStore,
+    moduleId: string,
+    classification: ModuleLifecycleClassificationInput,
+    now = Date.now()
+): ModuleLifecycleRecord | null {
+    const existing = store.modules[moduleId];
+    if (!existing) return null;
+
+    const next: ModuleLifecycleRecord = {
+        ...existing,
+        status: classification.status,
+        enabled: classification.enabled,
+        reason: classification.reason,
+        validation: {
+            manifestValid: classification.manifestValid,
+            validationErrors: classification.validationErrors,
+            compatible: classification.compatible,
+            coreVersion: classification.coreVersion,
+            requiredCoreVersion: classification.requiredCoreVersion
+        },
+        updatedAt: now
+    };
+
+    store.modules[moduleId] = next;
+    return next;
 }
 
 export function getLifecycleRecords(store: ModuleLifecycleStore): ModuleLifecycleRecord[] {
