@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { logger } from '@shared/utils/logger';
 import { adminSessionManager, parseAndValidateToken } from '@server/security/adminSessionService';
+import { appendAdminAuditEvent } from '@server/security/adminAuditLog';
 import type { AdminSessionClaims } from '@server/security/types/admin-auth.types';
 
 // Module augmentation for Express Request to include admin session claims
@@ -144,7 +145,29 @@ export function requireAdminAuth(req: Request, res: Response, next: NextFunction
  */
 export function auditAdminAction(req: Request, res: Response, next: NextFunction): void {
     if (req.adminSession) {
-        logger.info(`Admin action: ${req.method} ${req.path} by ${req.adminSession.adminId}`);
+        const startedAt = Date.now();
+        const adminId = req.adminSession.adminId;
+        const method = req.method;
+        const requestPath = req.path;
+        const ip = req.ip || 'unknown';
+        const userAgent = typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined;
+
+        res.once('finish', () => {
+            const statusCode = res.statusCode;
+            const outcome: 'success' | 'failure' = statusCode < 400 ? 'success' : 'failure';
+            const durationMs = Date.now() - startedAt;
+
+            void appendAdminAuditEvent({
+                adminId,
+                method,
+                path: requestPath,
+                statusCode,
+                outcome,
+                ip,
+                userAgent,
+                durationMs,
+            });
+        });
     }
     next();
 }

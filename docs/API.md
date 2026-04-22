@@ -202,6 +202,34 @@ Launches a specific world from setup.
 ### `POST /admin/world/shutdown`
 Shuts down the currently active world.
 
+### `GET /admin/audit`
+Returns recent admin audit events (newest first). Requires admin authentication.
+
+**Query Params:**
+- `limit` (optional): Max number of events to return, clamped to `1..500` (default `100`).
+
+**Response:**
+```json
+{
+  "success": true,
+  "count": 2,
+  "events": [
+    {
+      "eventId": "1c0868ce-3bcd-4cb8-bfa3-0af3a8e0c4d1",
+      "timestamp": "2026-04-22T22:08:15.322Z",
+      "adminId": "admin",
+      "method": "POST",
+      "path": "/lifecycle/shadowdark/enable",
+      "statusCode": 200,
+      "outcome": "success",
+      "ip": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 ...",
+      "durationMs": 34
+    }
+  ]
+}
+```
+
 ## Module Lifecycle
 
 ### `GET /admin/lifecycle`

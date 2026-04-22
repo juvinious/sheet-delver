@@ -284,6 +284,31 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         }
     });
 
+    /**
+     * GET /admin/audit
+     * Returns recent admin audit events (newest first).
+     * Requires admin auth.
+     */
+    adminRouter.get('/audit', requireAdminAccountExists, requireAdminAuth, async (req, res) => {
+        try {
+            const limitRaw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+            const parsedLimit = Number.parseInt(String(limitRaw ?? '100'), 10);
+            const limit = Number.isFinite(parsedLimit) ? parsedLimit : 100;
+
+            const { listAdminAuditEvents } = await import('@server/security/adminAuditLog');
+            const events = await listAdminAuditEvents(limit);
+
+            res.json({
+                success: true,
+                count: events.length,
+                events,
+            });
+        } catch (error: unknown) {
+            logger.error('Failed to list admin audit events', error);
+            res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
     adminRouter.post('/setup/scrape', async (req, res) => {
         try {
             const payload = await adminService.scrapeSetup(req.body?.sessionCookie);
