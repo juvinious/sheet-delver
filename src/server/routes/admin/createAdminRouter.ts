@@ -287,5 +287,113 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         }
     });
 
+    // ============
+    // Module Lifecycle Endpoints
+    // ============
+
+    /**
+     * GET /admin/api/lifecycle
+     * List all modules with their lifecycle state (enabled/disabled, status, compatibility)
+     * No auth required for GET (read-only)
+     */
+    adminRouter.get('/lifecycle', async (req, res) => {
+        try {
+            const { listModules } = await import('@modules/registry/server');
+            const modules = listModules({ includeExperimental: true, includeDisabled: true });
+            res.json({
+                success: true,
+                modules: modules.map((m) => ({
+                    moduleId: m.info.id,
+                    title: m.info.title,
+                    enabled: m.enabled,
+                    status: m.status,
+                    experimental: m.info.experimental,
+                    reason: m.reason,
+                })),
+            });
+        } catch (error: unknown) {
+            logger.error('Failed to list module lifecycle', error);
+            res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    /**
+     * POST /admin/api/lifecycle/:moduleId/enable
+     * Enable a module. Requires admin auth.
+     */
+    adminRouter.post(
+        '/lifecycle/:moduleId/enable',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+                const { enableModule } = await import('@modules/registry/server');
+
+                const success = enableModule(moduleId);
+                if (!success) {
+                    return res.status(400).json({
+                        success: false,
+                        error: `Failed to enable module ${moduleId}. Module may be incompatible or invalid.`,
+                    });
+                }
+
+                logger.info(`[Admin] Module enabled: ${moduleId}`);
+                res.json({
+                    success: true,
+                    message: `Module ${moduleId} enabled`,
+                    moduleId,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to enable module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
+    /**
+     * POST /admin/api/lifecycle/:moduleId/disable
+     * Disable a module. Requires admin auth.
+     */
+    adminRouter.post(
+        '/lifecycle/:moduleId/disable',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+                const { disableModule } = await import('@modules/registry/server');
+                const reason = req.body?.reason || 'Module disabled by admin';
+
+                const success = disableModule(moduleId, reason);
+                if (!success) {
+                    return res.status(400).json({
+                        success: false,
+                        error: `Failed to disable module ${moduleId}. Module may be protected (e.g., generic).`,
+                    });
+                }
+
+                logger.info(`[Admin] Module disabled: ${moduleId} (reason: ${reason})`);
+                res.json({
+                    success: true,
+                    message: `Module ${moduleId} disabled`,
+                    moduleId,
+                    reason,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to disable module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
     return adminRouter;
 }
