@@ -27,9 +27,10 @@ function createResponseStub(): ResponseStub {
 }
 
 function runPolicyTests() {
-    const runCase = (remoteAddress: string | undefined) => {
+    const runCase = (remoteAddress: string | undefined, forwardedFor?: string) => {
         const req = {
             socket: { remoteAddress },
+            headers: forwardedFor ? { 'x-forwarded-for': forwardedFor } : {},
         } as Request;
         const res = createResponseStub();
 
@@ -49,6 +50,18 @@ function runPolicyTests() {
     const loopbackV6 = runCase('::1');
     assert.equal(loopbackV6.nextCalled, true);
     assert.equal(loopbackV6.statusCode, 200);
+
+    const loopbackMapped = runCase('::ffff:127.0.0.1');
+    assert.equal(loopbackMapped.nextCalled, true);
+    assert.equal(loopbackMapped.statusCode, 200);
+
+    const proxiedLocal = runCase('127.0.0.1', '127.0.0.1');
+    assert.equal(proxiedLocal.nextCalled, true);
+    assert.equal(proxiedLocal.statusCode, 200);
+
+    const proxiedRemote = runCase('127.0.0.1', '10.0.0.42');
+    assert.equal(proxiedRemote.nextCalled, false);
+    assert.equal(proxiedRemote.statusCode, 403);
 
     const blocked = runCase('10.0.0.42');
     assert.equal(blocked.nextCalled, false);

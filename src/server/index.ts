@@ -74,10 +74,11 @@ async function startServer() {
         getSystemStatusPayload
     });
 
-    httpServer.listen(corePort, '0.0.0.0', () => {
-        logger.info(`Core Service | Silent Daemon running on http://127.0.0.1:${corePort}`);
-        logger.info(`Core Service | App API: http://127.0.0.1:${corePort}/api`);
-        logger.info(`Core Service | Admin API: http://127.0.0.1:${corePort}/admin (Localhost Only)`);
+    const coreHost = '127.0.0.1';
+    httpServer.listen(corePort, coreHost, () => {
+        logger.info(`Core Service | Silent Daemon running on http://${coreHost}:${corePort}`);
+        logger.info(`Core Service | App API: http://${coreHost}:${corePort}/api`);
+        logger.info(`Core Service | Admin API: http://${coreHost}:${corePort}/admin (Localhost Only)`);
     });
 }
 

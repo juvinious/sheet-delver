@@ -108,7 +108,7 @@ All data returned by the API passes through a **System Adapter**.
 
 ## 5. Security & Isolation
 - **Per-User Sockets**: Every user has their own dedicated socket. Foundry's native permission model is enforced at the transport layer.
-- **Local Admin API**: Critical world management functions (Launch/Shutdown) are restricted to `localhost` requests only.
+- **Local Admin Surface**: `/admin` is a separate app-admin control plane. Admin routes require localhost access, dedicated admin authentication, and CSRF protection for browser mutations.
 
 ## 6. Ports & Config
 - **Frontend**: 3000

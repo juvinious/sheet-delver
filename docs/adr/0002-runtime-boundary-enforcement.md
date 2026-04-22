@@ -9,7 +9,7 @@
 
 ## Context
 
-Phase 20 introduced admin authentication (ADR-0001), creating a dedicated `/admin` control-plane surface separate from the gameplay surface. However, after implementation, a structural problem emerged:
+The admin authentication foundation introduced a dedicated `/admin` control-plane surface separate from the gameplay surface. However, after implementation, a structural problem emerged:
 
 The **Next.js root layout** was mounting the complete player runtime context stack globally, applying it to **all routes**, including `/admin` and undefined routes. This meant:
 
@@ -163,7 +163,7 @@ export function assertPlayerSurface() {
 ## Related Decisions
 
 - **ADR-0001 (Admin Authentication)**: Introduced app-admin identity model. This ADR ensures that identity is used in isolation from player runtime.
-- **Phase 20 (Admin Auth Foundation)**: Implemented auth credentials, session tokens, CSRF protection. This phase assumes isolated runtime composition.
+- **Admin Auth Foundation**: Implemented auth credentials, session tokens, CSRF protection. This phase assumes isolated runtime composition.
 - **Phase 22 (Lifecycle Operations)**: Builds mutation APIs on top of isolated admin surface. Cannot proceed safely without this boundary.
 
 ---
@@ -182,7 +182,7 @@ export function assertPlayerSurface() {
   - Player overlays rendered: GlobalChat, PlayerList, FloatingHUD, CombatHUD, JournalBrowser, JournalModal
   - Session restored from localStorage via SessionProvider
 - Navigating to `/admin` shows:
-  - Network calls: **NONE** (only the `/admin` page request)
+  - Network calls: only admin-surface bootstrap requests (for example account status), with **no player bootstrap calls**
   - **NO** Socket.IO connection
   - **NO** player overlays rendered
   - **NO** player API bootstrap calls

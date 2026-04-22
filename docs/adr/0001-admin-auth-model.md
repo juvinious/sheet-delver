@@ -20,7 +20,7 @@ Neither model is appropriate for privileged admin operations because:
 - Service token has no human identity, no session lifecycle, no audit attribution, and a high blast radius if leaked.
 - Localhost-only gating is useful as defense-in-depth but is not an identity mechanism. It can be fragile in proxy or container topologies and provides no audit trail.
 
-As lifecycle mutation APIs are introduced (Phase 20), privileged operations need a dedicated, attributable, and revocable identity.
+As lifecycle mutation APIs are introduced, privileged operations need a dedicated, attributable, and revocable identity.
 
 ---
 
@@ -50,15 +50,15 @@ This is a single-account local model bootstrapped by the server operator. It doe
 ### Bootstrap Flow
 
 - No default admin password ships with the application.
-- First setup requires local operator action via a localhost-only setup endpoint or CLI helper.
-- A one-time **setup token** is read from env/config and consumed on first successful account creation.
-- Setup token is invalidated immediately after use.
+- First setup requires local operator action via a localhost-only setup endpoint.
+- A **setup token** is read from env/config and required for first successful account creation.
+- Once an admin account exists, the setup endpoint is no longer available.
 - Until bootstrap is complete, admin mutation routes are unavailable.
 
 ### Session Model
 
 - Admin login uses a **dedicated login endpoint** (`POST /admin/auth/login`) separate from Foundry login.
-- On success, issue a **short-lived admin session token** (e.g. 15 minutes) plus an optional refresh token (e.g. 8 hours).
+- On success, issue a **short-lived admin session token** (15 minutes) plus a per-session CSRF token.
 - Session token claims include `principalType: "app-admin"`.
 - Foundry session tokens and service bearer tokens are **not accepted** on admin mutation routes.
 - Admin middleware validates principal type, not just token presence.
@@ -67,7 +67,7 @@ This is a single-account local model bootstrapped by the server operator. It doe
 
 - Login endpoint is rate-limited.
 - Lockout/backoff applied after repeated failed attempts.
-- Session signing keys are rotated through config lifecycle.
+- Session tokens are maintained in-memory for the current server process.
 - **CSRF protection** required for browser-based admin panel mutations.
 - Localhost restriction (`requireLocalhost`) remains on `/admin` as a second gate, not the primary identity check.
 
@@ -118,7 +118,7 @@ Delegate admin identity to an external IdP.
 - Clear trust boundary: Foundry identity ≠ app-admin identity.
 - Audit trail includes a named admin principal for all privileged actions.
 - Foundation for future RBAC without architectural rework.
-- Phase 20 lifecycle mutation APIs have a clear, testable auth requirement.
+- Lifecycle mutation APIs have a clear, testable auth requirement.
 
 **Constraints introduced:**
 - Bootstrap step is required before admin operations are available.
@@ -133,13 +133,13 @@ Delegate admin identity to an external IdP.
 
 ## Implementation Target
 
-Phase 20 (Lifecycle Operations + Policy) will implement this model as its first slice before any lifecycle mutation routes are exposed.
+This model must be in place before any lifecycle mutation routes are exposed.
 
 The implementation must deliver:
 1. Local admin account store at `.data/security/admin-auth.json` (excluded from version control, owner-only file permissions).
 2. Argon2id password hashing with random salt and optional env-sourced pepper.
-3. One-time bootstrap setup token consumed on first admin account creation, then invalidated.
-4. Dedicated admin login endpoint (`POST /admin/auth/login`) that issues short-lived admin session tokens with `principalType: "app-admin"` claims.
+3. Bootstrap setup token from env/config required on first admin account creation.
+4. Dedicated admin login endpoint (`POST /admin/auth/login`) that issues short-lived admin session tokens with `principalType: "app-admin"` claims and a CSRF token.
 5. Admin auth middleware that validates principal type — Foundry session tokens and service bearer tokens are explicitly rejected.
 6. Rate limiting and lockout/backoff on the admin login endpoint.
 7. CSRF protection for browser-based admin panel mutations.

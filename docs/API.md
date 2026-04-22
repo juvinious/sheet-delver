@@ -174,6 +174,24 @@ Adds a spell to the actor's "Known Spells".
 
 ## Admin API (Localhost Only)
 
+The browser-facing admin UI calls these through the Next.js proxy path `/api/admin/...`.
+The backend routes themselves are mounted at `/admin/...` on the Core Service.
+
+### `GET /admin/auth/status`
+Returns whether an admin account already exists.
+
+### `POST /admin/auth/setup`
+**Body**: `{ "setupToken": "...", "password": "..." }`
+Creates the initial admin account and immediately returns an authenticated admin session.
+
+### `POST /admin/auth/login`
+**Body**: `{ "password": "..." }`
+Authenticates the admin account and returns a short-lived admin session token plus CSRF token.
+
+### `POST /admin/auth/reset`
+**Body**: `{ "setupToken": "...", "newPassword": "..." }`
+Resets the admin password locally and revokes all active admin sessions.
+
 ### `GET /admin/status`
 Returns the status of the System Client.
 
@@ -183,3 +201,12 @@ Launches a specific world from setup.
 
 ### `POST /admin/world/shutdown`
 Shuts down the currently active world.
+
+### `GET /admin/lifecycle`
+Returns module lifecycle state for all discovered modules. Requires admin authentication.
+
+### `POST /admin/lifecycle/:moduleId/enable`
+Enables the target module. Requires admin authentication and a valid admin CSRF token.
+
+### `POST /admin/lifecycle/:moduleId/disable`
+Disables the target module. Requires admin authentication and a valid admin CSRF token.
