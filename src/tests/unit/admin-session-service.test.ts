@@ -22,6 +22,7 @@ async function runAdminSessionServiceTests(): Promise<void> {
     assert(Number.isInteger(claims.issuedAt), 'issuedAt should be a timestamp');
     assert(Number.isInteger(claims.expiresAt), 'expiresAt should be a timestamp');
     assert(claims.expiresAt > claims.issuedAt, 'expiresAt should be after issuedAt');
+    assert(typeof claims.csrfToken === 'string' && claims.csrfToken.length >= 16, 'Claims should include CSRF token');
 
     // Test 2: Check session validity
     console.log('  Test 2: Check session validity');
@@ -54,6 +55,7 @@ async function runAdminSessionServiceTests(): Promise<void> {
     assert(parsedClaims !== null, 'Valid token should parse successfully');
     assert.equal(parsedClaims?.principalType, 'app-admin', 'Parsed token should have correct principal type');
     assert.equal(parsedClaims?.adminId, adminId, 'Parsed token should have correct adminId');
+    assert.equal(parsedClaims?.csrfToken, claims.csrfToken, 'Parsed token should preserve CSRF token');
 
     const invalidToken = parseAndValidateToken('invalid-json');
     assert.equal(invalidToken, null, 'Invalid JSON should return null');

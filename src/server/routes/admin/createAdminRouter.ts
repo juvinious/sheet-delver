@@ -3,6 +3,8 @@ import { logger } from '@shared/utils/logger';
 import { createAdminService } from '@server/services/admin/AdminService';
 import { requireLocalhost } from '@server/security/policies';
 import { requireAdminAuth, auditAdminAction } from '@server/middleware/requireAdminAuth';
+import { requireAdminCsrf } from '@server/middleware/requireAdminCsrf';
+import { createAdminLoginLimiter } from '@server/middleware/rateLimiters';
 import {
     loadAdminAccount,
     createAdminAccount,
@@ -11,6 +13,7 @@ import {
     recordSuccessfulLogin,
     isAccountLocked,
     getRemainingLockoutMs,
+    resetAdminPassword,
 } from '@server/security/adminCredentialStore';
 import {
     createAdminSessionClaims,
@@ -32,9 +35,25 @@ export function createAdminRouter(deps: AdminRouterDeps) {
 
     // Admin domain service: displaced operational logic for status, worlds, cache, and world actions.
     const adminService = createAdminService(deps);
+    const adminLoginLimiter = createAdminLoginLimiter(getConfig());
 
     // Verify local request
     adminRouter.use(requireLocalhost);
+
+    const requireAdminAccountExists = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+        try {
+            const account = await loadAdminAccount();
+            if (!account) {
+                return res.status(503).json({
+                    error: 'Admin account not initialized. Admin mutations unavailable.',
+                });
+            }
+            next();
+        } catch (error: unknown) {
+            logger.error('Failed to check admin account existence', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    };
 
     // ============
     // Auth Endpoints (setup/login)
@@ -97,7 +116,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
      * Only available if admin account exists.
      * Localhost-only. Rate-limited by dedicated middleware (to be added in Slice 2).
      */
-    adminRouter.post('/auth/login', async (req, res) => {
+    adminRouter.post('/auth/login', adminLoginLimiter, async (req, res) => {
         try {
             const account = await loadAdminAccount();
             if (!account) {
@@ -146,6 +165,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 message: 'Login successful',
                 adminId: account.adminId,
                 token,
+                csrfToken: claims.csrfToken,
                 expiresIn: sessionDurationMs,
             });
         } catch (error: unknown) {
@@ -154,35 +174,62 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         }
     });
 
+    /**
+     * Local recovery endpoint to reset admin password and revoke all active sessions.
+     * Requires the configured bootstrap/reset token and a new password.
+     */
+    adminRouter.post('/auth/reset', requireAdminAccountExists, async (req, res) => {
+        try {
+            const config = getConfig();
+            const setupToken = config.security.adminSetupToken;
+            if (!setupToken) {
+                return res.status(503).json({
+                    error: 'Reset not configured. Set APP_ADMIN_SETUP_TOKEN environment variable.',
+                });
+            }
+
+            const { setupToken: clientToken, newPassword } = req.body as {
+                setupToken?: string;
+                newPassword?: string;
+            };
+
+            if (clientToken !== setupToken) {
+                logger.warn('Admin password reset attempted with invalid setup token');
+                return res.status(401).json({ error: 'Invalid setup token' });
+            }
+
+            if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+                return res.status(400).json({ error: 'New password must be at least 8 characters' });
+            }
+
+            const updatedAccount = await resetAdminPassword(newPassword);
+            adminSessionManager.revokeAllForAdmin(updatedAccount.adminId);
+
+            logger.info(
+                `Admin auth reset completed by local operator for ${updatedAccount.adminId} (actorType: local-operator)`
+            );
+
+            res.json({
+                success: true,
+                message: 'Admin password reset complete. All active admin sessions were revoked.',
+                adminId: updatedAccount.adminId,
+                actorType: 'local-operator',
+            });
+        } catch (error: unknown) {
+            logger.error('Admin password reset failed', error);
+            res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
     // ============
     // Existing Admin Routes (guarded by account existence check + admin auth)
     // ============
 
-    /**
-     * Guard middleware for existing mutation endpoints.
-     * Blocks requests if admin account does not exist.
-     * Applied before requireAdminAuth so it provides better error messaging.
-     */
-    const requireAdminAccountExists = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-        try {
-            const account = await loadAdminAccount();
-            if (!account) {
-                return res.status(503).json({
-                    error: 'Admin account not initialized. Admin mutations unavailable.',
-                });
-            }
-            next();
-        } catch (error: unknown) {
-            logger.error('Failed to check admin account existence', error);
-            res.status(500).json({ error: 'Internal server error' });
-        }
-    };
-
     // Apply auth middleware to mutation endpoints
-    // Order: localhost -> account exists -> admin auth -> audit
-    adminRouter.post('/setup/scrape', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
-    adminRouter.post('/world/launch', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
-    adminRouter.post('/world/shutdown', requireAdminAccountExists, requireAdminAuth, auditAdminAction);
+    // Order: localhost -> account exists -> admin auth -> csrf -> audit
+    adminRouter.post('/setup/scrape', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction);
+    adminRouter.post('/world/launch', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction);
+    adminRouter.post('/world/shutdown', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction);
 
     adminRouter.get('/status', async (req, res) => {
         const payload = await adminService.getStatus();

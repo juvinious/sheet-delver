@@ -28,4 +28,5 @@ export interface AdminSessionClaims {
   adminId: string;
   issuedAt: number; // Unix timestamp
   expiresAt: number; // Unix timestamp
+  csrfToken?: string; // Per-session CSRF token for browser-origin admin mutations
 }

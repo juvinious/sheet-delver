@@ -13,3 +13,25 @@ export function createLoginLimiter(config: AppConfig) {
         skip: () => !config.security.rateLimit.enabled,
     });
 }
+
+export function createAdminLoginLimiter(config: AppConfig) {
+    const { windowMinutes, maxAttempts } = getAdminLoginRateLimitSettings(config);
+
+    return rateLimit({
+        windowMs: windowMinutes * 60 * 1000,
+        max: maxAttempts,
+        message: {
+            error: `Too many admin login attempts. Please try again after ${windowMinutes} minutes.`
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        skip: () => !config.security.rateLimit.enabled,
+    });
+}
+
+export function getAdminLoginRateLimitSettings(config: AppConfig): { windowMinutes: number; maxAttempts: number } {
+    const windowMinutes = Math.max(1, Math.floor(config.security.rateLimit.windowMinutes));
+    const maxAttempts = Math.max(1, Math.floor(config.security.rateLimit.maxAttempts / 2));
+
+    return { windowMinutes, maxAttempts };
+}

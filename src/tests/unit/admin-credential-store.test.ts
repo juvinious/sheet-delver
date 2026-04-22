@@ -12,6 +12,7 @@ import {
     recordSuccessfulLogin,
     isAccountLocked,
     getRemainingLockoutMs,
+    resetAdminPassword,
 } from '@server/security/adminCredentialStore';
 import type { AdminAccount } from '@server/security/types/admin-auth.types';
 
@@ -119,6 +120,26 @@ async function runCredentialStoreTests(): Promise<void> {
     };
     assert(!isAccountLocked(expiredLockAccount), 'Expired lock should not be active');
     assert.equal(getRemainingLockoutMs(expiredLockAccount), 0, 'Expired lock should have 0 remaining time');
+
+    // Test 7: Reset password clears lockout counters
+    console.log('  Test 7: Reset password clears lockout state');
+    const originalAccount = await loadAdminAccount();
+    assert(originalAccount, 'Admin account should exist for reset test');
+
+    if (!originalAccount) {
+        throw new Error('Expected admin account for reset test');
+    }
+
+    originalAccount.failedLoginCount = 5;
+    originalAccount.lockedUntil = Date.now() + 5 * 60 * 1000;
+    await saveAdminAccount(originalAccount);
+
+    const resetAccount = await resetAdminPassword('new-reset-password');
+    assert.equal(resetAccount.failedLoginCount, 0, 'Reset should clear failed login count');
+    assert.equal(resetAccount.lockedUntil, undefined, 'Reset should clear lockout');
+
+    const resetValid = await verifyPassword('new-reset-password', resetAccount.passwordHash);
+    assert.equal(resetValid, true, 'Reset password should verify against updated hash');
 
     await cleanupAdminAuthFile();
     console.log('  All credential store tests passed!');

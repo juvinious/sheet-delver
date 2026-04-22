@@ -14,6 +14,8 @@ import { run as runModuleRegistryManager } from './module-registry-manager.test'
 import { run as runAdminCredentialStore } from './admin-credential-store.test';
 import { run as runAdminSessionService } from './admin-session-service.test';
 import { run as runAdminAuthMiddleware } from './admin-auth-middleware.test';
+import { run as runAdminCsrfMiddleware } from './admin-csrf-middleware.test';
+import { run as runAdminRateLimiter } from './admin-rate-limiter.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -32,6 +34,8 @@ async function runAllUnitTests() {
     await runAdminCredentialStore();
     await runAdminSessionService();
     await runAdminAuthMiddleware();
+    await runAdminCsrfMiddleware();
+    await runAdminRateLimiter();
 }
 
 runAllUnitTests()

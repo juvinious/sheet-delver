@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { logger } from '@shared/utils/logger';
 import type { AdminSessionClaims } from './types/admin-auth.types';
 
@@ -13,6 +14,7 @@ export function createAdminSessionClaims(adminId: string, durationMs: number): A
         adminId,
         issuedAt: now,
         expiresAt: now + durationMs,
+        csrfToken: randomBytes(24).toString('hex'),
     };
 }
 
@@ -52,6 +54,9 @@ export function parseAndValidateToken(token: string): AdminSessionClaims | null 
             return null;
         }
         if (!claims.adminId || !Number.isInteger(claims.issuedAt) || !Number.isInteger(claims.expiresAt)) {
+            return null;
+        }
+        if (claims.csrfToken !== undefined && (typeof claims.csrfToken !== 'string' || claims.csrfToken.length < 16)) {
             return null;
         }
         if (!isSessionValid(claims)) {
