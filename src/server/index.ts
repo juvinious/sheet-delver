@@ -3,6 +3,7 @@ import { logger } from '@shared/utils/logger';
 import { initializeRegistry } from '@modules/registry/server';
 import { systemService } from '@core/system/SystemService';
 import { initAdminCredentialStore } from '@server/security/adminCredentialStore';
+import { adminSessionManager } from '@server/security/adminSessionService';
 import { createApp } from '@server/app/createApp';
 import { registerMiddleware } from '@server/app/registerMiddleware';
 import { registerSockets } from '@server/app/registerSockets';
@@ -21,6 +22,9 @@ async function startServer() {
 
     // Initialize Admin Credential Store with optional pepper
     initAdminCredentialStore(config.security.adminPepper);
+
+    // Initialize Admin Session Manager
+    adminSessionManager.initialize();
 
     // Boot-Time System Discovery
     initializeRegistry();

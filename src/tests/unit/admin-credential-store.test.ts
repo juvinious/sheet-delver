@@ -15,15 +15,11 @@ import {
 } from '@server/security/adminCredentialStore';
 import type { AdminAccount } from '@server/security/types/admin-auth.types';
 
-// Use a test directory for temp files
-const TEST_TEMP_DIR = path.join(process.cwd(), '.test-temp');
-
-// Override the admin auth file location for testing
-const testFilePath = path.join(TEST_TEMP_DIR, 'admin-auth.json');
-
-async function cleanupTestFiles(): Promise<void> {
+// Clean up the admin auth file before running tests
+async function cleanupAdminAuthFile(): Promise<void> {
     try {
-        await fs.rm(TEST_TEMP_DIR, { recursive: true, force: true });
+        const filePath = path.join(process.cwd(), '.data', 'security', 'admin-auth.json');
+        await fs.rm(filePath, { force: true });
     } catch {
         // Ignore errors
     }
@@ -31,6 +27,9 @@ async function cleanupTestFiles(): Promise<void> {
 
 async function runCredentialStoreTests(): Promise<void> {
     console.log('Running admin credential store tests...');
+
+    // Clean up any existing admin auth file from previous test runs
+    await cleanupAdminAuthFile();
 
     // Test 1: Hash and verify password
     console.log('  Test 1: Hash and verify password');
@@ -60,7 +59,7 @@ async function runCredentialStoreTests(): Promise<void> {
 
     // Test 3: Create admin account
     console.log('  Test 3: Create admin account');
-    await cleanupTestFiles();
+    await cleanupAdminAuthFile();
     initAdminCredentialStore(); // Reset pepper
 
     const account = await createAdminAccount('initial-password');
@@ -121,7 +120,7 @@ async function runCredentialStoreTests(): Promise<void> {
     assert(!isAccountLocked(expiredLockAccount), 'Expired lock should not be active');
     assert.equal(getRemainingLockoutMs(expiredLockAccount), 0, 'Expired lock should have 0 remaining time');
 
-    await cleanupTestFiles();
+    await cleanupAdminAuthFile();
     console.log('  All credential store tests passed!');
 }
 

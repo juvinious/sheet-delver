@@ -11,6 +11,10 @@ import {
     isAccountLocked,
     getRemainingLockoutMs,
 } from '@server/security/adminCredentialStore';
+import {
+    createAdminSessionClaims,
+    adminSessionManager,
+} from '@server/security/adminSessionService';
 import { getConfig } from '@server/core/config';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import { isErrorPayload } from '@server/shared/utils/isErrorPayload';
@@ -129,13 +133,19 @@ export function createAdminRouter(deps: AdminRouterDeps) {
             // Success: reset failed count and issue token
             await recordSuccessfulLogin(account);
 
-            // ** TODO: Issue admin session token (Slice 2) **
-            // For now, return success indication
+            // Issue short-lived admin session token (15 minutes)
+            const sessionDurationMs = 15 * 60 * 1000; // 15 minutes
+            const claims = createAdminSessionClaims(account.adminId, sessionDurationMs);
+            const token = adminSessionManager.storeSession(claims);
+
+            logger.info(`Admin ${account.adminId} logged in successfully`);
+
             res.json({
                 success: true,
                 message: 'Login successful',
                 adminId: account.adminId,
-                // token will be added in Slice 2
+                token,
+                expiresIn: sessionDurationMs,
             });
         } catch (error: unknown) {
             logger.error('Admin login failed', error);

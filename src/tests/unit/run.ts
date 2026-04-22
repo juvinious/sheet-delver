@@ -12,6 +12,7 @@ import { run as runModuleLifecycleState } from './module-lifecycle-state.test';
 import { run as runModuleManifestValidation } from './module-manifest-validation.test';
 import { run as runModuleRegistryManager } from './module-registry-manager.test';
 import { run as runAdminCredentialStore } from './admin-credential-store.test';
+import { run as runAdminSessionService } from './admin-session-service.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -28,6 +29,7 @@ async function runAllUnitTests() {
     await runRealtimeBroadcaster();
     await runAppSocketGateway();
     await runAdminCredentialStore();
+    await runAdminSessionService();
 }
 
 runAllUnitTests()
