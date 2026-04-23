@@ -18,6 +18,7 @@ import { run as runAdminCsrfMiddleware } from './admin-csrf-middleware.test';
 import { run as runAdminRateLimiter } from './admin-rate-limiter.test';
 import { run as runAdminAuditLog } from './admin-audit-log.test';
 import { run as runModuleLifecycleTransitions } from './module-lifecycle-transitions.test';
+import { run as runModuleManagerOperations } from './module-manager-operations.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -40,6 +41,7 @@ async function runAllUnitTests() {
     await runAdminRateLimiter();
     await runAdminAuditLog();
     runModuleLifecycleTransitions();
+    await runModuleManagerOperations();
 }
 
 runAllUnitTests()
