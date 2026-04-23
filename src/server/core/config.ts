@@ -43,6 +43,7 @@ export function resolveModulePolicyConfig(
     minimumTrustTier: 'first-party' | 'verified-third-party' | 'unverified';
     allowUnverifiedInDevelopment: boolean;
     requireAdminOverrideForLowerTrust: boolean;
+    requirePermissionEscalationApproval: boolean;
 } {
     const modulePolicyDoc = securityDoc?.['module-policy'] || {};
     const isProduction = env.NODE_ENV === 'production';
@@ -63,10 +64,17 @@ export function resolveModulePolicyConfig(
         envRequireOverride
         ?? (typeof fileRequireOverride === 'boolean' ? fileRequireOverride : isProduction);
 
+    const envRequirePermissionApproval = parseBoolean(env.APP_MODULE_POLICY_REQUIRE_PERMISSION_ESCALATION_APPROVAL);
+    const fileRequirePermissionApproval = modulePolicyDoc['require-permission-escalation-approval'];
+    const requirePermissionEscalationApproval =
+        envRequirePermissionApproval
+        ?? (typeof fileRequirePermissionApproval === 'boolean' ? fileRequirePermissionApproval : true);
+
     return {
         minimumTrustTier,
         allowUnverifiedInDevelopment,
         requireAdminOverrideForLowerTrust,
+        requirePermissionEscalationApproval,
     };
 }
 

@@ -33,6 +33,7 @@ const testConfig: AppConfig = {
             minimumTrustTier: 'unverified',
             allowUnverifiedInDevelopment: true,
             requireAdminOverrideForLowerTrust: false,
+            requirePermissionEscalationApproval: true,
         },
         cors: {
             allowAllOrigins: false,

@@ -1,4 +1,5 @@
 import { logger } from '@shared/utils/logger';
+import type { ModulePermissionDeclaration } from './types';
 import {
     type ModuleLifecycleRecord,
     type ModuleLifecycleStatus,
@@ -25,6 +26,7 @@ export interface ModuleArtifactMetadata {
     installedAt: number;
     integrity?: string;
     signature?: string;
+    permissions?: ModulePermissionDeclaration;
 }
 
 /**
@@ -151,6 +153,7 @@ export type ManagerErrorCode =
     | 'transition-rejected'
     | 'trust-policy-blocked'
     | 'artifact-verification-failed'
+    | 'permission-escalation-requires-approval'
     | 'artifact-missing'
     | 'validation-failed'
     | 'rollback-applied'
@@ -190,6 +193,7 @@ export interface InstallModuleInput {
     version: string;
     integrity?: string;
     signature?: string;
+    permissions?: ModulePermissionDeclaration;
 }
 
 export function installModule(
@@ -227,6 +231,7 @@ export function installModule(
             installedAt: now,
             integrity: input.integrity,
             signature: input.signature,
+            permissions: input.permissions,
         });
 
         // installed → validated (no-op validate hook; real validation wired in Slice C)
@@ -316,6 +321,7 @@ export interface UpgradeModuleInput {
     targetVersion: string;
     integrity?: string;
     signature?: string;
+    permissions?: ModulePermissionDeclaration;
 }
 
 export function upgradeModule(
@@ -354,6 +360,7 @@ export function upgradeModule(
             installedAt: now,
             integrity: input.integrity,
             signature: input.signature,
+            permissions: input.permissions,
         });
 
         // upgrading → validated (validation hook wired in Slice C)

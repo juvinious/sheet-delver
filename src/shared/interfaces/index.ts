@@ -160,6 +160,7 @@ export interface AppConfig {
             minimumTrustTier: 'first-party' | 'verified-third-party' | 'unverified';
             allowUnverifiedInDevelopment: boolean;
             requireAdminOverrideForLowerTrust: boolean;
+            requirePermissionEscalationApproval: boolean;
         };
         cors: {
             allowAllOrigins: boolean;

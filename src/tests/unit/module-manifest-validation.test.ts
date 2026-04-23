@@ -63,6 +63,37 @@ export function run() {
         invalidTrustResult.errors.some((error) => error.includes('trust.tier')),
         true
     );
+
+    const permissionsResult = validateModuleInfoShape({
+        ...validManifest,
+        permissions: {
+            network: {
+                outbound: true,
+                allowHosts: ['api.example.com'],
+            },
+            filesystem: {
+                read: ['moduleData'],
+                write: ['moduleData'],
+            },
+            adminRoutes: false,
+            sensitiveData: ['actor'],
+        },
+    });
+    assert.equal(permissionsResult.valid, true);
+
+    const invalidPermissionsResult = validateModuleInfoShape({
+        ...validManifest,
+        permissions: {
+            network: {
+                outbound: 'yes',
+            },
+        },
+    });
+    assert.equal(invalidPermissionsResult.valid, false);
+    assert.equal(
+        invalidPermissionsResult.errors.some((error) => error.includes('permissions.network.outbound')),
+        true
+    );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

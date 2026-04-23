@@ -482,6 +482,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         if (errorCode === 'module-not-found') return 404;
         if (errorCode === 'trust-policy-blocked') return 403;
         if (errorCode === 'artifact-verification-failed') return 422;
+        if (errorCode === 'permission-escalation-requires-approval') return 409;
         if (errorCode === 'precondition-failed' || errorCode === 'transition-rejected') return 409;
         if (errorCode === 'validation-failed') return 422;
         return 400;
@@ -506,9 +507,10 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 const version = typeof req.body?.version === 'string' ? req.body.version : '0.0.0';
                 const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
                 const signature = typeof req.body?.signature === 'string' ? req.body.signature : undefined;
+                const permissions = typeof req.body?.permissions === 'object' ? req.body.permissions : undefined;
 
                 const { installManagedModule } = await import('@modules/registry/server');
-                const result = installManagedModule({ moduleId, source, version, integrity, signature });
+                const result = installManagedModule({ moduleId, source, version, integrity, signature, permissions });
                 if (!result.success) {
                     return res.status(managerErrorStatusCode(result.errorCode)).json({
                         success: false,
@@ -598,9 +600,19 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                     : '0.0.0';
                 const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
                 const signature = typeof req.body?.signature === 'string' ? req.body.signature : undefined;
+                const permissions = typeof req.body?.permissions === 'object' ? req.body.permissions : undefined;
+                const approvePermissionEscalation = req.body?.approvePermissionEscalation === true;
 
                 const { upgradeManagedModule } = await import('@modules/registry/server');
-                const result = upgradeManagedModule({ moduleId, source, targetVersion, integrity, signature });
+                const result = upgradeManagedModule({
+                    moduleId,
+                    source,
+                    targetVersion,
+                    integrity,
+                    signature,
+                    permissions,
+                    approvePermissionEscalation,
+                });
                 if (!result.success) {
                     return res.status(managerErrorStatusCode(result.errorCode)).json({
                         success: false,

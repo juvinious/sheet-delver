@@ -26,7 +26,7 @@ import {
     type UpgradeModuleInput,
     type ManagerOperationResult,
 } from './manager';
-import { loadArtifactStore, saveArtifactStore, upsertArtifactVerification } from './artifactStore';
+import { getArtifact, loadArtifactStore, saveArtifactStore, upsertArtifactVerification } from './artifactStore';
 import {
     evaluateTrustPolicy,
     getDefaultModuleTrustPolicy,
@@ -34,6 +34,7 @@ import {
 } from './trustPolicy';
 import { getConfig } from '@server/core/config';
 import { verifyArtifactMetadata } from './artifactVerification';
+import { evaluatePermissionDelta } from './permissionPolicy';
 
 const LIFECYCLE_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_STATE_FILE';
 const ARTIFACT_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_ARTIFACT_FILE';
@@ -436,6 +437,7 @@ export interface InstallManagedModuleInput {
     version: string;
     integrity?: string;
     signature?: string;
+    permissions?: SystemModuleInfo['permissions'];
 }
 
 export function installManagedModule(input: InstallManagedModuleInput): ManagerOperationResult {
@@ -502,6 +504,7 @@ export function installManagedModule(input: InstallManagedModuleInput): ManagerO
         version: input.version,
         integrity: input.integrity,
         signature: input.signature,
+        permissions: input.permissions || plugin?.info.permissions,
     };
 
     return installModule(
@@ -521,6 +524,8 @@ export interface UpgradeManagedModuleInput {
     targetVersion: string;
     integrity?: string;
     signature?: string;
+    permissions?: SystemModuleInfo['permissions'];
+    approvePermissionEscalation?: boolean;
 }
 
 export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerOperationResult {
@@ -561,6 +566,18 @@ export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerO
 
     const artifactStorePath = getArtifactStateFilePathOverride();
     const artifactStore = loadArtifactStore(artifactStorePath);
+    const previousPermissions = getArtifact(artifactStore, id)?.permissions || plugin?.info.permissions;
+    const requestedPermissions = input.permissions || plugin?.info.permissions;
+    const permissionDelta = evaluatePermissionDelta(previousPermissions, requestedPermissions);
+    if (permissionDelta.escalated && getTrustPolicyConfig().requirePermissionEscalationApproval && !input.approvePermissionEscalation) {
+        return operationFailure(
+            id,
+            'upgrade',
+            `Permission escalation requires explicit approval: ${permissionDelta.escalations.map((entry) => entry.change).join('; ')}`,
+            undefined,
+            'permission-escalation-requires-approval'
+        );
+    }
 
     const verification = verifyArtifactMetadata({
         moduleId: id,
@@ -586,6 +603,7 @@ export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerO
         targetVersion: input.targetVersion,
         integrity: input.integrity,
         signature: input.signature,
+        permissions: requestedPermissions,
     };
 
     return upgradeModule(

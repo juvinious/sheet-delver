@@ -23,6 +23,7 @@ import { run as runModuleManagerGovernance } from './module-manager-governance.t
 import { run as runModulePolicyConfig } from './module-policy-config.test';
 import { run as runModuleTrustPolicy } from './module-trust-policy.test';
 import { run as runModuleArtifactVerification } from './module-artifact-verification.test';
+import { run as runModulePermissionPolicy } from './module-permission-policy.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -50,6 +51,7 @@ async function runAllUnitTests() {
     runModulePolicyConfig();
     runModuleTrustPolicy();
     runModuleArtifactVerification();
+    runModulePermissionPolicy();
 }
 
 runAllUnitTests()

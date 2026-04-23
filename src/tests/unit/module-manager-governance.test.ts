@@ -113,6 +113,9 @@ export async function run(): Promise<void> {
                     source: 'local://shadowdark',
                     version: '1.0.0',
                     installedAt: 1,
+                    permissions: {
+                        sensitiveData: ['actor'],
+                    },
                 },
             },
             verifications: {},
@@ -163,6 +166,37 @@ export async function run(): Promise<void> {
             postVerificationArtifacts.verifications?.shadowdark?.reason?.includes('sha256:<64 hex>'),
             true,
         );
+
+        // Permission escalation requires explicit approval on upgrade.
+        __resetRegistryForTests();
+        const permissionBlocked = upgradeManagedModule({
+            moduleId: 'shadowdark',
+            source: 'local://shadowdark',
+            targetVersion: '2.1.0',
+            permissions: {
+                sensitiveData: ['actor', 'chat'],
+                adminRoutes: true,
+            },
+        });
+        assert.equal(permissionBlocked.success, false);
+        assert.equal(permissionBlocked.errorCode, 'permission-escalation-requires-approval');
+        assert.equal(permissionBlocked.error?.includes('Permission escalation requires explicit approval'), true);
+
+        __resetRegistryForTests();
+        const permissionApproved = upgradeManagedModule({
+            moduleId: 'shadowdark',
+            source: 'local://shadowdark',
+            targetVersion: '2.1.0',
+            permissions: {
+                sensitiveData: ['actor', 'chat'],
+                adminRoutes: true,
+            },
+            approvePermissionEscalation: true,
+        });
+        assert.equal(permissionApproved.success, true);
+
+        const postPermissionApprovalArtifacts = readJson<StoredArtifacts>(artifactFilePath);
+        assert.equal(postPermissionApprovalArtifacts.artifacts.shadowdark?.version, '2.1.0');
 
         // Module truly absent from lifecycle + registry should be module-not-found.
         __resetRegistryForTests();

@@ -60,6 +60,7 @@ export function run() {
             minimumTrustTier: 'verified-third-party',
             allowUnverifiedInDevelopment: false,
             requireAdminOverrideForLowerTrust: true,
+            requirePermissionEscalationApproval: true,
         },
         {
             env: { NODE_ENV: 'production' } as NodeJS.ProcessEnv,

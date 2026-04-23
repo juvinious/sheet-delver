@@ -16,6 +16,10 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
 }
 
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => isNonEmptyString(item));
+}
+
 function isValidTrustTier(value: unknown): boolean {
     return value === 'first-party' || value === 'verified-third-party' || value === 'unverified';
 }
@@ -119,6 +123,47 @@ export function validateModuleInfoShape(info: unknown): ModuleValidationResult {
             errors.push('Manifest field "trust" must be an object when provided');
         } else if (!isValidTrustTier((candidate.trust as { tier?: unknown }).tier)) {
             errors.push('Manifest field "trust.tier" must be one of: first-party, verified-third-party, unverified');
+        }
+    }
+
+    if (candidate.permissions !== undefined) {
+        if (!candidate.permissions || typeof candidate.permissions !== 'object') {
+            errors.push('Manifest field "permissions" must be an object when provided');
+        } else {
+            const permissions = candidate.permissions;
+            if (permissions.network !== undefined) {
+                if (!permissions.network || typeof permissions.network !== 'object') {
+                    errors.push('Manifest field "permissions.network" must be an object when provided');
+                } else {
+                    if (permissions.network.outbound !== undefined && typeof permissions.network.outbound !== 'boolean') {
+                        errors.push('Manifest field "permissions.network.outbound" must be a boolean when provided');
+                    }
+                    if (permissions.network.allowHosts !== undefined && !isStringArray(permissions.network.allowHosts)) {
+                        errors.push('Manifest field "permissions.network.allowHosts" must be an array of non-empty strings when provided');
+                    }
+                }
+            }
+
+            if (permissions.filesystem !== undefined) {
+                if (!permissions.filesystem || typeof permissions.filesystem !== 'object') {
+                    errors.push('Manifest field "permissions.filesystem" must be an object when provided');
+                } else {
+                    if (permissions.filesystem.read !== undefined && !isStringArray(permissions.filesystem.read)) {
+                        errors.push('Manifest field "permissions.filesystem.read" must be an array of non-empty strings when provided');
+                    }
+                    if (permissions.filesystem.write !== undefined && !isStringArray(permissions.filesystem.write)) {
+                        errors.push('Manifest field "permissions.filesystem.write" must be an array of non-empty strings when provided');
+                    }
+                }
+            }
+
+            if (permissions.adminRoutes !== undefined && typeof permissions.adminRoutes !== 'boolean') {
+                errors.push('Manifest field "permissions.adminRoutes" must be a boolean when provided');
+            }
+
+            if (permissions.sensitiveData !== undefined && !isStringArray(permissions.sensitiveData)) {
+                errors.push('Manifest field "permissions.sensitiveData" must be an array of non-empty strings when provided');
+            }
         }
     }
 

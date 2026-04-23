@@ -4,6 +4,7 @@ export interface ModuleTrustPolicyConfig {
     minimumTrustTier: ModuleTrustTier;
     allowUnverifiedInDevelopment: boolean;
     requireAdminOverrideForLowerTrust: boolean;
+    requirePermissionEscalationApproval: boolean;
 }
 
 export interface TrustPolicyDecision {
@@ -28,6 +29,7 @@ export function getDefaultModuleTrustPolicy(
         minimumTrustTier: isProduction ? 'verified-third-party' : 'unverified',
         allowUnverifiedInDevelopment: !isProduction,
         requireAdminOverrideForLowerTrust: isProduction,
+        requirePermissionEscalationApproval: true,
     };
 }
 

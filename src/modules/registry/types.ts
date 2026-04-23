@@ -9,12 +9,26 @@ export interface ModuleTrustDeclaration {
     tier: ModuleTrustTier;
 }
 
+export interface ModulePermissionDeclaration {
+    network?: {
+        outbound?: boolean;
+        allowHosts?: string[];
+    };
+    filesystem?: {
+        read?: string[];
+        write?: string[];
+    };
+    adminRoutes?: boolean;
+    sensitiveData?: string[];
+}
+
 export interface SystemModuleInfo {
     id: string;
     title: string;
     aliases?: string[];
     experimental?: boolean;
     trust?: ModuleTrustDeclaration;
+    permissions?: ModulePermissionDeclaration;
     compatibility?: {
         coreVersion?: string;
         apiContracts?: Record<string, string>;

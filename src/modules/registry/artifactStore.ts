@@ -20,11 +20,16 @@ function createEmptyArtifactStore(): ModuleArtifactStore {
 function isValidArtifact(value: unknown): value is ModuleArtifactMetadata {
     if (!value || typeof value !== 'object') return false;
     const a = value as Partial<ModuleArtifactMetadata>;
+    const permissions = a.permissions as Record<string, unknown> | undefined;
     return (
         typeof a.moduleId === 'string' &&
         typeof a.version === 'string' &&
         typeof a.source === 'string' &&
-        typeof a.installedAt === 'number'
+        typeof a.installedAt === 'number' &&
+        (
+            permissions === undefined
+            || typeof permissions === 'object'
+        )
     );
 }
 
