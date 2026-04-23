@@ -19,6 +19,7 @@ import { run as runAdminRateLimiter } from './admin-rate-limiter.test';
 import { run as runAdminAuditLog } from './admin-audit-log.test';
 import { run as runModuleLifecycleTransitions } from './module-lifecycle-transitions.test';
 import { run as runModuleManagerOperations } from './module-manager-operations.test';
+import { run as runModuleManagerGovernance } from './module-manager-governance.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -42,6 +43,7 @@ async function runAllUnitTests() {
     await runAdminAuditLog();
     runModuleLifecycleTransitions();
     await runModuleManagerOperations();
+    await runModuleManagerGovernance();
 }
 
 runAllUnitTests()

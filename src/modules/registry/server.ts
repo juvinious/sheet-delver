@@ -344,16 +344,45 @@ export function enableModule(moduleId: string): boolean {
 interface ManifestGateResult {
     allowed: boolean;
     mode: 'strict' | 'fail-open';
+    errorCode?: 'module-not-found' | 'validation-failed';
     reason?: string;
 }
 
 function checkManifestGate(moduleId: string): ManifestGateResult {
     const id = moduleId.toLowerCase();
     const plugin = pluginMap.get(id);
+    const record = getLifecycleRecord(id);
+
     if (!plugin) {
+        if (record?.validation && (!record.validation.manifestValid || !record.validation.compatible)) {
+            const reasons: string[] = [];
+            if (!record.validation.manifestValid && record.validation.validationErrors?.length) {
+                reasons.push(record.validation.validationErrors.join('; '));
+            }
+            if (!record.validation.compatible) {
+                reasons.push(record.reason || 'Module is incompatible with current core version');
+            }
+
+            if (isManifestFailOpenEnabled()) {
+                return {
+                    allowed: true,
+                    mode: 'fail-open',
+                    reason: reasons.join(' | ') || 'Manifest gate bypassed in development fail-open mode',
+                };
+            }
+
+            return {
+                allowed: false,
+                mode: 'strict',
+                errorCode: 'validation-failed',
+                reason: reasons.join(' | ') || 'Manifest validation failed',
+            };
+        }
+
         return {
             allowed: false,
             mode: 'strict',
+            errorCode: 'module-not-found',
             reason: `Module ${id} not found in registry`,
         };
     }
@@ -380,6 +409,7 @@ function checkManifestGate(moduleId: string): ManifestGateResult {
     return {
         allowed: false,
         mode: 'strict',
+        errorCode: 'validation-failed',
         reason: reasons.join(' | ') || 'Manifest validation failed',
     };
 }
@@ -397,7 +427,13 @@ export function installManagedModule(input: InstallManagedModuleInput): ManagerO
     const id = input.moduleId.toLowerCase();
     const gate = checkManifestGate(id);
     if (!gate.allowed) {
-        return operationFailure(id, 'install', gate.reason || 'Manifest validation failed', undefined, 'validation-failed');
+        return operationFailure(
+            id,
+            'install',
+            gate.reason || 'Manifest validation failed',
+            undefined,
+            gate.errorCode || 'validation-failed'
+        );
     }
     if (gate.mode === 'fail-open' && gate.reason) {
         logger.warn(`[ModuleManager] Manifest gate fail-open for "${id}": ${gate.reason}`);
@@ -436,7 +472,13 @@ export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerO
     const id = input.moduleId.toLowerCase();
     const gate = checkManifestGate(id);
     if (!gate.allowed) {
-        return operationFailure(id, 'upgrade', gate.reason || 'Manifest validation failed', undefined, 'validation-failed');
+        return operationFailure(
+            id,
+            'upgrade',
+            gate.reason || 'Manifest validation failed',
+            undefined,
+            gate.errorCode || 'validation-failed'
+        );
     }
     if (gate.mode === 'fail-open' && gate.reason) {
         logger.warn(`[ModuleManager] Manifest gate fail-open for "${id}": ${gate.reason}`);
