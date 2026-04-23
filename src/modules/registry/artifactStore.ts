@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ModuleArtifactMetadata } from './manager';
+import type { ArtifactVerificationOutcome } from './artifactVerification';
 
 export interface ModuleArtifactStore {
     version: 1;
     artifacts: Record<string, ModuleArtifactMetadata>;
+    verifications: Record<string, ArtifactVerificationOutcome>;
 }
 
 export function getDefaultArtifactStoreFilePath(): string {
@@ -12,7 +14,7 @@ export function getDefaultArtifactStoreFilePath(): string {
 }
 
 function createEmptyArtifactStore(): ModuleArtifactStore {
-    return { version: 1, artifacts: {} };
+    return { version: 1, artifacts: {}, verifications: {} };
 }
 
 function isValidArtifact(value: unknown): value is ModuleArtifactMetadata {
@@ -23,6 +25,22 @@ function isValidArtifact(value: unknown): value is ModuleArtifactMetadata {
         typeof a.version === 'string' &&
         typeof a.source === 'string' &&
         typeof a.installedAt === 'number'
+    );
+}
+
+function isValidVerification(value: unknown): value is ArtifactVerificationOutcome {
+    if (!value || typeof value !== 'object') return false;
+    const v = value as Partial<ArtifactVerificationOutcome>;
+    return (
+        typeof v.moduleId === 'string'
+        && (v.operation === 'install' || v.operation === 'upgrade')
+        && (v.status === 'verified' || v.status === 'failed' || v.status === 'skipped')
+        && typeof v.verified === 'boolean'
+        && typeof v.source === 'string'
+        && typeof v.checkedAt === 'number'
+        && (v.reason === undefined || typeof v.reason === 'string')
+        && (v.integrity === undefined || typeof v.integrity === 'string')
+        && (v.signature === undefined || typeof v.signature === 'string')
     );
 }
 
@@ -45,7 +63,17 @@ export function loadArtifactStore(
                 artifacts[id] = artifact;
             }
         }
-        return { version: 1, artifacts };
+
+        const verifications: Record<string, ArtifactVerificationOutcome> = {};
+        if (parsed.verifications && typeof parsed.verifications === 'object') {
+            for (const [id, verification] of Object.entries(parsed.verifications)) {
+                if (isValidVerification(verification)) {
+                    verifications[id] = verification;
+                }
+            }
+        }
+
+        return { version: 1, artifacts, verifications };
     } catch {
         return createEmptyArtifactStore();
     }
@@ -78,4 +106,18 @@ export function getArtifact(
     moduleId: string
 ): ModuleArtifactMetadata | undefined {
     return store.artifacts[moduleId];
+}
+
+export function upsertArtifactVerification(
+    store: ModuleArtifactStore,
+    outcome: ArtifactVerificationOutcome
+): void {
+    store.verifications[outcome.moduleId] = outcome;
+}
+
+export function getArtifactVerification(
+    store: ModuleArtifactStore,
+    moduleId: string
+): ArtifactVerificationOutcome | undefined {
+    return store.verifications[moduleId];
 }

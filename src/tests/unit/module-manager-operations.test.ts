@@ -28,7 +28,7 @@ function makeLifecycleStore(record: ModuleLifecycleRecord): ModuleLifecycleStore
 }
 
 function makeArtifactStore(): ModuleArtifactStore {
-    return { version: 1, artifacts: {} };
+    return { version: 1, artifacts: {}, verifications: {} };
 }
 
 const NOW = 1_000_000;

@@ -24,6 +24,7 @@ export interface ModuleArtifactMetadata {
     source: string;
     installedAt: number;
     integrity?: string;
+    signature?: string;
 }
 
 /**
@@ -149,6 +150,7 @@ export type ManagerErrorCode =
     | 'precondition-failed'
     | 'transition-rejected'
     | 'trust-policy-blocked'
+    | 'artifact-verification-failed'
     | 'artifact-missing'
     | 'validation-failed'
     | 'rollback-applied'
@@ -187,6 +189,7 @@ export interface InstallModuleInput {
     source: string;
     version: string;
     integrity?: string;
+    signature?: string;
 }
 
 export function installModule(
@@ -223,6 +226,7 @@ export function installModule(
             version: input.version,
             installedAt: now,
             integrity: input.integrity,
+            signature: input.signature,
         });
 
         // installed → validated (no-op validate hook; real validation wired in Slice C)
@@ -311,6 +315,7 @@ export interface UpgradeModuleInput {
     source: string;
     targetVersion: string;
     integrity?: string;
+    signature?: string;
 }
 
 export function upgradeModule(
@@ -348,6 +353,7 @@ export function upgradeModule(
             version: input.targetVersion,
             installedAt: now,
             integrity: input.integrity,
+            signature: input.signature,
         });
 
         // upgrading → validated (validation hook wired in Slice C)

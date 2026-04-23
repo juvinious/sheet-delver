@@ -41,6 +41,17 @@ interface StoredArtifacts {
         version: string;
         source: string;
     }>;
+    verifications?: Record<string, {
+        moduleId: string;
+        operation: 'install' | 'upgrade';
+        status: 'verified' | 'failed' | 'skipped';
+        verified: boolean;
+        reason?: string;
+        source: string;
+        integrity?: string;
+        signature?: string;
+        checkedAt: number;
+    }>;
 }
 
 export async function run(): Promise<void> {
@@ -104,6 +115,7 @@ export async function run(): Promise<void> {
                     installedAt: 1,
                 },
             },
+            verifications: {},
         });
 
         // Strict mode: invalid manifest should be rejected.
@@ -132,6 +144,25 @@ export async function run(): Promise<void> {
 
         const postInstallArtifacts = readJson<StoredArtifacts>(artifactFilePath);
         assert.equal(postInstallArtifacts.artifacts.badmod?.version, '1.0.1');
+
+        // Non-local artifact with invalid digest/signature metadata should be blocked and persisted.
+        __resetRegistryForTests();
+        const verificationFail = upgradeManagedModule({
+            moduleId: 'shadowdark',
+            source: 'https://example.com/modules/shadowdark-2.1.0.tgz',
+            targetVersion: '2.1.0',
+            integrity: 'invalid-digest',
+        });
+        assert.equal(verificationFail.success, false);
+        assert.equal(verificationFail.errorCode, 'artifact-verification-failed');
+
+        const postVerificationArtifacts = readJson<StoredArtifacts>(artifactFilePath);
+        assert.equal(postVerificationArtifacts.verifications?.shadowdark?.status, 'failed');
+        assert.equal(postVerificationArtifacts.verifications?.shadowdark?.verified, false);
+        assert.equal(
+            postVerificationArtifacts.verifications?.shadowdark?.reason?.includes('sha256:<64 hex>'),
+            true,
+        );
 
         // Module truly absent from lifecycle + registry should be module-not-found.
         __resetRegistryForTests();

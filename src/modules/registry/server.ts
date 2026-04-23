@@ -26,13 +26,14 @@ import {
     type UpgradeModuleInput,
     type ManagerOperationResult,
 } from './manager';
-import { loadArtifactStore } from './artifactStore';
+import { loadArtifactStore, saveArtifactStore, upsertArtifactVerification } from './artifactStore';
 import {
     evaluateTrustPolicy,
     getDefaultModuleTrustPolicy,
     type ModuleTrustPolicyConfig,
 } from './trustPolicy';
 import { getConfig } from '@server/core/config';
+import { verifyArtifactMetadata } from './artifactVerification';
 
 const LIFECYCLE_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_STATE_FILE';
 const ARTIFACT_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_ARTIFACT_FILE';
@@ -434,6 +435,7 @@ export interface InstallManagedModuleInput {
     source: string;
     version: string;
     integrity?: string;
+    signature?: string;
 }
 
 export function installManagedModule(input: InstallManagedModuleInput): ManagerOperationResult {
@@ -474,11 +476,32 @@ export function installManagedModule(input: InstallManagedModuleInput): ManagerO
 
     const artifactStorePath = getArtifactStateFilePathOverride();
     const artifactStore = loadArtifactStore(artifactStorePath);
+
+    const verification = verifyArtifactMetadata({
+        moduleId: id,
+        operation: 'install',
+        source: input.source,
+        integrity: input.integrity,
+        signature: input.signature,
+    });
+    upsertArtifactVerification(artifactStore, verification);
+    saveArtifactStore(artifactStore, artifactStorePath);
+    if (!verification.verified) {
+        return operationFailure(
+            id,
+            'install',
+            verification.reason || 'Artifact verification failed',
+            undefined,
+            'artifact-verification-failed'
+        );
+    }
+
     const managerInput: InstallModuleInput = {
         moduleId: id,
         source: input.source,
         version: input.version,
         integrity: input.integrity,
+        signature: input.signature,
     };
 
     return installModule(
@@ -497,6 +520,7 @@ export interface UpgradeManagedModuleInput {
     source: string;
     targetVersion: string;
     integrity?: string;
+    signature?: string;
 }
 
 export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerOperationResult {
@@ -537,10 +561,31 @@ export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerO
 
     const artifactStorePath = getArtifactStateFilePathOverride();
     const artifactStore = loadArtifactStore(artifactStorePath);
+
+    const verification = verifyArtifactMetadata({
+        moduleId: id,
+        operation: 'upgrade',
+        source: input.source,
+        integrity: input.integrity,
+        signature: input.signature,
+    });
+    upsertArtifactVerification(artifactStore, verification);
+    saveArtifactStore(artifactStore, artifactStorePath);
+    if (!verification.verified) {
+        return operationFailure(
+            id,
+            'upgrade',
+            verification.reason || 'Artifact verification failed',
+            undefined,
+            'artifact-verification-failed'
+        );
+    }
+
     const managerInput: UpgradeModuleInput = {
         source: input.source,
         targetVersion: input.targetVersion,
         integrity: input.integrity,
+        signature: input.signature,
     };
 
     return upgradeModule(

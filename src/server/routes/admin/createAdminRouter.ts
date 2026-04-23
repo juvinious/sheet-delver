@@ -481,6 +481,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         if (!errorCode) return 400;
         if (errorCode === 'module-not-found') return 404;
         if (errorCode === 'trust-policy-blocked') return 403;
+        if (errorCode === 'artifact-verification-failed') return 422;
         if (errorCode === 'precondition-failed' || errorCode === 'transition-rejected') return 409;
         if (errorCode === 'validation-failed') return 422;
         return 400;
@@ -504,9 +505,10 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                 const source = typeof req.body?.source === 'string' ? req.body.source : `local://${moduleId}`;
                 const version = typeof req.body?.version === 'string' ? req.body.version : '0.0.0';
                 const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
+                const signature = typeof req.body?.signature === 'string' ? req.body.signature : undefined;
 
                 const { installManagedModule } = await import('@modules/registry/server');
-                const result = installManagedModule({ moduleId, source, version, integrity });
+                const result = installManagedModule({ moduleId, source, version, integrity, signature });
                 if (!result.success) {
                     return res.status(managerErrorStatusCode(result.errorCode)).json({
                         success: false,
@@ -595,9 +597,10 @@ export function createAdminRouter(deps: AdminRouterDeps) {
                     ? req.body.targetVersion
                     : '0.0.0';
                 const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
+                const signature = typeof req.body?.signature === 'string' ? req.body.signature : undefined;
 
                 const { upgradeManagedModule } = await import('@modules/registry/server');
-                const result = upgradeManagedModule({ moduleId, source, targetVersion, integrity });
+                const result = upgradeManagedModule({ moduleId, source, targetVersion, integrity, signature });
                 if (!result.success) {
                     return res.status(managerErrorStatusCode(result.errorCode)).json({
                         success: false,
