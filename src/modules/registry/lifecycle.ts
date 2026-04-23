@@ -3,11 +3,15 @@ import path from 'node:path';
 
 export type ModuleLifecycleStatus =
     | 'discovered'
+    | 'installed'
     | 'validated'
     | 'enabled'
     | 'disabled'
     | 'incompatible'
-    | 'errored';
+    | 'errored'
+    | 'upgrading'
+    | 'uninstalling'
+    | 'removed';
 
 export interface ModuleLifecycleRecord {
     moduleId: string;
@@ -57,11 +61,15 @@ export function getDefaultLifecycleStateFilePath(): string {
 
 function isValidStatus(value: unknown): value is ModuleLifecycleStatus {
     return value === 'discovered'
+    || value === 'installed'
         || value === 'validated'
         || value === 'enabled'
         || value === 'disabled'
         || value === 'incompatible'
-        || value === 'errored';
+    || value === 'errored'
+    || value === 'upgrading'
+    || value === 'uninstalling'
+    || value === 'removed';
 }
 
 function isValidRecord(value: unknown): value is ModuleLifecycleRecord {

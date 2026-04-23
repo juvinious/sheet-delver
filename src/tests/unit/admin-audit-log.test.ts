@@ -58,4 +58,4 @@ async function runAdminAuditLogTests(): Promise<void> {
     });
 }
 
-void runAdminAuditLogTests();
+export const run = runAdminAuditLogTests;
