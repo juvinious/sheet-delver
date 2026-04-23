@@ -16,8 +16,21 @@ import {
     upsertDiscoveredModule
 } from './lifecycle';
 import { evaluateModuleCompatibility, validateModuleInfoShape } from './validation';
+import {
+    installModule,
+    uninstallModule,
+    upgradeModule,
+    operationFailure,
+    operationSuccess,
+    type InstallModuleInput,
+    type UpgradeModuleInput,
+    type ManagerOperationResult,
+} from './manager';
+import { loadArtifactStore } from './artifactStore';
 
 const LIFECYCLE_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_STATE_FILE';
+const ARTIFACT_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_ARTIFACT_FILE';
+const MANIFEST_FAIL_OPEN_ENV = 'SHEET_DELVER_MANIFEST_FAIL_OPEN';
 
 export interface RegisteredModuleRuntimeInfo {
     info: SystemModuleInfo;
@@ -62,6 +75,16 @@ const getUniquePlugins = () => Array.from(new Set(pluginMap.values()));
 function getLifecycleStateFilePathOverride(): string | undefined {
     const value = process.env[LIFECYCLE_STATE_FILE_ENV];
     return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function getArtifactStateFilePathOverride(): string | undefined {
+    const value = process.env[ARTIFACT_STATE_FILE_ENV];
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function isManifestFailOpenEnabled(): boolean {
+    if (process.env.NODE_ENV === 'production') return false;
+    return process.env[MANIFEST_FAIL_OPEN_ENV] === 'true';
 }
 
 function getLifecycleRecord(moduleId: string): ModuleLifecycleRecord | undefined {
@@ -316,6 +339,207 @@ export function enableModule(moduleId: string): boolean {
 
     saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
     return true;
+}
+
+interface ManifestGateResult {
+    allowed: boolean;
+    mode: 'strict' | 'fail-open';
+    reason?: string;
+}
+
+function checkManifestGate(moduleId: string): ManifestGateResult {
+    const id = moduleId.toLowerCase();
+    const plugin = pluginMap.get(id);
+    if (!plugin) {
+        return {
+            allowed: false,
+            mode: 'strict',
+            reason: `Module ${id} not found in registry`,
+        };
+    }
+
+    const shape = validateModuleInfoShape(plugin.info);
+    const compatibility = evaluateModuleCompatibility(plugin.info, getCoreVersion());
+
+    if (shape.valid && compatibility.compatible) {
+        return { allowed: true, mode: 'strict' };
+    }
+
+    const reasons: string[] = [];
+    if (!shape.valid) reasons.push(shape.errors.join('; '));
+    if (!compatibility.compatible && compatibility.reason) reasons.push(compatibility.reason);
+
+    if (isManifestFailOpenEnabled()) {
+        return {
+            allowed: true,
+            mode: 'fail-open',
+            reason: reasons.join(' | ') || 'Manifest gate bypassed in development fail-open mode',
+        };
+    }
+
+    return {
+        allowed: false,
+        mode: 'strict',
+        reason: reasons.join(' | ') || 'Manifest validation failed',
+    };
+}
+
+export interface InstallManagedModuleInput {
+    moduleId: string;
+    source: string;
+    version: string;
+    integrity?: string;
+}
+
+export function installManagedModule(input: InstallManagedModuleInput): ManagerOperationResult {
+    if (!isInitialized()) initializeRegistry();
+
+    const id = input.moduleId.toLowerCase();
+    const gate = checkManifestGate(id);
+    if (!gate.allowed) {
+        return operationFailure(id, 'install', gate.reason || 'Manifest validation failed', undefined, 'validation-failed');
+    }
+    if (gate.mode === 'fail-open' && gate.reason) {
+        logger.warn(`[ModuleManager] Manifest gate fail-open for "${id}": ${gate.reason}`);
+    }
+
+    const artifactStorePath = getArtifactStateFilePathOverride();
+    const artifactStore = loadArtifactStore(artifactStorePath);
+    const managerInput: InstallModuleInput = {
+        moduleId: id,
+        source: input.source,
+        version: input.version,
+        integrity: input.integrity,
+    };
+
+    return installModule(
+        id,
+        managerInput,
+        lifecycleStore,
+        artifactStore,
+        Date.now(),
+        getLifecycleStateFilePathOverride(),
+        artifactStorePath
+    );
+}
+
+export interface UpgradeManagedModuleInput {
+    moduleId: string;
+    source: string;
+    targetVersion: string;
+    integrity?: string;
+}
+
+export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerOperationResult {
+    if (!isInitialized()) initializeRegistry();
+
+    const id = input.moduleId.toLowerCase();
+    const gate = checkManifestGate(id);
+    if (!gate.allowed) {
+        return operationFailure(id, 'upgrade', gate.reason || 'Manifest validation failed', undefined, 'validation-failed');
+    }
+    if (gate.mode === 'fail-open' && gate.reason) {
+        logger.warn(`[ModuleManager] Manifest gate fail-open for "${id}": ${gate.reason}`);
+    }
+
+    const artifactStorePath = getArtifactStateFilePathOverride();
+    const artifactStore = loadArtifactStore(artifactStorePath);
+    const managerInput: UpgradeModuleInput = {
+        source: input.source,
+        targetVersion: input.targetVersion,
+        integrity: input.integrity,
+    };
+
+    return upgradeModule(
+        id,
+        managerInput,
+        lifecycleStore,
+        artifactStore,
+        Date.now(),
+        getLifecycleStateFilePathOverride(),
+        artifactStorePath
+    );
+}
+
+export function uninstallManagedModule(moduleId: string): ManagerOperationResult {
+    if (!isInitialized()) initializeRegistry();
+
+    const id = moduleId.toLowerCase();
+    const artifactStorePath = getArtifactStateFilePathOverride();
+    const artifactStore = loadArtifactStore(artifactStorePath);
+
+    return uninstallModule(
+        id,
+        lifecycleStore,
+        artifactStore,
+        Date.now(),
+        getLifecycleStateFilePathOverride(),
+        artifactStorePath
+    );
+}
+
+export function validateManagedModule(moduleId: string): ManagerOperationResult {
+    if (!isInitialized()) initializeRegistry();
+
+    const id = moduleId.toLowerCase();
+    const record = getLifecycleRecord(id);
+    if (!record) {
+        return operationFailure(id, 'validate', 'Module record not found in lifecycle store', undefined, 'module-not-found');
+    }
+
+    const plugin = pluginMap.get(id);
+    if (!plugin) {
+        return operationFailure(id, 'validate', `Module ${id} not found in registry`, record.status, 'module-not-found');
+    }
+
+    const previousStatus = record.status;
+    const shape = validateModuleInfoShape(plugin.info);
+    const compatibility = evaluateModuleCompatibility(plugin.info, getCoreVersion());
+
+    if (!shape.valid) {
+        applyLifecycleClassification(lifecycleStore, id, {
+            status: 'errored',
+            enabled: false,
+            reason: shape.errors.join('; '),
+            manifestValid: false,
+            validationErrors: shape.errors,
+            compatible: false,
+            coreVersion: getCoreVersion(),
+        });
+        saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+        return operationFailure(id, 'validate', shape.errors.join('; '), previousStatus, 'validation-failed');
+    }
+
+    if (!compatibility.compatible) {
+        const reason = compatibility.reason || 'Module is incompatible with current core version';
+        applyLifecycleClassification(lifecycleStore, id, {
+            status: 'incompatible',
+            enabled: false,
+            reason,
+            manifestValid: true,
+            compatible: false,
+            coreVersion: compatibility.coreVersion,
+            requiredCoreVersion: compatibility.requiredCoreVersion,
+        });
+        saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+        return operationFailure(id, 'validate', reason, previousStatus, 'validation-failed');
+    }
+
+    const current = lifecycleStore.modules[id];
+    const enabled = current?.enabled ?? false;
+    const nextStatus: ModuleLifecycleStatus = enabled ? 'validated' : 'disabled';
+    applyLifecycleClassification(lifecycleStore, id, {
+        status: nextStatus,
+        enabled,
+        reason: undefined,
+        manifestValid: true,
+        compatible: true,
+        coreVersion: compatibility.coreVersion,
+        requiredCoreVersion: compatibility.requiredCoreVersion,
+    });
+    saveLifecycleStore(lifecycleStore, getLifecycleStateFilePathOverride());
+
+    return operationSuccess(id, 'validate', previousStatus, nextStatus);
 }
 
 export function __resetRegistryForTests() {

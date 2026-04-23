@@ -477,5 +477,193 @@ export function createAdminRouter(deps: AdminRouterDeps) {
         }
     );
 
+    function managerErrorStatusCode(errorCode?: string): number {
+        if (!errorCode) return 400;
+        if (errorCode === 'module-not-found') return 404;
+        if (errorCode === 'precondition-failed' || errorCode === 'transition-rejected') return 409;
+        if (errorCode === 'validation-failed') return 422;
+        return 400;
+    }
+
+    /**
+     * POST /admin/api/manager/:moduleId/install
+     * Install a discovered module and transition it through installed->validated.
+     */
+    adminRouter.post(
+        '/manager/:moduleId/install',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+                const source = typeof req.body?.source === 'string' ? req.body.source : `local://${moduleId}`;
+                const version = typeof req.body?.version === 'string' ? req.body.version : '0.0.0';
+                const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
+
+                const { installManagedModule } = await import('@modules/registry/server');
+                const result = installManagedModule({ moduleId, source, version, integrity });
+                if (!result.success) {
+                    return res.status(managerErrorStatusCode(result.errorCode)).json({
+                        success: false,
+                        moduleId,
+                        operation: 'install',
+                        errorCode: result.errorCode,
+                        error: result.error,
+                        previousStatus: result.previousStatus,
+                    });
+                }
+
+                res.json({
+                    success: true,
+                    moduleId,
+                    operation: 'install',
+                    previousStatus: result.previousStatus,
+                    newStatus: result.newStatus,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to install module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
+    /**
+     * POST /admin/api/manager/:moduleId/uninstall
+     * Uninstall a module and remove its artifact metadata.
+     */
+    adminRouter.post(
+        '/manager/:moduleId/uninstall',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+
+                const { uninstallManagedModule } = await import('@modules/registry/server');
+                const result = uninstallManagedModule(moduleId);
+                if (!result.success) {
+                    return res.status(managerErrorStatusCode(result.errorCode)).json({
+                        success: false,
+                        moduleId,
+                        operation: 'uninstall',
+                        errorCode: result.errorCode,
+                        error: result.error,
+                        previousStatus: result.previousStatus,
+                    });
+                }
+
+                res.json({
+                    success: true,
+                    moduleId,
+                    operation: 'uninstall',
+                    previousStatus: result.previousStatus,
+                    newStatus: result.newStatus,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to uninstall module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
+    /**
+     * POST /admin/api/manager/:moduleId/upgrade
+     * Upgrade a module and re-validate it under transition policy.
+     */
+    adminRouter.post(
+        '/manager/:moduleId/upgrade',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+                const source = typeof req.body?.source === 'string' ? req.body.source : `local://${moduleId}`;
+                const targetVersion = typeof req.body?.targetVersion === 'string'
+                    ? req.body.targetVersion
+                    : '0.0.0';
+                const integrity = typeof req.body?.integrity === 'string' ? req.body.integrity : undefined;
+
+                const { upgradeManagedModule } = await import('@modules/registry/server');
+                const result = upgradeManagedModule({ moduleId, source, targetVersion, integrity });
+                if (!result.success) {
+                    return res.status(managerErrorStatusCode(result.errorCode)).json({
+                        success: false,
+                        moduleId,
+                        operation: 'upgrade',
+                        errorCode: result.errorCode,
+                        error: result.error,
+                        previousStatus: result.previousStatus,
+                    });
+                }
+
+                res.json({
+                    success: true,
+                    moduleId,
+                    operation: 'upgrade',
+                    previousStatus: result.previousStatus,
+                    newStatus: result.newStatus,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to upgrade module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
+    /**
+     * POST /admin/api/manager/:moduleId/validate
+     * Re-run strict manifest+compatibility validation for a module.
+     */
+    adminRouter.post(
+        '/manager/:moduleId/validate',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            try {
+                const moduleId = Array.isArray(req.params.moduleId)
+                    ? req.params.moduleId[0]
+                    : req.params.moduleId;
+
+                const { validateManagedModule } = await import('@modules/registry/server');
+                const result = validateManagedModule(moduleId);
+                if (!result.success) {
+                    return res.status(managerErrorStatusCode(result.errorCode)).json({
+                        success: false,
+                        moduleId,
+                        operation: 'validate',
+                        errorCode: result.errorCode,
+                        error: result.error,
+                        previousStatus: result.previousStatus,
+                    });
+                }
+
+                res.json({
+                    success: true,
+                    moduleId,
+                    operation: 'validate',
+                    previousStatus: result.previousStatus,
+                    newStatus: result.newStatus,
+                });
+            } catch (error: unknown) {
+                logger.error(`Failed to validate module ${req.params.moduleId}`, error);
+                res.status(500).json({ error: getErrorMessage(error) });
+            }
+        }
+    );
+
     return adminRouter;
 }

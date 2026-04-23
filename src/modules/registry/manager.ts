@@ -35,6 +35,7 @@ export interface ManagerOperationResult {
     operation: ManagerOperation;
     previousStatus?: ModuleLifecycleStatus;
     newStatus?: ModuleLifecycleStatus;
+    errorCode?: ManagerErrorCode;
     error?: string;
 }
 
@@ -132,10 +133,11 @@ export function operationFailure(
     moduleId: string,
     operation: ManagerOperation,
     error: string,
-    previousStatus?: ModuleLifecycleStatus
+    previousStatus?: ModuleLifecycleStatus,
+    errorCode: ManagerErrorCode = 'internal'
 ): ManagerOperationResult {
     logger.warn(`[ModuleManager] Operation "${operation}" failed for "${moduleId}": ${error}`);
-    return { success: false, moduleId, operation, previousStatus, error };
+    return { success: false, moduleId, operation, previousStatus, errorCode, error };
 }
 
 // ---------------------------------------------------------------------------
@@ -191,18 +193,20 @@ export function installModule(
     input: InstallModuleInput,
     lifecycleStore: ModuleLifecycleStore,
     artifactStore: ModuleArtifactStore,
-    now = Date.now()
+    now = Date.now(),
+    lifecycleStateFilePath?: string,
+    artifactStoreFilePath?: string
 ): ManagerOperationResult {
     const id = moduleId.toLowerCase();
     const record = lifecycleStore.modules[id];
 
     if (!record) {
-        return operationFailure(id, 'install', 'Module record not found in lifecycle store');
+        return operationFailure(id, 'install', 'Module record not found in lifecycle store', undefined, 'module-not-found');
     }
 
     const pre = checkOperationPrecondition(id, record, 'install');
     if (!pre.allowed) {
-        return operationFailure(id, 'install', pre.reason ?? 'Precondition failed', record.status);
+        return operationFailure(id, 'install', pre.reason ?? 'Precondition failed', record.status, 'precondition-failed');
     }
 
     const previousStatus = record.status;
@@ -224,8 +228,8 @@ export function installModule(
         const validated = applyManagerTransition(installed, 'validated', 'Post-install validation passed', now);
         lifecycleStore.modules[id] = validated;
 
-        saveLifecycleStore(lifecycleStore);
-        saveArtifactStore(artifactStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
+        saveArtifactStore(artifactStore, artifactStoreFilePath);
 
         logger.info(`[ModuleManager] Installed module "${id}" (v${input.version})`);
         return operationSuccess(id, 'install', previousStatus, validated.status);
@@ -233,12 +237,12 @@ export function installModule(
         // Rollback: restore prior record and remove any partial artifact
         lifecycleStore.modules[id] = { ...record, updatedAt: now };
         removeArtifact(artifactStore, id);
-        saveLifecycleStore(lifecycleStore);
-        saveArtifactStore(artifactStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
+        saveArtifactStore(artifactStore, artifactStoreFilePath);
 
         const message = err instanceof Error ? err.message : String(err);
         logger.warn(`[ModuleManager] Install rolled back for "${id}": ${message}`);
-        return operationFailure(id, 'install', `Install failed (rolled back): ${message}`, previousStatus);
+        return operationFailure(id, 'install', `Install failed (rolled back): ${message}`, previousStatus, 'rollback-applied');
     }
 }
 
@@ -252,18 +256,20 @@ export function uninstallModule(
     moduleId: string,
     lifecycleStore: ModuleLifecycleStore,
     artifactStore: ModuleArtifactStore,
-    now = Date.now()
+    now = Date.now(),
+    lifecycleStateFilePath?: string,
+    artifactStoreFilePath?: string
 ): ManagerOperationResult {
     const id = moduleId.toLowerCase();
     const record = lifecycleStore.modules[id];
 
     if (!record) {
-        return operationFailure(id, 'uninstall', 'Module record not found in lifecycle store');
+        return operationFailure(id, 'uninstall', 'Module record not found in lifecycle store', undefined, 'module-not-found');
     }
 
     const pre = checkOperationPrecondition(id, record, 'uninstall');
     if (!pre.allowed) {
-        return operationFailure(id, 'uninstall', pre.reason ?? 'Precondition failed', record.status);
+        return operationFailure(id, 'uninstall', pre.reason ?? 'Precondition failed', record.status, 'precondition-failed');
     }
 
     const previousStatus = record.status;
@@ -271,26 +277,26 @@ export function uninstallModule(
     try {
         const uninstalling = applyManagerTransition(record, 'uninstalling', 'Uninstall initiated', now);
         lifecycleStore.modules[id] = uninstalling;
-        saveLifecycleStore(lifecycleStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
 
         // Remove artifact metadata
         removeArtifact(artifactStore, id);
-        saveArtifactStore(artifactStore);
+        saveArtifactStore(artifactStore, artifactStoreFilePath);
 
         const removed = applyManagerTransition(uninstalling, 'removed', 'Module uninstalled', now);
         lifecycleStore.modules[id] = removed;
-        saveLifecycleStore(lifecycleStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
 
         logger.info(`[ModuleManager] Uninstalled module "${id}"`);
         return operationSuccess(id, 'uninstall', previousStatus, removed.status);
     } catch (err) {
         // Rollback: restore prior record and artifact if it was removed already
         lifecycleStore.modules[id] = { ...record, updatedAt: now };
-        saveLifecycleStore(lifecycleStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
 
         const message = err instanceof Error ? err.message : String(err);
         logger.warn(`[ModuleManager] Uninstall rolled back for "${id}": ${message}`);
-        return operationFailure(id, 'uninstall', `Uninstall failed (rolled back): ${message}`, previousStatus);
+        return operationFailure(id, 'uninstall', `Uninstall failed (rolled back): ${message}`, previousStatus, 'rollback-applied');
     }
 }
 
@@ -311,18 +317,20 @@ export function upgradeModule(
     input: UpgradeModuleInput,
     lifecycleStore: ModuleLifecycleStore,
     artifactStore: ModuleArtifactStore,
-    now = Date.now()
+    now = Date.now(),
+    lifecycleStateFilePath?: string,
+    artifactStoreFilePath?: string
 ): ManagerOperationResult {
     const id = moduleId.toLowerCase();
     const record = lifecycleStore.modules[id];
 
     if (!record) {
-        return operationFailure(id, 'upgrade', 'Module record not found in lifecycle store');
+        return operationFailure(id, 'upgrade', 'Module record not found in lifecycle store', undefined, 'module-not-found');
     }
 
     const pre = checkOperationPrecondition(id, record, 'upgrade');
     if (!pre.allowed) {
-        return operationFailure(id, 'upgrade', pre.reason ?? 'Precondition failed', record.status);
+        return operationFailure(id, 'upgrade', pre.reason ?? 'Precondition failed', record.status, 'precondition-failed');
     }
 
     const previousStatus = record.status;
@@ -345,8 +353,8 @@ export function upgradeModule(
         const validated = applyManagerTransition(upgrading, 'validated', `Upgraded to v${input.targetVersion}`, now);
         lifecycleStore.modules[id] = validated;
 
-        saveLifecycleStore(lifecycleStore);
-        saveArtifactStore(artifactStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
+        saveArtifactStore(artifactStore, artifactStoreFilePath);
 
         logger.info(`[ModuleManager] Upgraded module "${id}" to v${input.targetVersion}`);
         return operationSuccess(id, 'upgrade', previousStatus, validated.status);
@@ -358,12 +366,12 @@ export function upgradeModule(
         } else {
             removeArtifact(artifactStore, id);
         }
-        saveLifecycleStore(lifecycleStore);
-        saveArtifactStore(artifactStore);
+        saveLifecycleStore(lifecycleStore, lifecycleStateFilePath);
+        saveArtifactStore(artifactStore, artifactStoreFilePath);
 
         const message = err instanceof Error ? err.message : String(err);
         logger.warn(`[ModuleManager] Upgrade rolled back for "${id}": ${message}`);
-        return operationFailure(id, 'upgrade', `Upgrade failed (rolled back): ${message}`, previousStatus);
+        return operationFailure(id, 'upgrade', `Upgrade failed (rolled back): ${message}`, previousStatus, 'rollback-applied');
     }
 }
 
