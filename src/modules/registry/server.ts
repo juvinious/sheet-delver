@@ -27,6 +27,12 @@ import {
     type ManagerOperationResult,
 } from './manager';
 import { loadArtifactStore } from './artifactStore';
+import {
+    evaluateTrustPolicy,
+    getDefaultModuleTrustPolicy,
+    type ModuleTrustPolicyConfig,
+} from './trustPolicy';
+import { getConfig } from '@server/core/config';
 
 const LIFECYCLE_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_STATE_FILE';
 const ARTIFACT_STATE_FILE_ENV = 'SHEET_DELVER_MODULE_ARTIFACT_FILE';
@@ -85,6 +91,15 @@ function getArtifactStateFilePathOverride(): string | undefined {
 function isManifestFailOpenEnabled(): boolean {
     if (process.env.NODE_ENV === 'production') return false;
     return process.env[MANIFEST_FAIL_OPEN_ENV] === 'true';
+}
+
+function getTrustPolicyConfig(): ModuleTrustPolicyConfig {
+    try {
+        const config = getConfig();
+        return config.security.modulePolicy;
+    } catch {
+        return getDefaultModuleTrustPolicy(process.env);
+    }
 }
 
 function getLifecycleRecord(moduleId: string): ModuleLifecycleRecord | undefined {
@@ -425,6 +440,24 @@ export function installManagedModule(input: InstallManagedModuleInput): ManagerO
     if (!isInitialized()) initializeRegistry();
 
     const id = input.moduleId.toLowerCase();
+
+    const plugin = pluginMap.get(id);
+    if (plugin) {
+        const trustDecision = evaluateTrustPolicy(plugin.info, getTrustPolicyConfig(), {
+            env: process.env,
+            operation: 'install',
+        });
+        if (!trustDecision.allowed) {
+            return operationFailure(
+                id,
+                'install',
+                trustDecision.reason || 'Module trust policy blocked install operation',
+                undefined,
+                'trust-policy-blocked'
+            );
+        }
+    }
+
     const gate = checkManifestGate(id);
     if (!gate.allowed) {
         return operationFailure(
@@ -470,6 +503,24 @@ export function upgradeManagedModule(input: UpgradeManagedModuleInput): ManagerO
     if (!isInitialized()) initializeRegistry();
 
     const id = input.moduleId.toLowerCase();
+
+    const plugin = pluginMap.get(id);
+    if (plugin) {
+        const trustDecision = evaluateTrustPolicy(plugin.info, getTrustPolicyConfig(), {
+            env: process.env,
+            operation: 'upgrade',
+        });
+        if (!trustDecision.allowed) {
+            return operationFailure(
+                id,
+                'upgrade',
+                trustDecision.reason || 'Module trust policy blocked upgrade operation',
+                undefined,
+                'trust-policy-blocked'
+            );
+        }
+    }
+
     const gate = checkManifestGate(id);
     if (!gate.allowed) {
         return operationFailure(

@@ -16,6 +16,10 @@ function isNonEmptyString(value: unknown): value is string {
     return typeof value === 'string' && value.trim().length > 0;
 }
 
+function isValidTrustTier(value: unknown): boolean {
+    return value === 'first-party' || value === 'verified-third-party' || value === 'unverified';
+}
+
 function parseSemver(version: string): { major: number; minor: number; patch: number } | null {
     const cleaned = version.trim().replace(/^v/i, '');
     const match = cleaned.match(/^(\d+)\.(\d+)\.(\d+)$/);
@@ -108,6 +112,14 @@ export function validateModuleInfoShape(info: unknown): ModuleValidationResult {
 
     if (candidate.experimental !== undefined && typeof candidate.experimental !== 'boolean') {
         errors.push('Manifest field "experimental" must be a boolean when provided');
+    }
+
+    if (candidate.trust !== undefined) {
+        if (!candidate.trust || typeof candidate.trust !== 'object') {
+            errors.push('Manifest field "trust" must be an object when provided');
+        } else if (!isValidTrustTier((candidate.trust as { tier?: unknown }).tier)) {
+            errors.push('Manifest field "trust.tier" must be one of: first-party, verified-third-party, unverified');
+        }
     }
 
     return {

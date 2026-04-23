@@ -3,11 +3,18 @@ import type { DiscoveryConfig } from '@shared/interfaces';
 export type { ModuleLifecycleRecord, ModuleLifecycleStatus, ModuleLifecycleStore } from './lifecycle';
 export type { ModuleCompatibilityResult, ModuleValidationResult } from './validation';
 
+export type ModuleTrustTier = 'first-party' | 'verified-third-party' | 'unverified';
+
+export interface ModuleTrustDeclaration {
+    tier: ModuleTrustTier;
+}
+
 export interface SystemModuleInfo {
     id: string;
     title: string;
     aliases?: string[];
     experimental?: boolean;
+    trust?: ModuleTrustDeclaration;
     compatibility?: {
         coreVersion?: string;
         apiContracts?: Record<string, string>;

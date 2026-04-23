@@ -29,6 +29,11 @@ const testConfig: AppConfig = {
             maxAttempts: 6,
         },
         bodyLimit: '10mb',
+        modulePolicy: {
+            minimumTrustTier: 'unverified',
+            allowUnverifiedInDevelopment: true,
+            requireAdminOverrideForLowerTrust: false,
+        },
         cors: {
             allowAllOrigins: false,
             allowedOrigins: ['http://127.0.0.1:3000'],

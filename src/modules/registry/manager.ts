@@ -148,6 +148,7 @@ export type ManagerErrorCode =
     | 'module-not-found'
     | 'precondition-failed'
     | 'transition-rejected'
+    | 'trust-policy-blocked'
     | 'artifact-missing'
     | 'validation-failed'
     | 'rollback-applied'

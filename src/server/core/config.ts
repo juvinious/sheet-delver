@@ -25,6 +25,51 @@ function parseCsv(value: string | undefined): string[] | undefined {
     return items.length > 0 ? items : undefined;
 }
 
+function parseTrustTier(
+    value: string | undefined
+): 'first-party' | 'verified-third-party' | 'unverified' | undefined {
+    if (!value) return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'first-party') return 'first-party';
+    if (normalized === 'verified-third-party') return 'verified-third-party';
+    if (normalized === 'unverified') return 'unverified';
+    return undefined;
+}
+
+export function resolveModulePolicyConfig(
+    securityDoc: any,
+    env: NodeJS.ProcessEnv = process.env
+): {
+    minimumTrustTier: 'first-party' | 'verified-third-party' | 'unverified';
+    allowUnverifiedInDevelopment: boolean;
+    requireAdminOverrideForLowerTrust: boolean;
+} {
+    const modulePolicyDoc = securityDoc?.['module-policy'] || {};
+    const isProduction = env.NODE_ENV === 'production';
+
+    const envMinTier = parseTrustTier(env.APP_MODULE_POLICY_MINIMUM_TRUST_TIER);
+    const fileMinTier = parseTrustTier(modulePolicyDoc['minimum-trust-tier']);
+    const minimumTrustTier = envMinTier || fileMinTier || (isProduction ? 'verified-third-party' : 'unverified');
+
+    const envAllowUnverifiedDev = parseBoolean(env.APP_MODULE_POLICY_ALLOW_UNVERIFIED_IN_DEVELOPMENT);
+    const fileAllowUnverifiedDev = modulePolicyDoc['allow-unverified-in-development'];
+    const allowUnverifiedInDevelopment =
+        envAllowUnverifiedDev
+        ?? (typeof fileAllowUnverifiedDev === 'boolean' ? fileAllowUnverifiedDev : !isProduction);
+
+    const envRequireOverride = parseBoolean(env.APP_MODULE_POLICY_REQUIRE_ADMIN_OVERRIDE_FOR_LOWER_TRUST);
+    const fileRequireOverride = modulePolicyDoc['require-admin-override-for-lower-trust'];
+    const requireAdminOverrideForLowerTrust =
+        envRequireOverride
+        ?? (typeof fileRequireOverride === 'boolean' ? fileRequireOverride : isProduction);
+
+    return {
+        minimumTrustTier,
+        allowUnverifiedInDevelopment,
+        requireAdminOverrideForLowerTrust,
+    };
+}
+
 export async function loadConfig(): Promise<AppConfig | null> {
     if (_cachedConfig) return _cachedConfig;
 
@@ -99,6 +144,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const configuredAllowedOrigins = Array.isArray(corsConfig['allowed-origins'])
                 ? corsConfig['allowed-origins'].map((origin: unknown) => String(origin).trim()).filter(Boolean)
                 : undefined;
+            const modulePolicy = resolveModulePolicyConfig(security, process.env);
 
             _cachedConfig = {
                 app: {
@@ -135,6 +181,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
                     serviceToken: envServiceToken || security['service-token'],
                     adminSetupToken: envAdminSetupToken || security['admin-setup-token'],
                     adminPepper: envAdminPepper || security['admin-pepper'],
+                    modulePolicy,
                     cors: {
                         allowAllOrigins: envCorsAllowAllOrigins ?? corsConfig['allow-all-origins'] ?? false,
                         allowedOrigins: envCorsAllowedOrigins || configuredAllowedOrigins || [appUrl]

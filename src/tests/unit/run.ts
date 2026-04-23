@@ -20,6 +20,8 @@ import { run as runAdminAuditLog } from './admin-audit-log.test';
 import { run as runModuleLifecycleTransitions } from './module-lifecycle-transitions.test';
 import { run as runModuleManagerOperations } from './module-manager-operations.test';
 import { run as runModuleManagerGovernance } from './module-manager-governance.test';
+import { run as runModulePolicyConfig } from './module-policy-config.test';
+import { run as runModuleTrustPolicy } from './module-trust-policy.test';
 
 async function runAllUnitTests() {
     runStatusSanitize();
@@ -44,6 +46,8 @@ async function runAllUnitTests() {
     runModuleLifecycleTransitions();
     await runModuleManagerOperations();
     await runModuleManagerGovernance();
+    runModulePolicyConfig();
+    runModuleTrustPolicy();
 }
 
 runAllUnitTests()

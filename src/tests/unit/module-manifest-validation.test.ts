@@ -46,6 +46,23 @@ export function run() {
     }, '0.7.0');
     assert.equal(malformedConstraint.compatible, false);
     assert.equal(malformedConstraint.reason?.includes('Unsupported version constraint token'), true);
+
+    const trustManifest: SystemModuleInfo = {
+        ...validManifest,
+        trust: { tier: 'verified-third-party' },
+    };
+    const trustResult = validateModuleInfoShape(trustManifest);
+    assert.equal(trustResult.valid, true);
+
+    const invalidTrustResult = validateModuleInfoShape({
+        ...validManifest,
+        trust: { tier: 'unknown-tier' }
+    });
+    assert.equal(invalidTrustResult.valid, false);
+    assert.equal(
+        invalidTrustResult.errors.some((error) => error.includes('trust.tier')),
+        true
+    );
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

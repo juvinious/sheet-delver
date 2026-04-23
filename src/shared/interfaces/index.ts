@@ -156,6 +156,11 @@ export interface AppConfig {
         serviceToken?: string;
         adminSetupToken?: string; // One-time token for bootstrap setup
         adminPepper?: string; // Optional pepper for admin password hashing
+        modulePolicy: {
+            minimumTrustTier: 'first-party' | 'verified-third-party' | 'unverified';
+            allowUnverifiedInDevelopment: boolean;
+            requireAdminOverrideForLowerTrust: boolean;
+        };
         cors: {
             allowAllOrigins: boolean;
             allowedOrigins: string[];

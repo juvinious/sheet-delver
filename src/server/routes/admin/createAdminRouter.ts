@@ -480,6 +480,7 @@ export function createAdminRouter(deps: AdminRouterDeps) {
     function managerErrorStatusCode(errorCode?: string): number {
         if (!errorCode) return 400;
         if (errorCode === 'module-not-found') return 404;
+        if (errorCode === 'trust-policy-blocked') return 403;
         if (errorCode === 'precondition-failed' || errorCode === 'transition-rejected') return 409;
         if (errorCode === 'validation-failed') return 422;
         return 400;
