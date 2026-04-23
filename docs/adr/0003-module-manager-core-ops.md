@@ -1,6 +1,6 @@
 # ADR-0003: Module Manager Core Operations
 
-**Status:** Proposed
+**Status:** Accepted (Implemented)
 **Date:** April 22, 2026
 **Supersedes:** None
 **Related:** ADR-0001, ADR-0002
@@ -176,3 +176,31 @@ Expected follow-up decisions:
 1. Trust tiers and artifact signature policy
 2. Capability contract package extraction/version negotiation
 3. Registry index/distribution protocol for external modules
+
+---
+
+## Implementation Outcome
+
+Implementation completed in four slices.
+
+1. Slice A: Manager API and State Foundations
+- Expanded lifecycle status union to include `installed`, `upgrading`, `uninstalling`, `removed`
+- Added explicit transition policy utility and transition assertions
+- Added manager operation foundations and precondition checks
+
+2. Slice B: Install/Uninstall/Upgrade Workflows
+- Added manager install/uninstall/upgrade operation scaffolding
+- Added rollback-safe behavior for failed operations
+- Added split persistence model for lifecycle state vs artifact metadata
+
+3. Slice C: Manifest Governance + Admin Endpoints
+- Added strict manifest governance path for install/upgrade
+- Added explicit development fail-open override path
+- Added authenticated/CSRF-protected/audited admin manager operation endpoints
+
+4. Slice D: Test and Validation Gate
+- Added manager governance and persistence correctness tests
+- Added strict-vs-fail-open manifest gate coverage
+- Validation gates run green (`tsc`, lint on touched runtime files, unit suite)
+
+This ADR is now closed as implemented and superseded by follow-up ADR-0004 for trust, contract, and distribution phases.

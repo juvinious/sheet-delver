@@ -1,0 +1,182 @@
+# ADR-0004: Module Platform Governance and Distribution
+
+**Status:** Proposed
+**Date:** April 22, 2026
+**Supersedes:** None
+**Related:** ADR-0001, ADR-0002, ADR-0003
+
+---
+
+## Context
+
+ADR-0003 established manager-driven lifecycle operations, transition policy enforcement, split lifecycle/artifact persistence, manifest governance gates, and authenticated admin manager endpoints.
+
+The next risks and gaps are now concentrated in three areas:
+- trust and permission governance for externalized artifacts
+- stable capability contracts and version negotiation between core and modules
+- distribution/index workflows for multi-repo module delivery
+
+Without these, module operations exist but cannot be safely expanded to broader distribution and third-party adoption.
+
+---
+
+## Decision
+
+Adopt a follow-on phase set that incrementally enables secure, contract-stable, externally distributable module operations.
+
+This ADR defines the next implementation phases and acceptance criteria after ADR-0003 completion.
+
+---
+
+## Scope (This ADR)
+
+### In Scope
+
+1. Trust and policy enforcement baseline
+- Trust tiers (`first-party`, `verified-third-party`, `unverified`)
+- Artifact integrity verification at install/upgrade
+- Policy gate for permission escalation during upgrade
+- Explicit production-default allow policy with admin override path
+
+2. Capability contracts and compatibility negotiation
+- Define and version capability contracts (`module-api`, `ui-extension-api`, `roll-engine-api`)
+- Require module-declared contract ranges in manifest
+- Add compatibility resolver that blocks enable/install on incompatible contract ranges
+
+3. Distribution and index baseline
+- Introduce module source abstraction for local bundle and indexed artifact source
+- Add index metadata format and retrieval flow
+- Add manager dry-run mode for install/upgrade impact analysis
+
+4. Observability and operational UX data contracts
+- Add structured operation telemetry fields for trust, policy, and contract decisions
+- Expose dependency/conflict impact previews for lifecycle actions
+- Preserve auditable decision trail for policy denials and overrides
+
+### Out of Scope
+
+- Full sandboxed runtime/container isolation for module execution
+- Public marketplace/community submission workflow
+- Cryptographic key infrastructure beyond initial signature verification policy
+
+---
+
+## Phase Map
+
+### Phase 24: Trust and Permission Governance
+
+Goals:
+- enforce trust-tier policy at install/upgrade
+- verify artifact integrity/signature metadata
+- guard permission increases behind explicit admin confirmation
+
+Slices:
+1. Trust model and policy schema
+- Add trust tier model to manifest/runtime metadata
+- Add production/development policy defaults and override model
+
+2. Artifact verification path
+- Validate digest/signature metadata on install/upgrade
+- Persist verification outcome and reasoned denial payloads
+
+3. Permission governance gate
+- Compare requested permission deltas on upgrade
+- Require explicit approval for elevated permissions
+
+4. Tests and operational docs
+- Unit/integration tests for deny/allow flows
+- API/docs updates for trust/policy errors and override semantics
+
+Acceptance criteria:
+- Install/upgrade can be blocked by trust/policy violations with structured error payloads
+- Integrity verification outcomes are persisted and auditable
+- Permission escalation requires explicit approval in mutation flow
+
+### Phase 25: Capability Contracts and Version Negotiation
+
+Goals:
+- stabilize core-module contracts with explicit versioned packages
+- block incompatible modules before enable/install
+
+Slices:
+1. Contract package baselines
+- Introduce versioned contract surfaces and manifest declarations
+
+2. Compatibility resolver
+- Compare required vs provided contract ranges
+- Produce deterministic compatibility diagnostics
+
+3. Lifecycle integration
+- Enforce contract compatibility in validate/install/upgrade
+- Persist incompatibility reasons into lifecycle state
+
+4. Tests and migration guidance
+- Add compatibility matrix tests
+- Provide migration path for existing modules to contract declarations
+
+Acceptance criteria:
+- Contract incompatibility blocks module operations with actionable diagnostics
+- Compatibility matrix is test-covered for pass/fail edge cases
+- Existing first-party modules have explicit declared contract ranges
+
+### Phase 26: Distribution Index and External Module Flow
+
+Goals:
+- support indexed external module sources with safe preview and rollback behavior
+
+Slices:
+1. Index model and source abstraction
+- Define index JSON schema and source adapters (local, indexed)
+
+2. Manager install/upgrade source pipeline
+- Resolve module/version from index, fetch artifact metadata, validate trust/policy
+
+3. Dry-run and impact analysis
+- Add dry-run endpoints/results for dependency, trust, and permission impact
+
+4. Tests, telemetry, and hardening
+- Integration coverage for fetch/resolve/failure paths
+- Observability hooks for source resolution and policy outcomes
+
+Acceptance criteria:
+- Manager can resolve and install from indexed source in addition to local source
+- Dry-run previews operation impact without mutation
+- Rollback behavior remains deterministic under source or validation failures
+
+---
+
+## Rationale
+
+1. Risk-first sequencing
+- Trust and policy controls must precede broader distribution to reduce supply-chain and privilege risks.
+
+2. Contract stability before scale
+- Explicit compatibility contracts reduce breakage as module repositories decouple from core.
+
+3. Operational clarity
+- Structured diagnostics and dry-run previews reduce unsafe admin actions and improve supportability.
+
+---
+
+## Consequences
+
+### Positive
+- Safer external module adoption path
+- Clear compatibility governance between core and modules
+- Better administrative confidence through explicit policy decisions and previews
+
+### Costs/Tradeoffs
+- Additional manifest/schema complexity
+- Broader test matrix and migration overhead for module maintainers
+- More policy surface to document and support
+
+---
+
+## Implementation Tracking
+
+Status board:
+- Phase 24: Not Started
+- Phase 25: Not Started
+- Phase 26: Not Started
+
+This ADR should be updated per-slice as phases advance, mirroring the completion discipline used in ADR-0003.
