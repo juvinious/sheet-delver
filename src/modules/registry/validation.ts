@@ -1,5 +1,10 @@
 import type { SystemModuleInfo } from './types';
 import { getCoreContractRegistry } from './contractRegistry';
+import {
+    resolveModuleCompatibility,
+    type ModuleContractDiagnostic,
+    type ModuleCoreConstraintDiagnostic,
+} from './compatibilityResolver';
 
 export interface ModuleValidationResult {
     valid: boolean;
@@ -13,15 +18,8 @@ export interface ModuleCompatibilityResult {
     requiredCoreVersion?: string;
     requiredApiContracts?: Record<string, string>;
     providedApiContracts?: Record<string, string>;
+    coreDiagnostics?: ModuleCoreConstraintDiagnostic[];
     contractDiagnostics?: ModuleContractDiagnostic[];
-}
-
-export interface ModuleContractDiagnostic {
-    contract: string;
-    requiredRange: string;
-    providedVersion?: string;
-    compatible: boolean;
-    reason?: string;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -39,59 +37,6 @@ function isStringRecord(value: unknown): value is Record<string, string> {
 
 function isValidTrustTier(value: unknown): boolean {
     return value === 'first-party' || value === 'verified-third-party' || value === 'unverified';
-}
-
-function parseSemver(version: string): { major: number; minor: number; patch: number } | null {
-    const cleaned = version.trim().replace(/^v/i, '');
-    const match = cleaned.match(/^(\d+)\.(\d+)\.(\d+)$/);
-    if (!match) return null;
-
-    return {
-        major: Number(match[1]),
-        minor: Number(match[2]),
-        patch: Number(match[3])
-    };
-}
-
-function compareSemver(a: { major: number; minor: number; patch: number }, b: { major: number; minor: number; patch: number }): number {
-    if (a.major !== b.major) return a.major - b.major;
-    if (a.minor !== b.minor) return a.minor - b.minor;
-    return a.patch - b.patch;
-}
-
-function evaluateConstraint(currentVersion: string, token: string): { ok: boolean; error?: string } {
-    const trimmed = token.trim();
-    if (!trimmed) return { ok: true };
-
-    const match = trimmed.match(/^(>=|<=|>|<|=)?\s*(\d+\.\d+\.\d+)$/);
-    if (!match) {
-        return { ok: false, error: `Unsupported version constraint token: "${trimmed}"` };
-    }
-
-    const operator = match[1] || '=';
-    const targetVersion = parseSemver(match[2]);
-    const current = parseSemver(currentVersion);
-
-    if (!targetVersion || !current) {
-        return { ok: false, error: 'Invalid semantic version format for compatibility check' };
-    }
-
-    const cmp = compareSemver(current, targetVersion);
-
-    if (operator === '=') return { ok: cmp === 0 };
-    if (operator === '>') return { ok: cmp > 0 };
-    if (operator === '>=') return { ok: cmp >= 0 };
-    if (operator === '<') return { ok: cmp < 0 };
-    if (operator === '<=') return { ok: cmp <= 0 };
-
-    return { ok: false, error: `Unsupported operator: ${operator}` };
-}
-
-function splitConstraints(range: string): string[] {
-    return range
-        .split(/[\s,]+/g)
-        .map((token) => token.trim())
-        .filter(Boolean);
 }
 
 export function validateModuleInfoShape(info: unknown): ModuleValidationResult {
@@ -213,114 +158,21 @@ export function evaluateModuleCompatibility(
     const requiredCoreVersion = info.compatibility?.coreVersion;
     const requiredApiContracts = info.compatibility?.apiContracts;
     const providedApiContracts: Record<string, string> = getCoreContractRegistry();
-
-    if (requiredCoreVersion) {
-        const constraints = splitConstraints(requiredCoreVersion);
-        if (constraints.length === 0) {
-            return {
-                compatible: false,
-                coreVersion,
-                requiredCoreVersion,
-                requiredApiContracts,
-                providedApiContracts,
-                reason: 'Empty core version compatibility constraint'
-            };
-        }
-
-        for (const constraint of constraints) {
-            const result = evaluateConstraint(coreVersion, constraint);
-            if (result.error) {
-                return {
-                    compatible: false,
-                    coreVersion,
-                    requiredCoreVersion,
-                    requiredApiContracts,
-                    providedApiContracts,
-                    reason: result.error
-                };
-            }
-            if (!result.ok) {
-                return {
-                    compatible: false,
-                    coreVersion,
-                    requiredCoreVersion,
-                    requiredApiContracts,
-                    providedApiContracts,
-                    reason: `Core ${coreVersion} does not satisfy constraint ${constraint}`
-                };
-            }
-        }
-    }
-
-    const contractDiagnostics: ModuleContractDiagnostic[] = [];
-    if (requiredApiContracts && Object.keys(requiredApiContracts).length > 0) {
-        const entries = Object.entries(requiredApiContracts).sort(([a], [b]) => a.localeCompare(b));
-        for (const [contract, requiredRange] of entries) {
-            const providedVersion = providedApiContracts[contract];
-            if (!providedVersion) {
-                contractDiagnostics.push({
-                    contract,
-                    requiredRange,
-                    compatible: false,
-                    reason: `Contract "${contract}" is not provided by core`,
-                });
-                continue;
-            }
-
-            const constraints = splitConstraints(requiredRange);
-            if (constraints.length === 0) {
-                contractDiagnostics.push({
-                    contract,
-                    requiredRange,
-                    providedVersion,
-                    compatible: false,
-                    reason: `Contract "${contract}" has an empty required range`,
-                });
-                continue;
-            }
-
-            let failedReason: string | undefined;
-            for (const constraint of constraints) {
-                const result = evaluateConstraint(providedVersion, constraint);
-                if (result.error) {
-                    failedReason = `Contract "${contract}" has invalid constraint: ${result.error}`;
-                    break;
-                }
-                if (!result.ok) {
-                    failedReason = `Contract ${contract} ${providedVersion} does not satisfy constraint ${constraint}`;
-                    break;
-                }
-            }
-
-            contractDiagnostics.push({
-                contract,
-                requiredRange,
-                providedVersion,
-                compatible: !failedReason,
-                reason: failedReason,
-            });
-        }
-    }
-
-    const failingContract = contractDiagnostics.find((entry) => !entry.compatible);
-    if (failingContract) {
-        return {
-            compatible: false,
-            reason: failingContract.reason || `Contract ${failingContract.contract} is incompatible`,
-            coreVersion,
-            requiredCoreVersion,
-            requiredApiContracts,
-            providedApiContracts,
-            contractDiagnostics,
-        };
-    }
-
-    return {
-        compatible: true,
+    const resolution = resolveModuleCompatibility({
         coreVersion,
         requiredCoreVersion,
         requiredApiContracts,
         providedApiContracts,
-        contractDiagnostics: contractDiagnostics.length > 0 ? contractDiagnostics : undefined,
+    });
+
+    return {
+        compatible: resolution.compatible,
+        reason: resolution.reason,
+        coreVersion,
+        requiredCoreVersion,
+        requiredApiContracts,
+        providedApiContracts,
+        coreDiagnostics: resolution.coreDiagnostics,
+        contractDiagnostics: resolution.contractDiagnostics,
     };
 }
