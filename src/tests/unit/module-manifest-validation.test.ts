@@ -94,6 +94,54 @@ export function run() {
         invalidPermissionsResult.errors.some((error) => error.includes('permissions.network.outbound')),
         true
     );
+
+    const invalidApiContractsResult = validateModuleInfoShape({
+        ...validManifest,
+        compatibility: {
+            apiContracts: {
+                'module-api': '',
+            },
+        },
+    });
+    assert.equal(invalidApiContractsResult.valid, false);
+    assert.equal(
+        invalidApiContractsResult.errors.some((error) => error.includes('compatibility.apiContracts')),
+        true
+    );
+
+    const compatibleContracts = evaluateModuleCompatibility({
+        ...validManifest,
+        compatibility: {
+            apiContracts: {
+                'module-api': '>=1.0.0 <2.0.0',
+                'ui-extension-api': '=1.0.0',
+            },
+        },
+    }, '0.7.0');
+    assert.equal(compatibleContracts.compatible, true);
+    assert.equal(compatibleContracts.contractDiagnostics?.length, 2);
+
+    const missingContract = evaluateModuleCompatibility({
+        ...validManifest,
+        compatibility: {
+            apiContracts: {
+                'non-existent-contract': '>=1.0.0',
+            },
+        },
+    }, '0.7.0');
+    assert.equal(missingContract.compatible, false);
+    assert.equal(missingContract.reason?.includes('not provided by core'), true);
+
+    const invalidContractRange = evaluateModuleCompatibility({
+        ...validManifest,
+        compatibility: {
+            apiContracts: {
+                'module-api': '^1.0.0',
+            },
+        },
+    }, '0.7.0');
+    assert.equal(invalidContractRange.compatible, false);
+    assert.equal(invalidContractRange.reason?.includes('invalid constraint'), true);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

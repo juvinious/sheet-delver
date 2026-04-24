@@ -1,4 +1,5 @@
 import type { SystemModuleInfo } from './types';
+import { getCoreContractRegistry } from './contractRegistry';
 
 export interface ModuleValidationResult {
     valid: boolean;
@@ -10,6 +11,17 @@ export interface ModuleCompatibilityResult {
     reason?: string;
     coreVersion: string;
     requiredCoreVersion?: string;
+    requiredApiContracts?: Record<string, string>;
+    providedApiContracts?: Record<string, string>;
+    contractDiagnostics?: ModuleContractDiagnostic[];
+}
+
+export interface ModuleContractDiagnostic {
+    contract: string;
+    requiredRange: string;
+    providedVersion?: string;
+    compatible: boolean;
+    reason?: string;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -18,6 +30,11 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((item) => isNonEmptyString(item));
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    return Object.entries(value).every(([key, entry]) => isNonEmptyString(key) && isNonEmptyString(entry));
 }
 
 function isValidTrustTier(value: unknown): boolean {
@@ -167,6 +184,22 @@ export function validateModuleInfoShape(info: unknown): ModuleValidationResult {
         }
     }
 
+    if (candidate.compatibility !== undefined) {
+        if (!candidate.compatibility || typeof candidate.compatibility !== 'object') {
+            errors.push('Manifest field "compatibility" must be an object when provided');
+        } else {
+            if (candidate.compatibility.coreVersion !== undefined && !isNonEmptyString(candidate.compatibility.coreVersion)) {
+                errors.push('Manifest field "compatibility.coreVersion" must be a non-empty string when provided');
+            }
+            if (
+                candidate.compatibility.apiContracts !== undefined
+                && !isStringRecord(candidate.compatibility.apiContracts)
+            ) {
+                errors.push('Manifest field "compatibility.apiContracts" must be a record of non-empty string keys to non-empty version range strings when provided');
+            }
+        }
+    }
+
     return {
         valid: errors.length === 0,
         errors
@@ -178,47 +211,116 @@ export function evaluateModuleCompatibility(
     coreVersion: string
 ): ModuleCompatibilityResult {
     const requiredCoreVersion = info.compatibility?.coreVersion;
+    const requiredApiContracts = info.compatibility?.apiContracts;
+    const providedApiContracts: Record<string, string> = getCoreContractRegistry();
 
-    if (!requiredCoreVersion) {
-        return {
-            compatible: true,
-            coreVersion
-        };
+    if (requiredCoreVersion) {
+        const constraints = splitConstraints(requiredCoreVersion);
+        if (constraints.length === 0) {
+            return {
+                compatible: false,
+                coreVersion,
+                requiredCoreVersion,
+                requiredApiContracts,
+                providedApiContracts,
+                reason: 'Empty core version compatibility constraint'
+            };
+        }
+
+        for (const constraint of constraints) {
+            const result = evaluateConstraint(coreVersion, constraint);
+            if (result.error) {
+                return {
+                    compatible: false,
+                    coreVersion,
+                    requiredCoreVersion,
+                    requiredApiContracts,
+                    providedApiContracts,
+                    reason: result.error
+                };
+            }
+            if (!result.ok) {
+                return {
+                    compatible: false,
+                    coreVersion,
+                    requiredCoreVersion,
+                    requiredApiContracts,
+                    providedApiContracts,
+                    reason: `Core ${coreVersion} does not satisfy constraint ${constraint}`
+                };
+            }
+        }
     }
 
-    const constraints = splitConstraints(requiredCoreVersion);
-    if (constraints.length === 0) {
+    const contractDiagnostics: ModuleContractDiagnostic[] = [];
+    if (requiredApiContracts && Object.keys(requiredApiContracts).length > 0) {
+        const entries = Object.entries(requiredApiContracts).sort(([a], [b]) => a.localeCompare(b));
+        for (const [contract, requiredRange] of entries) {
+            const providedVersion = providedApiContracts[contract];
+            if (!providedVersion) {
+                contractDiagnostics.push({
+                    contract,
+                    requiredRange,
+                    compatible: false,
+                    reason: `Contract "${contract}" is not provided by core`,
+                });
+                continue;
+            }
+
+            const constraints = splitConstraints(requiredRange);
+            if (constraints.length === 0) {
+                contractDiagnostics.push({
+                    contract,
+                    requiredRange,
+                    providedVersion,
+                    compatible: false,
+                    reason: `Contract "${contract}" has an empty required range`,
+                });
+                continue;
+            }
+
+            let failedReason: string | undefined;
+            for (const constraint of constraints) {
+                const result = evaluateConstraint(providedVersion, constraint);
+                if (result.error) {
+                    failedReason = `Contract "${contract}" has invalid constraint: ${result.error}`;
+                    break;
+                }
+                if (!result.ok) {
+                    failedReason = `Contract ${contract} ${providedVersion} does not satisfy constraint ${constraint}`;
+                    break;
+                }
+            }
+
+            contractDiagnostics.push({
+                contract,
+                requiredRange,
+                providedVersion,
+                compatible: !failedReason,
+                reason: failedReason,
+            });
+        }
+    }
+
+    const failingContract = contractDiagnostics.find((entry) => !entry.compatible);
+    if (failingContract) {
         return {
             compatible: false,
+            reason: failingContract.reason || `Contract ${failingContract.contract} is incompatible`,
             coreVersion,
             requiredCoreVersion,
-            reason: 'Empty core version compatibility constraint'
+            requiredApiContracts,
+            providedApiContracts,
+            contractDiagnostics,
         };
-    }
-
-    for (const constraint of constraints) {
-        const result = evaluateConstraint(coreVersion, constraint);
-        if (result.error) {
-            return {
-                compatible: false,
-                coreVersion,
-                requiredCoreVersion,
-                reason: result.error
-            };
-        }
-        if (!result.ok) {
-            return {
-                compatible: false,
-                coreVersion,
-                requiredCoreVersion,
-                reason: `Core ${coreVersion} does not satisfy constraint ${constraint}`
-            };
-        }
     }
 
     return {
         compatible: true,
         coreVersion,
-        requiredCoreVersion
+        requiredCoreVersion,
+        requiredApiContracts,
+        providedApiContracts,
+        contractDiagnostics: contractDiagnostics.length > 0 ? contractDiagnostics : undefined,
     };
 }
