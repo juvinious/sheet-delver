@@ -39,11 +39,36 @@ Optional. Re-exports API initialization or specialized server-only logic (e.g., 
 {
     "id": "my-system-id",
     "title": "My Awesome RPG",
+    "aliases": ["my-system"],
+    "experimental": false,
+    "trust": {
+        "tier": "first-party"
+    },
+    "compatibility": {
+        "coreVersion": ">=0.7.0 <1.0.0",
+        "apiContracts": {
+            "module-api": "^1.0.0"
+        }
+    },
     "manifest": {
         "ui": "module/ui",
         "logic": "module/logic",
         "server": "module/server"
     },
+    "permissions": {
+        "network": {
+            "outbound": false,
+            "allowHosts": []
+        },
+        "filesystem": {
+            "read": ["moduleData"],
+            "write": ["moduleData"]
+        },
+        "adminRoutes": false,
+        "sensitiveData": ["actor"]
+    },
+    "dependencies": ["generic"],
+    "conflicts": ["legacy-system"],
     "discovery": {
         "packs": [
             { "id": "system.items", "type": "Item", "hydrate": true },
@@ -52,6 +77,44 @@ Optional. Re-exports API initialization or specialized server-only logic (e.g., 
     }
 }
 ```
+
+### Currently Recognized Manifest Fields
+
+- **`id`**: Required non-empty module ID.
+- **`title`**: Required display title.
+- **`aliases`**: Optional alternate identifiers.
+- **`experimental`**: Optional flag that hides the module from normal public listing.
+- **`trust.tier`**: Optional trust tier used by manager policy. Allowed values:
+    - `first-party`
+    - `verified-third-party`
+    - `unverified`
+- **`compatibility.coreVersion`**: Optional semver constraint checked during validation.
+- **`compatibility.apiContracts`**: Reserved for contract negotiation phases; may be declared now.
+- **`manifest.ui` / `manifest.logic`**: Required entrypoints.
+- **`manifest.server`**: Optional server-only entrypoint.
+- **`permissions`**: Optional requested capability declarations evaluated by manager policy.
+- **`dependencies`**: Optional required module IDs.
+- **`conflicts`**: Optional mutually exclusive module IDs.
+- **`discovery`**: Optional compendium sync metadata.
+
+### Permission Declaration Baseline
+
+The current manager recognizes these optional permission fields:
+
+- **`permissions.network.outbound`**: Boolean; request outbound network access.
+- **`permissions.network.allowHosts`**: Optional string array of allowed hostnames.
+- **`permissions.filesystem.read`**: Optional string array of read scopes.
+- **`permissions.filesystem.write`**: Optional string array of write scopes.
+- **`permissions.adminRoutes`**: Boolean; request admin-route integration.
+- **`permissions.sensitiveData`**: Optional string array describing sensitive data categories accessed.
+
+During upgrade, newly requested permissions may require explicit admin approval before the operation is allowed.
+
+### Trust and Verification Notes
+
+- Missing `trust` metadata currently defaults to first-party behavior for backward compatibility with existing in-repo modules.
+- Local install sources (`local://`, `file://`) are allowed without digest/signature enforcement and are recorded as verification `skipped`.
+- Non-local install/upgrade sources are expected to provide integrity and signature metadata for manager verification.
 
 ## 4. Discovery & Data Persistence
 
@@ -72,7 +135,8 @@ Data is stored at `.data/cache/[systemId]/pack-[id].json`. A `manifest-[systemId
 1. **No Root Logic**: Do not place logic, adapters, or components in the module root.
 2. **Import Hygiene**: The `module/` directory acts as a firewall. Internal `src/` files should use relative paths to other `src/` subdirectories.
 3. **Automated Discovery**: New systems are **automatically discovered** on server boot if they follow this manifest structure.
-4. **Registry Architecture**: Strictly follow the "Zero `index.ts`" policy for the registry.
+4. **Manager Policy Compatibility**: If you declare remote-distribution or elevated permissions, keep `trust`, `permissions`, `dependencies`, and `conflicts` accurate so manager operations can evaluate policy correctly.
+5. **Registry Architecture**: Strictly follow the "Zero `index.ts`" policy for the registry.
    - Server: `@modules/registry/server`
    - Client: `@modules/registry/client`
    - Shared Types: `@modules/registry/types`

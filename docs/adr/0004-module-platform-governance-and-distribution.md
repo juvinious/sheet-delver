@@ -175,8 +175,35 @@ Acceptance criteria:
 ## Implementation Tracking
 
 Status board:
-- Phase 24: Not Started
+- Phase 24: Completed
 - Phase 25: Not Started
 - Phase 26: Not Started
 
 This ADR should be updated per-slice as phases advance, mirroring the completion discipline used in ADR-0003.
+
+---
+
+## Phase 24 Outcome
+
+Phase 24 completed in four slices.
+
+1. Slice 1: Trust Model and Policy Schema
+- Added trust tier manifest metadata
+- Added environment-aware module policy defaults and override config
+- Added trust gate enforcement for install/upgrade flows
+
+2. Slice 2: Artifact Verification Path
+- Added install/upgrade artifact verification metadata checks for integrity/signature inputs
+- Persisted verification outcomes and denial reasons in artifact state
+- Added structured artifact verification failure responses
+
+3. Slice 3: Permission Governance Gate
+- Added manifest permission declarations and validation
+- Added permission delta detection for upgrades
+- Required explicit approval for permission escalation before upgrade mutation
+
+4. Slice 4: Tests and Operational Docs
+- Added unit coverage for trust policy, artifact verification, and permission delta behavior
+- Updated API and manifest documentation to reflect manager policy flows
+
+Phase 25 is the next execution phase.

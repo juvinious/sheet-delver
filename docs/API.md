@@ -324,6 +324,117 @@ If other modules depend on this one, returns **409 Conflict** with dependent mod
 }
 ```
 
+## Module Manager Operations
+
+These routes are authenticated, CSRF-protected, and audited admin mutation endpoints.
+
+### `POST /admin/manager/:moduleId/install`
+Installs a discovered module under manager policy.
+
+**Body:**
+```json
+{
+  "source": "local://shadowdark",
+  "version": "1.0.0",
+  "integrity": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "signature": "minisign:...",
+  "permissions": {
+    "network": {
+      "outbound": false,
+      "allowHosts": []
+    },
+    "filesystem": {
+      "read": ["moduleData"],
+      "write": ["moduleData"]
+    },
+    "adminRoutes": false,
+    "sensitiveData": ["actor"]
+  }
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "moduleId": "shadowdark",
+  "operation": "install",
+  "previousStatus": "discovered",
+  "newStatus": "validated"
+}
+```
+
+### `POST /admin/manager/:moduleId/upgrade`
+Upgrades a module under trust, verification, and permission-escalation policy.
+
+**Body:**
+```json
+{
+  "source": "https://example.com/modules/shadowdark-2.0.0.tgz",
+  "targetVersion": "2.0.0",
+  "integrity": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "signature": "minisign:...",
+  "permissions": {
+    "network": {
+      "outbound": true,
+      "allowHosts": ["api.example.com"]
+    },
+    "adminRoutes": true,
+    "sensitiveData": ["actor", "chat"]
+  },
+  "approvePermissionEscalation": true
+}
+```
+
+**Success Response:**
+```json
+{
+  "success": true,
+  "moduleId": "shadowdark",
+  "operation": "upgrade",
+  "previousStatus": "disabled",
+  "newStatus": "validated"
+}
+```
+
+### `POST /admin/manager/:moduleId/uninstall`
+Uninstalls a module and removes persisted artifact metadata.
+
+### `POST /admin/manager/:moduleId/validate`
+Re-runs manifest and compatibility validation for a module.
+
+### Manager Policy Error Responses
+
+`install` and `upgrade` may fail with the following structured errors:
+
+- `403 trust-policy-blocked`: module trust tier is below the configured minimum policy
+- `422 artifact-verification-failed`: remote artifact is missing or has malformed integrity/signature metadata
+- `409 permission-escalation-requires-approval`: upgrade requested broader permissions without explicit approval
+- `422 validation-failed`: manifest or compatibility validation failed
+- `404 module-not-found`: target module does not exist in lifecycle/registry state
+
+**Example Permission Escalation Block (409):**
+```json
+{
+  "success": false,
+  "moduleId": "shadowdark",
+  "operation": "upgrade",
+  "errorCode": "permission-escalation-requires-approval",
+  "error": "Permission escalation requires explicit approval: Admin route access enabled; Sensitive data access added: chat"
+}
+```
+
+**Example Artifact Verification Block (422):**
+```json
+{
+  "success": false,
+  "moduleId": "shadowdark",
+  "operation": "upgrade",
+  "errorCode": "artifact-verification-failed",
+  "error": "Artifact integrity is required and must be sha256:<64 hex> for non-local sources"
+}
+```
+
 ## Module Dependencies & Conflicts
 
 Module manifests (`info.json`) can declare:
