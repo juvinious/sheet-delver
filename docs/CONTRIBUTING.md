@@ -183,6 +183,9 @@ Logs below the configured level will be suppressed in the browser console.
 
 ## Development Workflow
 
+Release maintainers should follow the [Release Process](RELEASING.md) for
+versioning, changelog preparation, verification, and tag publication.
+
 1.  **Refactoring Components**: When refactoring, split large components into smaller files near their feature area.
 2.  **Styling**: Use Tailwind CSS for styling.
 3.  **Testing**: Verify your changes against a live Foundry instance running the target system.

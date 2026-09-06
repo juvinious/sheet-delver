@@ -16,6 +16,7 @@
 - Added compendium hydration services
 - Rebuilt combat synchronization
 - Expanded automated test coverage
+- Added automated release publishing
 
 ## Unreleased 0.1 - 0.7.x
 - Created initial application

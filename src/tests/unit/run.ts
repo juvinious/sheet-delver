@@ -20,6 +20,9 @@ import { run as runCiWorkflowSecurity } from './security/ci-workflow-security.te
 import { run as runCiDataFixture } from './security/ci-data-fixture.test';
 import { run as runRollFormulaSecurity } from './security/roll-formula-security.test';
 
+// ── releases ──────────────────────────────────────────────────────────────────
+import { run as runReleaseMetadata } from './releases/release-metadata.test';
+
 // ── services ──────────────────────────────────────────────────────────────────
 import { run as runStatusSanitize } from './services/status-sanitize.test';
 import { run as runLocalhostPolicy } from './services/localhost-policy.test';
@@ -161,6 +164,7 @@ async function runAllUnitTests() {
     runCiWorkflowSecurity();
     runCiDataFixture();
     await runRollFormulaSecurity();
+    runReleaseMetadata();
     runStatusSanitize();
     runLocalhostPolicy();
     runSyncTokenService();

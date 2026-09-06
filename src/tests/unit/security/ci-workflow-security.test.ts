@@ -11,6 +11,7 @@ interface WorkflowStep {
 
 interface WorkflowJob {
     if?: string;
+    permissions?: Record<string, unknown>;
     steps?: WorkflowStep[];
 }
 
@@ -19,26 +20,40 @@ interface WorkflowDocument {
     jobs?: Record<string, WorkflowJob>;
 }
 
-export function run() {
-    const workflowPath = path.join(process.cwd(), '.github', 'workflows', 'ci.yml');
+function loadWorkflow(name: string): {
+    source: string;
+    workflow: WorkflowDocument;
+    steps: WorkflowStep[];
+} {
+    const workflowPath = path.join(process.cwd(), '.github', 'workflows', name);
     const source = fs.readFileSync(workflowPath, 'utf8');
     const workflow = yaml.load(source) as WorkflowDocument;
-    const jobs = Object.values(workflow.jobs ?? {});
-    const steps = jobs.flatMap((job) => job.steps ?? []);
+    const steps = Object.values(workflow.jobs ?? {}).flatMap((job) => job.steps ?? []);
+    return { source, workflow, steps };
+}
 
-    assert.equal(workflow.permissions?.contents, 'read');
-    assert.ok(steps.length > 0);
-
-    // Every third-party workflow dependency must be immutable and retain a
-    // human-readable release comment in the source for future review.
+function assertPinnedActions(source: string, steps: WorkflowStep[]): void {
     for (const step of steps) {
         if (!step.uses) continue;
         assert.match(step.uses, /^[^@\s]+@[a-f0-9]{40}$/);
-        const escaped = step.uses.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        assert.match(source, new RegExp(`${escaped}\\s+#\\s+v\\d`));
+        const escaped = step.uses.replace(/[.*+?^$()|[\]\\]/g, '\\$&');
+        assert.match(source, new RegExp(escaped + '\\s+#\\s+v\\d'));
     }
+}
 
-    const commands = steps.map((step) => step.run ?? '').join('\n');
+function assertCheckoutCredentialsDisabled(steps: WorkflowStep[]): void {
+    for (const step of steps.filter((candidate) => candidate.uses?.startsWith('actions/checkout@'))) {
+        assert.equal(step.with?.['persist-credentials'], false);
+    }
+}
+
+export function run() {
+    const ci = loadWorkflow('ci.yml');
+    assert.equal(ci.workflow.permissions?.contents, 'read');
+    assert.ok(ci.steps.length > 0);
+    assertPinnedActions(ci.source, ci.steps);
+
+    const ciCommands = ci.steps.map((step) => step.run ?? '').join('\n');
     for (const required of [
         'npm ci',
         'npm run managed:generate',
@@ -51,25 +66,65 @@ export function run() {
         'npm run build',
         'npm sbom --omit=dev --sbom-format cyclonedx',
     ]) {
-        assert.ok(commands.includes(required), `CI is missing required gate: ${required}`);
+        assert.ok(ciCommands.includes(required), 'CI is missing required gate: ' + required);
     }
 
-    // A clean checkout has no ignored .managed alias map, so generation must
-    // precede the standalone TypeScript gate that consumes it.
     assert.ok(
-        commands.indexOf('npm run managed:generate') < commands.indexOf('npx tsc --noEmit'),
+        ciCommands.indexOf('npm run managed:generate') < ciCommands.indexOf('npx tsc --noEmit'),
         'CI must generate managed TypeScript paths before type checking',
     );
-
-    assert.equal(source.includes('cat >'), false);
-    assert.equal(source.includes('data/config/settings.yaml'), false);
-    const dependencyReviewJob = workflow.jobs?.['dependency-review'];
+    assert.equal(ci.source.includes('cat >'), false);
+    assert.equal(ci.source.includes('data/config/settings.yaml'), false);
+    const dependencyReviewJob = ci.workflow.jobs?.['dependency-review'];
     assert.ok(dependencyReviewJob, 'CI must define the dependency-review job');
     assert.equal(dependencyReviewJob.if, "github.event_name == 'pull_request'");
-    assert.equal(source.includes('ENABLE_DEPENDENCY_REVIEW'), false);
-    assert.ok(steps.some((step) => step.uses?.startsWith('actions/dependency-review-action@')));
-    assert.ok(steps.some((step) => step.uses?.startsWith('actions/upload-artifact@')));
-    for (const step of steps.filter((candidate) => candidate.uses?.startsWith('actions/checkout@'))) {
-        assert.equal(step.with?.['persist-credentials'], false);
+    assert.equal(ci.source.includes('ENABLE_DEPENDENCY_REVIEW'), false);
+    assert.ok(ci.steps.some((step) => step.uses?.startsWith('actions/dependency-review-action@')));
+    assert.ok(ci.steps.some((step) => step.uses?.startsWith('actions/upload-artifact@')));
+    assertCheckoutCredentialsDisabled(ci.steps);
+
+    const release = loadWorkflow('release.yml');
+    const releaseJob = release.workflow.jobs?.release;
+    assert.equal(release.workflow.permissions?.contents, 'read');
+    assert.equal(releaseJob?.permissions?.contents, 'write');
+    assertPinnedActions(release.source, release.steps);
+    assertCheckoutCredentialsDisabled(release.steps);
+    assert.ok(release.source.includes("- 'v*.*.*'"));
+
+    const releaseCommands = release.steps.map((step) => step.run ?? '').join('\n');
+    for (const required of [
+        'npm ci',
+        'npm run managed:generate',
+        'npm audit --omit=dev --audit-level=high',
+        'npm run lint',
+        'npx tsc --noEmit',
+        'npm run test:unit',
+        'npm run test:integration',
+        'npm run ci:fixture',
+        'npm run build',
+        'npm run release:prepare',
+        'npm sbom --omit=dev --sbom-format cyclonedx',
+        'sha256sum',
+        'gh release create',
+        '--verify-tag',
+    ]) {
+        assert.ok(
+            releaseCommands.includes(required),
+            'Release workflow is missing required gate or command: ' + required,
+        );
     }
+
+    assert.ok(
+        releaseCommands.indexOf('npm run managed:generate')
+            < releaseCommands.indexOf('npx tsc --noEmit'),
+        'Release workflow must generate managed TypeScript paths before type checking',
+    );
+    assert.equal(release.source.includes('softprops/'), false);
+    assert.equal(release.source.includes('cat >'), false);
+    assert.equal(release.source.includes('settings.yaml'), false);
+    assert.equal(release.source.includes('.next/standalone'), false);
+    assert.ok(release.source.includes('GH_TOKEN: ${{ github.token }}'));
+    assert.equal(releaseCommands.includes('${{'), false);
+    assert.ok(releaseCommands.includes('$RELEASE_TAG'));
+    assert.ok(releaseCommands.includes('$RUNNER_TEMP'));
 }
