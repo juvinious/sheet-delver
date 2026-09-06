@@ -284,7 +284,10 @@ Debug API surface follows the existing debug switch:
     pm2 save
     ```
 
-    Configure the data directory in `ecosystem.config.cjs` via the `SHEET_DELVER_DATA` environment variable.
+    Configure the data directory with `SHEET_DELVER_DATA` in the project-root
+    `.env` file or in the process environment. The supplied ecosystem file does
+    not override it. If omitted, the application uses `./data/` relative to the
+    project directory.
 
 6.  **Open**: Navigate to the player URL shown in the startup output (typically [http://localhost:3000](http://localhost:3000)). Use the separately printed loopback URL for administration.
 
