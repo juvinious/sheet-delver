@@ -5,6 +5,8 @@ import { API_CONTRACT_VERSIONS } from '@shared/sdk';
 import type { SystemModuleInfo } from '@modules/registry/types';
 
 export function run() {
+    const fixtureCoreVersion = '1.2.3';
+
     // Lifecycle validation and the public SDK must advertise one canonical map.
     assert.deepEqual(getCoreContractRegistry(), API_CONTRACT_VERSIONS);
 
@@ -34,21 +36,21 @@ export function run() {
 
     const compatible = evaluateModuleCompatibility({
         ...validManifest,
-        compatibility: { coreVersion: '>=0.7.0 <1.0.0' }
-    }, '0.7.0');
+        compatibility: { coreVersion: '>=1.2.0 <2.0.0' }
+    }, fixtureCoreVersion);
     assert.equal(compatible.compatible, true);
 
     const incompatible = evaluateModuleCompatibility({
         ...validManifest,
-        compatibility: { coreVersion: '>=0.8.0 <1.0.0' }
-    }, '0.7.0');
+        compatibility: { coreVersion: '>=1.3.0 <2.0.0' }
+    }, fixtureCoreVersion);
     assert.equal(incompatible.compatible, false);
     assert.equal(incompatible.reason?.includes('does not satisfy constraint'), true);
 
     const malformedConstraint = evaluateModuleCompatibility({
         ...validManifest,
-        compatibility: { coreVersion: '^0.7.0' }
-    }, '0.7.0');
+        compatibility: { coreVersion: '^1.2.3' }
+    }, fixtureCoreVersion);
     assert.equal(malformedConstraint.compatible, false);
     assert.equal(malformedConstraint.reason?.includes('Unsupported version constraint token'), true);
 
@@ -122,7 +124,7 @@ export function run() {
                 'ui-extension-api': '=1.1.0',
             },
         },
-    }, '0.7.0');
+    }, fixtureCoreVersion);
     assert.equal(compatibleContracts.compatible, true);
     assert.equal(compatibleContracts.contractDiagnostics?.length, 2);
 
@@ -133,7 +135,7 @@ export function run() {
                 'non-existent-contract': '>=1.0.0',
             },
         },
-    }, '0.7.0');
+    }, fixtureCoreVersion);
     assert.equal(missingContract.compatible, false);
     assert.equal(missingContract.reason?.includes('not provided by core'), true);
 
@@ -144,7 +146,7 @@ export function run() {
                 'module-api': '^1.0.0',
             },
         },
-    }, '0.7.0');
+    }, fixtureCoreVersion);
     assert.equal(invalidContractRange.compatible, false);
     assert.equal(invalidContractRange.reason?.includes('invalid constraint'), true);
 }

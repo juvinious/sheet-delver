@@ -52,7 +52,7 @@ export async function run(): Promise<void> {
                     validation: {
                         manifestValid: true,
                         compatible: true,
-                        coreVersion: '0.7.0',
+                        coreVersion: '1.2.3',
                     },
                     firstSeenAt: 1,
                     lastSeenAt: 1,

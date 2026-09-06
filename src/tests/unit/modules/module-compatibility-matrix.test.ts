@@ -12,6 +12,7 @@ interface MatrixCase {
 }
 
 export function run() {
+    const fixtureCoreVersion = '1.2.3';
     const providedApiContracts = {
         'module-api': '1.0.0',
         'ui-extension-api': '1.0.0',
@@ -21,8 +22,8 @@ export function run() {
     const matrix: MatrixCase[] = [
         {
             name: 'core and contracts both compatible',
-            coreVersion: '0.7.0',
-            requiredCoreVersion: '>=0.7.0 <1.0.0',
+            coreVersion: fixtureCoreVersion,
+            requiredCoreVersion: '>=1.2.0 <2.0.0',
             requiredApiContracts: {
                 'module-api': '>=1.0.0 <2.0.0',
                 'ui-extension-api': '=1.0.0',
@@ -32,15 +33,15 @@ export function run() {
         },
         {
             name: 'core constraint mismatch',
-            coreVersion: '0.7.0',
-            requiredCoreVersion: '>=0.8.0 <1.0.0',
+            coreVersion: fixtureCoreVersion,
+            requiredCoreVersion: '>=1.3.0 <2.0.0',
             providedApiContracts,
             expectedCompatible: false,
             expectedReasonIncludes: 'does not satisfy constraint',
         },
         {
             name: 'missing provided contract',
-            coreVersion: '0.7.0',
+            coreVersion: fixtureCoreVersion,
             requiredApiContracts: {
                 'new-contract': '>=1.0.0',
             },
@@ -50,7 +51,7 @@ export function run() {
         },
         {
             name: 'provided contract version mismatch',
-            coreVersion: '0.7.0',
+            coreVersion: fixtureCoreVersion,
             requiredApiContracts: {
                 'roll-engine-api': '>=2.0.0',
             },
@@ -60,7 +61,7 @@ export function run() {
         },
         {
             name: 'invalid contract range token',
-            coreVersion: '0.7.0',
+            coreVersion: fixtureCoreVersion,
             requiredApiContracts: {
                 'module-api': '^1.0.0',
             },

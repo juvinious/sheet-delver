@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { resolveModuleCompatibility } from '@modules/registry/compatibilityResolver';
 
 export function run() {
+    const fixtureCoreVersion = '1.2.3';
     const providedApiContracts = {
         'module-api': '1.0.0',
         'ui-extension-api': '1.0.0',
@@ -9,14 +10,14 @@ export function run() {
     };
 
     const noRequirements = resolveModuleCompatibility({
-        coreVersion: '0.7.0',
+        coreVersion: fixtureCoreVersion,
         providedApiContracts,
     });
     assert.equal(noRequirements.compatible, true);
 
     const coreMismatch = resolveModuleCompatibility({
-        coreVersion: '0.7.0',
-        requiredCoreVersion: '>=0.8.0 <1.0.0',
+        coreVersion: fixtureCoreVersion,
+        requiredCoreVersion: '>=1.3.0 <2.0.0',
         providedApiContracts,
     });
     assert.equal(coreMismatch.compatible, false);
@@ -24,7 +25,7 @@ export function run() {
     assert.equal(coreMismatch.coreDiagnostics?.length, 2);
 
     const contractSortingDeterministic = resolveModuleCompatibility({
-        coreVersion: '0.7.0',
+        coreVersion: fixtureCoreVersion,
         requiredApiContracts: {
             'zzz-contract': '>=1.0.0',
             'aaa-contract': '>=1.0.0',
@@ -37,7 +38,7 @@ export function run() {
     assert.equal(contractSortingDeterministic.reason?.includes('"aaa-contract" is not provided by core'), true);
 
     const invalidContractRange = resolveModuleCompatibility({
-        coreVersion: '0.7.0',
+        coreVersion: fixtureCoreVersion,
         requiredApiContracts: {
             'module-api': '^1.0.0',
         },
