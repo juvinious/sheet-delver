@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { createDocumentStore, createChatRuntime, createTableRuntime } from '@server/shared/utils/moduleDocumentServices';
+import { createDocumentStore, createChatRuntime, createRollRuntime, createTableRuntime } from '@server/shared/utils/moduleDocumentServices';
 import { actorStore } from '@server/core/documents/primary/actors/ActorStore';
 import { chatMessageStore } from '@server/core/documents/primary/chat-messages/ChatMessageStore';
 import { journalStore } from '@server/core/documents/primary/journals/JournalStore';
@@ -292,6 +292,26 @@ export async function run() {
         await chat.send({ content: 'gm-said', author: 'gm-user', whisper: ['someone'] }, { rollMode: 'selfroll' });
         assert.equal(sent[4].author, 'gm-user', 'explicit author preserved');
         assert.deepEqual(sent[4].whisper, ['someone'], 'explicit whisper overrides rollMode');
+    }
+
+    // --- roll runtime: normalize both ChatMessage-backed and synthetic responses ---
+    // `displayChat` changes what the route client returns, but never the SDK contract.
+    {
+        const calls: Array<{ formula: string; options?: Record<string, unknown> }> = [];
+        const rollClient = {
+            roll: async (formula: string, _label?: string, options?: Record<string, unknown>) => {
+                calls.push({ formula, options });
+                return options?.displayChat
+                    ? { content: '8', rolls: [JSON.stringify({ formula, total: 8 })] }
+                    : { content: '6', rolls: [JSON.stringify({ formula, total: 6 })], _synthetic: true };
+            },
+        } as never;
+        const rolls = createRollRuntime(rollClient, noop);
+
+        assert.equal((await rolls.roll('2d6', 'Visible', { displayChat: true })).total, 8);
+        assert.equal((await rolls.roll('1d6', 'Hidden')).total, 6);
+        assert.equal(calls[0].options?.displayChat, true);
+        assert.equal(calls[1].options?.displayChat, false);
     }
 
     // --- document store: author-bearing creates (ChatMessage/Macro) default author ---

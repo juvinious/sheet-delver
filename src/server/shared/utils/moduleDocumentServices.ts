@@ -23,7 +23,7 @@ import type {
     ChatRuntime,
     ChatPostOptions,
 } from '@shared/sdk/runtime';
-import { SdkError, isSdkError, simulateTableDraw } from '@shared/sdk';
+import { SdkError, isSdkError, parseRollResult, simulateTableDraw } from '@shared/sdk';
 import { awaitWorldReady } from '@server/shared/utils/worldReadiness';
 import type { RouteFoundryClient } from '@server/shared/types/requestContext';
 import { parseDocumentUuid } from '@server/services/documents';
@@ -463,8 +463,7 @@ export function createRollRuntime(
         roll: async (formula, label, options) => {
             await ensureReady();
             const res = await c.roll(formula, label ?? '', { ...options, displayChat: options?.displayChat ?? false });
-            const total = (res.rollTotal ?? res.total ?? 0) as number;
-            return { formula, total, ...res };
+            return parseRollResult(res, formula);
         },
     };
 }

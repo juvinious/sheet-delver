@@ -119,15 +119,37 @@ export function parseRollResult(
 ): { formula: string; total: number; terms?: unknown[]; dice?: number[]; [key: string]: unknown } {
     const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
 
-    const formula = String(r.formula ?? r.expression ?? fallbackFormula ?? '');
-    const total = Number(r.total ?? r.rollTotal ?? r.result ?? 0) || 0;
-    const terms = Array.isArray(r.terms) ? (r.terms as unknown[]) : undefined;
+    // Route-backed rolls may carry the evaluated Roll inside a ChatMessage. Foundry
+    // versions and transports represent that first roll as either JSON or an object.
+    const serializedRoll = Array.isArray(r.rolls) ? r.rolls[0] : r.roll;
+    let embedded: Record<string, unknown> = {};
+    if (serializedRoll && typeof serializedRoll === 'object') {
+        embedded = serializedRoll as Record<string, unknown>;
+    } else if (typeof serializedRoll === 'string') {
+        try {
+            const parsed = JSON.parse(serializedRoll);
+            if (parsed && typeof parsed === 'object') embedded = parsed as Record<string, unknown>;
+        } catch {
+            // A malformed embedded roll is ignored; direct fields and content remain usable.
+        }
+    }
+
+    const formula = String(r.formula ?? r.expression ?? embedded.formula ?? embedded.expression ?? fallbackFormula ?? '');
+    const total = Number(
+        r.total ?? r.rollTotal ?? r.result ??
+        embedded.total ?? embedded.rollTotal ?? embedded.result ??
+        r.content ?? 0,
+    ) || 0;
+    const terms = Array.isArray(r.terms)
+        ? (r.terms as unknown[])
+        : (Array.isArray(embedded.terms) ? (embedded.terms as unknown[]) : undefined);
 
     // Pull individual die results from common shapes: a flat `dice` array, or
     // Foundry's `terms[].results[].result`.
     let dice: number[] | undefined;
-    if (Array.isArray(r.dice) && r.dice.every((d) => typeof d === 'number')) {
-        dice = r.dice as number[];
+    const rawDice = Array.isArray(r.dice) ? r.dice : embedded.dice;
+    if (Array.isArray(rawDice) && rawDice.every((d) => typeof d === 'number')) {
+        dice = rawDice as number[];
     } else if (terms) {
         const collected: number[] = [];
         for (const term of terms) {

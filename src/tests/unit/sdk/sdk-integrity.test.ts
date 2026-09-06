@@ -378,6 +378,13 @@ function runClientSdkTests() {
     assert.equal(fromRollTotal.formula, '1d4');
     const withDice = parseRollResult({ formula: '2d6', total: 7, terms: [{ results: [{ result: 3 }, { result: 4 }] }] });
     assert.deepEqual(withDice.dice, [3, 4]);
+    const fromChatMessage = parseRollResult({
+        content: '9',
+        rolls: [JSON.stringify({ formula: '2d6', total: 9, terms: [{ results: [{ result: 4 }, { result: 5 }] }] })],
+    });
+    assert.equal(fromChatMessage.formula, '2d6');
+    assert.equal(fromChatMessage.total, 9);
+    assert.deepEqual(fromChatMessage.dice, [4, 5]);
 
     console.log('  - Client SDK (hooks + actor sheet + parseRollResult): surface verified');
 }
