@@ -33,6 +33,28 @@ export interface ModuleArtifactMetadata {
     signature?: string;
     permissions?: ModulePermissionDeclaration;
     trust?: ModuleTrustDeclaration;
+    sourceProfileId?: string;
+    updatePolicy?: ModuleUpdatePolicy;
+}
+
+export interface ModuleUpdatePolicy {
+    locked: boolean;
+    pinnedVersion?: string;
+}
+
+export function getUpdatePolicyBlockReason(
+    artifact: ModuleArtifactMetadata | undefined,
+    targetVersion: string,
+): string | undefined {
+    if (!artifact) return undefined;
+    const policy = artifact?.updatePolicy;
+    if (policy?.locked) {
+        return `Module "${artifact.moduleId}" is locked and cannot be upgraded`;
+    }
+    if (policy?.pinnedVersion && policy.pinnedVersion !== targetVersion) {
+        return `Module "${artifact.moduleId}" is pinned to v${policy.pinnedVersion}; requested v${targetVersion}`;
+    }
+    return undefined;
 }
 
 /**
@@ -163,6 +185,7 @@ export type ManagerErrorCode =
     | 'trust-policy-blocked'
     | 'artifact-verification-failed'
     | 'permission-escalation-requires-approval'
+    | 'update-policy-blocked'
     | 'unmanaged-module-protection'
     | 'artifact-missing'
     | 'validation-failed'
@@ -204,6 +227,10 @@ export interface InstallModuleInput {
     integrity?: string;
     signature?: string;
     permissions?: ModulePermissionDeclaration;
+    trust?: ModuleTrustDeclaration;
+    sourceProfileId?: string;
+    updatePolicy?: ModuleUpdatePolicy;
+    preverifiedArtifact?: boolean;
 }
 
 export async function installModule(
@@ -220,7 +247,7 @@ export async function installModule(
 
     // Defense in depth for internal callers: the managed facade normally
     // rejects this source before reaching the transaction boundary.
-    if (isRemoteModuleSourceRef(input.source)) {
+    if (isRemoteModuleSourceRef(input.source) && !input.preverifiedArtifact) {
         const denial = getRemoteModuleDistributionDenial();
         return operationFailure(id, 'install', denial.message, undefined, denial.code);
     }
@@ -258,6 +285,9 @@ export async function installModule(
             integrity: input.integrity,
             signature: input.signature,
             permissions: input.permissions,
+            trust: input.trust,
+            sourceProfileId: input.sourceProfileId,
+            updatePolicy: input.updatePolicy,
         });
 
         // installed → validated (no-op validate hook; real validation wired in Slice C)
@@ -302,6 +332,16 @@ export function uninstallModule(
 
     if (!record) {
         return operationFailure(id, 'uninstall', 'Module record not found in lifecycle store', undefined, 'module-not-found');
+    }
+    const artifact = getArtifact(artifactStore, id);
+    if (artifact?.updatePolicy?.locked) {
+        return operationFailure(
+            id,
+            'uninstall',
+            `Module "${id}" is locked and cannot be uninstalled`,
+            record.status,
+            'update-policy-blocked',
+        );
     }
 
     const pre = checkOperationPrecondition(id, record, 'uninstall');
@@ -349,6 +389,10 @@ export interface UpgradeModuleInput {
     integrity?: string;
     signature?: string;
     permissions?: ModulePermissionDeclaration;
+    trust?: ModuleTrustDeclaration;
+    sourceProfileId?: string;
+    updatePolicy?: ModuleUpdatePolicy;
+    preverifiedArtifact?: boolean;
 }
 
 export async function upgradeModule(
@@ -364,7 +408,7 @@ export async function upgradeModule(
     if (!id) return operationFailure('invalid', 'upgrade', 'Invalid module ID', undefined, 'invalid-module-id');
 
     // Keep direct internal imports from reactivating the dormant fetch path.
-    if (isRemoteModuleSourceRef(input.source)) {
+    if (isRemoteModuleSourceRef(input.source) && !input.preverifiedArtifact) {
         const denial = getRemoteModuleDistributionDenial();
         return operationFailure(id, 'upgrade', denial.message, undefined, denial.code);
     }
@@ -382,6 +426,10 @@ export async function upgradeModule(
 
     const previousStatus = record.status;
     const priorArtifact = getArtifact(artifactStore, id);
+    const policyBlockReason = getUpdatePolicyBlockReason(priorArtifact, input.targetVersion);
+    if (policyBlockReason) {
+        return operationFailure(id, 'upgrade', policyBlockReason, previousStatus, 'update-policy-blocked');
+    }
 
     try {
         const upgrading = applyManagerTransition(record, 'upgrading', `Upgrading to v${input.targetVersion}`, now);
@@ -396,6 +444,9 @@ export async function upgradeModule(
             integrity: input.integrity,
             signature: input.signature,
             permissions: input.permissions,
+            trust: input.trust,
+            sourceProfileId: input.sourceProfileId ?? priorArtifact?.sourceProfileId,
+            updatePolicy: input.updatePolicy ?? priorArtifact?.updatePolicy,
         });
 
         // upgrading → validated (validation hook wired in Slice C)

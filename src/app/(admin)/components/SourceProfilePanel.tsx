@@ -1,515 +1,339 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
-    fetchSourceProfiles,
-    createSourceProfile,
-    updateSourceProfile,
-    deleteSourceProfile,
-    testSourceProfile,
-    fetchSourceModules,
-    fetchModuleLifecycle,
-    postManagerAction,
-    type SourceProfile,
-    type SourceModuleEntry,
-    type ModuleLifecycleInfo,
-} from '../lib/adminApi';
+    ChevronDown,
+    ChevronUp,
+    CircleCheck,
+    CircleX,
+    Pencil,
+    Plus,
+    RefreshCw,
+    Trash2,
+} from 'lucide-react';
 import { ModuleSourceKind, SourceProfileId } from '@shared/types/modules';
+import {
+    createSourceProfile,
+    deleteSourceProfile,
+    fetchSourceProfiles,
+    testSourceProfile,
+    updateSourceProfile,
+    type SourceProfile,
+} from '../lib/adminApi';
 import { useAdminToast } from '../context/AdminToastContext';
+import Button from './ui/Button';
+import EmptyState from './ui/EmptyState';
+import ErrorState from './ui/ErrorState';
 
-export default function SourceProfilePanel({
-    onModuleInstalled,
-}: {
-    onModuleInstalled?: () => void;
-} = {}) {
+const INPUT_CLASS = 'w-full rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm text-[var(--admin-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--admin-accent-soft)]';
+
+function isProtected(profile: SourceProfile): boolean {
+    return profile.id === SourceProfileId.LocalDefault
+        || profile.id === SourceProfileId.OfficialCatalog;
+}
+
+export default function SourceProfilePanel() {
     const { addToast } = useAdminToast();
     const [profiles, setProfiles] = useState<SourceProfile[]>([]);
     const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState<string | null>(null);
-
-    // Installed-module lifecycle list — fetched here so the browse view can label
-    // Install / Update / Re-install. (Previously fed from a sibling panel; the
-    // routed layout makes this page self-sufficient — ADR-0030 UX-3.)
-    const [installedModules, setInstalledModules] = useState<ModuleLifecycleInfo[]>([]);
-    const loadInstalledModules = async () => {
-        const result = await fetchModuleLifecycle();
-        if (result.ok && result.data?.modules) setInstalledModules(result.data.modules);
-    };
-
-    // Add source form state
-    const [showAddForm, setShowAddForm] = useState(false);
-    const [newUrl, setNewUrl] = useState('');
+    const [error, setError] = useState<string | null>(null);
+    const [showCreate, setShowCreate] = useState(false);
     const [newName, setNewName] = useState('');
-    const [newToken, setNewToken] = useState('');
+    const [newUrl, setNewUrl] = useState('');
     const [creating, setCreating] = useState(false);
-
-    // Edit form state (single profile edited at a time)
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState('');
     const [editUrl, setEditUrl] = useState('');
-    const [editPriority, setEditPriority] = useState(0);
-    const [editToken, setEditToken] = useState('');
-    const [savingEdit, setSavingEdit] = useState(false);
-
-    // Per-profile state
-    const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+    const [editPriority, setEditPriority] = useState(200);
+    const [savingId, setSavingId] = useState<string | null>(null);
     const [testingId, setTestingId] = useState<string | null>(null);
-    const [browsingId, setBrowsingId] = useState<string | null>(null);
-    const [sourceModules, setSourceModules] = useState<Record<string, SourceModuleEntry> | null>(null);
-    const [browseLoading, setBrowseLoading] = useState(false);
-    const [installingId, setInstallingId] = useState<string | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
 
-    const loadProfiles = async () => {
+    const loadProfiles = useCallback(async () => {
         setLoading(true);
         const result = await fetchSourceProfiles();
         if (result.ok && result.data?.profiles) {
             setProfiles(result.data.profiles);
-            setLoadError(null);
+            setError(null);
         } else {
-            setLoadError(result.error || 'Failed to load source profiles');
+            setError(result.error || 'Failed to load catalog sources.');
         }
         setLoading(false);
-    };
+    }, []);
 
-    useEffect(() => { loadProfiles(); loadInstalledModules(); }, []);
-
-    // ─── Handlers ────────────────────────────────────────────────
+    useEffect(() => {
+        void loadProfiles();
+    }, [loadProfiles]);
 
     const handleCreate = async () => {
-        if (!newUrl.trim()) return;
         setCreating(true);
-        const token = newToken.trim();
         const result = await createSourceProfile({
-            name: newName.trim() || 'New Source',
+            name: newName.trim(),
             baseUrl: newUrl.trim(),
-            kind: newUrl.startsWith('index://') || newUrl.startsWith('http') ? ModuleSourceKind.Indexed : ModuleSourceKind.Local,
             enabled: true,
-            priority: profiles.length > 0 ? profiles[profiles.length - 1].priority + 10 : 10,
-            ...(token ? { auth: { type: 'bearer' as const, token } } : {}),
+            priority: Math.max(200, ...profiles.map((profile) => profile.priority + 10)),
         });
         if (result.ok) {
-            setShowAddForm(false);
-            setNewUrl('');
+            setShowCreate(false);
             setNewName('');
-            setNewToken('');
-            loadProfiles();
-            addToast('Source profile created.', 'success');
+            setNewUrl('');
+            await loadProfiles();
+            addToast('Catalog source added.', 'success');
         } else {
-            addToast(result.error || 'Failed to create source profile.', 'error');
+            addToast(result.error || 'Failed to add catalog source.', 'error');
         }
         setCreating(false);
     };
 
-    const startEdit = (profile: SourceProfile) => {
+    const beginEdit = (profile: SourceProfile) => {
         setEditingId(profile.id);
         setEditName(profile.name);
         setEditUrl(profile.baseUrl);
         setEditPriority(profile.priority);
-        setEditToken(''); // write-only: blank means "leave token unchanged"
-        setDeleteConfirmId(null);
+        setDeleteId(null);
     };
 
-    const cancelEdit = () => {
-        setEditingId(null);
-        setEditToken('');
-    };
-
-    const handleSaveEdit = async (profile: SourceProfile) => {
-        setSavingEdit(true);
-        const token = editToken.trim();
+    const handleSave = async (profile: SourceProfile) => {
+        setSavingId(profile.id);
+        const official = profile.id === SourceProfileId.OfficialCatalog;
         const result = await updateSourceProfile(profile.id, {
-            name: editName.trim() || profile.name,
-            baseUrl: editUrl.trim() || profile.baseUrl,
-            priority: Number.isFinite(editPriority) ? editPriority : profile.priority,
-            // Only send a token when one was typed — blank leaves existing auth untouched.
-            ...(token ? { auth: { type: 'bearer' as const, token } } : {}),
+            ...(!official ? { name: editName.trim(), baseUrl: editUrl.trim() } : {}),
+            priority: editPriority,
         });
         if (result.ok) {
-            cancelEdit();
-            loadProfiles();
-            addToast('Source profile updated.', 'success');
+            setEditingId(null);
+            await loadProfiles();
+            addToast('Catalog source updated.', 'success');
         } else {
-            addToast(result.error || 'Failed to update source profile.', 'error');
+            addToast(result.error || 'Failed to update catalog source.', 'error');
         }
-        setSavingEdit(false);
+        setSavingId(null);
     };
 
-    const handleToggleEnable = async (profile: SourceProfile) => {
-        if (profile.id === SourceProfileId.LocalDefault) return;
+    const handleToggle = async (profile: SourceProfile) => {
         const result = await updateSourceProfile(profile.id, { enabled: !profile.enabled });
-        if (result.ok) loadProfiles();
-        else addToast(result.error || 'Failed to update source profile.', 'error');
+        if (result.ok) await loadProfiles();
+        else addToast(result.error || 'Failed to update catalog source.', 'error');
     };
 
-    // Reorder by swapping priority with the adjacent profile (lower priority = higher
-    // in the list / earlier resolution). The protected default local source can't move.
-    const moveProfile = async (profile: SourceProfile, direction: 'up' | 'down') => {
-        const sorted = [...profiles].sort((a, b) => a.priority - b.priority);
-        const idx = sorted.findIndex(p => p.id === profile.id);
-        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const other = sorted[swapIdx];
-        if (!other || other.id === SourceProfileId.LocalDefault || profile.id === SourceProfileId.LocalDefault) return;
-
-        const a = await updateSourceProfile(profile.id, { priority: other.priority });
-        const b = await updateSourceProfile(other.id, { priority: profile.priority });
-        if (a.ok && b.ok) loadProfiles();
-        else addToast(a.error || b.error || 'Failed to reorder source profiles.', 'error');
-    };
-
-    const handleDelete = async (id: string) => {
-        const result = await deleteSourceProfile(id);
-        if (result.ok) {
-            setDeleteConfirmId(null);
-            loadProfiles();
-            addToast('Source profile deleted.', 'success');
-        } else {
-            addToast(result.error || 'Failed to delete source profile.', 'error');
-            setDeleteConfirmId(null);
-        }
-    };
-
-    const handleTest = async (id: string) => {
-        setTestingId(id);
-        const result = await testSourceProfile(id);
+    const handleTest = async (profile: SourceProfile) => {
+        setTestingId(profile.id);
+        const result = await testSourceProfile(profile.id);
         if (result.ok && result.data) {
             addToast(
-                `Connected — ${result.data.moduleCount ?? 0} module${result.data.moduleCount !== 1 ? 's' : ''} · Publisher: ${result.data.publisher || 'Unknown'}`,
-                'success'
+                `${profile.name}: ${result.data.moduleCount ?? 0} modules (${result.data.state || 'ready'}).`,
+                'success',
             );
         } else {
-            addToast(result.error || result.data?.error || 'Connection test failed.', 'error');
+            addToast(result.error || 'Catalog test failed.', 'error');
         }
         setTestingId(null);
     };
 
-    const handleBrowse = async (id: string) => {
-        if (browsingId === id) {
-            setBrowsingId(null);
-            setSourceModules(null);
-            return;
-        }
-        setBrowsingId(id);
-        setBrowseLoading(true);
-        setSourceModules(null);
-        const result = await fetchSourceModules(id);
-        if (result.ok && result.data?.modules) {
-            setSourceModules(result.data.modules);
+    const handleDelete = async (profile: SourceProfile) => {
+        const result = await deleteSourceProfile(profile.id);
+        if (result.ok) {
+            setDeleteId(null);
+            await loadProfiles();
+            addToast('Catalog source deleted.', 'success');
         } else {
-            addToast(result.error || 'Failed to load modules from source.', 'error');
-            setBrowsingId(null);
-        }
-        setBrowseLoading(false);
-    };
-
-    /**
-     * Build a source ref scoped to a specific profile. `index://<host>` resolves
-     * against only the matching profile's index, whereas a bare `index://`
-     * aggregates every enabled indexed source by global priority (ADR-0029 Phase 4).
-     */
-    const sourceRefForProfile = (profile: SourceProfile): string => {
-        if (profile.kind !== ModuleSourceKind.Indexed) return 'index://';
-        const host = profile.baseUrl.replace(/^https?:\/\//, '').replace(/^index:\/\//, '');
-        return host ? `index://${host}` : 'index://';
-    };
-
-    const handleInstall = async (moduleId: string, profile: SourceProfile) => {
-        setInstallingId(moduleId);
-        try {
-            const result = await postManagerAction(moduleId, 'install', { source: sourceRefForProfile(profile) });
-            if (result.ok) {
-                addToast(`${moduleId} installed successfully.`, 'success');
-                loadInstalledModules();
-                if (onModuleInstalled) onModuleInstalled();
-            } else {
-                addToast(result.error || `Failed to install ${moduleId}.`, 'error');
-            }
-        } catch (err: any) {
-            addToast(err.message || `Failed to install ${moduleId}.`, 'error');
-        } finally {
-            setInstallingId(null);
+            addToast(result.error || 'Failed to delete catalog source.', 'error');
         }
     };
 
-    // ─── Render ───────────────────────────────────────────────────
+    const moveProfile = async (profile: SourceProfile, direction: -1 | 1) => {
+        const movable = profiles
+            .filter((candidate) => candidate.id !== SourceProfileId.LocalDefault)
+            .sort((left, right) => left.priority - right.priority);
+        const index = movable.findIndex((candidate) => candidate.id === profile.id);
+        const other = movable[index + direction];
+        if (!other) return;
+        const first = await updateSourceProfile(profile.id, { priority: other.priority });
+        const second = await updateSourceProfile(other.id, { priority: profile.priority });
+        if (first.ok && second.ok) await loadProfiles();
+        else addToast(first.error || second.error || 'Failed to reorder catalog sources.', 'error');
+    };
 
-    if (loading) return <div className="p-4 text-[var(--admin-text-secondary)]">Loading source profiles...</div>;
-    if (loadError) return <div className="p-4 text-[var(--admin-danger-text)] bg-[var(--admin-danger-bg)] rounded-xl">{loadError}</div>;
+    if (loading && profiles.length === 0) {
+        return <div className="p-4 text-sm text-[var(--admin-text-secondary)]">Loading catalog sources...</div>;
+    }
 
     return (
-        <div className="space-y-4 p-2">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <p className="text-sm text-[var(--admin-text-secondary)]">
-                    Configure where the manager discovers modules.
-                </p>
-                <button
-                    onClick={() => { setShowAddForm(v => !v); setNewUrl(''); setNewName(''); }}
-                    className="rounded-lg bg-[var(--admin-accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--admin-accent-strong)]"
+        <div className="space-y-4 p-4">
+            <div className="flex items-center justify-end gap-2">
+                <Button size="sm" onClick={() => void loadProfiles()} disabled={loading} title="Refresh sources">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Refresh
+                </Button>
+                <Button
+                    size="sm"
+                    variant="primary"
+                    onClick={() => setShowCreate((visible) => !visible)}
                 >
-                    {showAddForm ? 'Cancel' : '+ Add Source'}
-                </button>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add source
+                </Button>
             </div>
 
-            {/* Add source inline form */}
-            {showAddForm && (
-                <div className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4 space-y-3">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--admin-text-muted)]">New Source Profile</h4>
-                    <div className="space-y-2">
-                        <input
-                            type="text"
-                            placeholder="URL (e.g. https://my-registry.com or index://...)"
-                            value={newUrl}
-                            onChange={e => setNewUrl(e.target.value)}
-                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] px-3 py-2 text-sm text-[var(--admin-text-primary)] placeholder-[var(--admin-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                        />
-                        <input
-                            type="text"
-                            placeholder="Display name (optional)"
-                            value={newName}
-                            onChange={e => setNewName(e.target.value)}
-                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] px-3 py-2 text-sm text-[var(--admin-text-primary)] placeholder-[var(--admin-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                        />
-                        <input
-                            type="password"
-                            placeholder="Bearer auth token (optional, for private registries)"
-                            value={newToken}
-                            onChange={e => setNewToken(e.target.value)}
-                            autoComplete="off"
-                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] px-3 py-2 text-sm text-[var(--admin-text-primary)] placeholder-[var(--admin-text-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                        />
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                        <button
-                            onClick={() => setShowAddForm(false)}
-                            className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-4 py-1.5 text-sm text-[var(--admin-text-secondary)] transition hover:bg-[var(--admin-surface-hover)]"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            onClick={handleCreate}
-                            disabled={creating || !newUrl.trim()}
-                            className="rounded-lg bg-[var(--admin-accent)] px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-[var(--admin-accent-strong)] disabled:opacity-50"
-                        >
-                            {creating ? 'Creating…' : 'Create'}
-                        </button>
-                    </div>
+            {error && <ErrorState message={error} />}
+
+            {showCreate && (
+                <div className="grid gap-3 border-y border-[var(--admin-border)] py-4 md:grid-cols-[1fr_2fr_auto]">
+                    <input
+                        className={INPUT_CLASS}
+                        value={newName}
+                        onChange={(event) => setNewName(event.target.value)}
+                        placeholder="Catalog name"
+                    />
+                    <input
+                        className={INPUT_CLASS}
+                        value={newUrl}
+                        onChange={(event) => setNewUrl(event.target.value)}
+                        placeholder="https://example.org/catalog.json"
+                        inputMode="url"
+                    />
+                    <Button
+                        variant="primary"
+                        onClick={() => void handleCreate()}
+                        disabled={creating || !newName.trim() || !newUrl.trim()}
+                    >
+                        {creating ? 'Adding...' : 'Add'}
+                    </Button>
                 </div>
             )}
 
-            {/* Profile list */}
-            <div className="grid gap-3">
-                {profiles.map((profile, index) => (
-                    <div key={profile.id} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] overflow-hidden">
-                        <div className="p-4 flex flex-col md:flex-row md:items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                    <h3 className="font-bold text-[var(--admin-text-primary)]">{profile.name}</h3>
-                                    {profile.id === SourceProfileId.LocalDefault && (
-                                        <span className="rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] px-2 py-0.5 text-xs text-[var(--admin-text-muted)]">Default</span>
-                                    )}
-                                    {!profile.enabled && (
-                                        <span className="rounded-full border border-[var(--admin-danger-border)] bg-[var(--admin-danger-bg)] px-2 py-0.5 text-xs text-[var(--admin-danger-text)]">Disabled</span>
-                                    )}
-                                    {profile.auth?.configured && (
-                                        <span className="rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] px-2 py-0.5 text-xs text-[var(--admin-text-muted)]">🔒 Auth</span>
-                                    )}
+            <div className="space-y-2">
+                {profiles.length === 0 && <EmptyState message="No catalog sources configured." />}
+                {profiles.map((profile) => {
+                    const local = profile.id === SourceProfileId.LocalDefault;
+                    const official = profile.id === SourceProfileId.OfficialCatalog;
+                    const editing = editingId === profile.id;
+                    const movable = profiles
+                        .filter((candidate) => candidate.id !== SourceProfileId.LocalDefault)
+                        .sort((left, right) => left.priority - right.priority);
+                    const moveIndex = movable.findIndex((candidate) => candidate.id === profile.id);
+
+                    return (
+                        <div key={profile.id} className="rounded-md border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-semibold text-[var(--admin-text-primary)]">{profile.name}</span>
+                                        <span className="rounded border border-[var(--admin-border)] px-1.5 py-0.5 text-xs text-[var(--admin-text-muted)]">
+                                            {local ? 'Development' : profile.trustTier || 'unverified'}
+                                        </span>
+                                        {!local && (
+                                            profile.enabled
+                                                ? <CircleCheck className="h-4 w-4 text-[var(--admin-success)]" aria-label="Enabled" />
+                                                : <CircleX className="h-4 w-4 text-[var(--admin-text-muted)]" aria-label="Disabled" />
+                                        )}
+                                    </div>
+                                    <div className="mt-1 break-all font-mono text-xs text-[var(--admin-text-muted)] sm:truncate">
+                                        {profile.baseUrl}
+                                    </div>
                                 </div>
-                                <code className="text-xs text-[var(--admin-text-secondary)] break-all font-mono">
-                                    {profile.baseUrl}
-                                </code>
 
-                                {/* Inline edit form */}
-                                {editingId === profile.id && (
-                                    <div className="mt-3 space-y-2 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-hover)] p-3">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--admin-text-muted)]">Edit Source Profile</h4>
-                                        <input
-                                            type="text"
-                                            placeholder="Display name"
-                                            value={editName}
-                                            onChange={e => setEditName(e.target.value)}
-                                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm text-[var(--admin-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="URL"
-                                            value={editUrl}
-                                            onChange={e => setEditUrl(e.target.value)}
-                                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm text-[var(--admin-text-primary)] font-mono focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                                        />
-                                        <label className="flex items-center gap-2 text-xs text-[var(--admin-text-secondary)]">
-                                            Priority
-                                            <input
-                                                type="number"
-                                                value={editPriority}
-                                                onChange={e => setEditPriority(parseInt(e.target.value, 10))}
-                                                className="w-24 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-sm text-[var(--admin-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                                            />
-                                        </label>
-                                        <input
-                                            type="password"
-                                            placeholder={profile.auth?.configured ? 'Bearer token (leave blank to keep existing)' : 'Bearer auth token (optional)'}
-                                            value={editToken}
-                                            onChange={e => setEditToken(e.target.value)}
-                                            autoComplete="off"
-                                            className="w-full rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-sm text-[var(--admin-text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--admin-accent)]"
-                                        />
-                                        <div className="flex justify-end gap-2 pt-1">
+                                {!local && (
+                                    <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+                                        <div className="flex items-center">
                                             <button
-                                                onClick={cancelEdit}
-                                                disabled={savingEdit}
-                                                className="rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-xs text-[var(--admin-text-secondary)] transition hover:bg-[var(--admin-surface-hover)] disabled:opacity-50"
+                                                type="button"
+                                                onClick={() => void moveProfile(profile, -1)}
+                                                disabled={moveIndex <= 0}
+                                                className="p-1 text-[var(--admin-text-muted)] hover:text-[var(--admin-text-primary)] disabled:opacity-30"
+                                                aria-label={`Move ${profile.name} up`}
+                                                title="Move up"
                                             >
-                                                Cancel
+                                                <ChevronUp className="h-4 w-4" />
                                             </button>
                                             <button
-                                                onClick={() => handleSaveEdit(profile)}
-                                                disabled={savingEdit}
-                                                className="rounded-xl bg-[var(--admin-accent)] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--admin-accent-strong)] disabled:opacity-50"
+                                                type="button"
+                                                onClick={() => void moveProfile(profile, 1)}
+                                                disabled={moveIndex < 0 || moveIndex >= movable.length - 1}
+                                                className="p-1 text-[var(--admin-text-muted)] hover:text-[var(--admin-text-primary)] disabled:opacity-30"
+                                                aria-label={`Move ${profile.name} down`}
+                                                title="Move down"
                                             >
-                                                {savingEdit ? 'Saving…' : 'Save'}
+                                                <ChevronDown className="h-4 w-4" />
                                             </button>
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* Inline delete confirmation */}
-                                {deleteConfirmId === profile.id && (
-                                    <div className="mt-3 flex items-center gap-2">
-                                        <span className="text-xs text-[var(--admin-danger-text)]">Delete this source profile?</span>
-                                        <button
-                                            onClick={() => handleDelete(profile.id)}
-                                            className="rounded-xl bg-[var(--admin-danger-button)] px-3 py-1 text-xs font-semibold text-white hover:bg-[var(--admin-danger-button-strong)] transition"
-                                        >
-                                            Confirm
-                                        </button>
-                                        <button
-                                            onClick={() => setDeleteConfirmId(null)}
-                                            className="rounded-xl border border-[var(--admin-border)] px-3 py-1 text-xs text-[var(--admin-text-secondary)] hover:bg-[var(--admin-surface-hover)] transition"
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-2 shrink-0">
-                                {/* Priority reorder (non-default only; default local stays pinned at top) */}
-                                {profile.id !== SourceProfileId.LocalDefault && (
-                                    <div className="flex flex-col">
-                                        <button
-                                            onClick={() => moveProfile(profile, 'up')}
-                                            disabled={index <= 1}
-                                            aria-label={`Move ${profile.name} up`}
-                                            title="Move up (higher priority)"
-                                            className="px-1.5 text-xs text-[var(--admin-text-muted)] hover:text-[var(--admin-text-primary)] disabled:opacity-30"
-                                        >
-                                            ▲
-                                        </button>
-                                        <button
-                                            onClick={() => moveProfile(profile, 'down')}
-                                            disabled={index >= profiles.length - 1}
-                                            aria-label={`Move ${profile.name} down`}
-                                            title="Move down (lower priority)"
-                                            className="px-1.5 text-xs text-[var(--admin-text-muted)] hover:text-[var(--admin-text-primary)] disabled:opacity-30"
-                                        >
-                                            ▼
-                                        </button>
-                                    </div>
-                                )}
-                                {profile.kind === ModuleSourceKind.Indexed && profile.enabled && (
-                                    <>
-                                        <button
-                                            onClick={() => handleBrowse(profile.id)}
-                                            className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-sm text-[var(--admin-text-secondary)] transition hover:bg-[var(--admin-surface-hover)]"
-                                        >
-                                            {browsingId === profile.id ? 'Close' : 'Browse'}
-                                        </button>
-                                        <button
-                                            onClick={() => handleTest(profile.id)}
-                                            disabled={testingId === profile.id}
-                                            className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-sm text-[var(--admin-text-secondary)] transition hover:bg-[var(--admin-surface-hover)] disabled:opacity-50"
-                                        >
-                                            {testingId === profile.id ? 'Testing…' : 'Test'}
-                                        </button>
-                                    </>
-                                )}
-                                {profile.id !== SourceProfileId.LocalDefault && (
-                                    <>
-                                        <button
-                                            onClick={() => (editingId === profile.id ? cancelEdit() : startEdit(profile))}
-                                            className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-1.5 text-sm text-[var(--admin-text-secondary)] transition hover:bg-[var(--admin-surface-hover)]"
-                                        >
-                                            {editingId === profile.id ? 'Close' : 'Edit'}
-                                        </button>
-                                        <button
-                                            onClick={() => handleToggleEnable(profile)}
-                                            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition border ${
-                                                profile.enabled
-                                                    ? 'border-[var(--admin-border)] bg-[var(--admin-surface)] text-[var(--admin-text-secondary)] hover:bg-[var(--admin-surface-hover)]'
-                                                    : 'border-[var(--admin-success-border)] bg-[var(--admin-success-bg)] text-[var(--admin-success)] hover:opacity-80'
-                                            }`}
-                                        >
+                                        {profile.enabled && profile.kind === ModuleSourceKind.Indexed && (
+                                            <Button size="sm" onClick={() => void handleTest(profile)} disabled={testingId === profile.id}>
+                                                {testingId === profile.id ? 'Testing...' : 'Test'}
+                                            </Button>
+                                        )}
+                                        <Button size="sm" onClick={() => void handleToggle(profile)}>
                                             {profile.enabled ? 'Disable' : 'Enable'}
-                                        </button>
+                                        </Button>
                                         <button
-                                            onClick={() => setDeleteConfirmId(deleteConfirmId === profile.id ? null : profile.id)}
-                                            className="rounded-lg border border-[var(--admin-danger-border)] bg-[var(--admin-danger-bg)] px-3 py-1.5 text-sm text-[var(--admin-danger-text)] transition hover:opacity-80"
+                                            type="button"
+                                            onClick={() => editing ? setEditingId(null) : beginEdit(profile)}
+                                            className="p-2 text-[var(--admin-text-secondary)] hover:text-[var(--admin-text-primary)]"
+                                            aria-label={`Edit ${profile.name}`}
+                                            title="Edit source"
                                         >
-                                            Delete
+                                            <Pencil className="h-4 w-4" />
                                         </button>
-                                    </>
+                                        {!isProtected(profile) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setDeleteId(deleteId === profile.id ? null : profile.id)}
+                                                className="p-2 text-[var(--admin-danger-text)]"
+                                                aria-label={`Delete ${profile.name}`}
+                                                title="Delete source"
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        )}
+                                    </div>
                                 )}
                             </div>
+
+                            {editing && (
+                                <div className="mt-3 grid gap-3 border-t border-[var(--admin-border)] pt-3 md:grid-cols-[1fr_2fr_8rem_auto]">
+                                    <input
+                                        className={INPUT_CLASS}
+                                        value={editName}
+                                        onChange={(event) => setEditName(event.target.value)}
+                                        disabled={official}
+                                        aria-label="Catalog name"
+                                    />
+                                    <input
+                                        className={INPUT_CLASS}
+                                        value={editUrl}
+                                        onChange={(event) => setEditUrl(event.target.value)}
+                                        disabled={official}
+                                        aria-label="Catalog URL"
+                                    />
+                                    <input
+                                        className={INPUT_CLASS}
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={editPriority}
+                                        onChange={(event) => setEditPriority(Number(event.target.value))}
+                                        aria-label="Catalog priority"
+                                    />
+                                    <Button
+                                        variant="primary"
+                                        onClick={() => void handleSave(profile)}
+                                        disabled={savingId === profile.id}
+                                    >
+                                        {savingId === profile.id ? 'Saving...' : 'Save'}
+                                    </Button>
+                                </div>
+                            )}
+
+                            {deleteId === profile.id && (
+                                <div className="mt-3 flex items-center justify-end gap-2 border-t border-[var(--admin-danger-border)] pt-3">
+                                    <span className="mr-auto text-sm text-[var(--admin-danger-text)]">Delete {profile.name}?</span>
+                                    <Button size="sm" onClick={() => setDeleteId(null)}>Cancel</Button>
+                                    <Button size="sm" variant="danger" onClick={() => void handleDelete(profile)}>Delete</Button>
+                                </div>
+                            )}
                         </div>
-
-                        {/* Module browser */}
-                        {browsingId === profile.id && (
-                            <div className="border-t border-[var(--admin-border)] bg-[var(--admin-surface-hover)] p-4">
-                                {browseLoading ? (
-                                    <div className="text-sm text-[var(--admin-text-secondary)]">Loading modules…</div>
-                                ) : sourceModules ? (
-                                    Object.keys(sourceModules).length > 0 ? (
-                                        <div className="space-y-3">
-                                            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--admin-text-muted)]">Available Modules</h4>
-                                            {Object.entries(sourceModules).map(([modId, modInfo]) => {
-                                                const installed = installedModules.find(m => m.moduleId === modId);
-                                                const artifact = installed?.artifact;
-                                                const isUpdate = artifact && artifact.version !== modInfo.latestVersion;
-                                                const btnClass = !artifact
-                                                    ? 'bg-[var(--admin-accent)] hover:bg-[var(--admin-accent-strong)] text-white'
-                                                    : isUpdate
-                                                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                                                        : 'border border-[var(--admin-border)] bg-[var(--admin-surface)] text-[var(--admin-text-secondary)] hover:bg-[var(--admin-surface-hover)]';
-                                                const btnLabel = installingId === modId ? 'Installing…'
-                                                    : !installed || !artifact ? 'Install'
-                                                    : isUpdate ? 'Update'
-                                                    : 'Re-install';
-
-                                                return (
-                                                    <div key={modId} className="flex items-center justify-between rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] p-3">
-                                                        <div>
-                                                            <div className="font-semibold text-[var(--admin-text-primary)] text-sm">{modInfo.title || modId}</div>
-                                                            <div className="text-xs text-[var(--admin-text-muted)] font-mono">{modId} · v{modInfo.latestVersion}</div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleInstall(modId, profile)}
-                                                            disabled={installingId === modId}
-                                                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${btnClass}`}
-                                                        >
-                                                            {btnLabel}
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    ) : (
-                                        <div className="text-sm text-[var(--admin-text-muted)] italic">No modules found in this source.</div>
-                                    )
-                                ) : null}
-                            </div>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );

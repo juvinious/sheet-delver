@@ -6,7 +6,10 @@ import {
     localModuleSourceAdapter,
     resolveModuleSource,
 } from '@modules/registry/sourceAdapters';
-import type { ModuleIndexDocument } from '@modules/registry/moduleIndex';
+import {
+    MODULE_INDEX_SCHEMA_VERSION,
+    type ModuleIndexDocument,
+} from '@modules/registry/moduleIndex';
 import {
     REMOTE_MODULE_DISTRIBUTION_ERROR_CODE,
     REMOTE_MODULE_DISTRIBUTION_ERROR_MESSAGE,
@@ -14,23 +17,15 @@ import {
 
 function buildIndex(): ModuleIndexDocument {
     return {
-        schemaVersion: 'module-index.v1',
+        schemaVersion: MODULE_INDEX_SCHEMA_VERSION,
         generatedAt: Date.now(),
         publisher: 'sheetdelver',
         modules: {
             generic: {
                 moduleId: 'generic',
                 title: 'Generic System',
-                latestVersion: '1.0.1',
-                versions: {
-                    '1.0.0': {
-                        source: 'https://example.invalid/generic-1.0.0.tgz',
-                    },
-                    '1.0.1': {
-                        source: 'https://example.invalid/generic-1.0.1.tgz',
-                        integrity: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-                    },
-                },
+                repository: 'https://github.com/example/generic',
+                manifest: 'https://github.com/example/generic/releases/latest/download/sheet-delver-manifest.json',
             },
         },
     };
@@ -101,7 +96,6 @@ export function run() {
         {
             moduleId: 'generic',
             sourceRef: 'index://official',
-            targetVersion: '1.0.0',
         },
         {
             indexes: {

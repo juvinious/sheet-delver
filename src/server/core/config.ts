@@ -15,6 +15,12 @@ import {
 
 let _cachedConfig: AppConfig | null = null;
 
+export const DEFAULT_PUBLIC_MODULE_HOST_ALLOWLIST = Object.freeze([
+    'sheetdelver.github.io',
+    'github.com',
+    '*.githubusercontent.com',
+]);
+
 function parseBoolean(value: string | undefined): boolean | undefined {
     if (!value) return undefined;
     const normalized = value.trim().toLowerCase();
@@ -230,7 +236,7 @@ export async function loadConfig(): Promise<AppConfig | null> {
             const sourceGovernanceConfig = security['source-governance'] || {};
             const hostAllowlist = Array.isArray(sourceGovernanceConfig['host-allowlist'])
                 ? sourceGovernanceConfig['host-allowlist'].map((host: unknown) => String(host).trim()).filter(Boolean)
-                : undefined;
+                : [...DEFAULT_PUBLIC_MODULE_HOST_ALLOWLIST];
 
             _cachedConfig = {
                 app: {

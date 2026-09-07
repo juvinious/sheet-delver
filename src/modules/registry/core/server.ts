@@ -150,9 +150,32 @@ export {
     dryRunUpgradeManagedModule,
     installManagedModule,
     upgradeManagedModule,
+    getManagedModuleArtifact,
+    updateManagedModulePolicy,
     uninstallManagedModule,
     validateManagedModule,
     type InstallManagedModuleInput,
     type UpgradeManagedModuleInput,
     type DryRunManagedModuleResult,
+    type ManagedModuleUpdatePolicyInput,
 } from './managedModules';
+
+export {
+    applyLocalModuleArchive,
+    dryRunLocalModuleArchive,
+    type DryRunLocalModuleArchiveResult,
+    type LocalModuleArchiveInput,
+    type ModuleArchiveOperation,
+} from './archiveOperations';
+
+export {
+    applyPublicModuleRelease,
+    dryRunPublicModuleRelease,
+    inspectPublicModuleRelease,
+    resolvePublicGithubRepositoryManifestUrl,
+    type ApplyPublicModuleReleaseResult,
+    type DryRunPublicModuleReleaseResult,
+    type InspectedPublicModuleRelease,
+    type PublicModuleReleaseInput,
+    type PublicModuleReleaseSummary,
+} from '../distribution/publicReleaseOperations';

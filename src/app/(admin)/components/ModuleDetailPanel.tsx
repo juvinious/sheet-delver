@@ -12,6 +12,7 @@ import { ModuleSourceCategory } from '@shared/types/modules';
 import { adminFetch } from '../lib/adminApi';
 import type { ModuleLifecycleInfo } from '../lib/adminApi';
 import ManagerActionBar from './ManagerActionBar';
+import ModuleUpdatePolicyControl from './ModuleUpdatePolicyControl';
 
 interface ModuleDetailPanelProps {
     entry: {
@@ -146,6 +147,7 @@ export default function ModuleDetailPanel({ entry, onOperationComplete, onSessio
                             <DetailRow label="Version" value={artifact.version} />
                             <DetailRow label="Source" value={artifact.source} />
                             <DetailRow label="Installed" value={formatTimestamp(artifact.installedAt)} />
+                            {artifact.sourceProfileId && <DetailRow label="Catalog Source" value={artifact.sourceProfileId} mono />}
                             {artifact.integrity && <DetailRow label="Integrity" value={artifact.integrity} mono />}
                             {artifact.signature && <DetailRow label="Signature" value={artifact.signature} mono />}
                         </div>
@@ -204,6 +206,16 @@ export default function ModuleDetailPanel({ entry, onOperationComplete, onSessio
                 {/* No managed details available */}
                 {!validation && !artifact && !health && !reason && (
                     <p className="text-sm text-[var(--admin-text-muted)] italic">No additional details available.</p>
+                )}
+
+                {artifact && (
+                    <DetailSection title="Update Policy">
+                        <ModuleUpdatePolicyControl
+                            module={module}
+                            onChanged={onOperationComplete}
+                            onSessionExpired={onSessionExpired}
+                        />
+                    </DetailSection>
                 )}
 
                 {/* Manager Operations */}

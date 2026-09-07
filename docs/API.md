@@ -506,24 +506,98 @@ broadcasts `moduleSourceChanged`.
 
 These routes are authenticated, CSRF-protected, and audited.
 
-### `POST /admin/manager/:moduleId/install`
+### Local archive operations
 
-Installs a discovered module under manager policy.
+An administrator can preview or apply a packaged `.tgz` through the same
+validation and transaction used by managed modules:
+
+```text
+POST /admin/manager/:moduleId/archive/dry-run/install
+POST /admin/manager/:moduleId/archive/install
+POST /admin/manager/:moduleId/archive/dry-run/upgrade
+POST /admin/manager/:moduleId/archive/upgrade
+```
+
+Send the archive bytes as `application/gzip`, `application/x-gzip`, or
+`application/octet-stream`. Uploads are limited to 64 MiB and are removed from
+staging after the request. Optional query parameters are:
+
+- `trustTier=first-party|verified-third-party|unverified`
+- `approveTrustOverride=true|false`
+- `approvePermissionEscalation=true|false`
+
+The default trust tier for an operator-supplied archive is `unverified`.
+Production policy therefore requires an explicit lower-trust override unless
+the administrator assigns a tier accepted by local policy. Dry runs return
+archive limits, computed SHA-256 integrity, compatibility and governance
+results, blockers, and whether a same-ID local development source exists.
+
+Every successful operation installs only to
+`<DATA_DIR>/modules/<moduleId>`. Archive operations never write, replace, or
+delete `<DATA_DIR>/local/modules`, and they do not switch the active source when
+a local development copy is selected.
+
+The equivalent host CLI is:
+
+```bash
+npm run module:archive -- dry-run-install /path/to/my-system-1.2.0.tgz
+npm run module:archive -- install /path/to/my-system-1.2.0.tgz --approve-trust-override
+npm run module:archive -- dry-run-upgrade /path/to/my-system-1.3.0.tgz
+npm run module:archive -- upgrade /path/to/my-system-1.3.0.tgz --approve-permission-escalation
+```
+
+Use `--data-dir <path>`, `--module-id <id>`, `--manifest <path>`, and
+`--trust-tier <tier>` as needed. Supplying a release manifest additionally
+requires the uploaded bytes and archive `info.json` to match its digest, size,
+module identity, compatibility, permissions, dependencies, and conflicts.
+
+### Public release operations
+
+An administrator can preview or apply a public release manifest:
+
+```text
+POST /admin/manager/:moduleId/release/dry-run/install
+POST /admin/manager/:moduleId/release/install
+POST /admin/manager/:moduleId/release/dry-run/upgrade
+POST /admin/manager/:moduleId/release/upgrade
+```
+
+Send JSON containing exactly one source:
 
 ```json
 {
-  "source": "index://source-id",
-  "version": "1.0.0",
-  "integrity": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "signature": "minisign:...",
-  "permissions": {
-    "network": { "outbound": false, "allowHosts": [] },
-    "filesystem": { "read": ["moduleData"], "write": ["moduleData"] },
-    "adminRoutes": false,
-    "sensitiveData": []
-  }
+  "manifestUrl": "https://example.org/releases/v1.2.0/sheet-delver-manifest.json",
+  "approveTrustOverride": true,
+  "approvePermissionEscalation": false
 }
 ```
+
+Or use a public GitHub repository shortcut:
+
+```json
+{
+  "repository": "https://github.com/example/my-system"
+}
+```
+
+The shortcut resolves the conventional
+`releases/latest/download/sheet-delver-manifest.json` asset. Direct public
+releases default to `unverified`; clients cannot assign their own trust tier.
+Every source and redirect host must match
+`security.source-governance.host-allowlist`. The client permits HTTPS only,
+rejects non-public destination addresses, applies bounded redirects, retries,
+timeouts, and response sizes, and verifies archive size and SHA-256 before the
+local archive transaction runs.
+
+Successful public release operations install only to
+`<DATA_DIR>/modules/<moduleId>`. They never write to
+`<DATA_DIR>/local/modules` or silently change an active local source.
+
+### `POST /admin/manager/:moduleId/install`
+
+Installs a discovered local module under manager policy. Public catalog,
+release-manifest, and archive installs use their dedicated endpoints above.
+Arbitrary `index://` and HTTP(S) inputs remain disabled here.
 
 ### `POST /admin/manager/:moduleId/upgrade`
 
@@ -538,11 +612,25 @@ Uninstalls a managed module and removes persisted artifact metadata.
 
 Re-runs manifest, compatibility, and managed artifact health checks.
 
+### Module update policy
+
+```text
+GET /admin/manager/:moduleId/update-policy
+PUT /admin/manager/:moduleId/update-policy
+```
+
+The update body accepts `locked` and/or `pinnedVersion`. Set
+`pinnedVersion` to `null` to clear a pin. A pin permits only an upgrade whose
+target exactly matches that version. A lock prevents both upgrades and
+uninstall. Catalog installs record their `sourceProfileId` in local artifact
+metadata; a later upgrade still names its selected source explicitly.
+
 Manager policy errors use structured `errorCode` values, including:
 
 - `trust-policy-blocked`
 - `artifact-verification-failed`
 - `permission-escalation-requires-approval`
+- `update-policy-blocked`
 - `validation-failed`
 - `module-not-found`
 
@@ -550,21 +638,47 @@ Manager policy errors use structured `errorCode` values, including:
 
 ## Source Profiles
 
-Remote module distribution is dormant under ADR-0033. The authenticated source
-profile endpoints remain registered so old clients receive a stable response,
-but create, update, delete, test, browse, indexed install, and direct-URL
-operations return HTTP 501:
+Source profiles configure credential-free public catalogs:
 
-```json
-{
-  "error": "Remote module distribution is not supported by the current operating model",
-  "code": "remote-module-distribution-disabled"
-}
+```text
+GET    /admin/sources
+POST   /admin/sources
+PUT    /admin/sources/:id
+DELETE /admin/sources/:id
+POST   /admin/sources/:id/test
+GET    /admin/sources/:id/modules
+GET    /admin/catalog?refresh=true
 ```
 
-Owner-controlled module development and packages already present beneath the
-configured `<DATA_DIR>` remain supported. No HTTP(S) repository or external
-publisher workflow is implemented or implied by these endpoint stubs.
+Custom source creation accepts `name`, `baseUrl`, optional `enabled`, and
+optional non-negative `priority`. The URL must use HTTPS, contain no credentials,
+and match the configured host allowlist. Authentication, source kind, and trust
+tier are not accepted from clients. Custom catalogs are always `unverified`.
+The built-in official source is first-party; its identity and URL cannot be
+changed or deleted, though it can be disabled or reprioritized.
+
+Catalog results expose `fresh`, `cached`, `stale`, or `error` source states.
+Stale data remains available for discovery after a refresh failure. Duplicate
+module IDs include the selected source and all lower-priority alternatives;
+source priority never silently rewrites an installed module.
+
+Install or upgrade a specific catalog entry with:
+
+```text
+POST /admin/sources/:sourceId/modules/:moduleId/dry-run/install
+POST /admin/sources/:sourceId/modules/:moduleId/install
+POST /admin/sources/:sourceId/modules/:moduleId/dry-run/upgrade
+POST /admin/sources/:sourceId/modules/:moduleId/upgrade
+```
+
+The JSON body may contain `approveTrustOverride` and
+`approvePermissionEscalation`. The server resolves the module manifest from the
+selected catalog; clients cannot substitute an archive URL or trust tier.
+
+The generic manager's `index://` and arbitrary HTTP(S) source references remain
+disabled with `remote-module-distribution-disabled`. Public network acquisition
+is available only through validated catalogs or the bounded release-manifest
+operations above.
 
 ---
 

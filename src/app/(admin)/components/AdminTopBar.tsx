@@ -52,11 +52,11 @@ export default function AdminTopBar() {
 
     return (
         <header className="sticky top-0 z-40">
-            <div className="flex items-center gap-3 border-b border-[var(--admin-border)] bg-[var(--admin-surface-strong)] px-4 py-2.5 backdrop-blur-md">
+            <div className="flex items-center gap-2 border-b border-[var(--admin-border)] bg-[var(--admin-surface-strong)] px-3 py-2.5 backdrop-blur-md sm:gap-3 sm:px-4">
                 {/* Brand */}
                 <div className="flex items-center gap-2 font-bold tracking-tight text-[var(--admin-text-primary)]">
                     <span aria-hidden="true">◆</span>
-                    <span>SheetDelver Admin</span>
+                    <span>SheetDelver<span className="hidden sm:inline"> Admin</span></span>
                 </div>
 
                 {/* Environment badge */}
@@ -85,7 +85,9 @@ export default function AdminTopBar() {
                         }`}
                         aria-hidden="true"
                     />
-                    {!reachable ? 'Core: Offline' : connected ? 'Core: Connected' : 'Core: Disconnected'}
+                    <span className="hidden sm:inline">
+                        {!reachable ? 'Core: Offline' : connected ? 'Core: Connected' : 'Core: Disconnected'}
+                    </span>
                 </span>
 
                 {/* Right cluster */}

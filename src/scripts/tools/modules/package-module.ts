@@ -9,6 +9,11 @@ import { ENTRIES, BUILD_TARGET, BUILD_LOADER, compiledStylesRel } from './build-
 import { compileModuleTailwind } from './tailwind-compile';
 import { checkModule, printModuleCheckSummary } from './check-module';
 import { requireModuleId } from '../../../shared/security/moduleId';
+import type { SystemModuleInfo } from '../../../modules/registry/core/types';
+import {
+    createModuleReleaseManifest,
+    isValidModuleReleaseVersion,
+} from '../../../modules/registry/distribution/releaseManifest';
 
 // Build configuration (ENTRIES, externals, target, loaders) is shared with
 // check-module.ts via ./build-config so packaging and validation never drift
@@ -16,6 +21,12 @@ import { requireModuleId } from '../../../shared/security/moduleId';
 
 // Optional files copied from the module root into the archive if they exist
 const OPTIONAL_FILES = ['LICENSE', 'README.md'];
+const VALUE_OPTIONS = new Set([
+    '--data-dir',
+    '--release-tag',
+    '--repository',
+    '--changelog',
+]);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,6 +55,17 @@ function copyDirRecursive(src: string, dest: string): void {
             fs.copyFileSync(srcPath, destPath);
         }
     }
+}
+
+function readOption(args: string[], name: string): string | undefined {
+    const index = args.indexOf(name);
+    if (index < 0) return undefined;
+
+    const value = args[index + 1]?.trim();
+    if (!value || value.startsWith('--')) {
+        throw new Error(`Option ${name} requires a value`);
+    }
+    return value;
 }
 
 async function compile(
@@ -77,17 +99,27 @@ async function packageModule() {
     let moduleId: string | undefined;
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
-        if (arg === '--data-dir') {
+        if (VALUE_OPTIONS.has(arg)) {
+            if (!args[index + 1] || args[index + 1].startsWith('--')) {
+                console.error(`Option ${arg} requires a value.`);
+                process.exit(1);
+            }
             index += 1;
             continue;
         }
+        if (arg === '--') continue;
         if (arg.startsWith('--')) continue;
-        moduleId = arg;
+        if (!moduleId) {
+            moduleId = arg;
+            continue;
+        }
+        console.error(`Unexpected positional argument "${arg}".`);
+        process.exit(1);
         break;
     }
 
     if (!moduleId) {
-        console.error('Usage: npm run module:package <moduleId> [-- --data-dir <path> --sourcemap]');
+        console.error('Usage: npm run module:package <moduleId> [-- --data-dir <path> --sourcemap --release-tag <tag> --repository <https-url> --changelog <https-url>]');
         process.exit(1);
     }
     moduleId = requireModuleId(moduleId);
@@ -109,6 +141,17 @@ async function packageModule() {
 
     const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
     const version: string = info.version || '0.0.0-dev';
+    if (!isValidModuleReleaseVersion(version)) {
+        console.error(`Module version "${version}" is not safe for a release artifact filename.`);
+        process.exit(1);
+    }
+    const releaseTag = readOption(args, '--release-tag');
+    if (releaseTag && releaseTag.replace(/^v/, '') !== version) {
+        console.error(`Release tag "${releaseTag}" does not match module version "${version}".`);
+        process.exit(1);
+    }
+    const repository = readOption(args, '--repository');
+    const changelog = readOption(args, '--changelog');
     const manifest = info.manifest as Record<string, string>;
 
     // Gate packaging on module:check — a non-conforming module is not packageable
@@ -254,12 +297,29 @@ async function packageModule() {
 
         // Compute integrity hash
         const fileBuffer = fs.readFileSync(outFile);
-        const hash = crypto.createHash('sha256');
-        hash.update(fileBuffer);
-        const integrity = `sha256:${hash.digest('hex')}`;
+        const hashHex = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+        const integrity = `sha256:${hashHex}`;
+        const releaseManifest = createModuleReleaseManifest(
+            artifactInfo as SystemModuleInfo,
+            {
+                url: path.basename(outFile),
+                size: fileBuffer.length,
+                integrity,
+            },
+            {
+                repository,
+                changelog,
+            },
+        );
+        const releaseManifestFile = path.join(outDir, `${moduleId}-${version}.manifest.json`);
+        const checksumFile = path.join(outDir, `${moduleId}-${version}.sha256`);
+        fs.writeFileSync(releaseManifestFile, `${JSON.stringify(releaseManifest, null, 2)}\n`, 'utf8');
+        fs.writeFileSync(checksumFile, `${hashHex}  ${path.basename(outFile)}\n`, 'utf8');
 
         console.log(`\n✅ ${moduleId} v${version} packaged successfully`);
         console.log(`   Archive : ${outFile}`);
+        console.log(`   Manifest: ${releaseManifestFile}`);
+        console.log(`   Checksum: ${checksumFile}`);
         console.log(`   Size    : ${(fileBuffer.length / 1024).toFixed(1)} KB`);
         console.log(`   Sha256  : ${integrity}`);
         console.log(`\n   Compiled entries:`);

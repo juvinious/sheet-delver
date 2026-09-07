@@ -36,6 +36,18 @@ export function run() {
     assert.equal(missingSignature.status, 'failed');
     assert.equal(missingSignature.reason?.includes('signature is required'), true);
 
+    const preverified = verifyArtifactMetadata({
+        moduleId: 'shadowdark',
+        operation: 'install',
+        source: 'https://example.com/module.tgz',
+        integrity: 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        preverified: true,
+        now,
+    });
+    assert.equal(preverified.verified, true);
+    assert.equal(preverified.status, 'verified');
+    assert.equal(preverified.signature, undefined);
+
     const validRawDigest = verifyArtifactMetadata({
         moduleId: 'shadowdark',
         operation: 'upgrade',
