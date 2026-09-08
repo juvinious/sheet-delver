@@ -1,7 +1,7 @@
 # Release Process
 
 Sheet Delver releases are published by `.github/workflows/release.yml` when a
-stable semantic-version tag such as `v0.9.0` is pushed.
+stable semantic-version tag such as `v0.9.1` is pushed.
 
 The root `package.json` version is the application release authority. The
 matching `CHANGELOG.md` heading supplies the GitHub Release notes. SDK and

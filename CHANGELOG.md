@@ -1,4 +1,7 @@
 # Releases
+## 0.9.1
+- Fixed module release workflow
+
 ## 0.9.0
 - Added public module catalog
 - Added secure module distribution

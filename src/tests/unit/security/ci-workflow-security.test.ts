@@ -127,4 +127,31 @@ export function run() {
     assert.equal(releaseCommands.includes('${{'), false);
     assert.ok(releaseCommands.includes('$RELEASE_TAG'));
     assert.ok(releaseCommands.includes('$RUNNER_TEMP'));
+
+    const moduleRelease = loadWorkflow('module-release.yml');
+    const moduleReleaseJob = moduleRelease.workflow.jobs?.release;
+    assert.equal(moduleRelease.workflow.permissions?.contents, 'read');
+    assert.equal(moduleReleaseJob?.permissions?.contents, 'write');
+    assertPinnedActions(moduleRelease.source, moduleRelease.steps);
+    assertCheckoutCredentialsDisabled(moduleRelease.steps);
+    assert.ok(
+        moduleRelease.steps.some((step) => step.uses?.startsWith('actions/upload-artifact@')),
+    );
+
+    const moduleReleaseCommands = moduleRelease.steps
+        .map((step) => step.run ?? '')
+        .join('\n');
+    for (const required of [
+        'npm ci',
+        'npm run managed:generate',
+        'npm run module:package',
+        'sha256sum',
+        'gh release create',
+        '--verify-tag',
+    ]) {
+        assert.ok(
+            moduleReleaseCommands.includes(required),
+            'Module release workflow is missing required gate or command: ' + required,
+        );
+    }
 }
