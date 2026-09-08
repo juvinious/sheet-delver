@@ -271,6 +271,7 @@ with the bounded capability defined here.
 - cryptographic publisher key infrastructure
 - runtime sandboxing of installed module code
 - historical remote version catalogs in the initial schema
+- a standalone module-author CLI independent of a Sheet Delver core checkout
 
 ## Implementation Plan
 
@@ -327,6 +328,20 @@ catalog changes do not require a core release.
 **Exit:** The blanket remote-distribution denial is replaced only for the public
 paths in this ADR, official modules install and update through the catalog, and
 local and managed runtime behavior remains unchanged.
+
+## Tentative Follow-up
+
+Consider a standalone module-author CLI if requiring a core checkout becomes a
+meaningful source of friction. Module repositories are already operationally
+self-contained in CI: their generated workflows invoke validation, packaging,
+and release from the module repository while checking out a pinned core
+toolchain. The tentative CLI would provide the same local experience without a
+full core checkout.
+
+Any such CLI must remain a thin distribution of the authoritative core schemas
+and module tooling. It must not introduce a second implementation of manifest
+validation, packaging, or release generation that can drift from the host. It
+is not required to complete this ADR.
 
 ## Consequences
 
