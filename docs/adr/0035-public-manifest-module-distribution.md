@@ -77,6 +77,12 @@ not maintain duplicated compatibility or permission declarations by hand. An
 installation fails if the downloaded archive's `info.json` does not match the
 release manifest's module id, version, compatibility, or permission metadata.
 
+New module scaffolds include separate validation and tag-triggered release
+workflows. Both workflows pin an explicit Sheet Delver core ref. The initializer
+defaults that ref from the root application version and permits an explicit
+override for testing a pushed development ref; published module workflows use a
+tested Sheet Delver release tag.
+
 #### Static catalog index
 
 The GitHub Pages index is a discovery document, not a second release database.
@@ -273,6 +279,7 @@ with the bounded capability defined here.
 - define and test the release-manifest and catalog schemas
 - extend `module:package` to emit the archive, release manifest, and digest
 - add a reusable public-module release workflow
+- generate pinned module validation and release callers from `module:init`
 - document the conventional GitHub Release asset names and stable manifest URL
 
 **Exit:** A module repository can publish an immutable archive and generated,

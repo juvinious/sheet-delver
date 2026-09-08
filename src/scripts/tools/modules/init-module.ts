@@ -12,6 +12,42 @@ const INIT_TEMPLATE_DIR = fileURLToPath(new URL('./scaffolds/init-module/', impo
 
 type TemplateTokens = Record<string, string>;
 
+export interface InitModuleOptions {
+  coreRef?: string;
+}
+
+function requireCoreRef(value: string): string {
+  const ref = value.trim();
+  if (
+    !/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(ref)
+    || ref.length > 128
+    || ref.includes('..')
+    || ref.includes('//')
+    || ref.endsWith('/')
+    || ref.endsWith('.')
+  ) {
+    throw new Error(`Invalid Sheet Delver core ref: ${value}`);
+  }
+  return ref;
+}
+
+function defaultCoreRef(): string {
+  const packagePath = path.join(process.cwd(), 'package.json');
+  const packageDocument = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as { version?: unknown };
+  if (typeof packageDocument.version !== 'string' || packageDocument.version.trim().length === 0) {
+    throw new Error('Cannot initialize module: package.json must contain a version.');
+  }
+  return requireCoreRef(`v${packageDocument.version}`);
+}
+
+function readOption(args: string[], name: string): string | undefined {
+  const equalsPrefix = `${name}=`;
+  const equalsValue = args.find((argument) => argument.startsWith(equalsPrefix));
+  if (equalsValue) return equalsValue.slice(equalsPrefix.length);
+  const index = args.indexOf(name);
+  return index >= 0 ? (args[index + 1] ?? '') : undefined;
+}
+
 function toTypeScriptIdentifier(value: string): string {
   const words = value.split(/[^a-zA-Z0-9]+/).filter(Boolean);
   const name = words
@@ -98,8 +134,9 @@ function renderTemplateTree(modulePath: string, tokens: TemplateTokens): void {
  * @param systemName - The name of the system this module is for (e.g., "My RPG System")
  * @throws Error if the module directory already exists
  */
-export function initModule(moduleId: string, systemName: string): void {
+export function initModule(moduleId: string, systemName: string, options: InitModuleOptions = {}): void {
   const canonicalId = requireModuleId(moduleId);
+  const coreRef = requireCoreRef(options.coreRef ?? defaultCoreRef());
   const modulePath = path.join(getLocalModulesDataDir(), canonicalId);
   if (fs.existsSync(modulePath)) {
     throw new Error(`Module path ${modulePath} already exists. Choose a different name or remove the existing module.`);
@@ -112,6 +149,7 @@ export function initModule(moduleId: string, systemName: string): void {
     SYSTEM_NAME: systemName,
     CLASS_PREFIX: toTypeScriptIdentifier(canonicalId),
     MANAGED_TSCONFIG: managedTsconfigPath(modulePath),
+    CORE_REF: coreRef,
   });
 
   console.log(`Module "${canonicalId}" initialized successfully at ${modulePath}.`);
@@ -121,7 +159,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const moduleId = process.argv[2];
   const systemName = process.argv[3] || moduleId;
   if (!moduleId || !systemName) {
-    console.error('Usage: npm run module:init <moduleId> <systemName> [--data-dir <path-to-data-dir>]');
+    console.error('Usage: npm run module:init <moduleId> <systemName> [--data-dir <path-to-data-dir>] [--core-ref <release-tag>]');
     process.exit(1);
   }
 
@@ -132,12 +170,13 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
 
   try {
     const canonicalId = requireModuleId(moduleId);
-    initModule(canonicalId, systemName);
+    initModule(canonicalId, systemName, { coreRef: readOption(process.argv, '--core-ref') });
     console.log('Next steps:');
     const modulePath = path.join(dataDir, 'local', 'modules', canonicalId);
     console.log(`1. Implement your module's logic in ${path.join(modulePath, 'src', 'logic')}/`);
     console.log(`2. Build your UI components in ${path.join(modulePath, 'src', 'ui')}/`);
-    console.log('3. Refer to the README.md for API usage and examples.');
+    console.log('3. Review the generated CI and release workflows before publishing the module repository.');
+    console.log('4. Refer to the README.md for API usage and examples.');
   } catch (error) {
     console.error(`Error initializing module: ${(error as Error).message}`);
     process.exit(1);

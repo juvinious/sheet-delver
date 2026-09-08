@@ -95,6 +95,10 @@ GitHub redirects that URL to the selected version-specific release. The sibling
 archive reference is resolved against the final URL, keeping each selected
 artifact immutable.
 
+`module:init` generates a tag-triggered caller for this workflow alongside the
+module's validation workflow. Both pin the same explicit Sheet Delver core ref;
+the module tag without its leading `v` must match `info.json` `version`.
+
 See [MODULE_CATALOG.md](MODULE_CATALOG.md) for the static discovery schema.
 Catalogs point to this stable manifest URL but do not duplicate release facts or
 assign trust.

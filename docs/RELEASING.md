@@ -98,6 +98,9 @@ Public module repositories can call the reusable
 `.github/workflows/module-release.yml` workflow from a small tag-triggered
 wrapper:
 
+`npm run module:init` generates this wrapper and a separate validation workflow
+for new modules. The example remains useful when migrating an existing module:
+
 ```yaml
 name: Release Module
 
