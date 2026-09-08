@@ -17,6 +17,7 @@ export const LegacyModuleSourceCategory = {
 
 export const SourceProfileId = {
     LocalDefault: 'local-default',
+    OfficialCatalog: 'official-catalog',
 } as const;
 
 /**

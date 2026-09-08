@@ -1,5 +1,6 @@
 import { strict as assert } from 'node:assert';
 import fs from 'node:fs';
+import yaml from 'js-yaml';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -33,7 +34,8 @@ export async function run() {
     initDataDir(resolveDataDir(['--data-dir', testDataDir]));
 
     const moduleId = 'sdk-check-test';
-    initModule(moduleId, 'SDK Check Test');
+    const coreRef = 'v9.8.7';
+    initModule(moduleId, 'SDK Check Test', { coreRef });
 
     const modulePath = path.join(testDataDir, 'local', 'modules', moduleId);
     const scaffoldPath = path.join(process.cwd(), 'src', 'scripts', 'tools', 'modules', 'scaffolds', 'init-module');
@@ -42,7 +44,29 @@ export async function run() {
 
     assert.equal(fs.existsSync(path.join(scaffoldPath, 'module', 'ui.tsx.tmpl')), true);
     assert.equal(fs.existsSync(path.join(scaffoldPath, 'src', 'server', 'server.ts.tmpl')), true);
-    assert.equal(fs.existsSync(path.join(modulePath, '.github', 'workflows', `ci-${moduleId}.yaml`)), true);
+    const ciWorkflowPath = path.join(modulePath, '.github', 'workflows', `ci-${moduleId}.yaml`);
+    const releaseWorkflowPath = path.join(modulePath, '.github', 'workflows', `release-${moduleId}.yaml`);
+    assert.equal(fs.existsSync(ciWorkflowPath), true);
+    assert.equal(fs.existsSync(releaseWorkflowPath), true);
+    const ciWorkflowSource = fs.readFileSync(ciWorkflowPath, 'utf8');
+    const releaseWorkflowSource = fs.readFileSync(releaseWorkflowPath, 'utf8');
+    assert.doesNotThrow(() => yaml.load(ciWorkflowSource));
+    assert.doesNotThrow(() => yaml.load(releaseWorkflowSource));
+    assert.match(ciWorkflowSource, /repository: sheetdelver\/sheetdelver/);
+    assert.match(ciWorkflowSource, /ref: 'v9\.8\.7'/);
+    assert.match(ciWorkflowSource, /npm run module:check/);
+    assert.match(ciWorkflowSource, /npm run module:package/);
+    assert.doesNotMatch(ciWorkflowSource, /settings\.yaml|npm install|actions\/checkout@v3/);
+    assert.match(
+        releaseWorkflowSource,
+        /uses: sheetdelver\/sheetdelver\/\.github\/workflows\/module-release\.yml@v9\.8\.7/,
+    );
+    assert.match(releaseWorkflowSource, /module_id: 'sdk-check-test'/);
+    assert.match(releaseWorkflowSource, /core_ref: 'v9\.8\.7'/);
+    assert.throws(
+        () => initModule('invalid-ref-test', 'Invalid Ref Test', { coreRef: 'main\ncontents: write' }),
+        /Invalid Sheet Delver core ref/,
+    );
     const generatedFiles = walkFiles(modulePath);
     assert.equal(generatedFiles.some((file) => file.endsWith('.tmpl')), false);
     for (const file of generatedFiles) {

@@ -10,6 +10,7 @@ This module is designed for the %SYSTEM_NAME% system. It includes SDK-conforming
 - `src/ui/`: Create the presentational actor sheet and other React surfaces here.
 - `src/server/`: Add system-specific API routes over the request runtime here.
 - `src/styles/tailwind.css`: Your Tailwind entry — see Styling below.
+- `.github/workflows/`: Validation and release automation pinned to the Sheet Delver release used to create this module.
 
 ## Styling
 
@@ -26,7 +27,24 @@ The compiled Tailwind artifact and your declared stylesheets load as separate `<
 2. Build your actor sheet over `ActorSheetProps` in the `src/ui/` directory.
 3. Add system-specific server routes using `req.runtime` in the `src/server/` directory.
 4. Run `npm run module:check %SYSTEM_ID%` before packaging.
+5. Review the generated workflows and keep their Sheet Delver core ref pinned to a tested release.
 
-Refer to the [Sheet Delver Module Manifest documentation](https://github.com/sheetdelver/sheet-delver/blob/main/docs/MODULE_MANIFEST.md) for detailed API usage and examples.
+## Validation And Releases
+
+The generated validation workflow checks this module against Sheet Delver
+`%CORE_REF%` on pull requests, pushes to `main`, and manual runs. It runs both
+the module contract checker and a complete package build in an isolated data
+directory.
+
+The generated release workflow runs only for pushed `v*` tags. Before tagging,
+set `info.json` `version` to the intended release version and commit the change.
+The tag without its leading `v` must exactly match that version. For example,
+module version `1.2.0` is released with tag `v1.2.0`.
+
+The release workflow publishes the generated archive, SHA-256 checksum, and
+`sheet-delver-manifest.json` as GitHub Release assets. It does not write to any
+developer `local/modules` directory.
+
+Refer to the [Sheet Delver Module Manifest documentation](https://github.com/sheetdelver/sheetdelver/blob/main/docs/MODULE_MANIFEST.md) for detailed API usage and examples.
 
 Happy developing!

@@ -42,6 +42,81 @@ Installed artifacts may be older than the current SDK. The registry performs a
 lightweight managed-artifact health check: fatal load problems become blocking
 errors, while survivable SDK drift becomes an admin-visible warning.
 
+## Release Artifacts
+
+`npm run module:package <moduleId>` reads only the local development tree and
+writes release output under `<DATA_DIR>/dist/modules`. It never writes to
+`<DATA_DIR>/local/modules` or installs the resulting package.
+
+For a module named `my-system` at version `1.2.0`, packaging emits:
+
+```text
+my-system-1.2.0.tgz
+my-system-1.2.0.manifest.json
+my-system-1.2.0.sha256
+```
+
+The JSON file uses schema `sheet-delver-release.v1`. Compatibility,
+permissions, dependencies, and conflicts are generated from `info.json`; the
+release manifest intentionally contains no self-asserted trust tier. Its
+`artifact.url` is the sibling archive filename and its `artifact.integrity`
+contains the SHA-256 digest:
+
+```json
+{
+  "schemaVersion": "sheet-delver-release.v1",
+  "publishedAt": 1788739200000,
+  "module": {
+    "id": "my-system",
+    "title": "My System Name",
+    "version": "1.2.0",
+    "compatibility": {
+      "apiContracts": {
+        "module-api": ">=1.0.0 <2.0.0"
+      }
+    }
+  },
+  "artifact": {
+    "url": "my-system-1.2.0.tgz",
+    "size": 24576,
+    "integrity": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+The reusable release workflow publishes the manifest under the fixed asset name
+`sheet-delver-manifest.json`. A catalog can therefore use this stable URL:
+
+```text
+https://github.com/<owner>/<repository>/releases/latest/download/sheet-delver-manifest.json
+```
+
+GitHub redirects that URL to the selected version-specific release. The sibling
+archive reference is resolved against the final URL, keeping each selected
+artifact immutable.
+
+`module:init` generates a tag-triggered caller for this workflow alongside the
+module's validation workflow. Both pin the same explicit Sheet Delver core ref;
+the module tag without its leading `v` must match `info.json` `version`.
+
+See [MODULE_CATALOG.md](MODULE_CATALOG.md) for the static discovery schema.
+Catalogs point to this stable manifest URL but do not duplicate release facts or
+assign trust.
+
+Operators can validate and install a packaged archive without copying it into a
+runtime directory manually:
+
+```bash
+npm run module:archive -- dry-run-install /path/to/my-system-1.2.0.tgz
+npm run module:archive -- install /path/to/my-system-1.2.0.tgz --approve-trust-override
+```
+
+The transaction validates archive structure, `info.json`, packaged entry
+points, compatibility, trust, permissions, dependencies, and conflicts before
+atomically promoting the package to `<DATA_DIR>/modules/<moduleId>`. It never
+writes to `<DATA_DIR>/local/modules`; a same-ID development source remains
+physically separate and keeps its current source selection.
+
 ---
 
 ## Public SDK Entry Points

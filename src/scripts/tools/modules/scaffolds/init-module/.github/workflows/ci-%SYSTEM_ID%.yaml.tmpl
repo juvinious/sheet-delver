@@ -1,4 +1,4 @@
-name: Build Module
+name: Validate Module
 
 on:
   push:
@@ -7,6 +7,8 @@ on:
     paths:
       - 'src/**'
       - 'module/**'
+      - 'assets/**'
+      - '.github/workflows/**'
       - 'info.json'
       - 'package.json'
   pull_request:
@@ -15,63 +17,53 @@ on:
     paths:
       - 'src/**'
       - 'module/**'
+      - 'assets/**'
+      - '.github/workflows/**'
       - 'info.json'
       - 'package.json'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  validate:
     runs-on: ubuntu-latest
     env:
-      SHEET_DELVER_DATA: ./data
+      SHEET_DELVER_DATA: ${{ github.workspace }}/sheet-delver-core/.module-ci-data
     defaults:
       run:
-        working-directory: ./
+        working-directory: sheet-delver-core
     steps:
-      # Checkout the Sheet Delver platform into the workspace root
-      - name: Checkout Sheet Delver Repository
-        uses: actions/checkout@v3
+      - name: Check out pinned Sheet Delver toolchain
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: sheetdelver/sheet-delver
-          path: ./
+          repository: sheetdelver/sheetdelver
+          ref: '%CORE_REF%'
+          path: sheet-delver-core
+          persist-credentials: false
 
-      # Checkout this module into the platform's local modules data directory
-      - name: Checkout %SYSTEM_ID% Module
-        uses: actions/checkout@v3
+      - name: Check out module source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          repository: ${{ github.repository }}
-          path: ${{ env.SHEET_DELVER_DATA }}/local/modules/%SYSTEM_ID%
+          path: sheet-delver-core/.module-ci-data/local/modules/%SYSTEM_ID%
+          persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Use Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version: '22.x'
+          cache: npm
+          cache-dependency-path: sheet-delver-core/package-lock.json
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install reviewed Sheet Delver toolchain
+        run: npm ci
 
-      - name: Generate config
-        run: |
-          cat > settings.yaml << EOF
-          app:
-              host: localhost
-              port: 3000
-              api-port: 3001
-              protocol: http
-              chat-history: 100
-          foundry:
-              host: localhost
-              port: 30000
-              protocol: http
-              connector: socket
-              username: gamemaster
-              password: gamemaster
-              allow-live-compendium-uuid-fallback: false
-              foundryDataDirectory: foundryData
-          debug:
-              enabled: true
-              level: 3
-          EOF
+      - name: Generate managed configuration
+        run: npm run managed:generate
 
-      - name: Build module
-        run: npm run build
+      - name: Validate module contract
+        run: npm run module:check -- '%SYSTEM_ID%'
+
+      - name: Verify distributable package
+        run: npm run module:package -- '%SYSTEM_ID%'

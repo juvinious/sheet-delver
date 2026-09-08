@@ -4,6 +4,7 @@ export interface ArtifactVerificationInput {
     source: string;
     integrity?: string;
     signature?: string;
+    preverified?: boolean;
     now?: number;
 }
 
@@ -64,6 +65,31 @@ export function verifyArtifactMetadata(input: ArtifactVerificationInput): Artifa
             source: input.source,
             integrity: normalizedIntegrity,
             signature: normalizedSignature,
+            checkedAt,
+        };
+    }
+
+    if (input.preverified) {
+        if (!normalizedIntegrity) {
+            return {
+                moduleId: input.moduleId,
+                operation: input.operation,
+                status: 'failed',
+                verified: false,
+                reason: 'Preverified distribution artifacts require a valid SHA-256 integrity value',
+                source: input.source,
+                integrity: input.integrity,
+                checkedAt,
+            };
+        }
+        return {
+            moduleId: input.moduleId,
+            operation: input.operation,
+            status: 'verified',
+            verified: true,
+            reason: 'Archive bytes matched the validated release manifest',
+            source: input.source,
+            integrity: normalizedIntegrity,
             checkedAt,
         };
     }

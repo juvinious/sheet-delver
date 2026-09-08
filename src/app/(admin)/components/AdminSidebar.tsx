@@ -5,7 +5,7 @@
  *
  * Persistent left-hand navigation for the admin control plane (ADR-0030 UX-3).
  * Rendered once in the authenticated layout shell; shows active-route state and
- * groups related areas while remote module distribution remains disabled.
+ * groups related areas for lifecycle and public catalog administration.
  */
 
 import React from 'react';
@@ -32,6 +32,9 @@ const NAV: NavItem[] = [
         label: 'Modules',
         children: [
             { label: 'Installed', href: '/admin/modules', exact: true },
+            { label: 'Available', href: '/admin/modules/available' },
+            { label: 'Updates', href: '/admin/modules/updates' },
+            { label: 'Sources', href: '/admin/modules/sources' },
         ],
     },
     { label: 'World', href: '/admin/world' },
@@ -49,7 +52,7 @@ function NavLink({ leaf, pathname }: { leaf: NavLeaf; pathname: string }) {
         <Link
             href={leaf.href}
             aria-current={active ? 'page' : undefined}
-            className={`block rounded-xl px-3 py-2 text-sm font-medium transition ${
+            className={`block shrink-0 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition ${
                 active
                     ? 'bg-[var(--admin-accent-soft)] text-[var(--admin-text-primary)]'
                     : 'text-[var(--admin-text-secondary)] hover:bg-[var(--admin-surface-hover)]'
@@ -66,16 +69,16 @@ export default function AdminSidebar() {
     return (
         <nav
             aria-label="Admin sections"
-            className="w-52 shrink-0 border-r border-[var(--admin-border)] bg-[var(--admin-surface)] p-3"
+            className="w-full shrink-0 overflow-x-auto border-b border-[var(--admin-border)] bg-[var(--admin-surface)] p-2 md:w-52 md:overflow-visible md:border-b-0 md:border-r md:p-3"
         >
-            <div className="space-y-1">
+            <div className="flex min-w-max gap-1 md:block md:min-w-0 md:space-y-1">
                 {NAV.map(item =>
                     'children' in item ? (
-                        <div key={item.label} className="pt-2">
-                            <p className="px-3 pb-1 text-xs font-bold uppercase tracking-wider text-[var(--admin-text-muted)]">
+                        <div key={item.label} className="contents md:block md:pt-2">
+                            <p className="hidden px-3 pb-1 text-xs font-bold uppercase tracking-wider text-[var(--admin-text-muted)] md:block">
                                 {item.label}
                             </p>
-                            <div className="space-y-1">
+                            <div className="contents md:block md:space-y-1">
                                 {item.children.map(leaf => (
                                     <NavLink key={leaf.href} leaf={leaf} pathname={pathname} />
                                 ))}

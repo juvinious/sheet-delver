@@ -236,6 +236,25 @@ export async function run(): Promise<void> {
         }
     }
 
+    {
+        const lifecycle = makeLifecycleStore(baseRecord({ status: 'disabled', enabled: false }));
+        const artifacts = makeArtifactStore();
+        artifacts.artifacts['test-module'] = {
+            moduleId: 'test-module',
+            source: 'local://test',
+            version: '1.0.0',
+            installedAt: NOW,
+            updatePolicy: { locked: true },
+        };
+
+        const result = uninstallModule('test-module', lifecycle, artifacts, NOW + 1);
+        assert.equal(result.success, false);
+        assert.equal(result.errorCode, 'update-policy-blocked');
+        assert.match(result.error || '', /cannot be uninstalled/);
+        assert.equal(lifecycle.modules['test-module']?.status, 'disabled');
+        assert.ok(getArtifact(artifacts, 'test-module'));
+    }
+
     // ── upgradeModule ────────────────────────────────────────────────────────
 
     {
@@ -343,6 +362,67 @@ export async function run(): Promise<void> {
         assert.equal(result.error, REMOTE_MODULE_DISTRIBUTION_ERROR_MESSAGE);
         assert.equal(lifecycle.modules['test-module']?.status, 'disabled');
         assert.equal(getArtifact(artifacts, 'test-module')?.version, '1.0.0');
+    }
+
+    {
+        const lifecycle = makeLifecycleStore(baseRecord({ status: 'disabled' }));
+        const artifacts = makeArtifactStore();
+        artifacts.artifacts['test-module'] = {
+            moduleId: 'test-module',
+            source: 'local://test',
+            version: '1.0.0',
+            installedAt: NOW,
+            updatePolicy: { locked: true },
+        };
+
+        const result = await upgradeModule(
+            'test-module',
+            { source: 'local://test', targetVersion: '2.0.0' },
+            lifecycle,
+            artifacts,
+            NOW + 1,
+        );
+        assert.equal(result.success, false);
+        assert.equal(result.errorCode, 'update-policy-blocked');
+        assert.match(result.error || '', /locked/);
+        assert.equal(lifecycle.modules['test-module']?.status, 'disabled');
+        assert.equal(getArtifact(artifacts, 'test-module')?.version, '1.0.0');
+    }
+
+    {
+        const lifecycle = makeLifecycleStore(baseRecord({ status: 'disabled' }));
+        const artifacts = makeArtifactStore();
+        artifacts.artifacts['test-module'] = {
+            moduleId: 'test-module',
+            source: 'local://test',
+            version: '1.0.0',
+            installedAt: NOW,
+            sourceProfileId: 'official-catalog',
+            updatePolicy: { locked: false, pinnedVersion: '2.0.0' },
+        };
+
+        const mismatch = await upgradeModule(
+            'test-module',
+            { source: 'local://test', targetVersion: '3.0.0' },
+            lifecycle,
+            artifacts,
+            NOW + 1,
+        );
+        assert.equal(mismatch.success, false);
+        assert.equal(mismatch.errorCode, 'update-policy-blocked');
+        assert.match(mismatch.error || '', /pinned to v2\.0\.0/);
+
+        const matching = await upgradeModule(
+            'test-module',
+            { source: 'local://test', targetVersion: '2.0.0' },
+            lifecycle,
+            artifacts,
+            NOW + 2,
+        );
+        assert.equal(matching.success, true);
+        const upgraded = getArtifact(artifacts, 'test-module');
+        assert.equal(upgraded?.sourceProfileId, 'official-catalog');
+        assert.deepEqual(upgraded?.updatePolicy, { locked: false, pinnedVersion: '2.0.0' });
     }
 
     // ── ManagerOperationError ────────────────────────────────────────────────

@@ -31,12 +31,15 @@ import {
     installModule,
     uninstallModule,
     upgradeModule,
+    getUpdatePolicyBlockReason,
     operationFailure,
     operationSuccess,
     type InstallModuleInput,
     type UpgradeModuleInput,
     type ManagerErrorCode,
     type ManagerOperationResult,
+    type ModuleArtifactMetadata,
+    type ModuleUpdatePolicy,
 } from './manager';
 import { getArtifact, loadArtifactStore, saveArtifactStore, upsertArtifactVerification } from '../distribution/artifactStore';
 import {
@@ -64,6 +67,7 @@ import { initializeRegistry, refreshRegistry } from './bootstrap';
 import { REMOTE_MODULE_DISTRIBUTION_ERROR_CODE } from '../security/remoteDistributionPolicy';
 import { parseModuleId } from '@shared/security/moduleId';
 import { resolveModuleDirectory } from '@server/security/modulePath';
+import { isValidModuleReleaseVersion } from '../distribution/releaseManifest';
 
 interface ManifestGateResult {
     allowed: boolean;
@@ -73,7 +77,11 @@ interface ManifestGateResult {
     classification?: ModuleLifecycleClassificationInput;
 }
 
-function checkManifestGate(moduleId: string, effectiveInfo?: SystemModuleInfo): ManifestGateResult {
+function checkManifestGate(
+    moduleId: string,
+    effectiveInfo?: SystemModuleInfo,
+    suppliedArchiveInfo = false,
+): ManifestGateResult {
     const id = parseModuleId(moduleId);
     if (!id) {
         return { allowed: false, mode: 'strict', errorCode: 'validation-failed', reason: 'Invalid module ID' };
@@ -81,7 +89,7 @@ function checkManifestGate(moduleId: string, effectiveInfo?: SystemModuleInfo): 
     const plugin = pluginMap.get(id);
     const record = getLifecycleRecord(id);
 
-    if (record?.validation && (!record.validation.manifestValid || !record.validation.compatible)) {
+    if (!suppliedArchiveInfo && record?.validation && (!record.validation.manifestValid || !record.validation.compatible)) {
         const reasons: string[] = [];
         if (!record.validation.manifestValid && record.validation.validationErrors?.length) {
             reasons.push(record.validation.validationErrors.join('; '));
@@ -117,7 +125,7 @@ function checkManifestGate(moduleId: string, effectiveInfo?: SystemModuleInfo): 
         };
     }
 
-    if (!plugin) {
+    if (!plugin && !infoToValidate.manifest) {
         // For remote modules, we don't have the full info.json yet (e.g. no manifest paths).
         // Skip structural shape validation and only check compatibility.
         const compatibility = evaluateModuleCompatibility(infoToValidate, getCoreVersion());
@@ -196,6 +204,13 @@ export interface InstallManagedModuleInput {
     integrity?: string;
     signature?: string;
     permissions?: SystemModuleInfo['permissions'];
+    moduleInfo?: SystemModuleInfo;
+    sourceTrustTier?: ModuleTrustTier;
+    approveTrustOverride?: boolean;
+    artifactSource?: string;
+    sourceProfileId?: string;
+    updatePolicy?: ModuleUpdatePolicy;
+    preverifiedArtifact?: boolean;
 }
 
 interface DryRunDependencyViolation {
@@ -285,14 +300,23 @@ function getSourceResolutionErrorCode(errorCode?: string): ManagerErrorCode {
 function buildEffectiveModuleInfo(
     plugin: SystemPlugin | undefined,
     resolvedSource: ModuleSourceResolution,
-    inputPermissions?: SystemModuleInfo['permissions']
+    inputPermissions?: SystemModuleInfo['permissions'],
+    suppliedInfo?: SystemModuleInfo,
+    sourceTrustTier?: ModuleTrustTier,
 ): SystemModuleInfo | undefined {
-    if (!plugin) {
+    const baseInfo = suppliedInfo || plugin?.info;
+    if (!baseInfo) {
         return {
             id: resolvedSource.moduleId,
             title: resolvedSource.moduleId,
             version: resolvedSource.version || '0.0.0',
-            trust: resolvedSource.trustTier ? { tier: resolvedSource.trustTier } : { tier: (resolvedSource.kind === ModuleSourceKind.Local || resolvedSource.kind === ModuleSourceKind.Indexed) ? ModuleTrustTier.Unverified : ModuleTrustTier.Untrusted },
+            trust: {
+                tier: sourceTrustTier
+                    || resolvedSource.trustTier
+                    || ((resolvedSource.kind === ModuleSourceKind.Local || resolvedSource.kind === ModuleSourceKind.Indexed)
+                        ? ModuleTrustTier.Unverified
+                        : ModuleTrustTier.Untrusted),
+            },
             permissions: inputPermissions || resolvedSource.permissions,
             compatibility: resolvedSource.compatibility,
             dependencies: resolvedSource.dependencies,
@@ -301,14 +325,14 @@ function buildEffectiveModuleInfo(
     }
 
     return {
-        ...plugin.info,
-        trust: resolvedSource.trustTier
-            ? { tier: resolvedSource.trustTier }
-            : plugin.info.trust,
-        permissions: inputPermissions || resolvedSource.permissions || plugin.info.permissions,
-        compatibility: resolvedSource.compatibility || plugin.info.compatibility,
-        dependencies: resolvedSource.dependencies || plugin.info.dependencies,
-        conflicts: resolvedSource.conflicts || plugin.info.conflicts,
+        ...baseInfo,
+        trust: sourceTrustTier || resolvedSource.trustTier
+            ? { tier: sourceTrustTier || resolvedSource.trustTier! }
+            : baseInfo.trust,
+        permissions: inputPermissions || resolvedSource.permissions || baseInfo.permissions,
+        compatibility: resolvedSource.compatibility || baseInfo.compatibility,
+        dependencies: resolvedSource.dependencies || baseInfo.dependencies,
+        conflicts: resolvedSource.conflicts || baseInfo.conflicts,
     };
 }
 
@@ -430,21 +454,29 @@ export async function dryRunInstallManagedModule(input: InstallManagedModuleInpu
     }
 
     const plugin = pluginMap.get(id);
-    const effectiveInfo = buildEffectiveModuleInfo(plugin, resolvedSource.value, input.permissions);
+    const effectiveInfo = buildEffectiveModuleInfo(
+        plugin,
+        resolvedSource.value,
+        input.permissions,
+        input.moduleInfo,
+        input.sourceTrustTier,
+    );
     const trustDecision = effectiveInfo
         ? evaluateTrustPolicy(effectiveInfo, getTrustPolicyConfig(), {
             env: process.env,
             operation: 'install',
+            adminOverride: input.approveTrustOverride,
         })
         : undefined;
 
-    const manifestGate = checkManifestGate(id, effectiveInfo);
+    const manifestGate = checkManifestGate(id, effectiveInfo, Boolean(input.moduleInfo));
     const verification = verifyArtifactMetadata({
         moduleId: id,
         operation: 'install',
-        source: resolvedSource.value.source,
+        source: input.artifactSource || resolvedSource.value.source,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
+        preverified: input.preverifiedArtifact,
     });
     const dependencyImpact = evaluateDependencyConflictImpact(id, effectiveInfo);
 
@@ -543,26 +575,35 @@ export async function dryRunUpgradeManagedModule(input: UpgradeManagedModuleInpu
     }
 
     const plugin = pluginMap.get(id);
-    const effectiveInfo = buildEffectiveModuleInfo(plugin, resolvedSource.value, input.permissions);
+    const effectiveInfo = buildEffectiveModuleInfo(
+        plugin,
+        resolvedSource.value,
+        input.permissions,
+        input.moduleInfo,
+        input.sourceTrustTier,
+    );
     const trustDecision = effectiveInfo
         ? evaluateTrustPolicy(effectiveInfo, getTrustPolicyConfig(), {
             env: process.env,
             operation: 'upgrade',
+            adminOverride: input.approveTrustOverride,
         })
         : undefined;
 
-    const manifestGate = checkManifestGate(id, effectiveInfo);
+    const manifestGate = checkManifestGate(id, effectiveInfo, Boolean(input.moduleInfo));
     const artifactStorePath = getArtifactStateFilePathOverride();
     const artifactStore = loadArtifactStore(artifactStorePath);
-    const previousPermissions = getArtifact(artifactStore, id)?.permissions || plugin?.info.permissions;
+    const existingArtifact = getArtifact(artifactStore, id);
+    const previousPermissions = existingArtifact?.permissions || plugin?.info.permissions;
     const requestedPermissions = input.permissions || resolvedSource.value.permissions || plugin?.info.permissions;
     const permissionDelta = evaluatePermissionDelta(previousPermissions, requestedPermissions);
     const verification = verifyArtifactMetadata({
         moduleId: id,
         operation: 'upgrade',
-        source: resolvedSource.value.source,
+        source: input.artifactSource || resolvedSource.value.source,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
+        preverified: input.preverifiedArtifact,
     });
     const dependencyImpact = evaluateDependencyConflictImpact(id, effectiveInfo);
 
@@ -571,6 +612,9 @@ export async function dryRunUpgradeManagedModule(input: UpgradeManagedModuleInpu
         && !input.approvePermissionEscalation;
 
     const blockingReasons: string[] = [];
+    const targetVersion = input.targetVersion || resolvedSource.value.version;
+    const updatePolicyBlock = getUpdatePolicyBlockReason(existingArtifact, targetVersion);
+    if (updatePolicyBlock) blockingReasons.push(updatePolicyBlock);
     if (trustDecision && !trustDecision.allowed) {
         blockingReasons.push(trustDecision.reason || 'Module trust policy blocked upgrade operation');
     }
@@ -685,11 +729,18 @@ export async function installManagedModule(input: InstallManagedModuleInput): Pr
         );
     }
 
-    const effectiveInfo = buildEffectiveModuleInfo(plugin, resolvedSource.value, input.permissions);
+    const effectiveInfo = buildEffectiveModuleInfo(
+        plugin,
+        resolvedSource.value,
+        input.permissions,
+        input.moduleInfo,
+        input.sourceTrustTier,
+    );
     if (effectiveInfo) {
         const trustDecision = evaluateTrustPolicy(effectiveInfo, getTrustPolicyConfig(), {
             env: process.env,
             operation: 'install',
+            adminOverride: input.approveTrustOverride,
         });
         if (!trustDecision.allowed) {
             emitManagerTelemetry({
@@ -712,7 +763,7 @@ export async function installManagedModule(input: InstallManagedModuleInput): Pr
         }
     }
 
-    const gate = checkManifestGate(id, effectiveInfo);
+    const gate = checkManifestGate(id, effectiveInfo, Boolean(input.moduleInfo));
     if (!gate.allowed) {
         emitManagerTelemetry({
             operation: 'install',
@@ -743,9 +794,10 @@ export async function installManagedModule(input: InstallManagedModuleInput): Pr
     const verification = verifyArtifactMetadata({
         moduleId: id,
         operation: 'install',
-        source: resolvedSource.value.source,
+        source: input.artifactSource || resolvedSource.value.source,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
+        preverified: input.preverifiedArtifact,
     });
     upsertArtifactVerification(artifactStore, verification);
     saveArtifactStore(artifactStore, artifactStorePath);
@@ -771,11 +823,15 @@ export async function installManagedModule(input: InstallManagedModuleInput): Pr
 
     const managerInput: InstallModuleInput = {
         moduleId: id,
-        source: resolvedSource.value.source,
+        source: input.artifactSource || resolvedSource.value.source,
         version: input.version || resolvedSource.value.version,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
         permissions: input.permissions || resolvedSource.value.permissions || plugin?.info.permissions,
+        trust: effectiveInfo?.trust,
+        sourceProfileId: input.sourceProfileId,
+        updatePolicy: input.updatePolicy,
+        preverifiedArtifact: input.preverifiedArtifact,
     };
 
     const result = await installModule(
@@ -814,6 +870,13 @@ export interface UpgradeManagedModuleInput {
     signature?: string;
     permissions?: SystemModuleInfo['permissions'];
     approvePermissionEscalation?: boolean;
+    moduleInfo?: SystemModuleInfo;
+    sourceTrustTier?: ModuleTrustTier;
+    approveTrustOverride?: boolean;
+    artifactSource?: string;
+    sourceProfileId?: string;
+    updatePolicy?: ModuleUpdatePolicy;
+    preverifiedArtifact?: boolean;
 }
 
 export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Promise<ManagerOperationResult> {
@@ -858,11 +921,24 @@ export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Pr
         );
     }
 
-    const effectiveInfo = buildEffectiveModuleInfo(plugin, resolvedSource.value, input.permissions);
+    const targetVersion = input.targetVersion || resolvedSource.value.version;
+    const updatePolicyBlock = getUpdatePolicyBlockReason(existingArtifact, targetVersion);
+    if (updatePolicyBlock) {
+        return operationFailure(id, 'upgrade', updatePolicyBlock, undefined, 'update-policy-blocked');
+    }
+
+    const effectiveInfo = buildEffectiveModuleInfo(
+        plugin,
+        resolvedSource.value,
+        input.permissions,
+        input.moduleInfo,
+        input.sourceTrustTier,
+    );
     if (effectiveInfo) {
         const trustDecision = evaluateTrustPolicy(effectiveInfo, getTrustPolicyConfig(), {
             env: process.env,
             operation: 'upgrade',
+            adminOverride: input.approveTrustOverride,
         });
         if (!trustDecision.allowed) {
             emitManagerTelemetry({
@@ -885,7 +961,7 @@ export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Pr
         }
     }
 
-    const gate = checkManifestGate(id, effectiveInfo);
+    const gate = checkManifestGate(id, effectiveInfo, Boolean(input.moduleInfo));
     if (!gate.allowed) {
         emitManagerTelemetry({
             operation: 'upgrade',
@@ -939,9 +1015,10 @@ export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Pr
     const verification = verifyArtifactMetadata({
         moduleId: id,
         operation: 'upgrade',
-        source: resolvedSource.value.source,
+        source: input.artifactSource || resolvedSource.value.source,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
+        preverified: input.preverifiedArtifact,
     });
     upsertArtifactVerification(artifactStore, verification);
     saveArtifactStore(artifactStore, artifactStorePath);
@@ -966,11 +1043,15 @@ export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Pr
     }
 
     const managerInput: UpgradeModuleInput = {
-        source: resolvedSource.value.source,
-        targetVersion: input.targetVersion || resolvedSource.value.version,
+        source: input.artifactSource || resolvedSource.value.source,
+        targetVersion,
         integrity: input.integrity || resolvedSource.value.integrity,
         signature: input.signature || resolvedSource.value.signature,
         permissions: requestedPermissions,
+        trust: effectiveInfo?.trust,
+        sourceProfileId: input.sourceProfileId,
+        updatePolicy: input.updatePolicy,
+        preverifiedArtifact: input.preverifiedArtifact,
     };
 
     const result = await upgradeModule(
@@ -999,6 +1080,55 @@ export async function upgradeManagedModule(input: UpgradeManagedModuleInput): Pr
     }
 
     return result;
+}
+
+export interface ManagedModuleUpdatePolicyInput {
+    locked?: boolean;
+    pinnedVersion?: string | null;
+}
+
+export function getManagedModuleArtifact(moduleId: string): ModuleArtifactMetadata | undefined {
+    const id = parseModuleId(moduleId);
+    if (!id) return undefined;
+    return getArtifact(loadArtifactStore(getArtifactStateFilePathOverride()), id);
+}
+
+export function updateManagedModulePolicy(
+    moduleId: string,
+    updates: ManagedModuleUpdatePolicyInput,
+): ModuleArtifactMetadata | undefined {
+    const id = parseModuleId(moduleId);
+    if (!id) throw new TypeError('Invalid module ID');
+    if (updates.locked !== undefined && typeof updates.locked !== 'boolean') {
+        throw new TypeError('locked must be true or false');
+    }
+    if (
+        updates.pinnedVersion !== undefined
+        && updates.pinnedVersion !== null
+        && !isValidModuleReleaseVersion(updates.pinnedVersion)
+    ) {
+        throw new TypeError('pinnedVersion must be null or a safe release version');
+    }
+
+    const artifactStorePath = getArtifactStateFilePathOverride();
+    const artifactStore = loadArtifactStore(artifactStorePath);
+    const artifact = getArtifact(artifactStore, id);
+    if (!artifact) return undefined;
+
+    const currentPolicy = artifact.updatePolicy || { locked: false };
+    const nextPolicy: ModuleUpdatePolicy = {
+        locked: updates.locked ?? currentPolicy.locked,
+        ...(updates.pinnedVersion === undefined
+            ? (currentPolicy.pinnedVersion ? { pinnedVersion: currentPolicy.pinnedVersion } : {})
+            : (updates.pinnedVersion === null ? {} : { pinnedVersion: updates.pinnedVersion })),
+    };
+    const nextArtifact: ModuleArtifactMetadata = {
+        ...artifact,
+        updatePolicy: nextPolicy.locked || nextPolicy.pinnedVersion ? nextPolicy : undefined,
+    };
+    artifactStore.artifacts[id] = nextArtifact;
+    saveArtifactStore(artifactStore, artifactStorePath);
+    return nextArtifact;
 }
 
 export function uninstallManagedModule(moduleId: string): ManagerOperationResult {

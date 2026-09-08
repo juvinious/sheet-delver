@@ -224,12 +224,28 @@ async function runAdminModuleRouteSmokeTests() {
     assert.equal(routeMap.post.has('/lifecycle/:moduleId/switch-source'), true);
     assert.equal(routeMap.post.has('/manager/:moduleId/dry-run/install'), true);
     assert.equal(routeMap.post.has('/manager/:moduleId/dry-run/upgrade'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/archive/dry-run/install'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/archive/dry-run/upgrade'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/archive/install'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/archive/upgrade'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/release/dry-run/install'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/release/dry-run/upgrade'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/release/install'), true);
+    assert.equal(routeMap.post.has('/manager/:moduleId/release/upgrade'), true);
+    assert.equal(routeMap.get.has('/manager/:moduleId/update-policy'), true);
+    assert.equal(routeMap.put.has('/manager/:moduleId/update-policy'), true);
     assert.equal(routeMap.get.has('/sources'), true);
     assert.equal(routeMap.post.has('/sources'), true);
     assert.equal(routeMap.put.has('/sources/:id'), true);
     assert.equal(routeMap.delete.has('/sources/:id'), true);
     assert.equal(routeMap.post.has('/sources/:id/test'), true);
     assert.equal(routeMap.get.has('/sources/:id/modules'), true);
+    assert.equal(routeMap.get.has('/catalog'), true);
+    assert.equal(routeMap.get.has('/sources/:sourceId/modules/:moduleId/release'), true);
+    assert.equal(routeMap.post.has('/sources/:sourceId/modules/:moduleId/dry-run/install'), true);
+    assert.equal(routeMap.post.has('/sources/:sourceId/modules/:moduleId/dry-run/upgrade'), true);
+    assert.equal(routeMap.post.has('/sources/:sourceId/modules/:moduleId/install'), true);
+    assert.equal(routeMap.post.has('/sources/:sourceId/modules/:moduleId/upgrade'), true);
     assert.equal(routeMap.post.has('/server/restart'), true);
 
     // Every module-lifecycle / source / restart mutation must carry the full
@@ -241,32 +257,131 @@ async function runAdminModuleRouteSmokeTests() {
     assertMutationChain(routeMap, 'post', '/manager/:moduleId/uninstall');
     assertMutationChain(routeMap, 'post', '/manager/:moduleId/upgrade');
     assertMutationChain(routeMap, 'post', '/manager/:moduleId/validate');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/archive/dry-run/install');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/archive/dry-run/upgrade');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/archive/install');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/archive/upgrade');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/release/dry-run/install');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/release/dry-run/upgrade');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/release/install');
+    assertMutationChain(routeMap, 'post', '/manager/:moduleId/release/upgrade');
+    assertMutationChain(routeMap, 'put', '/manager/:moduleId/update-policy');
     assertMutationChain(routeMap, 'post', '/sources');
     assertMutationChain(routeMap, 'put', '/sources/:id');
     assertMutationChain(routeMap, 'delete', '/sources/:id');
+    assertMutationChain(routeMap, 'post', '/sources/:sourceId/modules/:moduleId/dry-run/install');
+    assertMutationChain(routeMap, 'post', '/sources/:sourceId/modules/:moduleId/dry-run/upgrade');
+    assertMutationChain(routeMap, 'post', '/sources/:sourceId/modules/:moduleId/install');
+    assertMutationChain(routeMap, 'post', '/sources/:sourceId/modules/:moduleId/upgrade');
     assertMutationChain(routeMap, 'post', '/server/restart');
 
-    // Remote source administration remains registered for stable API behavior,
-    // but every entry point fails before profile lookup, config, or network I/O.
-    for (const [method, path] of [
-        ['get', '/sources'],
-        ['post', '/sources'],
-        ['put', '/sources/:id'],
-        ['delete', '/sources/:id'],
-        ['post', '/sources/:id/test'],
-        ['get', '/sources/:id/modules'],
-    ] as const) {
-        const disabled = await invokeHandler(
-            getLastHandler(routeMap, method, path),
-            { params: { id: 'remote-source' }, body: { baseUrl: 'https://example.invalid/index.json' } } as any,
-        );
-        assert.equal(disabled.statusCode, 501, `${method.toUpperCase()} ${path} must be disabled`);
-        assert.deepEqual(disabled.payload, {
-            success: false,
-            error: REMOTE_MODULE_DISTRIBUTION_ERROR_MESSAGE,
-            errorCode: REMOTE_MODULE_DISTRIBUTION_ERROR_CODE,
-        });
-    }
+    const archiveRoute = '/manager/:moduleId/archive/dry-run/install';
+    const archiveChain = routeMap.post.get(archiveRoute)?.at(-1);
+    assert.ok(archiveChain, 'archive dry-run route must be registered');
+    const middlewareNames = archiveChain.map((handler) => handler.name);
+    const rawParserIndex = middlewareNames.indexOf('rawParser');
+    assert.ok(rawParserIndex > middlewareNames.indexOf('auditAdminAction'), 'archive bytes must be parsed after admin protection');
+
+    const archivesDir = path.join(getDataDir(), 'dist', 'archives');
+    fs.mkdirSync(archivesDir, { recursive: true });
+    const listUploads = () => fs.readdirSync(archivesDir).filter((name) => name.startsWith('.admin-upload-'));
+    const uploadsBefore = listUploads();
+    const malformedArchive = await invokeHandler(
+        getLastHandler(routeMap, 'post', archiveRoute),
+        {
+            params: { moduleId: 'broken-archive' },
+            query: {},
+            body: Buffer.from('not a gzip archive'),
+        } as any,
+    );
+    assert.equal(malformedArchive.statusCode, 200);
+    assert.equal((malformedArchive.payload as any).wouldProceed, false);
+    assert.deepEqual(listUploads(), uploadsBefore, 'temporary admin uploads must be removed after validation failure');
+
+    const unsupportedBody = await invokeHandler(
+        getLastHandler(routeMap, 'post', archiveRoute),
+        { params: { moduleId: 'broken-archive' }, query: {}, body: {} } as any,
+    );
+    assert.equal(unsupportedBody.statusCode, 415);
+    assert.deepEqual(listUploads(), uploadsBefore, 'unsupported uploads must not create temporary files');
+
+    const releaseRoute = '/manager/:moduleId/release/dry-run/install';
+    const missingReleaseSource = await invokeHandler(
+        getLastHandler(routeMap, 'post', releaseRoute),
+        { params: { moduleId: 'public-module' }, body: {} } as any,
+    );
+    assert.equal(missingReleaseSource.statusCode, 400);
+    assert.equal((missingReleaseSource.payload as any).errorCode, 'invalid-request');
+
+    const ambiguousReleaseSource = await invokeHandler(
+        getLastHandler(routeMap, 'post', releaseRoute),
+        {
+            params: { moduleId: 'public-module' },
+            body: {
+                manifestUrl: 'https://example.com/manifest.json',
+                repository: 'https://github.com/example/public-module',
+            },
+        } as any,
+    );
+    assert.equal(ambiguousReleaseSource.statusCode, 400);
+    assert.equal((ambiguousReleaseSource.payload as any).errorCode, 'invalid-request');
+
+    const invalidUpdatePolicy = await invokeHandler(
+        getLastHandler(routeMap, 'put', '/manager/:moduleId/update-policy'),
+        { params: { moduleId: 'missing-policy' }, body: { source: 'official-catalog' } } as any,
+    );
+    assert.equal(invalidUpdatePolicy.statusCode, 400);
+
+    const missingUpdatePolicy = await invokeHandler(
+        getLastHandler(routeMap, 'get', '/manager/:moduleId/update-policy'),
+        { params: { moduleId: 'missing-policy' } } as any,
+    );
+    assert.equal(missingUpdatePolicy.statusCode, 404);
+
+    const sourceList = await invokeHandler(getLastHandler(routeMap, 'get', '/sources'), {});
+    assert.equal(sourceList.statusCode, 200);
+    const sourceIds = ((sourceList.payload as any).profiles as Array<{ id: string }>).map((profile) => profile.id);
+    assert.equal(sourceIds.includes('local-default'), true);
+    assert.equal(sourceIds.includes('official-catalog'), true);
+
+    const credentialedSource = await invokeHandler(
+        getLastHandler(routeMap, 'post', '/sources'),
+        {
+            body: {
+                name: 'Private source',
+                baseUrl: 'https://example.invalid/catalog.json',
+                auth: { type: 'bearer', token: 'secret' },
+            },
+        } as any,
+    );
+    assert.equal(credentialedSource.statusCode, 400);
+
+    const missingSourceTest = await invokeHandler(
+        getLastHandler(routeMap, 'post', '/sources/:id/test'),
+        { params: { id: 'missing-source' }, body: {} } as any,
+    );
+    assert.equal(missingSourceTest.statusCode, 404);
+
+    const missingSourceModules = await invokeHandler(
+        getLastHandler(routeMap, 'get', '/sources/:id/modules'),
+        { params: { id: 'missing-source' } } as any,
+    );
+    assert.equal(missingSourceModules.statusCode, 404);
+
+    const missingCatalogInstall = await invokeHandler(
+        getLastHandler(routeMap, 'post', '/sources/:sourceId/modules/:moduleId/dry-run/install'),
+        {
+            params: { sourceId: 'missing-source', moduleId: 'public-module' },
+            body: {},
+        } as any,
+    );
+    assert.equal(missingCatalogInstall.statusCode, 404);
+
+    const missingCatalogRelease = await invokeHandler(
+        getLastHandler(routeMap, 'get', '/sources/:sourceId/modules/:moduleId/release'),
+        { params: { sourceId: 'missing-source', moduleId: 'public-module' } } as any,
+    );
+    assert.equal(missingCatalogRelease.statusCode, 404);
 
     // Remote install attempts expose the same stable code and HTTP capability
     // status as the dedicated source-profile endpoints.

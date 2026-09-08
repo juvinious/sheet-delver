@@ -118,8 +118,8 @@ ignored. Use `npm run admin:bootstrap` or `npm run admin:recover` instead.
 
 ### Module Policy
 
-These settings govern lifecycle decisions for locally available module
-artifacts. They do not implement remote distribution.
+These settings govern lifecycle decisions for local archives, public releases,
+and managed module artifacts.
 
 | Setting | Required/default | Purpose |
 | --- | --- | --- |
@@ -127,10 +127,32 @@ artifacts. They do not implement remote distribution.
 | `security.module-policy.allow-unverified-in-development` | Optional; `true` outside production | Allows unverified artifacts only in development policy. Override with `APP_MODULE_POLICY_ALLOW_UNVERIFIED_IN_DEVELOPMENT`. |
 | `security.module-policy.require-admin-override-for-lower-trust` | Optional; `true` in production | Requires an explicit admin override below the configured trust floor. Override with `APP_MODULE_POLICY_REQUIRE_ADMIN_OVERRIDE_FOR_LOWER_TRUST`. |
 | `security.module-policy.require-permission-escalation-approval` | Optional; default `true` | Requires approval when an upgrade requests additional module permissions. Override with `APP_MODULE_POLICY_REQUIRE_PERMISSION_ESCALATION_APPROVAL`. |
-| `security.source-governance.host-allowlist` | Reserved | Parsed for future remote source governance but has no active distribution effect while remote module distribution is unavailable. |
+| `security.source-governance.host-allowlist` | Optional; defaults to Sheet Delver Pages and public GitHub release hosts | Exact hosts or `*.example.org` wildcard suffixes permitted for catalogs, release manifests, archives, and every redirect hop. An explicitly empty list fails closed. |
 
 Boolean environment overrides accept `true` or `false`. Invalid values are
 ignored in favor of the YAML value or documented default.
+
+Operator-supplied module archives default to the `unverified` tier. In
+production, preview the archive first and pass an explicit trust override only
+after reviewing its identity, digest, permissions, compatibility, dependencies,
+and conflicts. Archive installation always targets `<DATA_DIR>/modules`; the
+module manager never uses `<DATA_DIR>/local/modules` as an installation target.
+See [API.md](API.md#local-archive-operations) for CLI and admin endpoint usage.
+
+Public release retrieval uses the same transaction and also defaults to
+`unverified`. The built-in allowlist contains `sheetdelver.github.io`,
+`github.com`, and `*.githubusercontent.com` for the official catalog and public
+GitHub releases. Configure an explicit list to replace those defaults. Every
+redirect is revalidated against the allowlist and public-address policy;
+development mode does not bypass it.
+
+```yaml
+security:
+  source-governance:
+    host-allowlist:
+      - github.com
+      - "*.githubusercontent.com"
+```
 
 ## Operational Environment Variables
 

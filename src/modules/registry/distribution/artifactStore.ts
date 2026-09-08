@@ -22,11 +22,27 @@ function isValidArtifact(value: unknown): value is ModuleArtifactMetadata {
     if (!value || typeof value !== 'object') return false;
     const a = value as Partial<ModuleArtifactMetadata>;
     const permissions = a.permissions as Record<string, unknown> | undefined;
+    const updatePolicy = a.updatePolicy;
     return (
         typeof a.moduleId === 'string' &&
         typeof a.version === 'string' &&
         typeof a.source === 'string' &&
         typeof a.installedAt === 'number' &&
+        (
+            a.sourceProfileId === undefined
+            || (typeof a.sourceProfileId === 'string' && a.sourceProfileId.length > 0)
+        ) &&
+        (
+            updatePolicy === undefined
+            || (
+                typeof updatePolicy === 'object'
+                && typeof updatePolicy.locked === 'boolean'
+                && (
+                    updatePolicy.pinnedVersion === undefined
+                    || typeof updatePolicy.pinnedVersion === 'string'
+                )
+            )
+        ) &&
         (
             permissions === undefined
             || typeof permissions === 'object'

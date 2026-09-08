@@ -13,18 +13,22 @@
  *   - PUT    /sources/:id
  *   - DELETE /sources/:id
  */
+import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { logger } from '@shared/utils/logger';
 import { requireAdminAuth, auditAdminAction } from '@server/middleware/requireAdminAuth';
 import { requireAdminCsrf } from '@server/middleware/requireAdminCsrf';
-import { ModuleSourceCategory } from '@shared/types/modules';
-import { getModulesDataDir } from '@core/paths';
+import { ModuleSourceCategory, ModuleTrustTier, type ModuleTrustTier as ModuleTrustTierValue } from '@shared/types/modules';
+import { getDistArchivesDir, getModulesDataDir } from '@core/paths';
 import { getErrorMessage } from '@server/shared/utils/getErrorMessage';
 import type { RegisteredModuleRuntimeInfo } from '@modules/registry/server';
 import type { ModuleLifecycleValidation, ModuleSourceState } from '@modules/registry/lifecycle/lifecycle';
-import { getRemoteModuleDistributionDenial } from '@modules/registry/security/remoteDistributionPolicy';
 import { parseModuleId } from '@shared/security/moduleId';
+import { DEFAULT_MODULE_ARCHIVE_LIMITS } from '@modules/registry/distribution/archiveTransaction';
+import { isDistributionHostAllowed } from '@modules/registry/distribution/publicDistributionClient';
+import { getConfig } from '@server/core/config';
 
 export interface RegisterAdminModuleRoutesOptions {
     adminRouter: express.Router;
@@ -47,19 +51,6 @@ export function registerAdminModuleRoutes(opts: RegisterAdminModuleRoutesOptions
             return null;
         }
         return moduleId;
-    }
-
-    /**
-     * Preserve the authenticated API shape while making dormant remote
-     * distribution impossible to activate through an admin request.
-     */
-    function rejectRemoteModuleDistribution(_req: express.Request, res: express.Response) {
-        const denial = getRemoteModuleDistributionDenial();
-        return res.status(501).json({
-            success: false,
-            error: denial.message,
-            errorCode: denial.code,
-        });
     }
 
     /**
@@ -336,10 +327,284 @@ export function registerAdminModuleRoutes(opts: RegisterAdminModuleRoutesOptions
         if (errorCode === 'trust-policy-blocked') return 403;
         if (errorCode === 'artifact-verification-failed') return 422;
         if (errorCode === 'permission-escalation-requires-approval') return 409;
+        if (errorCode === 'update-policy-blocked') return 409;
         if (errorCode === 'precondition-failed' || errorCode === 'transition-rejected') return 409;
         if (errorCode === 'validation-failed') return 422;
         return 400;
     }
+
+    const archiveBodyParser = express.raw({
+        type: ['application/gzip', 'application/x-gzip', 'application/octet-stream'],
+        limit: DEFAULT_MODULE_ARCHIVE_LIMITS.maxArchiveBytes,
+    });
+
+    function readSingleQueryValue(req: express.Request, name: string): string | undefined {
+        const value = req.query[name];
+        return typeof value === 'string' ? value.trim() || undefined : undefined;
+    }
+
+    function readBooleanQuery(req: express.Request, name: string): boolean {
+        const value = readSingleQueryValue(req, name);
+        if (value === undefined || value === 'false') return false;
+        if (value === 'true') return true;
+        throw new Error(`Query parameter ${name} must be true or false`);
+    }
+
+    function readArchiveTrustTier(req: express.Request): ModuleTrustTierValue | undefined {
+        const value = readSingleQueryValue(req, 'trustTier');
+        if (value === undefined) return undefined;
+        if (
+            value === ModuleTrustTier.FirstParty
+            || value === ModuleTrustTier.VerifiedThirdParty
+            || value === ModuleTrustTier.Unverified
+        ) {
+            return value;
+        }
+        throw new Error('Query parameter trustTier must be first-party, verified-third-party, or unverified');
+    }
+
+    function writeUploadedArchive(body: unknown): string {
+        if (!Buffer.isBuffer(body)) {
+            throw new TypeError('Archive body must use application/gzip or application/octet-stream');
+        }
+        if (body.length === 0) throw new RangeError('Archive body must not be empty');
+
+        const directory = getDistArchivesDir();
+        fs.mkdirSync(directory, { recursive: true });
+        const directoryStat = fs.lstatSync(directory);
+        if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) {
+            throw new Error('Archive upload directory must be a physical directory');
+        }
+        const uploadPath = path.join(directory, `.admin-upload-${randomUUID()}.tgz`);
+        const descriptor = fs.openSync(uploadPath, 'wx', 0o600);
+        try {
+            fs.writeFileSync(descriptor, body);
+            fs.fsyncSync(descriptor);
+            fs.closeSync(descriptor);
+        } catch (error) {
+            try { fs.closeSync(descriptor); } catch { /* descriptor may already be closed */ }
+            try { fs.unlinkSync(uploadPath); } catch { /* original write error remains authoritative */ }
+            throw error;
+        }
+        return uploadPath;
+    }
+
+    function registerArchiveRoute(
+        routePath: string,
+        operation: 'install' | 'upgrade',
+        dryRun: boolean,
+    ): void {
+        adminRouter.post(
+            routePath,
+            requireAdminAccountExists,
+            requireAdminAuth,
+            requireAdminCsrf,
+            auditAdminAction,
+            archiveBodyParser,
+            async (req, res) => {
+                const moduleId = readRequestModuleId(req, res);
+                if (!moduleId) return;
+
+                let uploadPath: string | undefined;
+                try {
+                    uploadPath = writeUploadedArchive(req.body);
+                    const input = {
+                        archivePath: uploadPath,
+                        expectedModuleId: moduleId,
+                        sourceTrustTier: readArchiveTrustTier(req),
+                        approveTrustOverride: readBooleanQuery(req, 'approveTrustOverride'),
+                        approvePermissionEscalation: readBooleanQuery(req, 'approvePermissionEscalation'),
+                    };
+                    const { applyLocalModuleArchive, dryRunLocalModuleArchive } = await import('@modules/registry/server');
+
+                    if (dryRun) {
+                        const preview = await dryRunLocalModuleArchive(operation, input);
+                        return res.json(preview);
+                    }
+
+                    const result = await applyLocalModuleArchive(operation, input);
+                    if (!result.success) {
+                        return res.status(managerErrorStatusCode(result.errorCode)).json(result);
+                    }
+
+                    deps.broadcastToClients('moduleRegistryChanged', { moduleId, operation });
+                    return res.json(result);
+                } catch (error: unknown) {
+                    const message = getErrorMessage(error);
+                    if (error instanceof TypeError) {
+                        return res.status(415).json({
+                            success: false,
+                            error: message,
+                            errorCode: 'unsupported-media-type',
+                        });
+                    }
+                    if (error instanceof RangeError || message.startsWith('Query parameter ')) {
+                        return res.status(400).json({
+                            success: false,
+                            error: message,
+                            errorCode: 'invalid-request',
+                        });
+                    }
+                    logger.error(`Failed to process archive ${operation} for module ${moduleId}`, error);
+                    return res.status(500).json({ error: message });
+                } finally {
+                    if (uploadPath) {
+                        try {
+                            fs.unlinkSync(uploadPath);
+                        } catch (error) {
+                            logger.warn(`Failed to remove staged admin archive ${path.basename(uploadPath)}: ${getErrorMessage(error)}`);
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    registerArchiveRoute('/manager/:moduleId/archive/dry-run/install', 'install', true);
+    registerArchiveRoute('/manager/:moduleId/archive/dry-run/upgrade', 'upgrade', true);
+    registerArchiveRoute('/manager/:moduleId/archive/install', 'install', false);
+    registerArchiveRoute('/manager/:moduleId/archive/upgrade', 'upgrade', false);
+
+    function readBooleanBody(req: express.Request, name: string): boolean {
+        const value = req.body?.[name];
+        if (value === undefined || value === false) return false;
+        if (value === true) return true;
+        throw new TypeError(`Body property ${name} must be true or false`);
+    }
+
+    function registerPublicReleaseRoute(
+        routePath: string,
+        operation: 'install' | 'upgrade',
+        dryRun: boolean,
+    ): void {
+        adminRouter.post(
+            routePath,
+            requireAdminAccountExists,
+            requireAdminAuth,
+            requireAdminCsrf,
+            auditAdminAction,
+            async (req, res) => {
+                const moduleId = readRequestModuleId(req, res);
+                if (!moduleId) return;
+
+                try {
+                    const manifestUrl = typeof req.body?.manifestUrl === 'string'
+                        ? req.body.manifestUrl.trim()
+                        : '';
+                    const repository = typeof req.body?.repository === 'string'
+                        ? req.body.repository.trim()
+                        : '';
+                    if (Boolean(manifestUrl) === Boolean(repository)) {
+                        throw new TypeError('Provide exactly one of manifestUrl or repository');
+                    }
+
+                    const releaseOperations = await import('@modules/registry/server');
+                    const resolvedManifestUrl = repository
+                        ? releaseOperations.resolvePublicGithubRepositoryManifestUrl(repository)
+                        : manifestUrl;
+                    const input = {
+                        manifestUrl: resolvedManifestUrl,
+                        expectedModuleId: moduleId,
+                        policy: {
+                            allowedHosts: getConfig().security.sourceGovernance?.hostAllowlist || [],
+                        },
+                        approveTrustOverride: readBooleanBody(req, 'approveTrustOverride'),
+                        approvePermissionEscalation: readBooleanBody(req, 'approvePermissionEscalation'),
+                    };
+
+                    if (dryRun) {
+                        const preview = await releaseOperations.dryRunPublicModuleRelease(operation, input);
+                        return res.json(preview);
+                    }
+
+                    const result = await releaseOperations.applyPublicModuleRelease(operation, input);
+                    if (!result.success) {
+                        return res.status(managerErrorStatusCode(result.errorCode)).json(result);
+                    }
+                    deps.broadcastToClients('moduleRegistryChanged', { moduleId, operation });
+                    return res.json(result);
+                } catch (error: unknown) {
+                    const message = getErrorMessage(error);
+                    if (error instanceof TypeError) {
+                        return res.status(400).json({
+                            success: false,
+                            error: message,
+                            errorCode: 'invalid-request',
+                        });
+                    }
+                    logger.error(`Failed to process public release ${operation} for module ${moduleId}`, error);
+                    return res.status(500).json({ error: message });
+                }
+            },
+        );
+    }
+
+    registerPublicReleaseRoute('/manager/:moduleId/release/dry-run/install', 'install', true);
+    registerPublicReleaseRoute('/manager/:moduleId/release/dry-run/upgrade', 'upgrade', true);
+    registerPublicReleaseRoute('/manager/:moduleId/release/install', 'install', false);
+    registerPublicReleaseRoute('/manager/:moduleId/release/upgrade', 'upgrade', false);
+
+    function summarizeUpdatePolicy(artifact: {
+        moduleId: string;
+        version: string;
+        sourceProfileId?: string;
+        updatePolicy?: { locked: boolean; pinnedVersion?: string };
+    }) {
+        return {
+            moduleId: artifact.moduleId,
+            installedVersion: artifact.version,
+            sourceProfileId: artifact.sourceProfileId,
+            updatePolicy: artifact.updatePolicy || { locked: false },
+        };
+    }
+
+    adminRouter.get(
+        '/manager/:moduleId/update-policy',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        async (req, res) => {
+            const moduleId = readRequestModuleId(req, res);
+            if (!moduleId) return;
+            const { getManagedModuleArtifact } = await import('@modules/registry/server');
+            const artifact = getManagedModuleArtifact(moduleId);
+            if (!artifact) return res.status(404).json({ error: 'Managed module artifact not found' });
+            return res.json({ success: true, ...summarizeUpdatePolicy(artifact) });
+        },
+    );
+
+    adminRouter.put(
+        '/manager/:moduleId/update-policy',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        requireAdminCsrf,
+        auditAdminAction,
+        async (req, res) => {
+            const moduleId = readRequestModuleId(req, res);
+            if (!moduleId) return;
+            try {
+                if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+                    throw new TypeError('Update policy body must be an object');
+                }
+                const body = req.body as Record<string, unknown>;
+                const keys = Object.keys(body);
+                if (keys.length === 0 || keys.some((key) => key !== 'locked' && key !== 'pinnedVersion')) {
+                    throw new TypeError('Provide locked and/or pinnedVersion only');
+                }
+                const updates = {
+                    ...(body.locked !== undefined ? { locked: body.locked as boolean } : {}),
+                    ...(body.pinnedVersion !== undefined
+                        ? { pinnedVersion: body.pinnedVersion as string | null }
+                        : {}),
+                };
+                const { updateManagedModulePolicy } = await import('@modules/registry/server');
+                const artifact = updateManagedModulePolicy(moduleId, updates);
+                if (!artifact) return res.status(404).json({ error: 'Managed module artifact not found' });
+                return res.json({ success: true, ...summarizeUpdatePolicy(artifact) });
+            } catch (error: unknown) {
+                return res.status(400).json({ error: getErrorMessage(error) });
+            }
+        },
+    );
 
     /**
      * POST /admin/api/manager/:moduleId/dry-run/install
@@ -617,17 +882,254 @@ export function registerAdminModuleRoutes(opts: RegisterAdminModuleRoutesOptions
     );
 
     // ============
-    // Dormant Remote Source Profiles
+    // Public Catalog Sources
     // ============
 
-    // These routes remain registered so callers receive one stable capability
-    // response instead of silently falling through to a 404.
-    adminRouter.get('/sources', requireAdminAccountExists, requireAdminAuth, rejectRemoteModuleDistribution);
-    adminRouter.post('/sources', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, rejectRemoteModuleDistribution);
-    adminRouter.put('/sources/:id', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, rejectRemoteModuleDistribution);
-    adminRouter.delete('/sources/:id', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, rejectRemoteModuleDistribution);
-    adminRouter.post('/sources/:id/test', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, rejectRemoteModuleDistribution);
-    adminRouter.get('/sources/:id/modules', requireAdminAccountExists, requireAdminAuth, rejectRemoteModuleDistribution);
+    function configuredCatalogPolicy() {
+        return {
+            allowedHosts: getConfig().security.sourceGovernance?.hostAllowlist || [],
+        };
+    }
+
+    function assertConfiguredCatalogUrl(value: unknown): string {
+        if (typeof value !== 'string' || !value.trim()) throw new TypeError('baseUrl is required');
+        let url: URL;
+        try {
+            url = new URL(value.trim());
+        } catch {
+            throw new TypeError('Catalog URL is invalid');
+        }
+        if (url.protocol !== 'https:' || url.username || url.password) {
+            throw new TypeError('Catalog URL must use HTTPS without credentials');
+        }
+        if (!isDistributionHostAllowed(url.hostname, configuredCatalogPolicy().allowedHosts)) {
+            throw new RangeError(`Catalog host "${url.hostname}" is not in the configured allowlist`);
+        }
+        return url.href;
+    }
+
+    function catalogWriteInput(body: unknown, partial = false) {
+        if (!body || typeof body !== 'object' || Array.isArray(body)) {
+            throw new TypeError('Catalog request body must be an object');
+        }
+        const value = body as Record<string, unknown>;
+        for (const forbidden of ['auth', 'kind', 'trustTier']) {
+            if (forbidden in value) throw new TypeError(`Catalog property ${forbidden} is not accepted`);
+        }
+        return {
+            ...(!partial || value.name !== undefined ? { name: String(value.name || '') } : {}),
+            ...(!partial || value.baseUrl !== undefined
+                ? { baseUrl: assertConfiguredCatalogUrl(value.baseUrl) }
+                : {}),
+            ...(value.enabled !== undefined ? { enabled: value.enabled as boolean } : {}),
+            ...(value.priority !== undefined ? { priority: value.priority as number } : {}),
+        };
+    }
+
+    adminRouter.get('/sources', requireAdminAccountExists, requireAdminAuth, async (_req, res) => {
+        try {
+            const { loadSourceProfiles, redactSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            return res.json({
+                success: true,
+                profiles: loadSourceProfiles().map(redactSourceProfile),
+            });
+        } catch (error: unknown) {
+            return res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.post('/sources', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, async (req, res) => {
+        try {
+            const { createSourceProfile, redactSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            const input = catalogWriteInput(req.body);
+            if (!input.name || !input.baseUrl) throw new TypeError('name and baseUrl are required');
+            const created = createSourceProfile({ ...input, name: input.name, baseUrl: input.baseUrl });
+            return res.json({ success: true, profile: redactSourceProfile(created) });
+        } catch (error: unknown) {
+            const status = error instanceof RangeError ? 403 : 400;
+            return res.status(status).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.put('/sources/:id', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, async (req, res) => {
+        try {
+            const sourceId = String(req.params.id || '');
+            const { updateSourceProfile, redactSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            const updated = updateSourceProfile(sourceId, catalogWriteInput(req.body, true));
+            if (!updated) return res.status(404).json({ error: 'Source profile not found' });
+            return res.json({ success: true, profile: redactSourceProfile(updated) });
+        } catch (error: unknown) {
+            const status = error instanceof RangeError ? 403 : 400;
+            return res.status(status).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.delete('/sources/:id', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, async (req, res) => {
+        try {
+            const { deleteSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            const deleted = deleteSourceProfile(String(req.params.id || ''));
+            if (!deleted) return res.status(404).json({ error: 'Source profile not found' });
+            return res.json({ success: true });
+        } catch (error: unknown) {
+            return res.status(400).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.post('/sources/:id/test', requireAdminAccountExists, requireAdminAuth, requireAdminCsrf, auditAdminAction, async (req, res) => {
+        try {
+            const { getSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            const { fetchPublicCatalog } = await import('@modules/registry/distribution/publicCatalogService');
+            const profile = getSourceProfile(String(req.params.id || ''));
+            if (!profile) return res.status(404).json({ error: 'Source profile not found' });
+            const result = await fetchPublicCatalog(profile, configuredCatalogPolicy(), { forceRefresh: true });
+            if (result.state === 'error') return res.status(422).json({ success: false, ...result });
+            return res.json({ success: true, ...result, moduleCount: Object.keys(result.index?.modules || {}).length });
+        } catch (error: unknown) {
+            return res.status(400).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.get('/sources/:id/modules', requireAdminAccountExists, requireAdminAuth, async (req, res) => {
+        try {
+            const { getSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+            const { fetchPublicCatalog } = await import('@modules/registry/distribution/publicCatalogService');
+            const profile = getSourceProfile(String(req.params.id || ''));
+            if (!profile) return res.status(404).json({ error: 'Source profile not found' });
+            const result = await fetchPublicCatalog(profile, configuredCatalogPolicy());
+            return res.json({
+                success: result.state !== 'error',
+                source: result,
+                modules: result.index?.modules || {},
+            });
+        } catch (error: unknown) {
+            return res.status(400).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.get('/catalog', requireAdminAccountExists, requireAdminAuth, async (req, res) => {
+        try {
+            const { loadSourceProfiles } = await import('@modules/registry/distribution/sourceProfiles');
+            const { aggregatePublicCatalogs } = await import('@modules/registry/distribution/publicCatalogService');
+            const forceRefresh = req.query.refresh === 'true';
+            const result = await aggregatePublicCatalogs(
+                loadSourceProfiles(),
+                configuredCatalogPolicy(),
+                { forceRefresh },
+            );
+            return res.json({ success: true, ...result });
+        } catch (error: unknown) {
+            return res.status(500).json({ error: getErrorMessage(error) });
+        }
+    });
+
+    adminRouter.get(
+        '/sources/:sourceId/modules/:moduleId/release',
+        requireAdminAccountExists,
+        requireAdminAuth,
+        async (req, res) => {
+            const moduleId = readRequestModuleId(req, res);
+            if (!moduleId) return;
+            try {
+                const sourceId = String(req.params.sourceId || '');
+                const { getSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+                const { fetchPublicCatalog } = await import('@modules/registry/distribution/publicCatalogService');
+                const releaseOperations = await import('@modules/registry/server');
+                const profile = getSourceProfile(sourceId);
+                if (!profile) return res.status(404).json({ error: 'Source profile not found' });
+
+                const catalog = await fetchPublicCatalog(profile, configuredCatalogPolicy());
+                if (!catalog.index) {
+                    return res.status(422).json({
+                        success: false,
+                        error: catalog.error || 'Catalog is unavailable',
+                        source: catalog,
+                    });
+                }
+                const entry = catalog.index.modules[moduleId];
+                if (!entry) return res.status(404).json({ error: 'Module not found in source catalog' });
+
+                const inspected = await releaseOperations.inspectPublicModuleRelease({
+                    manifestUrl: entry.manifest,
+                    expectedModuleId: moduleId,
+                    policy: configuredCatalogPolicy(),
+                    sourceTrustTier: profile.trustTier || ModuleTrustTier.Unverified,
+                    sourceProfileId: profile.id,
+                });
+                return res.json({ success: true, sourceId, release: inspected.summary });
+            } catch (error: unknown) {
+                return res.status(422).json({ success: false, error: getErrorMessage(error) });
+            }
+        },
+    );
+
+    function registerCatalogReleaseRoute(
+        routePath: string,
+        operation: 'install' | 'upgrade',
+        dryRun: boolean,
+    ): void {
+        adminRouter.post(
+            routePath,
+            requireAdminAccountExists,
+            requireAdminAuth,
+            requireAdminCsrf,
+            auditAdminAction,
+            async (req, res) => {
+                const moduleId = readRequestModuleId(req, res);
+                if (!moduleId) return;
+                try {
+                    const sourceId = String(req.params.sourceId || '');
+                    const { getSourceProfile } = await import('@modules/registry/distribution/sourceProfiles');
+                    const { fetchPublicCatalog } = await import('@modules/registry/distribution/publicCatalogService');
+                    const releaseOperations = await import('@modules/registry/server');
+                    const profile = getSourceProfile(sourceId);
+                    if (!profile) return res.status(404).json({ error: 'Source profile not found' });
+
+                    const catalog = await fetchPublicCatalog(profile, configuredCatalogPolicy());
+                    if (!catalog.index) {
+                        return res.status(422).json({
+                            success: false,
+                            error: catalog.error || 'Catalog is unavailable',
+                            source: catalog,
+                        });
+                    }
+                    const entry = catalog.index.modules[moduleId];
+                    if (!entry) return res.status(404).json({ error: 'Module not found in source catalog' });
+
+                    const input = {
+                        manifestUrl: entry.manifest,
+                        expectedModuleId: moduleId,
+                        policy: configuredCatalogPolicy(),
+                        sourceTrustTier: profile.trustTier || ModuleTrustTier.Unverified,
+                        sourceProfileId: profile.id,
+                        approveTrustOverride: readBooleanBody(req, 'approveTrustOverride'),
+                        approvePermissionEscalation: readBooleanBody(req, 'approvePermissionEscalation'),
+                    };
+                    if (dryRun) {
+                        const preview = await releaseOperations.dryRunPublicModuleRelease(operation, input);
+                        return res.json({ ...preview, sourceId });
+                    }
+
+                    const result = await releaseOperations.applyPublicModuleRelease(operation, input);
+                    if (!result.success) {
+                        return res.status(managerErrorStatusCode(result.errorCode)).json({ ...result, sourceId });
+                    }
+                    deps.broadcastToClients('moduleRegistryChanged', { moduleId, operation });
+                    return res.json({ ...result, sourceId });
+                } catch (error: unknown) {
+                    const message = getErrorMessage(error);
+                    if (error instanceof TypeError) {
+                        return res.status(400).json({ success: false, error: message, errorCode: 'invalid-request' });
+                    }
+                    return res.status(500).json({ error: message });
+                }
+            },
+        );
+    }
+
+    registerCatalogReleaseRoute('/sources/:sourceId/modules/:moduleId/dry-run/install', 'install', true);
+    registerCatalogReleaseRoute('/sources/:sourceId/modules/:moduleId/dry-run/upgrade', 'upgrade', true);
+    registerCatalogReleaseRoute('/sources/:sourceId/modules/:moduleId/install', 'install', false);
+    registerCatalogReleaseRoute('/sources/:sourceId/modules/:moduleId/upgrade', 'upgrade', false);
 
     /**
      * POST /admin/api/server/restart

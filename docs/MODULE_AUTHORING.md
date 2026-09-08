@@ -31,6 +31,18 @@ npm run module:check my-system -- --data-dir ./my-data
 npm run module:package my-system -- --data-dir ./my-data
 ```
 
+The generated workflows pin Sheet Delver to the release matching the root
+`package.json` version. When intentionally scaffolding from an unreleased but
+pushed development branch, override that ref explicitly:
+
+```bash
+npm run module:init my-system "My System" -- --core-ref manifest-module-distribution
+```
+
+Before publishing the module, replace a development branch ref with the tested
+Sheet Delver release tag. CI and releases must not silently follow a moving core
+branch.
+
 During local development, the module can use TypeScript and TSX source files directly. The platform discovers local modules from `<DATA_DIR>/local/modules/<moduleId>` and loads their manifest entries from `info.json`.
 
 ## Module Shape
@@ -39,6 +51,10 @@ The scaffold creates the expected layout:
 
 ```text
 <DATA_DIR>/local/modules/my-system/
+  .github/
+    workflows/
+      ci-my-system.yaml
+      release-my-system.yaml
   assets/
     icon.svg
     styles.css
@@ -305,13 +321,27 @@ Packaging compiles the declared entry points, externalizes host-provided depende
 
 ## CI
 
-`module:init` creates a starter workflow under `.github/workflows/` in the generated module. Keep that workflow with the module repository so module changes are validated where they are made.
+`module:init` creates two workflows under `.github/workflows/` in the generated
+module. Keep them with the module repository:
 
-A module workflow should check out Sheet Delver as the host SDK/platform, place the module under `${SHEET_DELVER_DATA}/local/modules/<moduleId>`, install dependencies, then run:
+- `ci-<moduleId>.yaml` checks pull requests, `main` pushes, and manual runs. It
+  checks out the pinned Sheet Delver toolchain, stages the module in an isolated
+  local-source directory, and runs both validation and packaging.
+- `release-<moduleId>.yaml` runs only for pushed `v*` tags and calls Sheet
+  Delver's reusable release workflow using the same pinned core ref.
+
+The validation commands are:
 
 ```bash
 npm run module:check <moduleId>
 npm run module:package <moduleId>
 ```
 
-The Sheet Delver repository should keep CI focused on SDK integrity, scaffold integrity, and platform tests.
+For a release, update and commit `info.json` first, then create a tag whose value
+without the leading `v` exactly matches the module version. The workflow creates
+a GitHub Release containing the package archive, checksum, and stable
+`sheet-delver-manifest.json`. Ordinary CI never publishes a release.
+
+The Sheet Delver repository keeps CI focused on SDK integrity, scaffold
+integrity, and platform tests. Module repositories own their validation and
+release runs.

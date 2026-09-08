@@ -94,6 +94,7 @@ export default function ManagerActionBar({ module, cardSource, onOperationComple
     const [escalationApproved, setEscalationApproved] = useState(false);
 
     const actions = getAvailableActions(module.status, module.managed, module.activeSource, module.localDirectory, cardSource);
+    const locked = module.artifact?.updatePolicy?.locked === true;
 
     if (actions.length === 0) return null;
 
@@ -201,7 +202,11 @@ export default function ManagerActionBar({ module, cardSource, onOperationComple
                         <button
                             key={action}
                             onClick={() => handleActionClick(action)}
-                            className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${ACTION_STYLES[action]}`}
+                            disabled={locked && (action === ManagerAction.Upgrade || action === ManagerAction.Uninstall)}
+                            title={locked && (action === ManagerAction.Upgrade || action === ManagerAction.Uninstall)
+                                ? 'Unlock the module before updating or uninstalling it'
+                                : undefined}
+                            className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${ACTION_STYLES[action]}`}
                         >
                             {ACTION_LABELS[action]}
                         </button>

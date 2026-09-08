@@ -32,9 +32,9 @@ export default function AdminAreaLayout({ children }: { children: React.ReactNod
     return (
         <div className="admin-screen min-h-screen flex flex-col">
             <AdminTopBar />
-            <div className="flex flex-1 items-stretch">
+            <div className="flex flex-1 flex-col items-stretch md:flex-row">
                 <AdminSidebar />
-                <main className="flex-1 min-w-0 p-6">
+                <main className="min-w-0 flex-1 p-4 sm:p-6">
                     <div className="mx-auto max-w-5xl">{children}</div>
                 </main>
             </div>

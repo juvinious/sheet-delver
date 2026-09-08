@@ -1,31 +1,18 @@
-import type { ModulePermissionDeclaration, ModuleTrustTier } from '../core/types';
 import { parseModuleId } from '@shared/security/moduleId';
 
-export interface ModuleIndexVersionEntry {
-    source: string;
-    integrity?: string;
-    signature?: string;
-    trustTier?: ModuleTrustTier;
-    compatibility?: {
-        coreVersion?: string;
-        apiContracts?: Record<string, string>;
-    };
-    permissions?: ModulePermissionDeclaration;
-    dependencies?: string[];
-    conflicts?: string[];
-    changelog?: string;
-    publishedAt?: number;
-}
+export const MODULE_INDEX_SCHEMA_VERSION = 'sheet-delver-catalog.v1';
 
 export interface ModuleIndexEntry {
     moduleId: string;
     title: string;
-    latestVersion: string;
-    versions: Record<string, ModuleIndexVersionEntry>;
+    repository: string;
+    manifest: string;
+    description?: string;
+    tags?: string[];
 }
 
 export interface ModuleIndexDocument {
-    schemaVersion: string;
+    schemaVersion: typeof MODULE_INDEX_SCHEMA_VERSION;
     generatedAt: number;
     publisher: string;
     modules: Record<string, ModuleIndexEntry>;
@@ -36,16 +23,9 @@ export interface ModuleIndexValidationResult {
     errors: string[];
 }
 
-export interface ResolvedIndexedModuleVersion {
-    moduleId: string;
-    version: string;
-    entry: ModuleIndexEntry;
-    artifact: ModuleIndexVersionEntry;
-}
-
-export interface ResolveIndexedModuleVersionResult {
+export interface ResolveModuleIndexEntryResult {
     ok: boolean;
-    value?: ResolvedIndexedModuleVersion;
+    value?: ModuleIndexEntry;
     error?: string;
 }
 
@@ -57,61 +37,47 @@ function isStringArray(value: unknown): value is string[] {
     return Array.isArray(value) && value.every((entry) => isNonEmptyString(entry));
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-    return Object.entries(value).every(([key, entry]) => isNonEmptyString(key) && isNonEmptyString(entry));
+function isHttpsUrl(value: unknown): value is string {
+    if (!isNonEmptyString(value)) return false;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && !url.username && !url.password;
+    } catch {
+        return false;
+    }
 }
 
-function isValidTrustTier(value: unknown): value is ModuleTrustTier {
-    return value === 'first-party' || value === 'verified-third-party' || value === 'unverified';
-}
-
-function validateVersionEntry(moduleId: string, version: string, value: unknown): string[] {
+function validateIndexEntry(moduleId: string, value: unknown): string[] {
     const errors: string[] = [];
-
-    if (!value || typeof value !== 'object') {
-        return [`Index field "modules.${moduleId}.versions.${version}" must be an object`];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return [`Index field "modules.${moduleId}" must be an object`];
     }
 
-    const candidate = value as Partial<ModuleIndexVersionEntry>;
-
-    if (!isNonEmptyString(candidate.source)) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.source" must be a non-empty string`);
+    const candidate = value as Partial<ModuleIndexEntry>;
+    const canonicalId = parseModuleId(candidate.moduleId);
+    if (!canonicalId || canonicalId !== moduleId) {
+        errors.push(`Index field "modules.${moduleId}.moduleId" must match its canonical module key`);
     }
-    if (candidate.integrity !== undefined && !isNonEmptyString(candidate.integrity)) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.integrity" must be a non-empty string when provided`);
+    if (!isNonEmptyString(candidate.title)) {
+        errors.push(`Index field "modules.${moduleId}.title" must be a non-empty string`);
     }
-    if (candidate.signature !== undefined && !isNonEmptyString(candidate.signature)) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.signature" must be a non-empty string when provided`);
+    if (!isHttpsUrl(candidate.repository)) {
+        errors.push(`Index field "modules.${moduleId}.repository" must be a public HTTPS URL without credentials`);
     }
-    if (candidate.trustTier !== undefined && !isValidTrustTier(candidate.trustTier)) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.trustTier" must be one of: first-party, verified-third-party, unverified`);
+    if (!isHttpsUrl(candidate.manifest)) {
+        errors.push(`Index field "modules.${moduleId}.manifest" must be a public HTTPS URL without credentials`);
     }
-
-    if (candidate.compatibility !== undefined) {
-        if (!candidate.compatibility || typeof candidate.compatibility !== 'object') {
-            errors.push(`Index field "modules.${moduleId}.versions.${version}.compatibility" must be an object when provided`);
-        } else {
-            if (candidate.compatibility.coreVersion !== undefined && !isNonEmptyString(candidate.compatibility.coreVersion)) {
-                errors.push(`Index field "modules.${moduleId}.versions.${version}.compatibility.coreVersion" must be a non-empty string when provided`);
-            }
-            if (candidate.compatibility.apiContracts !== undefined && !isStringRecord(candidate.compatibility.apiContracts)) {
-                errors.push(`Index field "modules.${moduleId}.versions.${version}.compatibility.apiContracts" must be a record of non-empty strings when provided`);
-            }
-        }
+    if (candidate.description !== undefined && !isNonEmptyString(candidate.description)) {
+        errors.push(`Index field "modules.${moduleId}.description" must be a non-empty string when provided`);
     }
-
-    if (candidate.dependencies !== undefined && (!isStringArray(candidate.dependencies) || candidate.dependencies.some((id) => !parseModuleId(id)))) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.dependencies" must be an array of valid module IDs when provided`);
+    if (candidate.tags !== undefined && !isStringArray(candidate.tags)) {
+        errors.push(`Index field "modules.${moduleId}.tags" must be an array of non-empty strings when provided`);
     }
-    if (candidate.conflicts !== undefined && (!isStringArray(candidate.conflicts) || candidate.conflicts.some((id) => !parseModuleId(id)))) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.conflicts" must be an array of valid module IDs when provided`);
+    if (candidate.tags && new Set(candidate.tags).size !== candidate.tags.length) {
+        errors.push(`Index field "modules.${moduleId}.tags" must not contain duplicates`);
     }
-    if (candidate.changelog !== undefined && !isNonEmptyString(candidate.changelog)) {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.changelog" must be a non-empty string when provided`);
-    }
-    if (candidate.publishedAt !== undefined && typeof candidate.publishedAt !== 'number') {
-        errors.push(`Index field "modules.${moduleId}.versions.${version}.publishedAt" must be a number when provided`);
+    if ('trustTier' in candidate) {
+        errors.push(`Index field "modules.${moduleId}.trustTier" is not permitted; trust is assigned by local source policy`);
     }
 
     return errors;
@@ -119,18 +85,16 @@ function validateVersionEntry(moduleId: string, version: string, value: unknown)
 
 export function validateModuleIndexDocument(value: unknown): ModuleIndexValidationResult {
     const errors: string[] = [];
-
-    if (!value || typeof value !== 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return { valid: false, errors: ['Module index root must be an object'] };
     }
 
     const candidate = value as Partial<ModuleIndexDocument>;
-
-    if (!isNonEmptyString(candidate.schemaVersion)) {
-        errors.push('Index field "schemaVersion" must be a non-empty string');
+    if (candidate.schemaVersion !== MODULE_INDEX_SCHEMA_VERSION) {
+        errors.push(`Index field "schemaVersion" must equal "${MODULE_INDEX_SCHEMA_VERSION}"`);
     }
-    if (typeof candidate.generatedAt !== 'number') {
-        errors.push('Index field "generatedAt" must be a number');
+    if (!Number.isSafeInteger(candidate.generatedAt) || Number(candidate.generatedAt) < 0) {
+        errors.push('Index field "generatedAt" must be a non-negative integer timestamp');
     }
     if (!isNonEmptyString(candidate.publisher)) {
         errors.push('Index field "publisher" must be a non-empty string');
@@ -143,85 +107,23 @@ export function validateModuleIndexDocument(value: unknown): ModuleIndexValidati
             if (!canonicalKey || canonicalKey !== moduleId) {
                 errors.push(`Index field "modules.${moduleId}" must use a canonical module ID key`);
             }
-            if (!moduleEntry || typeof moduleEntry !== 'object') {
-                errors.push(`Index field "modules.${moduleId}" must be an object`);
-                continue;
-            }
-
-            const moduleCandidate = moduleEntry as Partial<ModuleIndexEntry>;
-            const canonicalEntryId = parseModuleId(moduleCandidate.moduleId);
-            if (!canonicalEntryId || canonicalEntryId !== canonicalKey) {
-                errors.push(`Index field "modules.${moduleId}.moduleId" must match its canonical module key`);
-            }
-            if (!isNonEmptyString(moduleCandidate.title)) {
-                errors.push(`Index field "modules.${moduleId}.title" must be a non-empty string`);
-            }
-            if (!isNonEmptyString(moduleCandidate.latestVersion)) {
-                errors.push(`Index field "modules.${moduleId}.latestVersion" must be a non-empty string`);
-            }
-
-            if (!moduleCandidate.versions || typeof moduleCandidate.versions !== 'object' || Array.isArray(moduleCandidate.versions)) {
-                errors.push(`Index field "modules.${moduleId}.versions" must be an object`);
-                continue;
-            }
-
-            const versionKeys = Object.keys(moduleCandidate.versions);
-            if (versionKeys.length === 0) {
-                errors.push(`Index field "modules.${moduleId}.versions" must contain at least one version entry`);
-            }
-
-            for (const [version, versionEntry] of Object.entries(moduleCandidate.versions)) {
-                errors.push(...validateVersionEntry(moduleId, version, versionEntry));
-            }
-
-            if (
-                isNonEmptyString(moduleCandidate.latestVersion)
-                && !Object.prototype.hasOwnProperty.call(moduleCandidate.versions, moduleCandidate.latestVersion)
-            ) {
-                errors.push(`Index field "modules.${moduleId}.latestVersion" must match a key in "modules.${moduleId}.versions"`);
-            }
+            errors.push(...validateIndexEntry(moduleId, moduleEntry));
         }
     }
 
-    return {
-        valid: errors.length === 0,
-        errors,
-    };
+    return { valid: errors.length === 0, errors };
 }
 
-export function resolveIndexedModuleVersion(
+export function resolveModuleIndexEntry(
     index: ModuleIndexDocument,
     moduleId: string,
-    requestedVersion?: string
-): ResolveIndexedModuleVersionResult {
+): ResolveModuleIndexEntryResult {
     const id = parseModuleId(moduleId);
-    if (!id) {
-        return { ok: false, error: 'Invalid module ID' };
-    }
-    const moduleEntry = index.modules[id];
-    if (!moduleEntry) {
-        return {
-            ok: false,
-            error: `Module "${id}" was not found in index`,
-        };
-    }
+    if (!id) return { ok: false, error: 'Invalid module ID' };
 
-    const version = requestedVersion?.trim() || moduleEntry.latestVersion;
-    const artifact = moduleEntry.versions[version];
-    if (!artifact) {
-        return {
-            ok: false,
-            error: `Module "${id}" does not have published version "${version}"`,
-        };
+    const entry = index.modules[id];
+    if (!entry) {
+        return { ok: false, error: `Module "${id}" was not found in index` };
     }
-
-    return {
-        ok: true,
-        value: {
-            moduleId: id,
-            version,
-            entry: moduleEntry,
-            artifact,
-        },
-    };
+    return { ok: true, value: entry };
 }

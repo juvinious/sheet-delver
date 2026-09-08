@@ -81,6 +81,11 @@ export interface ModuleLifecycleInfo {
         installedAt: number;
         integrity?: string;
         signature?: string;
+        sourceProfileId?: string;
+        updatePolicy?: {
+            locked: boolean;
+            pinnedVersion?: string;
+        };
     };
 }
 
@@ -219,27 +224,16 @@ export interface SourceProfile {
     baseUrl: string;
     enabled: boolean;
     priority: number;
-    /**
-     * Read shape only: the server redacts the bearer token, exposing only whether
-     * auth is configured (ADR-0029 Phase 3). The cleartext token is never returned.
-     */
-    auth?: { type: 'bearer'; configured: boolean };
-    hostAllowlist?: string[];
+    trustTier?: string;
     createdAt: number;
     updatedAt: number;
 }
 
-/**
- * Write payload for create/update. The bearer token is write-only — supplied here
- * but never echoed back in {@link SourceProfile}. Omit `auth` to leave it unchanged.
- */
 export interface SourceProfileWrite {
     name: string;
     baseUrl: string;
-    kind: ModuleSourceKind;
     enabled: boolean;
     priority: number;
-    auth?: { type: 'bearer'; token: string };
 }
 
 export interface SourceProfileResponse {
@@ -250,24 +244,111 @@ export interface SourceProfileResponse {
 
 export interface SourceProfileTestResponse {
     success: boolean;
-    message?: string;
-    schemaVersion?: number;
-    publisher?: string;
+    state?: 'fresh' | 'cached' | 'stale' | 'error';
+    sourceName?: string;
     moduleCount?: number;
     error?: string;
-    errorCode?: string;
 }
 
-export interface SourceModuleEntry {
+export interface ModuleCatalogEntry {
+    moduleId: string;
     title: string;
-    latestVersion: string;
-    versions: Record<string, any>;
+    repository: string;
+    manifest: string;
+    description?: string;
+    tags?: string[];
 }
 
-export interface SourceModulesResponse {
+export interface CatalogSource {
+    id: string;
+    name: string;
+    priority: number;
+    trustTier: string;
+}
+
+export interface CatalogModuleListing {
+    moduleId: string;
+    entry: ModuleCatalogEntry;
+    source: CatalogSource;
+    alternatives: CatalogSource[];
+}
+
+export interface CatalogResponse {
     success: boolean;
-    modules?: Record<string, SourceModuleEntry>;
-    error?: string;
+    modules: Record<string, CatalogModuleListing>;
+    conflicts: Array<{
+        moduleId: string;
+        selectedSourceId: string;
+        shadowedSourceIds: string[];
+    }>;
+    sources: Array<{
+        sourceId: string;
+        sourceName: string;
+        sourceUrl: string;
+        state: 'fresh' | 'cached' | 'stale' | 'error';
+        fetchedAt?: number;
+        error?: string;
+    }>;
+}
+
+export interface PublicReleaseSummary {
+    moduleId: string;
+    version: string;
+    manifestUrl: string;
+    artifactUrl: string;
+    archiveSize: number;
+    integrity: string;
+    trustTier: string;
+}
+
+export interface CatalogReleaseResponse {
+    success: boolean;
+    sourceId: string;
+    release: PublicReleaseSummary;
+}
+
+export interface CatalogDryRunResult {
+    success: true;
+    operation: 'dry-run-install' | 'dry-run-upgrade';
+    wouldProceed: boolean;
+    blockingReasons: string[];
+    release?: PublicReleaseSummary;
+    archive?: {
+        title: string;
+        version: string;
+        archiveSize: number;
+        integrity: string;
+        warnings: string[];
+        localSourceCollision: boolean;
+        activeSource?: string;
+    };
+    governance?: {
+        manifestGate: { allowed: boolean; mode: string; reason?: string };
+        trustPolicy?: {
+            allowed: boolean;
+            requiresAdminOverride: boolean;
+            effectiveTier: string;
+            minimumRequiredTier: string;
+            reason?: string;
+        };
+        artifactVerification: { verified: boolean; status: string; reason?: string };
+        permissionDelta?: {
+            escalated: boolean;
+            escalations: Array<{ change: string }>;
+        };
+        dependencyImpact?: { canProceed: boolean };
+    };
+}
+
+export interface ModuleUpdatePolicyResponse {
+    success: boolean;
+    moduleId: string;
+    installedVersion: string;
+    sourceProfileId?: string;
+    updatePolicy: {
+        locked: boolean;
+        pinnedVersion?: string;
+    };
 }
 
 // ─── Path Helper ───────────────────────────────────────────────────
@@ -499,8 +580,54 @@ export function testSourceProfile(id: string) {
     });
 }
 
-export function fetchSourceModules(id: string) {
-    return adminFetch<SourceModulesResponse>(`/sources/${id}/modules`);
+export function fetchCatalog(refresh = false) {
+    return adminFetch<CatalogResponse>(`/catalog${refresh ? '?refresh=true' : ''}`);
+}
+
+export function fetchCatalogRelease(sourceId: string, moduleId: string) {
+    return adminFetch<CatalogReleaseResponse>(
+        `/sources/${encodeURIComponent(sourceId)}/modules/${encodeURIComponent(moduleId)}/release`,
+    );
+}
+
+export function postCatalogDryRun(
+    sourceId: string,
+    moduleId: string,
+    operation: 'install' | 'upgrade',
+    body: Record<string, unknown> = {},
+) {
+    return adminFetch<CatalogDryRunResult>(
+        `/sources/${encodeURIComponent(sourceId)}/modules/${encodeURIComponent(moduleId)}/dry-run/${operation}`,
+        { method: 'POST', body: JSON.stringify(body) },
+    );
+}
+
+export function postCatalogOperation(
+    sourceId: string,
+    moduleId: string,
+    operation: 'install' | 'upgrade',
+    body: Record<string, unknown> = {},
+) {
+    return adminFetch<ManagerOperationResult>(
+        `/sources/${encodeURIComponent(sourceId)}/modules/${encodeURIComponent(moduleId)}/${operation}`,
+        { method: 'POST', body: JSON.stringify(body) },
+    );
+}
+
+export function fetchModuleUpdatePolicy(moduleId: string) {
+    return adminFetch<ModuleUpdatePolicyResponse>(
+        `/manager/${encodeURIComponent(moduleId)}/update-policy`,
+    );
+}
+
+export function updateModuleUpdatePolicy(
+    moduleId: string,
+    updates: { locked?: boolean; pinnedVersion?: string | null },
+) {
+    return adminFetch<ModuleUpdatePolicyResponse>(
+        `/manager/${encodeURIComponent(moduleId)}/update-policy`,
+        { method: 'PUT', body: JSON.stringify(updates) },
+    );
 }
 
 /** Revokes the current admin session server-side. Call before clearing local auth state. */

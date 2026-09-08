@@ -1,0 +1,130 @@
+name: Reusable Module Release
+
+on:
+  workflow_call:
+    inputs:
+      module_id:
+        description: Canonical module id from info.json
+        required: true
+        type: string
+      core_ref:
+        description: Sheet Delver ref used to validate and package the module
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Validate, package, and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out module source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: module-source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out Sheet Delver tooling
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: sheetdelver/sheetdelver
+          ref: ${{ inputs.core_ref }}
+          path: sheet-delver-core
+          persist-credentials: false
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.x"
+          cache: npm
+          cache-dependency-path: sheet-delver-core/package-lock.json
+
+      - name: Install reviewed Sheet Delver toolchain
+        working-directory: sheet-delver-core
+        run: npm ci
+
+      - name: Stage module in an isolated data directory
+        env:
+          MODULE_ID: ${{ inputs.module_id }}
+        run: |
+          MODULE_DATA="$GITHUB_WORKSPACE/sheet-delver-core/.module-release-data"
+          MODULE_ROOT="$MODULE_DATA/local/modules/$MODULE_ID"
+          test ! -e "$MODULE_DATA"
+          mkdir -p "$MODULE_ROOT"
+          tar -C module-source --exclude=.git --exclude=node_modules -cf - . |
+            tar -C "$MODULE_ROOT" -xf -
+          echo "SHEET_DELVER_DATA=$MODULE_DATA" >> "$GITHUB_ENV"
+
+      - name: Generate managed module configuration
+        working-directory: sheet-delver-core
+        run: npm run managed:generate
+
+      - name: Validate and package module
+        working-directory: sheet-delver-core
+        env:
+          MODULE_ID: ${{ inputs.module_id }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          REPOSITORY_URL: https://github.com/${{ github.repository }}
+        run: |
+          npm run module:package -- "$MODULE_ID" \
+            --data-dir "$SHEET_DELVER_DATA" \
+            --release-tag "$RELEASE_TAG" \
+            --repository "$REPOSITORY_URL" \
+            --changelog "$REPOSITORY_URL/releases/tag/$RELEASE_TAG"
+
+      - name: Prepare conventional release assets
+        env:
+          MODULE_ID: ${{ inputs.module_id }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          OUT_DIR="$SHEET_DELVER_DATA/dist/modules"
+          ARCHIVE="$OUT_DIR/$MODULE_ID-$VERSION.tgz"
+          VERSIONED_MANIFEST="$OUT_DIR/$MODULE_ID-$VERSION.manifest.json"
+          PUBLIC_MANIFEST="$OUT_DIR/sheet-delver-manifest.json"
+          CHECKSUM="$OUT_DIR/$MODULE_ID-$VERSION.sha256"
+          test -f "$ARCHIVE"
+          test -f "$VERSIONED_MANIFEST"
+          test -f "$CHECKSUM"
+          cp "$VERSIONED_MANIFEST" "$PUBLIC_MANIFEST"
+          cd "$OUT_DIR"
+          sha256sum -c "$(basename "$CHECKSUM")"
+          echo "MODULE_ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "MODULE_RELEASE_MANIFEST=$PUBLIC_MANIFEST" >> "$GITHUB_ENV"
+          echo "MODULE_CHECKSUM=$CHECKSUM" >> "$GITHUB_ENV"
+
+      - name: Retain packaged release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e5c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: module-release-${{ inputs.module_id }}-${{ github.ref_name }}
+          path: |
+            ${{ env.MODULE_ARCHIVE }}
+            ${{ env.MODULE_RELEASE_MANIFEST }}
+            ${{ env.MODULE_CHECKSUM }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          MODULE_ID: ${{ inputs.module_id }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" \
+            "$MODULE_ARCHIVE" \
+            "$MODULE_RELEASE_MANIFEST" \
+            "$MODULE_CHECKSUM" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$MODULE_ID $RELEASE_TAG" \
+            --generate-notes \
+            --verify-tag

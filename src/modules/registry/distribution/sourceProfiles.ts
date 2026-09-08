@@ -1,28 +1,20 @@
 import fs from 'node:fs';
-import { LegacyModuleSourceCategory, ModuleSourceKind, SourceProfileId } from '@shared/types/modules';
+import {
+    LegacyModuleSourceCategory,
+    ModuleSourceKind,
+    ModuleTrustTier,
+    SourceProfileId,
+    type ModuleTrustTier as ModuleTrustTierValue,
+} from '@shared/types/modules';
 import path from 'node:path';
-import { getModulesDataDir } from '@core/paths';
+import { getModulesDataDir, writeOwnerOnlyFileAtomicSync } from '@core/paths';
 import { logger } from '@shared/utils/logger';
 
-export interface SourceProfileAuth {
-    type: 'bearer';
-    token: string;
-}
+export type RedactedSourceProfile = SourceProfile;
 
-/**
- * Source profile with the secret `auth.token` removed for outbound responses.
- * Callers learn that auth is configured without the cleartext token ever leaving
- * the server (ADR-0029 Phase 3).
- */
-export type RedactedSourceProfile = Omit<SourceProfile, 'auth'> & {
-    auth?: { type: SourceProfileAuth['type']; configured: true };
-};
-
-/** Strips `auth.token` from a profile, preserving the fact that auth is configured. */
+/** Retained as the response boundary while source profiles are public-only. */
 export function redactSourceProfile(profile: SourceProfile): RedactedSourceProfile {
-    const { auth, ...rest } = profile;
-    if (!auth) return rest;
-    return { ...rest, auth: { type: auth.type, configured: true } };
+    return profile;
 }
 
 export interface SourceProfile {
@@ -32,13 +24,21 @@ export interface SourceProfile {
     baseUrl: string;
     enabled: boolean;
     priority: number;
-    auth?: SourceProfileAuth;
-    hostAllowlist?: string[];
+    trustTier?: ModuleTrustTierValue;
     createdAt: number;
     updatedAt: number;
 }
 
+export interface PublicCatalogProfileInput {
+    name: string;
+    baseUrl: string;
+    enabled?: boolean;
+    priority?: number;
+}
+
 export const DEFAULT_LOCAL_PROFILE_ID = SourceProfileId.LocalDefault;
+export const OFFICIAL_CATALOG_PROFILE_ID = SourceProfileId.OfficialCatalog;
+export const OFFICIAL_CATALOG_URL = 'https://sheetdelver.github.io/module-catalog/catalog.json';
 
 export const DEFAULT_LOCAL_PROFILE: SourceProfile = {
     id: DEFAULT_LOCAL_PROFILE_ID,
@@ -47,6 +47,19 @@ export const DEFAULT_LOCAL_PROFILE: SourceProfile = {
     baseUrl: 'local://',
     enabled: true,
     priority: 0,
+    trustTier: ModuleTrustTier.FirstParty,
+    createdAt: 0,
+    updatedAt: 0,
+};
+
+export const DEFAULT_OFFICIAL_CATALOG_PROFILE: SourceProfile = {
+    id: OFFICIAL_CATALOG_PROFILE_ID,
+    name: 'Sheet Delver Official Catalog',
+    kind: ModuleSourceKind.Indexed,
+    baseUrl: OFFICIAL_CATALOG_URL,
+    enabled: true,
+    priority: 100,
+    trustTier: ModuleTrustTier.FirstParty,
     createdAt: 0,
     updatedAt: 0,
 };
@@ -81,6 +94,43 @@ export function loadSourceProfiles(): SourceProfile[] {
         profilesChanged = true;
         return { ...profile, id: DEFAULT_LOCAL_PROFILE_ID, name: DEFAULT_LOCAL_PROFILE.name };
     });
+    profiles = profiles.map((profile) => {
+        if (profile.id === DEFAULT_LOCAL_PROFILE_ID) {
+            const normalized = { ...DEFAULT_LOCAL_PROFILE };
+            if (JSON.stringify(profile) !== JSON.stringify(normalized)) profilesChanged = true;
+            return normalized;
+        }
+        if (profile.id === OFFICIAL_CATALOG_PROFILE_ID) {
+            const normalized = {
+                ...DEFAULT_OFFICIAL_CATALOG_PROFILE,
+                enabled: typeof profile.enabled === 'boolean' ? profile.enabled : true,
+                priority: Number.isSafeInteger(profile.priority) && profile.priority >= 0
+                    ? profile.priority
+                    : DEFAULT_OFFICIAL_CATALOG_PROFILE.priority,
+            };
+            if (JSON.stringify(profile) !== JSON.stringify(normalized)) profilesChanged = true;
+            return normalized;
+        }
+        const {
+            auth: discardedAuth,
+            hostAllowlist: discardedHostAllowlist,
+            ...publicProfile
+        } = profile as SourceProfile & { auth?: unknown; hostAllowlist?: unknown };
+        const normalized = {
+            ...publicProfile,
+            kind: ModuleSourceKind.Indexed,
+            trustTier: ModuleTrustTier.Unverified,
+        };
+        if (
+            discardedAuth !== undefined
+            || discardedHostAllowlist !== undefined
+            || profile.kind !== normalized.kind
+            || profile.trustTier !== normalized.trustTier
+        ) {
+            profilesChanged = true;
+        }
+        return normalized;
+    });
     const beforeDedupeCount = profiles.length;
     profiles = profiles.filter((profile, index, all) => (
         profile.id !== DEFAULT_LOCAL_PROFILE_ID
@@ -92,6 +142,11 @@ export function loadSourceProfiles(): SourceProfile[] {
     const hasDefaultLocal = profiles.some(p => p.id === DEFAULT_LOCAL_PROFILE_ID);
     if (!hasDefaultLocal) {
         profiles.push(DEFAULT_LOCAL_PROFILE);
+        profilesChanged = true;
+    }
+    const hasOfficialCatalog = profiles.some(p => p.id === OFFICIAL_CATALOG_PROFILE_ID);
+    if (!hasOfficialCatalog) {
+        profiles.push(DEFAULT_OFFICIAL_CATALOG_PROFILE);
         profilesChanged = true;
     }
     if (profilesChanged) {
@@ -107,21 +162,12 @@ export function loadSourceProfiles(): SourceProfile[] {
 export function saveSourceProfiles(profiles: SourceProfile[]): void {
     const filePath = getProfilesFilePath();
     try {
-        fs.writeFileSync(filePath, JSON.stringify(profiles, null, 2), 'utf8');
-        // sources.json can hold bearer tokens; restrict to owner read/write where
-        // the OS supports it, matching the admin-auth/audit security-file posture
-        // (ADR-0029 Phase 3). Non-fatal on failure (e.g. Windows).
-        if (process.platform !== 'win32') {
-            try {
-                fs.chmodSync(filePath, 0o600);
-            } catch (permError) {
-                logger.warn(`Failed to set restrictive permissions on ${filePath}`, permError);
-            }
-        }
+        writeOwnerOnlyFileAtomicSync(filePath, `${JSON.stringify(profiles, null, 2)}\n`);
         _profilesCache = profiles;
         _profilesCache.sort((a, b) => a.priority - b.priority);
     } catch (error) {
         logger.error(`Failed to save source profiles to ${filePath}`, error);
+        throw error;
     }
 }
 
@@ -130,13 +176,52 @@ export function getSourceProfile(id: string): SourceProfile | undefined {
     return profiles.find(p => p.id === id);
 }
 
-export function createSourceProfile(profile: Omit<SourceProfile, 'id' | 'createdAt' | 'updatedAt'>): SourceProfile {
+function normalizeCatalogName(value: string): string {
+    const name = value.trim();
+    if (!name || name.length > 120) throw new Error('Catalog name must be between 1 and 120 characters');
+    return name;
+}
+
+function normalizeCatalogUrl(value: string): string {
+    let url: URL;
+    try {
+        url = new URL(value.trim());
+    } catch {
+        throw new Error('Catalog URL is invalid');
+    }
+    if (url.protocol !== 'https:' || url.username || url.password) {
+        throw new Error('Catalog URL must use HTTPS without credentials');
+    }
+    url.hash = '';
+    return url.href;
+}
+
+function normalizePriority(value: number | undefined, fallback: number): number {
+    const priority = value === undefined ? fallback : value;
+    if (!Number.isSafeInteger(priority) || priority < 0) {
+        throw new Error('Catalog priority must be a non-negative integer');
+    }
+    return priority;
+}
+
+function normalizeEnabled(value: boolean | undefined, fallback: boolean): boolean {
+    if (value === undefined) return fallback;
+    if (typeof value !== 'boolean') throw new Error('Catalog enabled must be true or false');
+    return value;
+}
+
+export function createSourceProfile(input: PublicCatalogProfileInput): SourceProfile {
     const profiles = loadSourceProfiles();
     const id = `src_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     const now = Date.now();
     const newProfile: SourceProfile = {
-        ...profile,
         id,
+        name: normalizeCatalogName(input.name),
+        kind: ModuleSourceKind.Indexed,
+        baseUrl: normalizeCatalogUrl(input.baseUrl),
+        enabled: normalizeEnabled(input.enabled, true),
+        priority: normalizePriority(input.priority, 200),
+        trustTier: ModuleTrustTier.Unverified,
         createdAt: now,
         updatedAt: now,
     };
@@ -145,7 +230,7 @@ export function createSourceProfile(profile: Omit<SourceProfile, 'id' | 'created
     return newProfile;
 }
 
-export function updateSourceProfile(id: string, updates: Partial<Omit<SourceProfile, 'id' | 'createdAt' | 'updatedAt'>>): SourceProfile | null {
+export function updateSourceProfile(id: string, updates: Partial<PublicCatalogProfileInput>): SourceProfile | null {
     if (id === DEFAULT_LOCAL_PROFILE_ID || id === LegacyModuleSourceCategory.BuiltIn) {
         throw new Error('Cannot modify the default local source profile');
     }
@@ -154,9 +239,20 @@ export function updateSourceProfile(id: string, updates: Partial<Omit<SourceProf
     const index = profiles.findIndex(p => p.id === id);
     if (index === -1) return null;
 
+    if (id === OFFICIAL_CATALOG_PROFILE_ID && (updates.name !== undefined || updates.baseUrl !== undefined)) {
+        throw new Error('Cannot modify the official catalog identity or URL');
+    }
+
     profiles[index] = {
         ...profiles[index],
-        ...updates,
+        ...(updates.name !== undefined ? { name: normalizeCatalogName(updates.name) } : {}),
+        ...(updates.baseUrl !== undefined ? { baseUrl: normalizeCatalogUrl(updates.baseUrl) } : {}),
+        ...(updates.enabled !== undefined
+            ? { enabled: normalizeEnabled(updates.enabled, profiles[index].enabled) }
+            : {}),
+        ...(updates.priority !== undefined
+            ? { priority: normalizePriority(updates.priority, profiles[index].priority) }
+            : {}),
         updatedAt: Date.now(),
     };
 
@@ -165,8 +261,12 @@ export function updateSourceProfile(id: string, updates: Partial<Omit<SourceProf
 }
 
 export function deleteSourceProfile(id: string): boolean {
-    if (id === DEFAULT_LOCAL_PROFILE_ID || id === LegacyModuleSourceCategory.BuiltIn) {
-        throw new Error('Cannot delete the default local source profile');
+    if (
+        id === DEFAULT_LOCAL_PROFILE_ID
+        || id === OFFICIAL_CATALOG_PROFILE_ID
+        || id === LegacyModuleSourceCategory.BuiltIn
+    ) {
+        throw new Error('Cannot delete a protected source profile');
     }
 
     const profiles = loadSourceProfiles();
@@ -178,4 +278,8 @@ export function deleteSourceProfile(id: string): boolean {
         return true;
     }
     return false;
+}
+
+export function __resetSourceProfilesForTests(): void {
+    _profilesCache = null;
 }

@@ -91,3 +91,52 @@ git tag -a v0.9.0 -m "Sheet Delver v0.9.0"
 
 Never move or replace a tag that has already been pushed or published. Release
 tags are immutable records; publish a new patch version instead.
+
+## Module Releases
+
+Public module repositories can call the reusable
+`.github/workflows/module-release.yml` workflow from a small tag-triggered
+wrapper:
+
+`npm run module:init` generates this wrapper and a separate validation workflow
+for new modules. The example remains useful when migrating an existing module:
+
+```yaml
+name: Release Module
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: sheetdelver/sheetdelver/.github/workflows/module-release.yml@v0.9.0
+    with:
+      module_id: my-system
+      core_ref: v0.9.0
+```
+
+Pin both the workflow call and `core_ref` to the same tested Sheet Delver
+release tag. The explicit toolchain ref prevents a later change on `main` from
+altering an older module's release build.
+The module tag without its leading `v` must exactly match the version in
+`info.json`.
+
+The reusable workflow checks out the module and the pinned Sheet Delver
+toolchain into the GitHub runner, stages the module under an isolated temporary
+data directory, runs `module:check`, packages it, verifies the checksum, and
+creates a GitHub Release containing:
+
+- `<moduleId>-<version>.tgz`
+- `sheet-delver-manifest.json`
+- `<moduleId>-<version>.sha256`
+
+The fixed manifest asset name allows the static module catalog to follow the
+latest release without editing the catalog for every module version. A release
+workflow refuses to overwrite an existing GitHub Release.
