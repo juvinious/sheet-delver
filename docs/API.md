@@ -78,7 +78,7 @@ seeding.
     "worldTitle": "Example World"
   },
   "url": "http://foundry.example",
-  "appVersion": "0.8.0"
+  "appVersion": "0.9.0"
 }
 ```
 

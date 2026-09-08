@@ -1,4 +1,11 @@
 # Releases
+## 0.9.0
+- Added public module catalog
+- Added secure module distribution
+- Added managed archive transactions
+- Added module management views
+- Added module release tooling
+
 ## 0.8.0
 - Extracted system modules
 - Created secure admin panel
